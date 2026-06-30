@@ -41,7 +41,7 @@ jobs:
 
       - name: Backend tests
         run: |
-          python -m pytest -q
+          python -m pytest -q backend/tests
 
       - name: Setup Node
         uses: actions/setup-node@v4
