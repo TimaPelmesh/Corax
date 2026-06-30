@@ -1,0 +1,18 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+sqlalchemy==2.0.36
+greenlet>=3.0.0
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+python-multipart==0.0.17
+pydantic-settings==2.6.1
+asyncpg==0.30.0
+ldap3
+fpdf2==2.8.2
+httpx==0.28.1
+pypdf==5.1.0
+puresnmp>=2.0.0
+# Сборка CORAX-Agent.exe на Windows-сервере (панель «Сборка агента» → EXE)
+pyinstaller==6.11.1
+psutil==6.1.0
+requests==2.32.3

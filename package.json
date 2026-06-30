@@ -1,0 +1,26 @@
+{
+  "private": true,
+  "name": "corax",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "postinstall": "npm install --prefix frontend",
+    "start": "concurrently -n api,web -c blue,magenta \"cross-env PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python run.py\" \"wait-on tcp:127.0.0.1:3001 -t 120000 && npm run dev --prefix frontend\"",
+    "start:api-only": "cross-env PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python run.py",
+    "start:api-only:noreload": "cross-env PYTHONUTF8=1 PYTHONIOENCODING=utf-8 RELOAD=0 python run.py",
+    "start:prod": "npm run build && cross-env RELOAD=0 python run.py",
+    "build": "npm run build --prefix frontend",
+    "dev": "npm run dev --prefix frontend",
+    "install:frontend": "npm install --prefix frontend",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "cd backend && python -m pytest -q",
+    "test:frontend": "npm run test --prefix frontend",
+    "test:e2e": "playwright test",
+    "test:all": "npm run test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "wait-on": "^8.0.5"
+  }
+}

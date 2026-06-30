@@ -1,0 +1,5 @@
+@echo off
+REM Copy to agent_env.bat and set your server URL and agent token.
+REM Or run: python tools\setup_agent_env.py
+set "INVENTORY_SERVER=http://127.0.0.1:3001"
+set "AGENT_TOKEN=paste-agent-token-here"
