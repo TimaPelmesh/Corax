@@ -96,6 +96,40 @@ async def get_current_superuser(current: User = Depends(get_current_user)) -> Us
     return current
 
 
+async def verify_superuser_standalone(
+    token: str | None = Depends(oauth2_scheme),
+    access_token: str | None = Cookie(default=None),
+) -> None:
+    """Проверка админа в отдельной короткой сессии (без get_db на весь запрос).
+
+    Нужно для операций вроде pg_restore, которые рвут активные подключения к PostgreSQL.
+    """
+    from app.database import AsyncSessionLocal
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Неверный или просроченный токен",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    tok = token or access_token
+    if not tok:
+        raise credentials_exception
+    try:
+        payload = jwt.decode(tok, settings.secret_key, algorithms=[settings.algorithm])
+        sub: str | None = payload.get("sub")
+        if sub is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_username(db, sub)
+        if user is None or not user.is_active:
+            raise credentials_exception
+        if not user.is_superuser:
+            raise HTTPException(status_code=403, detail="Нужны права администратора")
+
+
 def _normalized_role(user: User) -> str:
     role = (getattr(user, "role", "") or "").strip().lower()
     return role if role in {"observer", "editor"} else "observer"

@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext'
 import {
   IconClose,
   IconDashboard,
+  IconDisk,
   IconBook,
   IconGraph,
   IconWarehouse,
@@ -258,6 +259,7 @@ export function Layout() {
           { to: '/users', icon: IconUsers, label: 'Пользователи' },
           { to: '/settings/ldap', icon: IconKey, label: 'LDAP' },
           { to: '/settings/bitrix24', icon: IconTicket, label: 'Bitrix24' },
+          { to: '/settings/database', icon: IconDisk, label: 'База данных', keywords: ['дамп', 'backup', 'postgresql', 'pg_dump', 'импорт', 'экспорт'] },
           { to: '/settings/glpi', icon: IconPcs, label: 'GLPI', keywords: ['импорт', 'экспорт', 'csv'] },
           { to: '/settings/agent-tokens', icon: IconKey, label: 'Токены агентов' },
           { to: '/settings/agent-bundle', icon: IconKey, label: 'Сборка агента', keywords: ['zip', 'exe', 'батник', 'deploy', 'win7'] },

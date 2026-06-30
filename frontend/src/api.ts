@@ -487,6 +487,33 @@ export type Bitrix24IncomingRequest = {
   external_url?: string | null
 }
 
+export type DatabaseBackupStatus = {
+  pg_dump_available: boolean
+  pg_restore_available: boolean
+  pg_dump_path: string | null
+  pg_restore_path: string | null
+  pg_bin_dir_configured: string | null
+  engine: string
+  database: string | null
+  host: string | null
+  port: number | null
+  single_database: boolean
+  counts: {
+    computers: number
+    service_requests: number
+    users: number
+  }
+}
+
+export type DatabaseRestoreResult = {
+  ok: boolean
+  database: string
+  bytes: number
+  warnings: boolean
+  log_tail: string
+  restart_recommended: boolean
+}
+
 /** Защита от устаревшего/обрезанного JSON: без этого React падает с белым экраном при undefined[].map */
 function normalizeDashboardSummary(raw: DashboardSummary): DashboardSummary {
   return {
@@ -993,6 +1020,54 @@ export const api = {
       method: 'POST',
       json: body,
     }),
+
+  databaseBackupStatus: () => request<DatabaseBackupStatus>(`${API_PREFIX}/settings/database/status`),
+
+  exportDatabaseDump: async () => {
+    const headers = new Headers()
+    const csrf = getCookie('csrf_token')
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+    const res = await fetch(apiUrl(`${API_PREFIX}/settings/database/export`), {
+      credentials: 'include',
+      headers,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      const detail = (err as { detail?: string }).detail ?? res.statusText
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+    }
+    const blob = await res.blob()
+    const cd = res.headers.get('content-disposition') ?? ''
+    const m = /filename="([^"]+)"/i.exec(cd)
+    const filename = m?.[1] ?? `corax-backup-${new Date().toISOString().slice(0, 10)}.dump`
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+
+  importDatabaseDump: async (file: File, confirm: string) => {
+    const fd = new FormData()
+    fd.set('file', file)
+    fd.set('confirm', confirm)
+    const headers = new Headers()
+    const csrf = getCookie('csrf_token')
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+    const res = await fetch(apiUrl(`${API_PREFIX}/settings/database/import`), {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: fd,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      const detail = (err as { detail?: string }).detail ?? res.statusText
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+    }
+    return (await res.json()) as DatabaseRestoreResult
+  },
 
   testLdapConfig: (body: {
     allow_anonymous?: boolean

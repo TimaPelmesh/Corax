@@ -13,6 +13,7 @@ import { SettingsCategoriesPage } from './pages/SettingsCategoriesPage'
 import { ServiceRequestsPage } from './pages/ServiceRequestsPage'
 import { UsersPage } from './pages/UsersPage'
 import { SettingsBitrix24Page } from './pages/SettingsBitrix24Page'
+import { SettingsDatabasePage } from './pages/SettingsDatabasePage'
 import { SettingsGlpiPage } from './pages/SettingsGlpiPage'
 import { KnowledgeSitemapPage } from './pages/KnowledgeSitemapPage'
 import { WikiRagPage } from './pages/WikiRagPage'
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="settings/categories" element={<SettingsCategoriesPage />} />
         <Route path="settings/ldap" element={<SettingsLdapPage />} />
         <Route path="settings/bitrix24" element={<SettingsBitrix24Page />} />
+        <Route path="settings/database" element={<SettingsDatabasePage />} />
         <Route path="settings/glpi" element={<SettingsGlpiPage />} />
         <Route path="settings/agent-tokens" element={<AgentTokensPage />} />
         <Route path="settings/agent-bundle" element={<AgentBundlePage />} />

@@ -29,6 +29,7 @@ from app.routers import (
     bitrix24_incoming,
     computers,
     dashboard,
+    database_backup,
     diagrams,
     monitors,
     printers,
@@ -335,6 +336,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(agent_tokens.router, prefix=base)
     app.include_router(agent_bundles.router, prefix=base)
     app.include_router(settings_router.router, prefix=base)
+    app.include_router(database_backup.router, prefix=base)
     app.include_router(wikirag.router, prefix=base)
     app.include_router(warehouse.router, prefix=base)
 

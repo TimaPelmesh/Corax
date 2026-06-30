@@ -85,6 +85,10 @@ class Settings(BaseSettings):
     lm_studio_model: str = "google/gemma-3-1b"
     lm_studio_timeout_seconds: int = 300
     lm_studio_max_tokens: int = 768
+    # pg_dump/pg_restore (резервная копия в настройках). Путь к bin, любой диск (F:\...\bin).
+    pg_bin_dir: str = ""
+    postgres_admin_user: str = "postgres"
+    postgres_admin_password: str = ""
 
 
 def _is_default_secret(v: str) -> bool:
