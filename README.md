@@ -1,5 +1,6 @@
 # CORAX
 
+[![CI](https://github.com/TimaPelmesh/Corax/actions/workflows/ci.yml/badge.svg)](https://github.com/TimaPelmesh/Corax/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -14,7 +15,8 @@
 | **Наглядность** | Дашборд, карта здания, склад, принтеры SNMP |
 | **Стек** | FastAPI · React · PostgreSQL |
 
-**Автор:** Иванов Тимур · **Лицензия:** [GNU GPL v3](LICENSE) · © 2026
+**Автор:** Иванов Тимур · **Лицензия:** [GNU GPL v3](LICENSE) · © 2026  
+**Разработчикам:** [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
@@ -850,6 +852,8 @@ python scripts/migrate_sqlite_to_postgres.py
 - после успешной миграции старые `.db` можно архивировать и удалить (см. ниже).
 
 ## Тесты и проверки
+
+Статус последней сборки — бейдж **CI** в шапке README. Подробный гайд для разработчиков: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Доступные npm-скрипты:
 
