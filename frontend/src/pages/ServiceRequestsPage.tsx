@@ -97,6 +97,52 @@ function getAppScrollContainer(): HTMLElement | null {
   return document.querySelector('main')
 }
 
+type ListScrollRestore = { path: string; scrollTop: number; requestId: number }
+
+let pendingListScrollRestore: ListScrollRestore | null = null
+let skipNextListReload = false
+
+function captureListScrollForRestore(requestId: number, path: string) {
+  const el = getAppScrollContainer()
+  if (!el) return
+  pendingListScrollRestore = { path, scrollTop: el.scrollTop, requestId }
+}
+
+function scheduleListScrollRestore(expectedPath: string) {
+  const saved = pendingListScrollRestore
+  if (!saved || saved.path !== expectedPath) return
+
+  const { scrollTop, requestId } = saved
+
+  const tryApply = () => {
+    if (!pendingListScrollRestore || pendingListScrollRestore.path !== expectedPath) return true
+
+    const row = document.querySelector(`tr[data-request-id="${requestId}"]`)
+    if (row instanceof HTMLElement) {
+      row.scrollIntoView({ block: 'nearest' })
+      pendingListScrollRestore = null
+      return true
+    }
+
+    const main = getAppScrollContainer()
+    if (main && main.scrollHeight >= scrollTop) {
+      main.scrollTop = scrollTop
+      pendingListScrollRestore = null
+      return true
+    }
+
+    return false
+  }
+
+  if (tryApply()) return
+
+  for (const ms of [0, 16, 50, 100, 200, 350, 500]) {
+    window.setTimeout(() => {
+      tryApply()
+    }, ms)
+  }
+}
+
 function readRecentTitles(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_TITLE_KEY)
@@ -1153,7 +1199,6 @@ export function ServiceRequestsPage() {
   const [editingReturnPath, setEditingReturnPath] = useState<string | null>(null)
   const [editDeleteConfirm, setEditDeleteConfirm] = useState(false)
   const [editDeleting, setEditDeleting] = useState(false)
-  const listScrollRestoreRef = useRef<{ path: string; scrollTop: number } | null>(null)
   const [filterCategory, setFilterCategory] = useState<string>('')
   const [reportOpen, setReportOpen] = useState(false)
   const [statsFrom, setStatsFrom] = useState<string>('')
@@ -1487,6 +1532,10 @@ export function ServiceRequestsPage() {
   }, [filterCategory, query, rows, sortKey])
 
   const load = useCallback(async () => {
+    if (skipNextListReload && (tab === 'database' || tab === 'stats')) {
+      skipNextListReload = false
+      return
+    }
     setErr(null)
     setLoading(true)
     try {
@@ -1529,21 +1578,10 @@ export function ServiceRequestsPage() {
   }, [load])
 
   useEffect(() => {
-    const saved = listScrollRestoreRef.current
-    if (!saved || loading) return
-    if (location.pathname !== saved.path) return
-
-    const top = saved.scrollTop
-    listScrollRestoreRef.current = null
-
-    const frame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        const el = getAppScrollContainer()
-        if (el) el.scrollTop = top
-      })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [location.pathname, loading, visibleRows.length])
+    if (loading) return
+    if (tab !== 'database' && tab !== 'stats') return
+    scheduleListScrollRestore(location.pathname)
+  }, [loading, tab, location.pathname, visibleRows.length])
 
   useEffect(() => {
     void (async () => {
@@ -1667,11 +1705,15 @@ export function ServiceRequestsPage() {
     )
   }
 
+  function navigateBackToList(returnPath: string | null) {
+    if (!returnPath || returnPath === '/requests') return
+    skipNextListReload = true
+    navigate(returnPath)
+    scheduleListScrollRestore(returnPath)
+  }
+
   function openRequestForEdit(t: ServiceRequestRow) {
-    const scrollEl = getAppScrollContainer()
-    if (scrollEl) {
-      listScrollRestoreRef.current = { path: location.pathname, scrollTop: scrollEl.scrollTop }
-    }
+    captureListScrollForRestore(t.id, location.pathname)
     populateFormFromRequest(t)
     setEditingRequestId(t.id)
     setEditingReturnPath(location.pathname)
@@ -1689,7 +1731,7 @@ export function ServiceRequestsPage() {
     setTitle('')
     setDescription('')
     resetCreateFormAfterSubmit()
-    if (returnPath && returnPath !== '/requests') navigate(returnPath)
+    navigateBackToList(returnPath)
   }
 
   async function onSubmitRequest(e: FormEvent) {
@@ -1731,7 +1773,7 @@ export function ServiceRequestsPage() {
         resetCreateFormAfterSubmit()
         setToast('Сохранено')
         void refreshSummary()
-        if (returnPath && returnPath !== '/requests') navigate(returnPath)
+        if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath)
       } else {
         await api.createServiceRequest(body)
         pushRecentTitle(title.trim())
@@ -1936,7 +1978,7 @@ export function ServiceRequestsPage() {
       setToast('Заявка удалена')
       await load()
       void refreshSummary()
-      if (returnPath && returnPath !== '/requests') navigate(returnPath)
+      if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Ошибка удаления')
     } finally {
@@ -3282,6 +3324,7 @@ export function ServiceRequestsPage() {
                           {statsRows.map((t) => (
                             <tr
                               key={t.id}
+                              data-request-id={t.id}
                               className="cursor-pointer border-b border-slate-100/80 bg-white align-top transition hover:bg-zinc-50/60"
                               onClick={() => openRequestForEdit(t)}
                               title="Редактировать заявку"

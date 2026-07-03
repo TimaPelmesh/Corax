@@ -146,11 +146,7 @@ export function Layout() {
   const [mobileNavPath, setMobileNavPath] = useState(location.pathname)
   const [desktopNavHidden, setDesktopNavHidden] = useState(false)
   const [menuQuery, setMenuQuery] = useState('')
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    'Заявки': false,
-    'База знаний': false,
-    'Настройки': false,
-  })
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [welcomeToast, setWelcomeToast] = useState<string | null>(null)
   const [welcomeToastLeaving, setWelcomeToastLeaving] = useState(false)
   const mobileNavVisible = mobileNavOpen && mobileNavPath === location.pathname
@@ -320,7 +316,7 @@ export function Layout() {
         </div>
         {navSections.map((section) => {
           const forcedOpen = Boolean(menuQueryNorm)
-          const open = forcedOpen || section.collapsible === false || Boolean(openGroups[section.title])
+          const open = forcedOpen || section.collapsible === false || openGroups[section.title] !== false
           return (
             <div key={section.title} className="space-y-1">
               {section.collapsible === false ? (

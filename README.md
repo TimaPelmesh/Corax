@@ -27,6 +27,8 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 1. [Возможности](#возможности)
 2. [Стек и зависимости](#стек-и-зависимости)
 3. [Полная инструкция по установке](#полная-инструкция-по-установке) — **главный раздел**
+   - [Где скачать компоненты](#где-скачать-компоненты-официальные-ссылки)
+   - [PostgreSQL — подробно](#шаг-1-установка-postgresql)
 4. [Быстрый старт](#быстрый-старт-кратко)
 5. [Архитектура и структура](#архитектура)
 6. [Конфигурация](#конфигурация)
@@ -143,6 +145,26 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 
 Ниже — пошаговая установка с нуля на **Windows** (основной сценарий для лаборатории) и кратко для **Linux**. После установки сервер принимает отчёты агентов в LAN, хранит данные в PostgreSQL и открывает веб-панель.
 
+### Где скачать компоненты (официальные ссылки)
+
+| Компонент | Рекомендуемая версия | Скачать | Примечание |
+|-----------|---------------------|---------|------------|
+| **Репозиторий CORAX** | `main` | [github.com/TimaPelmesh/Corax](https://github.com/TimaPelmesh/Corax) | `git clone` или ZIP «Code → Download ZIP» |
+| **PostgreSQL** | **16** | [postgresql.org/download](https://www.postgresql.org/download/) | Windows: [EDB installer](https://www.enterprisedb.com/downloads/postgres-postgresql-downloads) — в комплекте **pgAdmin 4** и служба |
+| **Python** | **3.12+** | [python.org/downloads](https://www.python.org/downloads/) | Windows: галочка **«Add python.exe to PATH»** |
+| **Node.js** | **20 LTS** | [nodejs.org/en/download](https://nodejs.org/en/download) | Нужен для сборки и dev-режима UI |
+| **Git** (опционально) | актуальный | [git-scm.com/download/win](https://git-scm.com/download/win) | Для клонирования и обновлений |
+| **LibreOffice** (опционально) | 7.x+ | [libreoffice.org/download](https://www.libreoffice.org/download/download/) | Карта здания: Visio → PDF/PNG, экспорт планов |
+| **LM Studio** (опционально) | актуальный | [lmstudio.ai](https://lmstudio.ai/) | WikiRAG — локальный чат по базе знаний |
+
+**PostgreSQL — что выбрать на Windows:** установщик EDB → PostgreSQL 16 → Windows x86-64. Порт **5432**, locale **Russian, Russia** или **C** (UTF-8). Запомните пароль пользователя **`postgres`** — он понадобится в `POSTGRES_ADMIN_PASSWORD` в `backend/.env`.
+
+**Альтернативы PostgreSQL (для опытных):** Docker-образ [`postgres:16`](https://hub.docker.com/_/postgres), пакетный менеджер Linux (`apt install postgresql`), Homebrew на macOS (`brew install postgresql@16`). CORAX рассчитан на локальный экземпляр на `localhost:5432`.
+
+Подробнее о миграции со старого SQLite и смене API: **[MIGRATION.md](MIGRATION.md)**.
+
+---
+
 ### Шаг 0. Клонирование репозитория
 
 ```powershell
@@ -156,14 +178,26 @@ cd Corax
 
 ### Шаг 1. Установка PostgreSQL
 
-База данных **обязательна**. По умолчанию используется одна БД `inventory` на `localhost:5432`.
+База данных **обязательна**. CORAX хранит в PostgreSQL: парк ПК, заявки, пользователей, карту здания, склад. По умолчанию — одна БД **`inventory`** на **`localhost:5432`**, три URL в `.env` (`DATABASE_URL`, `DIAGRAMS_DATABASE_URL`, `WAREHOUSE_DATABASE_URL`) могут указывать на **одну и ту же** базу.
+
+| Параметр | Значение по умолчанию (после `ensure_postgres.py`) |
+|----------|-----------------------------------------------------|
+| Хост | `localhost` |
+| Порт | `5432` |
+| База | `inventory` |
+| Пользователь приложения | `inventory` |
+| Пароль приложения | `inventory` (в production смените в `.env` и в PostgreSQL) |
+| Суперпользователь PG | `postgres` (только для первичной настройки) |
+
+Скачать: [postgresql.org/download](https://www.postgresql.org/download/) · Windows (рекомендуется): [EDB PostgreSQL 16](https://www.enterprisedb.com/downloads/postgres-postgresql-downloads) · GUI: **pgAdmin 4** (ставится вместе с EDB).
 
 #### Windows
 
-1. Скачайте установщик [PostgreSQL 16](https://www.postgresql.org/download/windows/) (EDB installer).
+1. Скачайте [EDB installer для PostgreSQL 16](https://www.enterprisedb.com/downloads/postgres-postgresql-downloads) (раздел Windows x86-64).
 2. При установке запомните пароль суперпользователя **`postgres`**.
 3. Порт оставьте **5432**, локаль — UTF-8.
-4. После установки служба обычно называется `postgresql-x64-16`.
+4. Компоненты: **PostgreSQL Server**, **pgAdmin 4**, **Command Line Tools** (для `psql`, `pg_dump`).
+5. После установки служба обычно называется `postgresql-x64-16`.
 
 Проверка:
 
@@ -187,6 +221,8 @@ Set-Service -Name postgresql-x64-16 -StartupType Automatic
 
 #### Linux (Ubuntu / Debian)
 
+Пакеты из официального репозитория дистрибутива: [postgresql.org/download/linux](https://www.postgresql.org/download/linux/).
+
 ```bash
 sudo apt update
 sudo apt install -y postgresql postgresql-contrib
@@ -196,6 +232,8 @@ sudo systemctl status postgresql
 ```
 
 #### macOS
+
+[postgresql.org/download/macosx](https://www.postgresql.org/download/macosx/) или Homebrew:
 
 ```bash
 brew install postgresql@16
