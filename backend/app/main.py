@@ -184,14 +184,17 @@ async def lifespan(_: FastAPI):
 
     from app.printer_scheduler import printer_poll_scheduler
 
-    await printer_poll_scheduler.start()
+    env = (settings.environment or "").strip().lower()
+    if env != "test":
+        await printer_poll_scheduler.start()
 
     yield
 
-    await printer_poll_scheduler.stop()
-    await engine.dispose()
-    await diagrams_engine.dispose()
-    await warehouse_engine.dispose()
+    if env != "test":
+        await printer_poll_scheduler.stop()
+        await engine.dispose()
+        await diagrams_engine.dispose()
+        await warehouse_engine.dispose()
 
 
 app = FastAPI(title="Инвенторизация", lifespan=lifespan)

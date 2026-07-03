@@ -73,8 +73,6 @@ class Settings(BaseSettings):
     bitrix24_bot_client_id: str = ""
     bitrix24_bot_handler_token: str = ""
     bitrix24_bot_inbox_dir: str = "bitrix_bot_inbox"
-    # Visio → SVG converter (LibreOffice). If empty, uses `soffice` from PATH.
-    soffice_path: str = ""
     # WikiRAG: uploaded knowledge-base files (absolute or relative to backend/).
     wiki_rag_dir: str = "wiki_rag_docs"
     wiki_rag_context_max_chars: int = 18_000
@@ -105,8 +103,8 @@ def _is_default_secret(v: str) -> bool:
 
 def _validate_production_settings(s: Settings) -> None:
     env = (s.environment or "").strip().lower()
-    if env not in {"development", "production"}:
-        raise ValueError("ENVIRONMENT must be 'development' or 'production'")
+    if env not in {"development", "production", "test"}:
+        raise ValueError("ENVIRONMENT must be 'development', 'production', or 'test'")
     if env != "production":
         return
     bad: list[str] = []

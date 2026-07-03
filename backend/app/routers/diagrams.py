@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import math
 import base64
-import subprocess
 import tempfile
 from pathlib import Path
 from xml.sax.saxutils import escape as _xml_escape
@@ -16,10 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import DatabaseError
 
 from app.auth import _normalized_role, get_current_user, get_current_editor_or_superuser
-from app.config import settings
 from app.database import DiagramsSessionLocal, get_diagrams_db
 from app.diagram_live import DiagramRoomClient, diagram_live_hub, user_from_access_token
 from app.models import Diagram, DiagramBinding, User
+from app.svg_export import SvgExportError, svg_export_available, svg_to_pdf, svg_to_png
 
 router = APIRouter(prefix="/diagrams", tags=["diagrams"])
 
@@ -31,93 +30,10 @@ BLANK_FLOOR_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 8
 </svg>"""
 
 
-def _run_soffice_convert_to_svg(src_path: Path, out_dir: Path) -> Path:
-    """
-    Convert office file to SVG via LibreOffice headless.
-    Requires `soffice` (LibreOffice) available in PATH.
-    """
-    soffice = (settings.soffice_path or "").strip() or "soffice"
-    cmd = [
-        soffice,
-        "--headless",
-        "--nologo",
-        "--nolockcheck",
-        "--nodefault",
-        "--norestore",
-        "--convert-to",
-        "svg",
-        "--outdir",
-        str(out_dir),
-        str(src_path),
-    ]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Не найден LibreOffice (soffice). Установите LibreOffice или задайте SOFFICE_PATH в backend/.env для конвертации Visio → SVG.",
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise HTTPException(status_code=504, detail="Конвертация Visio → SVG заняла слишком много времени.") from exc
-
-    if res.returncode != 0:
-        msg = (res.stderr or res.stdout or "").strip()
-        raise HTTPException(status_code=500, detail=f"LibreOffice не смог конвертировать файл в SVG. {msg}")
-
-    # LibreOffice writes <basename>.svg (may sanitize name).
-    svgs = sorted(out_dir.glob("*.svg"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not svgs:
-        raise HTTPException(status_code=500, detail="Конвертация завершилась без SVG-файла.")
-    return svgs[0]
-
-
-def _run_soffice_convert(src_path: Path, out_dir: Path, fmt: str) -> Path:
-    soffice = (settings.soffice_path or "").strip() or "soffice"
-    cmd = [
-        soffice,
-        "--headless",
-        "--nologo",
-        "--nolockcheck",
-        "--nodefault",
-        "--norestore",
-        "--convert-to",
-        fmt,
-        "--outdir",
-        str(out_dir),
-        str(src_path),
-    ]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Не найден LibreOffice (soffice). Установите LibreOffice или задайте SOFFICE_PATH в backend/.env.",
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise HTTPException(status_code=504, detail="Конвертация заняла слишком много времени.") from exc
-
-    if res.returncode != 0:
-        msg = (res.stderr or res.stdout or "").strip()
-        raise HTTPException(status_code=500, detail=f"LibreOffice не смог конвертировать файл. {msg}")
-
-    outs = sorted(out_dir.glob(f"*.{fmt.split(':', 1)[0].strip()}"), key=lambda p: p.stat().st_mtime, reverse=True)
-    if not outs:
-        raise HTTPException(status_code=500, detail="Конвертация завершилась без выходного файла.")
-    return outs[0]
-
-
 @router.get("/converter-status")
 async def converter_status(_: User = Depends(get_current_user)):
-    soffice = (settings.soffice_path or "").strip() or "soffice"
-    try:
-        res = subprocess.run([soffice, "--version"], capture_output=True, text=True, timeout=10)
-        ok = res.returncode == 0
-        out = (res.stdout or res.stderr or "").strip()
-        return {"ok": ok, "soffice": soffice, "version": out[:500]}
-    except FileNotFoundError:
-        return {"ok": False, "soffice": soffice, "version": None}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "soffice": soffice, "version": None}
+    ok, reason = svg_export_available()
+    return {"ok": ok, "engine": "cairosvg", "detail": reason}
 
 
 class DiagramOut(BaseModel):
@@ -651,42 +567,11 @@ async def patch_diagram(
 @router.post("/import-visio")
 async def import_visio(
     _: User = Depends(get_current_editor_or_superuser),
-    db: AsyncSession = Depends(get_diagrams_db),
-    file: UploadFile = File(...),
 ):
-    fn = (file.filename or "").strip()
-    if not fn:
-        raise HTTPException(status_code=400, detail="Файл не выбран.")
-    low = fn.lower()
-    if not (low.endswith(".vsdx") or low.endswith(".vsd")):
-        raise HTTPException(status_code=400, detail="Ожидается файл Visio (.vsdx или .vsd).")
-
-    raw = await file.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Пустой файл.")
-
-    with tempfile.TemporaryDirectory(prefix="inventory-visio-") as td:
-        tmp = Path(td)
-        src = tmp / fn
-        src.write_bytes(raw)
-        svg_path = _run_soffice_convert_to_svg(src, tmp)
-        svg_text = svg_path.read_text(encoding="utf-8", errors="replace")
-
-    max_sort = await db.scalar(select(func.coalesce(func.max(Diagram.sort_order), 0)))
-    next_sort = int(max_sort or 0) + 1
-    d = Diagram(
-        title=Path(fn).stem[:255] or "Схема",
-        source_filename=fn[:255],
-        source_mime=file.content_type or "",
-        source_bytes=raw,
-        svg_text=svg_text,
-        sort_order=next_sort,
-        floor_layout_json="{}",
+    raise HTTPException(
+        status_code=410,
+        detail="Импорт Visio отключён. Загрузите PNG (import-background-png) или создайте пустой этаж (floor-blank).",
     )
-    db.add(d)
-    await db.commit()
-    await db.refresh(d)
-    return {"ok": True, "diagram_id": d.id, "title": d.title}
 
 
 @router.get("/{diagram_id}/svg")
@@ -839,13 +724,10 @@ async def export_merged_png(
         data = {}
     layout = FloorLayoutPayload.model_validate(data)
     merged = _merge_svg_with_overlay(d.svg_text or "", layout, include_labels=bool(include_labels))
-
-    with tempfile.TemporaryDirectory(prefix="inventory-floor-export-") as td:
-        tmp = Path(td)
-        src = tmp / f"floor-{diagram_id}.svg"
-        src.write_text(merged, encoding="utf-8", errors="replace")
-        png_path = _run_soffice_convert(src, tmp, "png")
-        payload = png_path.read_bytes()
+    try:
+        payload = svg_to_png(merged)
+    except SvgExportError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     headers = {"Content-Disposition": f'attachment; filename="building-map-{diagram_id}.png"'}
     return Response(content=payload, media_type="image/png", headers=headers)
@@ -868,13 +750,10 @@ async def export_merged_pdf(
         data = {}
     layout = FloorLayoutPayload.model_validate(data)
     merged = _merge_svg_with_overlay(d.svg_text or "", layout, include_labels=bool(include_labels))
-
-    with tempfile.TemporaryDirectory(prefix="inventory-floor-export-") as td:
-        tmp = Path(td)
-        src = tmp / f"floor-{diagram_id}.svg"
-        src.write_text(merged, encoding="utf-8", errors="replace")
-        pdf_path = _run_soffice_convert(src, tmp, "pdf")
-        payload = pdf_path.read_bytes()
+    try:
+        payload = svg_to_pdf(merged)
+    except SvgExportError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     headers = {"Content-Disposition": f'attachment; filename="building-map-{diagram_id}.pdf"'}
     return Response(content=payload, media_type="application/pdf", headers=headers)
@@ -882,26 +761,17 @@ async def export_merged_pdf(
 
 @router.get("/{diagram_id}/png")
 async def get_png(diagram_id: int, _: User = Depends(get_current_user), db: AsyncSession = Depends(get_diagrams_db)):
-    """
-    Reliable PNG export via LibreOffice, using original source bytes.
-    This avoids client-side SVG->canvas issues for complex SVGs.
-    """
+    """PNG из сохранённого SVG этажа (cairosvg)."""
     d = await db.get(Diagram, diagram_id)
     if d is None:
         raise HTTPException(status_code=404, detail="Схема не найдена")
-    if not d.source_bytes or len(d.source_bytes) < 16:
-        raise HTTPException(
-            status_code=400,
-            detail="Для этого этажа нет полноценного файла Visio. Используйте экспорт SVG или импортируйте .vsdx.",
-        )
-    fn = (d.source_filename or "diagram.vsdx").strip()[:255] or "diagram.vsdx"
-
-    with tempfile.TemporaryDirectory(prefix="inventory-visio-png-") as td:
-        tmp = Path(td)
-        src = tmp / fn
-        src.write_bytes(d.source_bytes)
-        png_path = _run_soffice_convert(src, tmp, "png")
-        payload = png_path.read_bytes()
+    svg = (d.svg_text or "").strip()
+    if not svg:
+        raise HTTPException(status_code=400, detail="Для этажа нет SVG. Загрузите PNG или создайте план.")
+    try:
+        payload = svg_to_png(svg)
+    except SvgExportError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     headers = {"Content-Disposition": f'attachment; filename="diagram-{diagram_id}.png"'}
     return Response(content=payload, media_type="image/png", headers=headers)

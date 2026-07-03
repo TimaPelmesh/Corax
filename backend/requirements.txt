@@ -12,10 +12,9 @@ fpdf2==2.8.2
 httpx==0.28.1
 pypdf==5.1.0
 puresnmp>=2.0.0
-# Сборка CORAX-Agent.exe на Windows-сервере (панель «Сборка агента» → EXE)
-pyinstaller==6.11.1
 psutil==6.1.0
 requests==2.32.3
+cairosvg==2.7.1
 # Тесты (CI и npm run test:backend)
 pytest==8.3.4
 pytest-asyncio==0.24.0

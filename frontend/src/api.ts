@@ -584,21 +584,6 @@ export type AgentBundleCreateBody = {
   }
 }
 
-export type AgentExeCreateBody = {
-  server_url: string
-  create_token?: boolean
-  token_label?: string | null
-  allowed_hostname?: string | null
-  existing_token?: string | null
-}
-
-export type AgentExeStatus = {
-  available: boolean
-  reason: string | null
-}
-
-export type AgentBundleFormat = 'zip' | 'exe'
-
 export const api = {
   login: (username: string, password: string) =>
     request<{ ok: boolean; access_token: string | null }>(`${API_PREFIX}/auth/login/json`, {
@@ -1141,45 +1126,6 @@ export const api = {
     const cd = res.headers.get('Content-Disposition') ?? ''
     const m = /filename="([^"]+)"/i.exec(cd)
     const filename = m?.[1] ?? 'corax-agent-win10.zip'
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.rel = 'noopener'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-    return filename
-  },
-
-  agentExeStatus: () => request<AgentExeStatus>(`${API_PREFIX}/agent-bundles/exe/status`),
-
-  downloadAgentExe: async (body: AgentExeCreateBody): Promise<string> => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    const csrf = getCookie('csrf_token')
-    if (csrf) headers.set('X-CSRF-Token', csrf)
-    const res = await fetch(apiUrl(`${API_PREFIX}/agent-bundles/exe`), {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(600_000),
-    })
-    if (!res.ok) {
-      let detail = `HTTP ${res.status}`
-      try {
-        const j = (await res.json()) as { detail?: string }
-        if (j.detail) detail = String(j.detail)
-      } catch {
-        // ignore
-      }
-      throw new Error(detail)
-    }
-    const blob = await res.blob()
-    const cd = res.headers.get('Content-Disposition') ?? ''
-    const m = /filename="([^"]+)"/i.exec(cd)
-    const filename = m?.[1] ?? 'corax-agent-win10.exe'
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

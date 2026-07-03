@@ -262,7 +262,7 @@ export function Layout() {
           { to: '/settings/database', icon: IconDisk, label: 'База данных', keywords: ['дамп', 'backup', 'postgresql', 'pg_dump', 'импорт', 'экспорт'] },
           { to: '/settings/glpi', icon: IconPcs, label: 'GLPI', keywords: ['импорт', 'экспорт', 'csv'] },
           { to: '/settings/agent-tokens', icon: IconKey, label: 'Токены агентов' },
-          { to: '/settings/agent-bundle', icon: IconKey, label: 'Сборка агента', keywords: ['zip', 'exe', 'батник', 'deploy', 'win7'] },
+          { to: '/settings/agent-bundle', icon: IconKey, label: 'Сборка агента', keywords: ['zip', 'батник', 'deploy', 'win7'] },
         )
       }
       sections.push({ title: 'Настройки', icon: IconKey, collapsible: true, items: settingsItems })

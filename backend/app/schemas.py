@@ -507,21 +507,6 @@ class AgentBundleCreate(BaseModel):
     schedule: AgentBundleSchedule | None = None
 
 
-class AgentExeCreate(BaseModel):
-    """Запрос сборки автономного .exe (Win10/11, Python-агент + GUI)."""
-
-    server_url: str = Field(min_length=8, max_length=512)
-    create_token: bool = True
-    token_label: str | None = Field(default=None, max_length=128)
-    allowed_hostname: str | None = Field(default=None, max_length=128)
-    existing_token: str | None = Field(default=None, max_length=512)
-
-
-class AgentExeStatusOut(BaseModel):
-    available: bool
-    reason: str | None = None
-
-
 class LdapConfigOut(BaseModel):
     enabled: bool
     allow_anonymous: bool

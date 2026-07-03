@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
-import { api, type AgentBundleFormat, type AgentBundleProfile, type AgentBundleTarget } from '../api'
+import { api, type AgentBundleProfile, type AgentBundleTarget } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 
@@ -38,9 +38,6 @@ export function AgentBundlePage() {
   const [lanLoading, setLanLoading] = useState(true)
   const [serverPort, setServerPort] = useState(DEFAULT_PORT)
   const [platform, setPlatform] = useState<AgentBundleTarget>('win10')
-  const [format, setFormat] = useState<AgentBundleFormat>('exe')
-  const [exeAvailable, setExeAvailable] = useState<boolean | null>(null)
-  const [exeUnavailableReason, setExeUnavailableReason] = useState<string | null>(null)
   const [level, setLevel] = useState<AgentBundleProfile>('full')
   const [tokenLabel, setTokenLabel] = useState('CORAX deploy')
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
@@ -80,27 +77,7 @@ export function AgentBundlePage() {
     }
   }, [authLoading, user?.is_superuser])
 
-  useEffect(() => {
-    if (authLoading || !user?.is_superuser || platform !== 'win10') return
-    let cancelled = false
-    void api
-      .agentExeStatus()
-      .then((r) => {
-        if (cancelled) return
-        setExeAvailable(r.available)
-        setExeUnavailableReason(r.reason)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setExeAvailable(false)
-        setExeUnavailableReason('Не удалось проверить сборку EXE')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [authLoading, user?.is_superuser, platform])
-  const isExe = platform === 'win10' && format === 'exe'
-  const showModules = platform === 'win10' && format === 'zip' && level === 'custom'
+  const showModules = platform === 'win10' && level === 'custom'
   const moduleList = useMemo(() => Object.keys(MODULE_LABELS), [])
   const enabledModuleCount = useMemo(
     () => Object.values(modules).filter(Boolean).length,
@@ -131,15 +108,9 @@ export function AgentBundlePage() {
     try {
       const label =
         tokenLabel.trim() ||
-        (isExe ? 'CORAX EXE deploy' : platform === 'win7' ? 'CORAX deploy win7' : 'CORAX deploy win10')
+        (platform === 'win7' ? 'CORAX deploy win7' : 'CORAX deploy win10')
       const server = buildServerUrl(serverHost, serverPort)
-      const filename = isExe
-        ? await api.downloadAgentExe({
-            server_url: server,
-            create_token: true,
-            token_label: label,
-          })
-        : await api.downloadAgentBundle({
+      const filename = await api.downloadAgentBundle({
             server_url: server,
             target: platform,
             profile: platform === 'win10' ? level : 'full',
@@ -157,7 +128,7 @@ export function AgentBundlePage() {
                   }
                 : { enabled: false },
           })
-      setOkMsg(isExe ? `Файл скачан: ${filename}` : `Архив скачан: ${filename}`)
+      setOkMsg(`Архив скачан: ${filename}`)
     } catch (ex) {
       let msg = ex instanceof Error ? ex.message : 'Ошибка сборки'
       if (msg.includes('Method Not Allowed') || msg.includes('405')) {
@@ -181,9 +152,7 @@ export function AgentBundlePage() {
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
             {platform === 'win7'
               ? 'Агент для Windows 7: базовый сбор (железо, ОС, ПО, периферия). PowerShell 2.0, без расширенных модулей.'
-              : isExe
-                ? 'Автономный EXE для Windows 10/11: один файл, встроены IP сервера и токен, окно статуса. Установка Python на ПК не нужна.'
-                : 'ZIP с PowerShell-агентом v3: максимальный сбор (патчи, BitLocker, Office и др.). Распакуйте на шару и запускайте corax_send.bat.'}{' '}
+              : 'ZIP с PowerShell-агентом v3: максимальный сбор (патчи, BitLocker, Office и др.). Распакуйте на шару и запускайте corax_send.bat.'}{' '}
             API на порту <code className="text-xs">3001</code>.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -210,42 +179,6 @@ export function AgentBundlePage() {
               Windows 7
             </button>
           </div>
-          {platform === 'win10' ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                  format === 'exe'
-                    ? 'border-red-300 bg-red-50 text-red-900'
-                    : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300'
-                }`}
-                disabled={exeAvailable === false}
-                title={exeAvailable === false ? exeUnavailableReason ?? undefined : undefined}
-                onClick={() => {
-                  if (exeAvailable === false) return
-                  setFormat('exe')
-                }}
-              >
-                EXE — автономный
-              </button>
-              <button
-                type="button"
-                className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                  format === 'zip'
-                    ? 'border-red-300 bg-red-50 text-red-900'
-                    : 'border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300'
-                }`}
-                onClick={() => setFormat('zip')}
-              >
-                ZIP — PowerShell v3
-              </button>
-            </div>
-          ) : null}
-          {platform === 'win10' && exeAvailable === false && exeUnavailableReason ? (
-            <p className="mt-2 max-w-2xl text-xs text-amber-800">
-              EXE недоступен: {exeUnavailableReason}. Используйте ZIP или установите PyInstaller на сервере CORAX.
-            </p>
-          ) : null}
         </div>
       </div>
 
@@ -319,7 +252,7 @@ export function AgentBundlePage() {
             </div>
           ) : null}
 
-          {platform === 'win10' && format === 'zip' ? (
+          {platform === 'win10' ? (
             <>
               <div>
                 <label className="app-label">Уровень сбора</label>
@@ -392,34 +325,18 @@ export function AgentBundlePage() {
             <div className="text-sm font-semibold text-slate-900">Токен агента</div>
             <div className="mt-2 space-y-2 text-xs leading-relaxed text-slate-600">
               <p>
-                <strong>Каждая сборка создаёт новый токен.</strong>{' '}
-                {isExe ? (
-                  <>
-                    Токен и адрес сервера вшиваются в <code className="text-[11px]">CORAX-Agent.exe</code> (раздел{' '}
-                  </>
-                ) : (
-                  <>
-                    При скачивании ZIP сервер генерирует пару <code className="text-[11px]">public_id.secret</code>,
-                    сохраняет хеш в базе (раздел{' '}
-                  </>
-                )}
+                <strong>Каждая сборка создаёт новый токен.</strong> При скачивании ZIP сервер генерирует пару{' '}
+                <code className="text-[11px]">public_id.secret</code>, сохраняет хеш в базе (раздел{' '}
                 <Link to="/settings/agent-tokens" className="text-red-700 underline-offset-2 hover:underline">
                   Токены агентов
                 </Link>
-                ){isExe ? '.' : ' и записывает полный токен в agent_env.bat внутри архива.'}
+                ) и записывает полный токен в agent_env.bat внутри архива.
               </p>
-              {!isExe ? (
-                <p>
-                  Повторная сборка — <em>другой</em> токен; старый остаётся в базе, пока не отзовёте. Один ZIP можно
-                  раскатать на много ПК.
-                </p>
-              ) : (
-                <p>
-                  Сборка EXE на сервере занимает 1–3 минуты. Файл можно копировать на любые ПК Win10/11 — установка не
-                  требуется.
-                </p>
-              )}
-              <p>Без токена API отклонит отчёт. Не публикуйте EXE/ZIP и не коммитьте токены.</p>
+              <p>
+                Повторная сборка — <em>другой</em> токен; старый остаётся в базе, пока не отзовёте. Один ZIP можно
+                раскатать на много ПК.
+              </p>
+              <p>Без токена API отклонит отчёт. Не публикуйте ZIP и не коммитьте токены.</p>
             </div>
             <div className="mt-3">
               <label className="app-label">Подпись токена в админке (необязательно)</label>
@@ -427,7 +344,7 @@ export function AgentBundlePage() {
             </div>
           </div>
 
-          {platform === 'win10' && format === 'zip' ? (
+          {platform === 'win10' ? (
           <div className="space-y-3 rounded-xl border border-neutral-200 p-4">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
               <input
@@ -489,11 +406,9 @@ export function AgentBundlePage() {
               </div>
               <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
                 <dt className="text-slate-500">Формат</dt>
-                <dd className="text-right font-medium text-slate-800">
-                  {platform === 'win7' ? 'ZIP' : format === 'exe' ? 'EXE' : 'ZIP'}
-                </dd>
+                <dd className="text-right font-medium text-slate-800">ZIP</dd>
               </div>
-              {platform === 'win10' && format === 'zip' ? (
+              {platform === 'win10' ? (
                 <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
                   <dt className="text-slate-500">Уровень</dt>
                   <dd className="text-right font-medium text-slate-800">
@@ -511,7 +426,7 @@ export function AgentBundlePage() {
                   <dd className="text-right text-slate-800">{enabledModuleCount}</dd>
                 </div>
               ) : null}
-              {platform === 'win10' && format === 'zip' ? (
+              {platform === 'win10' ? (
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">Расписание</dt>
                   <dd className="text-right text-slate-800">{scheduleEnabled ? 'install_schedule.bat' : 'Нет'}</dd>
@@ -519,12 +434,7 @@ export function AgentBundlePage() {
               ) : null}
             </dl>
             <p className="text-xs leading-relaxed text-slate-500">
-              {isExe ? (
-                <>
-                  Один файл <code className="text-[11px]">CORAX-Agent.exe</code> — запуск двойным кликом, окно статуса,
-                  встроены сервер и токен.
-                </>
-              ) : platform === 'win10' ? (
+              {platform === 'win10' ? (
                 <>
                   В архиве: <code className="text-[11px]">corax_send.bat</code>,{' '}
                   <code className="text-[11px]">agent_env.bat</code>,{' '}
@@ -540,56 +450,30 @@ export function AgentBundlePage() {
             <button
               type="submit"
               className="app-btn app-btn-primary w-full"
-              disabled={
-                busy ||
-                lanLoading ||
-                !serverHost.trim() ||
-                (isExe && exeAvailable === false)
-              }
+              disabled={busy || lanLoading || !serverHost.trim()}
             >
-              {busy
-                ? isExe
-                  ? 'Сборка EXE… (1–3 мин)'
-                  : 'Сборка…'
-                : isExe
-                  ? 'Скачать EXE'
-                  : 'Скачать ZIP'}
+              {busy ? 'Сборка…' : 'Скачать ZIP'}
             </button>
           </div>
 
           <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/70 p-5 text-sm text-slate-600">
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Развёртывание</p>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">
-              {isExe ? (
-                <>
-                  <li>
-                    Скопируйте <code className="text-xs">CORAX-Agent.exe</code> на ПК (флешка, шара, GPO).
-                  </li>
-                  <li>
-                    Запустите от пользователя — откроется окно, отчёт уйдёт на{' '}
-                    <code className="text-xs">{serverUrl}</code>.
-                  </li>
-                  <li>Для регулярного сбора добавьте EXE в Планировщик Windows.</li>
-                </>
+              <li>Распакуйте ZIP в сетевую папку (например <code className="text-xs">\\server\corax\agent</code>).</li>
+              <li>
+                На ПК запустите{' '}
+                <code className="text-xs">
+                  {platform === 'win10' ? 'corax_send.bat' : 'inventory_send_win7.bat'}
+                </code>{' '}
+                — отчёт уйдёт на <code className="text-xs">{serverUrl}</code>.
+              </li>
+              {platform === 'win10' ? (
+                <li>
+                  Для регулярного сбора: от администратора — <code className="text-xs">install_schedule.bat</code>{' '}
+                  (если включали расписание) или GPO.
+                </li>
               ) : (
-                <>
-                  <li>Распакуйте ZIP в сетевую папку (например <code className="text-xs">\\server\corax\agent</code>).</li>
-                  <li>
-                    На ПК запустите{' '}
-                    <code className="text-xs">
-                      {platform === 'win10' ? 'corax_send.bat' : 'inventory_send_win7.bat'}
-                    </code>{' '}
-                    — отчёт уйдёт на <code className="text-xs">{serverUrl}</code>.
-                  </li>
-                  {platform === 'win10' ? (
-                    <li>
-                      Для регулярного сбора: от администратора — <code className="text-xs">install_schedule.bat</code>{' '}
-                      (если включали расписание) или GPO.
-                    </li>
-                  ) : (
-                    <li>Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.</li>
-                  )}
-                </>
+                <li>Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.</li>
               )}
               <li>Данные появятся в разделе «Компьютеры» — сводка по ПК.</li>
             </ol>
