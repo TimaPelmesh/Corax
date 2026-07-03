@@ -197,7 +197,25 @@ async def lifespan(_: FastAPI):
         await warehouse_engine.dispose()
 
 
-app = FastAPI(title="Инвенторизация", lifespan=lifespan)
+def _openapi_paths() -> tuple[str | None, str | None, str | None]:
+    env = (settings.environment or "").strip().lower()
+    if env == "production" and not settings.enable_openapi:
+        return None, None, None
+    return "/docs", "/redoc", "/openapi.json"
+
+
+_docs_url, _redoc_url, _openapi_url = _openapi_paths()
+app = FastAPI(
+    title="Инвенторизация",
+    lifespan=lifespan,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
+)
+
+from app.rate_limit import configure_rate_limiting
+
+configure_rate_limiting(app)
 
 app.include_router(bitrix24_bot_handler.router)
 
@@ -355,6 +373,7 @@ async def health_v1():
 
     return {
         "status": "ok",
+        "api": "v1",
         "lan_ip": pick_primary_lan_ipv4(),
         "lan_ips": list_lan_ipv4(),
     }

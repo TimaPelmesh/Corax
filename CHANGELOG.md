@@ -2,9 +2,18 @@
 
 ## Unreleased
 
-### Склад (warehouse.db)
+### Безопасность и документация
 
-- Отдельная БД **`warehouse.db`**: помещения, позиции, журнал движений.
+- **slowapi**: лимиты на `POST /auth/login`, `/auth/login/json` и `POST /agent/inventory` (`RATE_LIMIT_LOGIN`, `RATE_LIMIT_AGENT` в `.env`).
+- В **development** любой Bearer-токен агента принимается только при явном `ALLOW_DEV_ANY_AGENT_TOKEN=true` (по умолчанию выключено).
+- В **production** OpenAPI (`/docs`) отключён, пока не задано `ENABLE_OPENAPI=true`.
+- Health `GET /api/v1/health` возвращает поле `api: "v1"`.
+- E2E (Playwright) исправлены и добавлены в CI.
+- Синхронизированы CONTRIBUTING (порт UI **3000**), `АРХИТЕКТУРА_ПРОЕКТА.md`, `MIGRATION.md` (PostgreSQL вместо SQLite).
+
+### Склад (PostgreSQL)
+
+- Таблицы склада в PostgreSQL (`WAREHOUSE_DATABASE_URL`, по умолчанию та же БД `inventory`).
 - Вкладка **«Склад»** в «Базе знаний»: создание/удаление помещений (как этажи на карте), приход позиций, пресеты компонентов и сетевого оборудования.
 - Права: просмотр — все авторизованные; редактирование — **editor** и **admin**.
 - В форме заявки — заготовка блока **«Действие со складом»** (интеграция позже).
@@ -37,15 +46,14 @@
 - Список ПК: пагинация/фильтры на стороне API (`skip`, `limit`, `q`, `tag_ids`), ответ `{ items, total }`.
 - Экспорт **CSV** (`GET /api/v1/computers/export.csv`).
 - Карточка ПК: блок **«История изменений»**, поле **локация**.
-- **Тёмная тема** (переключатель в сайдбаре, сохранение в `localStorage`).
 
 ### Безопасность и эксплуатация
 
-- В **`production`** при старте проверяются `SECRET_KEY` (≥32 символа), `AGENT_TOKEN` (≥16 символов), пароль bootstrap (если задан — ≥12).
-- Убраны небезопасные дефолты для bootstrap в коде: автосоздание админа только если заданы **`BOOTSTRAP_ADMIN_USERNAME`** и **`BOOTSTRAP_ADMIN_PASSWORD`** в `.env`.
-- Лимиты запросов (**slowapi**): отдельно для входа и для `POST` агента (настраиваются в `.env`).
-- В production **OpenAPI** (`/docs`) по умолчанию отключён; включение: `ENABLE_OPENAPI=true`.
-- Заголовок **`X-Request-ID`** для корреляции; структурированные логи через `LOG_LEVEL`.
+- В **`production`** при старте проверяются `SECRET_KEY`, `AGENT_TOKEN`, `AGENT_TOKEN_PEPPER`, пароль bootstrap.
+- Убраны небезопасные дефолты для bootstrap: автосоздание админа только при **`BOOTSTRAP_ADMIN_USERNAME`** и **`BOOTSTRAP_ADMIN_PASSWORD`** в `.env`.
+- Заголовок **`X-Request-ID`** для корреляции.
+
+> Лимиты slowapi, отключение OpenAPI в production и `ALLOW_DEV_ANY_AGENT_TOKEN` — в релизе после 2.0.0 (см. Unreleased).
 
 ### Агент
 
@@ -54,7 +62,7 @@
 
 ### Зависимости
 
-- Добавлены: `slowapi`, `httpx`, `pytest`, `pytest-asyncio`.
+- Добавлены: `httpx`, `pytest`, `pytest-asyncio`.
 
 ### Тесты
 

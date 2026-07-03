@@ -87,6 +87,13 @@ class Settings(BaseSettings):
     pg_bin_dir: str = ""
     postgres_admin_user: str = "postgres"
     postgres_admin_password: str = ""
+    # slowapi limits (see backend/app/rate_limit.py); disabled when ENVIRONMENT=test.
+    rate_limit_login: str = "10/minute"
+    rate_limit_agent: str = "120/minute"
+    # Dev-only: accept any Bearer on /agent/inventory (explicit opt-in; unsafe if misconfigured).
+    allow_dev_any_agent_token: bool = False
+    # In production OpenAPI (/docs) is off unless ENABLE_OPENAPI=true.
+    enable_openapi: bool = False
 
 
 def _is_default_secret(v: str) -> bool:

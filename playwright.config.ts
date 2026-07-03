@@ -12,7 +12,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: 'npm run start:prod',
+    command: 'npm run build && cross-env PORT=3000 RELOAD=0 python run.py',
     url: 'http://127.0.0.1:3000/api/v1/health',
     reuseExistingServer: !process.env.CI,
     timeout: 180000,

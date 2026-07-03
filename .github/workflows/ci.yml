@@ -26,6 +26,7 @@ jobs:
       DIAGRAMS_DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
       WAREHOUSE_DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
       ENVIRONMENT: test
+      CI: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +36,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install system libs (cairosvg)
+      - name: Install system libs (cairosvg, Playwright)
         run: sudo apt-get update && sudo apt-get install -y libcairo2
 
       - name: Install backend deps
@@ -52,10 +53,19 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install frontend deps
+      - name: Install root and frontend deps
         run: |
+          npm ci
           npm ci --prefix frontend
 
       - name: Frontend tests
         run: |
           npm run test --prefix frontend
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E tests
+        run: npm run test:e2e
+        env:
+          PORT: "3000"

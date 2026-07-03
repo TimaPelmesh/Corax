@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.auth import authenticate_user, create_access_token, get_current_user
+from app.rate_limit import limiter
 from app.database import get_db
 from app.models import User
 from app.schemas import Token, UserOut
@@ -21,7 +22,9 @@ class LoginJson(BaseModel):
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit(settings.rate_limit_login)
 async def login(
+    request: Request,
     form: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
@@ -33,7 +36,13 @@ async def login(
 
 
 @router.post("/login/json", response_model=Token)
-async def login_json(body: LoginJson, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
+@limiter.limit(settings.rate_limit_login)
+async def login_json(
+    request: Request,
+    response: Response,
+    body: LoginJson,
+    db: AsyncSession = Depends(get_db),
+):
     user = await authenticate_user(db, body.username, body.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный логин или пароль")

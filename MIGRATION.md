@@ -1,28 +1,43 @@
-# Миграция с 1.x на 2.0
+# Миграция на PostgreSQL и обновление 2.x
 
-## База данных (SQLite)
+## База данных (PostgreSQL)
 
-Файл по умолчанию: `backend/inventory.db` (путь задаётся `DATABASE_URL`).
+По умолчанию используется PostgreSQL (`DATABASE_URL`, см. `backend/.env.example`).
 
-При **первом запуске** сервера 2.0:
+При **первом запуске** сервера:
 
-1. SQLAlchemy создаёт таблицу **`asset_change_logs`**.
-2. Выполняется миграция столбца **`computers.location`** (если его ещё нет).
-3. Ранее существовавшая миграция **`tags.color`** сохраняется.
+1. SQLAlchemy создаёт таблицы и применяет миграции из `backend/app/migrations.py`.
+2. При пустой БД и наличии старых файлов `backend/*.db` (SQLite) можно один раз перенести данные:
 
-**Данные не удаляются.** Существующие строки `computers` получают `location = NULL`. История для старых машин появится после следующего отчёта агента (обновление записи) или после ручных правок в панели.
+   ```bash
+   python scripts/migrate_sqlite_to_postgres.py
+   ```
+
+**Существующие данные в PostgreSQL не удаляются** при обновлении кода.
 
 ## Резервная копия перед обновлением
 
 1. Остановите сервер.
-2. Скопируйте файл БД, например:
+2. Сделайте дамп PostgreSQL:
 
-   `copy backend\inventory.db backend\inventory.db.bak`
+   ```bash
+   pg_dump -Fc -U inventory inventory > backup.dump
+   ```
+
+## Миграция со старых SQLite-файлов (1.x)
+
+Если в `backend/` остались `inventory.db`, `diagrams.db`, `warehouse.db`:
+
+```bash
+python scripts/migrate_sqlite_to_postgres.py
+```
+
+После проверки данных в панели архивируйте и удалите `.db` — приложение их больше не использует.
 
 ## API клиентов
 
-| Было (1.x) | Стало (2.0) |
-|------------|-------------|
+| Было (1.x) | Стало (2.0+) |
+|------------|--------------|
 | `POST /api/agent/inventory` | **`POST /api/v1/agent/inventory`** (рекомендуется) |
 | `POST /api/auth/login/json` | **`POST /api/v1/auth/login/json`** |
 | `GET /api/computers` (массив) | **`GET /api/v1/computers`** → `{ "items": [...], "total": N }` |
@@ -34,17 +49,19 @@
 1. Скопируйте `backend/.env.example` в `backend/.env`.
 2. Задайте как минимум:
    - **`SECRET_KEY`** — длинная случайная строка (JWT).
-   - **`AGENT_TOKEN`** — секрет для агентов (совпадает с `AGENT_TOKEN` на ПК).
-3. Для первого администратора (пустая БД) задайте **`BOOTSTRAP_ADMIN_USERNAME`** и **`BOOTSTRAP_ADMIN_PASSWORD`** (в production пароль не короче 12 символов).
+   - **`AGENT_TOKEN`** / **`AGENT_TOKEN_PEPPER`** — секреты для агентов.
+   - **`DATABASE_URL`** — PostgreSQL (`postgresql+asyncpg://...`).
+3. Для первого администратора (пустая БД) задайте **`BOOTSTRAP_ADMIN_USERNAME`** и **`BOOTSTRAP_ADMIN_PASSWORD`**.
 4. Для production установите **`ENVIRONMENT=production`**.
 
 ## Агенты на ПК
 
-Обновите URL в `inventory_send.bat` / GPO / планировщике: путь **`/api/v1/agent/inventory`**. Токен в заголовке `Authorization: Bearer ...` без изменений по смыслу.
+Обновите URL в скриптах / GPO / планировщике: путь **`/api/v1/agent/inventory`**. Токен в заголовке `Authorization: Bearer ...`.
+
+В development **не** принимается произвольный Bearer-токен, пока явно не задано `ALLOW_DEV_ANY_AGENT_TOKEN=true`.
 
 ## Откат
 
 1. Остановите сервер.
-2. Верните старый код 1.x и при необходимости файл `inventory.db` из резервной копии.
-
-Если откатываетесь на 1.x после работы 2.0: таблица `asset_change_logs` и столбец `location` не мешают старому коду, если он их не трогает; при полном откате БД восстановите только `.bak`, созданный до миграции.
+2. Восстановите дамп PostgreSQL: `pg_restore -U inventory -d inventory --clean --if-exists backup.dump`
+3. При откате на код 1.x со SQLite верните старый релиз и файл `inventory.db` из резервной копии.

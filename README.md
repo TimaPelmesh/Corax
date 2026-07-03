@@ -90,6 +90,7 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 | httpx | 0.28.1 | HTTP-клиент (интеграции) |
 | pypdf | 5.1.0 | Обработка PDF (WikiRAG) |
 | puresnmp | ≥2.0 | Опрос принтеров по SNMP |
+| slowapi | 0.1.9 | Лимиты запросов (вход, агент) |
 | pyinstaller | 6.11.1 | Сборка CORAX-Agent.exe из панели |
 | psutil | 6.1.0 | Сбор данных агентом / PyInstaller |
 | requests | 2.32.3 | Отправка отчётов агентом |
@@ -639,6 +640,10 @@ Backend читает настройки из `backend/.env`. Шаблон нах
 - `AGENT_INBOX_DIR` — директория для сырых JSON-отчётов агента. Пустое значение отключает запись.
 - `AGENT_INBOX_RETENTION_DAYS` — сколько дней хранить raw payload.
 - `MAX_AGENT_PAYLOAD_BYTES` — лимит размера payload агента.
+- `RATE_LIMIT_LOGIN` — лимит slowapi для входа (по умолчанию `10/minute`).
+- `RATE_LIMIT_AGENT` — лимит slowapi для `POST /agent/inventory` (по умолчанию `120/minute`).
+- `ALLOW_DEV_ANY_AGENT_TOKEN` — в development принимать любой Bearer на агенте (по умолчанию `false`).
+- `ENABLE_OPENAPI` — в production включить `/docs` (по умолчанию `false`).
 - `LDAP_URI`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD`, `LDAP_USER_SEARCH_BASE`, `LDAP_USER_FILTER`, `LDAP_USERNAME_ATTR`, `LDAP_DISPLAY_NAME_ATTR`, `LDAP_EMAIL_ATTR`, `LDAP_SYNC_LIMIT` — LDAP-настройки.
 - `BITRIX24_WEBHOOK_URL` и `BITRIX24_IMPORT_LIMIT` — импорт пользователей Bitrix24.
 - `BITRIX24_BOT_WEBHOOK_URL`, `BITRIX24_BOT_ID`, `BITRIX24_BOT_CLIENT_ID`, `BITRIX24_BOT_HANDLER_TOKEN`, `BITRIX24_BOT_INBOX_DIR` — bot-интеграция Bitrix24.
@@ -755,7 +760,7 @@ Payload включает:
 
 Токены:
 
-- В development-режиме backend принимает любой Bearer-токен для удобства стенда.
+- В development для стенда можно включить приём любого Bearer-токена агента: **`ALLOW_DEV_ANY_AGENT_TOKEN=true`** в `.env` (по умолчанию выключено).
 - В production используйте раздел «Токены агентов».
 - Новый токен показывается один раз при создании.
 - В БД хранится HMAC-хеш секрета, а не сам токен.

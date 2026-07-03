@@ -50,7 +50,7 @@ npm start
 ```
 
 - API: http://127.0.0.1:3001  
-- Панель: http://127.0.0.1:5173  
+- Панель: http://127.0.0.1:3000  
 - Документация API: http://127.0.0.1:3001/docs  
 
 При первом старте с пустой БД создаётся админ из `BOOTSTRAP_ADMIN_*` в `.env` (по умолчанию `admin` / `admin123`).
@@ -91,13 +91,13 @@ npm run test:backend
 # Только frontend
 npm run test:frontend
 
-# E2E (Playwright, не входят в CI — нужен запущенный стенд)
+# E2E (Playwright, входят в CI — нужен PostgreSQL)
 npm run test:e2e
 ```
 
 **Важно:** для backend-тестов нужен **живой PostgreSQL** с тем же URL, что в `DATABASE_URL`. `ENVIRONMENT=test` отключает фоновый планировщик опроса принтеров, чтобы тесты не мешали друг другу.
 
-Перед PR убедитесь, что проходят минимум `npm run test:backend` и `npm run test:frontend`.
+Перед PR убедитесь, что проходят `npm test` и `npm run test:e2e` (или минимум `npm run test:backend` и `npm run test:frontend`).
 
 ## Структура репозитория
 

@@ -8,5 +8,5 @@ test('API health', async ({ request }) => {
 
 test('UI shell when production bundle is served', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /Инвентаризация/i })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { name: /Вход в панель/i })).toBeVisible({ timeout: 30_000 })
 })

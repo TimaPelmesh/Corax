@@ -14,4 +14,5 @@ def test_health_v1(client: TestClient):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
+    assert body["api"] == "v1"
     assert "lan_ips" in body

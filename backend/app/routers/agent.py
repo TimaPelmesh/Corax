@@ -5,11 +5,12 @@ from pathlib import Path
 import hashlib
 import hmac
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.rate_limit import limiter
 from app.database import get_db
 from app.models import AgentToken, Computer, DiskVolume, InstalledSoftware, Peripheral
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
@@ -39,9 +40,8 @@ def _save_inbox_json(hostname: str, computer_id: int, raw: str, when: datetime) 
 
 
 async def verify_agent_token(db: AsyncSession, authorization: str | None, hostname: str) -> None:
-    # Test stand convenience: in development accept any Bearer token.
     env = (settings.environment or "").strip().lower()
-    if env == "development":
+    if env == "development" and settings.allow_dev_any_agent_token:
         if authorization and authorization.startswith("Bearer "):
             return
     if not authorization or not authorization.startswith("Bearer "):
@@ -78,7 +78,9 @@ async def verify_agent_token(db: AsyncSession, authorization: str | None, hostna
 
 
 @router.post("/inventory")
+@limiter.limit(settings.rate_limit_agent)
 async def submit_inventory(
+    request: Request,
     report: AgentInventoryReport,
     db: AsyncSession = Depends(get_db),
     authorization: str | None = Header(None),
