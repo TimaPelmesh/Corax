@@ -5,11 +5,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.auth import authenticate_user, create_access_token, get_current_user
-from app.rate_limit import limiter
+from app.config import settings
 from app.database import get_db
 from app.models import User
+from app.rate_limit import limiter
 from app.schemas import Token, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])

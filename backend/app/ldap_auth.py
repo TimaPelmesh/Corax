@@ -102,7 +102,7 @@ async def authenticate_via_ldap(db: AsyncSession, cfg: EffectiveLdapConfig, user
             full_name=full_name,
             hashed_password=_hash_password(one_time),
             is_superuser=False,
-            role="observer",
+            role="directory",
             is_active=True,
             is_ldap=True,
         )

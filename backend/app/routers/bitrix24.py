@@ -145,6 +145,7 @@ async def import_bitrix24_users(
                 full_name=b.full_name,
                 hashed_password=hash_password(tmp_pass),
                 is_superuser=False,
+                role="directory",
                 is_active=bool(b.active),
                 is_ldap=False,
             )

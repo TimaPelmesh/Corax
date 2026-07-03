@@ -177,8 +177,7 @@ async def list_service_requests(
     status: str | None = Query(None),
     limit: int = Query(200, ge=1, le=1000),
 ):
-    last_change = func.coalesce(ServiceRequest.glpi_updated_at, ServiceRequest.updated_at)
-    stmt = select(ServiceRequest).order_by(last_change.desc(), ServiceRequest.id.desc())
+    stmt = select(ServiceRequest).order_by(ServiceRequest.id.desc())
     if status:
         stmt = stmt.where(ServiceRequest.status == status)
     stmt = stmt.limit(limit)

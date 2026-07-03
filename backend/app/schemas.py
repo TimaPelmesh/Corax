@@ -18,6 +18,16 @@ class UserBase(BaseModel):
     full_name: str | None = None
 
 
+class UserProfilePatch(BaseModel):
+    username: str | None = Field(default=None, min_length=2, max_length=64)
+    full_name: str | None = None
+    email: str | None = None
+
+
+class UserServiceAccountPatch(UserProfilePatch):
+    password: str | None = Field(default=None, min_length=6, max_length=128)
+
+
 class UserCreate(UserBase):
     password: str = Field(min_length=6, max_length=128)
     is_superuser: bool = False

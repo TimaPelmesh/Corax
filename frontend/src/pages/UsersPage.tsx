@@ -1,21 +1,42 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { api, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconUsers } from '../components/icons'
 
+function isDirectoryUser(u: User) {
+  return u.is_ldap || u.role === 'directory'
+}
+
+function isServiceAccount(u: User) {
+  return u.is_active && !isDirectoryUser(u)
+}
+
 export function UsersPage() {
-  const { user } = useAuth()
+  const { user, refresh, logout } = useAuth()
+  const nav = useNavigate()
   const [rows, setRows] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [ok, setOk] = useState<string | null>(null)
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [isSuper, setIsSuper] = useState(false)
   const [role, setRole] = useState<'observer' | 'editor'>('observer')
+
+  const [myUsername, setMyUsername] = useState('')
+  const [myFullName, setMyFullName] = useState('')
+  const [myEmail, setMyEmail] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editUsername, setEditUsername] = useState('')
+  const [editFullName, setEditFullName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editPassword, setEditPassword] = useState('')
 
   const load = useCallback(async () => {
     setErr(null)
@@ -34,16 +55,38 @@ export function UsersPage() {
     void load()
   }, [load])
 
+  useEffect(() => {
+    if (!user) return
+    setMyUsername(user.username)
+    setMyFullName(user.full_name ?? '')
+    setMyEmail(user.email ?? '')
+  }, [user])
+
   if (!user?.is_superuser) {
     return <Navigate to="/" replace />
   }
 
-  /** Все активные учётки (локальные и LDAP). Раньше LDAP скрывали — из‑за этого логин «занят», а в таблице пусто. */
-  const systemRows = useMemo(() => rows.filter((u) => u.is_active).sort((a, b) => a.username.localeCompare(b.username)), [rows])
+  const serviceRows = useMemo(
+    () => rows.filter(isServiceAccount).sort((a, b) => a.username.localeCompare(b.username)),
+    [rows],
+  )
+  const directoryRows = useMemo(
+    () => rows.filter((u) => u.is_active && isDirectoryUser(u)).sort((a, b) => a.username.localeCompare(b.username)),
+    [rows],
+  )
+
+  function openEdit(u: User) {
+    setEditId(u.id)
+    setEditUsername(u.username)
+    setEditFullName(u.full_name ?? '')
+    setEditEmail(u.email ?? '')
+    setEditPassword('')
+  }
 
   async function onCreate(e: FormEvent) {
     e.preventDefault()
     setErr(null)
+    setOk(null)
     try {
       await api.createUser({
         username,
@@ -57,21 +100,67 @@ export function UsersPage() {
       setFullName('')
       setIsSuper(false)
       setRole('observer')
+      setOk('Учётная запись CORAX создана')
       void load()
     } catch (err) {
       setErr(err instanceof Error ? err.message : 'Ошибка')
     }
   }
 
+  async function onUpdateMyProfile(e: FormEvent) {
+    e.preventDefault()
+    setErr(null)
+    setOk(null)
+    try {
+      const updated = await api.updateMyProfile({
+        username: myUsername.trim(),
+        full_name: myFullName.trim() || null,
+        email: myEmail.trim() || null,
+      })
+      if (updated.username !== user?.username) {
+        setOk('Логин изменён — войдите снова')
+        await logout()
+        nav('/login', { replace: true })
+        return
+      }
+      await refresh()
+      setOk('Профиль сохранён')
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Ошибка')
+    }
+  }
+
   async function onChangeMyPassword(e: FormEvent) {
     e.preventDefault()
     setErr(null)
+    setOk(null)
     try {
       await api.changeMyPassword({ current_password: currentPassword, new_password: newPassword })
       setCurrentPassword('')
       setNewPassword('')
+      setOk('Пароль изменён')
     } catch (error) {
       setErr(error instanceof Error ? error.message : 'Ошибка смены пароля')
+    }
+  }
+
+  async function onSaveEdit(e: FormEvent) {
+    e.preventDefault()
+    if (editId == null) return
+    setErr(null)
+    setOk(null)
+    try {
+      await api.updateUser(editId, {
+        username: editUsername.trim(),
+        full_name: editFullName.trim() || null,
+        email: editEmail.trim() || null,
+        password: editPassword.trim() || undefined,
+      })
+      setEditId(null)
+      setOk('Учётная запись обновлена')
+      void load()
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : 'Ошибка')
     }
   }
 
@@ -84,69 +173,45 @@ export function UsersPage() {
         <div>
           <h1 className="page-title">Пользователи</h1>
           <p className="mt-1 text-slate-600">
-            Администратор создаёт учётки вручную. Импорт из LDAP добавляет наблюдателей — роль «редактор» назначается
-            отдельно.
+            Учётные записи CORAX создаёт администратор — они входят в панель. Импорт LDAP и Bitrix24 добавляет людей
+            только в справочник заявок (без доступа к сервису).
           </p>
         </div>
       </div>
 
-      {err && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
-          {err}
+      {err ? (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
+      ) : null}
+      {ok ? (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          {ok}
         </div>
-      )}
+      ) : null}
 
       <div className="mt-2 grid gap-4 xl:grid-cols-2">
-        <form onSubmit={onCreate} className="app-card space-y-4 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Новый пользователь</h2>
+        <form onSubmit={onUpdateMyProfile} className="app-card space-y-4 p-6 sm:p-7">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Мой профиль</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs text-slate-600">Логин</label>
-              <input
-                className="app-input"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
+              <input className="app-input" value={myUsername} onChange={(e) => setMyUsername(e.target.value)} required />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Пароль</label>
+              <label className="mb-1 block text-xs text-slate-600">E-mail</label>
               <input
-                type="password"
+                type="email"
                 className="app-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
+                value={myEmail}
+                onChange={(e) => setMyEmail(e.target.value)}
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">ФИО (необязательно)</label>
-            <input
-              className="app-input"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
+            <label className="mb-1 block text-xs text-slate-600">ФИО</label>
+            <input className="app-input" value={myFullName} onChange={(e) => setMyFullName(e.target.value)} />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input type="checkbox" checked={isSuper} onChange={(e) => setIsSuper(e.target.checked)} />
-            Администратор
-          </label>
-          <div>
-            <label className="mb-1 block text-xs text-slate-600">Роль (для не-админа)</label>
-            <select
-              className="app-input"
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'observer' | 'editor')}
-              disabled={isSuper}
-            >
-              <option value="observer">Наблюдатель</option>
-              <option value="editor">Редактор</option>
-            </select>
-          </div>
-          <button type="submit" className="app-btn app-btn-primary">
-            Создать
+          <button type="submit" className="app-btn app-btn-secondary">
+            Сохранить профиль
           </button>
         </form>
 
@@ -179,23 +244,115 @@ export function UsersPage() {
         </form>
       </div>
 
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <form onSubmit={onCreate} className="app-card space-y-4 p-6 sm:p-7">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Новая учётка CORAX</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs text-slate-600">Логин</label>
+              <input className="app-input" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-600">Пароль</label>
+              <input
+                type="password"
+                className="app-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">ФИО (необязательно)</label>
+            <input className="app-input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" checked={isSuper} onChange={(e) => setIsSuper(e.target.checked)} />
+            Администратор
+          </label>
+          <div>
+            <label className="mb-1 block text-xs text-slate-600">Роль (для не-админа)</label>
+            <select
+              className="app-input"
+              value={role}
+              onChange={(e) => setRole(e.target.value as 'observer' | 'editor')}
+              disabled={isSuper}
+            >
+              <option value="observer">Наблюдатель</option>
+              <option value="editor">Редактор</option>
+            </select>
+          </div>
+          <button type="submit" className="app-btn app-btn-primary">
+            Создать
+          </button>
+        </form>
+
+        {editId != null ? (
+          <form onSubmit={onSaveEdit} className="app-card space-y-4 p-6 sm:p-7">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Редактирование учётки</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs text-slate-600">Логин</label>
+                <input
+                  className="app-input"
+                  value={editUsername}
+                  onChange={(e) => setEditUsername(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-600">Новый пароль (необязательно)</label>
+                <input
+                  type="password"
+                  className="app-input"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  minLength={6}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-600">ФИО</label>
+              <input className="app-input" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-600">E-mail</label>
+              <input
+                type="email"
+                className="app-input"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" className="app-btn app-btn-primary">
+                Сохранить
+              </button>
+              <button type="button" className="app-btn app-btn-secondary" onClick={() => setEditId(null)}>
+                Отмена
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="app-card flex items-center justify-center p-6 text-sm text-slate-500">
+            Выберите «Изменить» у учётки CORAX в таблице ниже
+          </div>
+        )}
+      </div>
+
       <div className="app-card mt-6 overflow-hidden p-0">
         <div className="border-b border-neutral-200 px-4 py-3">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-            Активные учётные записи
-          </h2>
-          <p className="mt-1 text-xs text-slate-500">
-            LDAP-импорт: роль «наблюдатель» по умолчанию. Повысить до редактора или админа можно вручную.
-          </p>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Учётные записи CORAX</h2>
+          <p className="mt-1 text-xs text-slate-500">Вход в панель, роли observer/editor/admin. Логин и пароль меняются здесь.</p>
         </div>
         <div className="overflow-x-auto overscroll-x-contain">
           <table className="min-w-[760px] w-full text-left text-sm">
             <thead className="app-table-head">
               <tr>
                 <th className="px-4 py-3">Логин</th>
-                <th className="px-4 py-3">Источник</th>
                 <th className="px-4 py-3">ФИО</th>
-                <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3">Роль</th>
                 <th className="px-4 py-3">Действия</th>
               </tr>
@@ -203,37 +360,21 @@ export function UsersPage() {
             <tbody className="divide-y divide-neutral-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
                     Загрузка…
                   </td>
                 </tr>
+              ) : serviceRows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                    Нет локальных учёток
+                  </td>
+                </tr>
               ) : (
-                systemRows.map((u) => (
+                serviceRows.map((u) => (
                   <tr key={u.id} className="app-table-row">
                     <td className="px-4 py-3 font-medium text-slate-900">{u.username}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {u.is_ldap ? (
-                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900">
-                          LDAP
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-800">
-                          локально
-                        </span>
-                      )}
-                    </td>
                     <td className="px-4 py-3 text-slate-600">{u.full_name ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {u.is_active ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                          active
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                          inactive
-                        </span>
-                      )}
-                    </td>
                     <td className="px-4 py-3">
                       {u.is_superuser ? (
                         <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-neutral-900">
@@ -242,7 +383,7 @@ export function UsersPage() {
                       ) : (
                         <select
                           className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-slate-700"
-                          value={u.role}
+                          value={u.role === 'directory' ? 'observer' : u.role}
                           onChange={(e) => {
                             const nextRole = e.target.value as 'observer' | 'editor'
                             void (async () => {
@@ -258,6 +399,13 @@ export function UsersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                          onClick={() => openEdit(u)}
+                        >
+                          Изменить
+                        </button>
                         {!u.is_superuser ? (
                           <button
                             type="button"
@@ -302,6 +450,57 @@ export function UsersPage() {
                         ) : null}
                       </div>
                     </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="app-card mt-6 overflow-hidden p-0">
+        <div className="border-b border-neutral-200 px-4 py-3">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Справочник заявок</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            LDAP / Bitrix24 — только для инициаторов и исполнителей в заявках. Вход в CORAX недоступен.
+          </p>
+        </div>
+        <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[640px] w-full text-left text-sm">
+            <thead className="app-table-head">
+              <tr>
+                <th className="px-4 py-3">Логин</th>
+                <th className="px-4 py-3">Источник</th>
+                <th className="px-4 py-3">ФИО</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    Загрузка…
+                  </td>
+                </tr>
+              ) : directoryRows.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                    Пока пусто — импортируйте из LDAP или Bitrix24
+                  </td>
+                </tr>
+              ) : (
+                directoryRows.map((u) => (
+                  <tr key={u.id} className="app-table-row">
+                    <td className="px-4 py-3 font-medium text-slate-900">{u.username}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {u.is_ldap ? (
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900">LDAP</span>
+                      ) : (
+                        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-900">
+                          импорт
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{u.full_name ?? '—'}</td>
                   </tr>
                 ))
               )}

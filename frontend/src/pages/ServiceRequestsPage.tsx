@@ -67,13 +67,7 @@ const RECENT_TITLES_MAX = 8
 
 type RequestsTabId = 'create' | 'database' | 'stats' | 'templates'
 
-type SortKey =
-  | 'last_change_desc'
-  | 'opened_desc'
-  | 'closed_desc'
-  | 'id_asc'
-  | 'id_desc'
-  | 'priority_desc'
+type SortKey = 'opened_desc' | 'closed_desc' | 'id_asc' | 'id_desc' | 'priority_desc'
 
 function isRequestStatus(value: string): value is RequestStatus {
   return REQUEST_STATUSES.includes(value as RequestStatus)
@@ -97,6 +91,10 @@ function isStatsChartMode(value: string): value is StatsChartMode {
 
 function sortArrow(active: boolean) {
   return <span className={`ml-1 ${active ? 'text-slate-600' : 'text-slate-300'}`}>{active ? '↓' : '↕'}</span>
+}
+
+function getAppScrollContainer(): HTMLElement | null {
+  return document.querySelector('main')
 }
 
 function readRecentTitles(): string[] {
@@ -193,27 +191,12 @@ function fmtRuShortDateTime(iso: string | null | undefined): string {
   }
 }
 
-/** Порядковый номер заявки (выдаётся при закрытии); открытые — без номера. */
-function requestDisplayNo(r: { ticket_no?: number | null }): string {
-  return r.ticket_no != null ? String(r.ticket_no) : '—'
+/** Стабильный ID заявки в CORAX (не меняется при редактировании). */
+function requestDisplayNo(r: { id: number; ticket_no?: number | null }): string {
+  return String(r.id)
 }
 
-function compareTicketNo(
-  a: { ticket_no?: number | null; id: number },
-  b: { ticket_no?: number | null; id: number },
-  dir: 'asc' | 'desc',
-): number {
-  const ra = a.ticket_no
-  const rb = b.ticket_no
-  const hasA = ra != null
-  const hasB = rb != null
-  if (hasA && hasB) {
-    if (ra !== rb) return dir === 'asc' ? ra - rb : rb - ra
-  } else if (hasA !== hasB) {
-    return hasA ? (dir === 'asc' ? -1 : 1) : dir === 'asc' ? 1 : -1
-  } else {
-    return dir === 'asc' ? a.id - b.id : b.id - a.id
-  }
+function compareRequestId(a: { id: number }, b: { id: number }, dir: 'asc' | 'desc'): number {
   return dir === 'asc' ? a.id - b.id : b.id - a.id
 }
 
@@ -1165,25 +1148,12 @@ export function ServiceRequestsPage() {
   // const [datesBusy, setDatesBusy] = useState(false)
 
   const [query, setQuery] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('last_change_desc')
-  const [requestModal, setRequestModal] = useState<ServiceRequestRow | null>(null)
-  const [modalSaving, setModalSaving] = useState(false)
-  const [modalTitle, setModalTitle] = useState('')
-  const [modalDescription, setModalDescription] = useState('')
-  const [modalRequesterName, setModalRequesterName] = useState('')
-  const [modalCategory, setModalCategory] = useState('')
-  const [modalLocation, setModalLocation] = useState('')
-  const [modalStatus, setModalStatus] = useState<RequestStatus>('open')
-  const [modalPriority, setModalPriority] = useState<RequestPriority>('normal')
-  const [modalAssigneeIds, setModalAssigneeIds] = useState<number[]>([])
-  const [modalComputerId, setModalComputerId] = useState<string>('')
-  const [modalOpenedAtLocal, setModalOpenedAtLocal] = useState<string>('')
-  const [modalPlannedCloseLocal, setModalPlannedCloseLocal] = useState<string>('')
-  const [modalClosedAtLocal, setModalClosedAtLocal] = useState<string>('')
-  const [modalToast, setModalToast] = useState<string | null>(null)
-  const [modalErr, setModalErr] = useState<string | null>(null)
-  const [modalDeleteConfirm, setModalDeleteConfirm] = useState(false)
-  const [modalDeleting, setModalDeleting] = useState(false)
+  const [sortKey, setSortKey] = useState<SortKey>('id_desc')
+  const [editingRequestId, setEditingRequestId] = useState<number | null>(null)
+  const [editingReturnPath, setEditingReturnPath] = useState<string | null>(null)
+  const [editDeleteConfirm, setEditDeleteConfirm] = useState(false)
+  const [editDeleting, setEditDeleting] = useState(false)
+  const listScrollRestoreRef = useRef<{ path: string; scrollTop: number } | null>(null)
   const [filterCategory, setFilterCategory] = useState<string>('')
   const [reportOpen, setReportOpen] = useState(false)
   const [statsFrom, setStatsFrom] = useState<string>('')
@@ -1498,27 +1468,21 @@ export function ServiceRequestsPage() {
         return b.id - a.id
       }
       if (sortKey === 'closed_desc') {
-        const ka = ts(a.closed_at)
-        const kb = ts(b.closed_at)
+        const closeIso = (r: ServiceRequestRow) => r.closed_at ?? r.planned_close_at
+        const ka = ts(closeIso(a))
+        const kb = ts(closeIso(b))
         if (kb !== ka) return kb - ka
         return b.id - a.id
       }
-      if (sortKey === 'id_asc') return compareTicketNo(a, b, 'asc')
-      if (sortKey === 'id_desc') return compareTicketNo(a, b, 'desc')
+      if (sortKey === 'id_asc') return compareRequestId(a, b, 'asc')
+      if (sortKey === 'id_desc') return compareRequestId(a, b, 'desc')
       if (sortKey === 'priority_desc') {
         const ka = prioRank(a.priority)
         const kb = prioRank(b.priority)
         if (kb !== ka) return kb - ka
-        const la = ts(pickLastChangeIso(a))
-        const lb = ts(pickLastChangeIso(b))
-        if (lb !== la) return lb - la
-        return b.id - a.id
+        return compareRequestId(a, b, 'desc')
       }
-      // last_change_desc
-      const la = ts(pickLastChangeIso(a))
-      const lb = ts(pickLastChangeIso(b))
-      if (lb !== la) return lb - la
-      return b.id - a.id
+      return compareRequestId(a, b, 'desc')
     })
   }, [filterCategory, query, rows, sortKey])
 
@@ -1563,6 +1527,23 @@ export function ServiceRequestsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    const saved = listScrollRestoreRef.current
+    if (!saved || loading) return
+    if (location.pathname !== saved.path) return
+
+    const top = saved.scrollTop
+    listScrollRestoreRef.current = null
+
+    const frame = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const el = getAppScrollContainer()
+        if (el) el.scrollTop = top
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [location.pathname, loading, visibleRows.length])
 
   useEffect(() => {
     void (async () => {
@@ -1654,9 +1635,64 @@ export function ServiceRequestsPage() {
     setRequesterName('')
     setCategory('')
     setShowDescription(false)
+    setEditingRequestId(null)
+    setEditingReturnPath(null)
+    setEditDeleteConfirm(false)
   }
 
-  async function onCreate(e: FormEvent) {
+  function populateFormFromRequest(t: ServiceRequestRow) {
+    setTitle(t.title ?? '')
+    setDescription(t.description ?? '')
+    setShowDescription(Boolean(t.description?.trim()))
+    setRequesterName((t.requester_name ?? '').trim())
+    setCategory((t.category ?? '').trim())
+    setRequestLocation((t.location ?? '').trim())
+    setCreateStatus(isRequestStatus(t.status) ? t.status : 'open')
+    setPriority(isRequestPriority(t.priority) ? t.priority : 'normal')
+    setAssigneeIds(Array.isArray(t.assignee_ids) ? [...t.assignee_ids] : [])
+    setComputerId(t.computer_id != null ? String(t.computer_id) : '')
+    setOpenedAtLocal(
+      t.opened_at
+        ? toDatetimeLocalValue(t.opened_at)
+        : t.created_at
+          ? toDatetimeLocalValue(t.created_at)
+          : defaultOpenedLocal(),
+    )
+    const planned = t.planned_close_at ? toDatetimeLocalValue(t.planned_close_at) : ''
+    const closed = t.closed_at ? toDatetimeLocalValue(t.closed_at) : ''
+    setPlannedCloseLocal(planned)
+    setClosedAtLocal(closed)
+    setClosedSameAsPlanned(
+      (!closed && !planned) || (!closed && Boolean(planned)) || Boolean(closed && planned && closed === planned),
+    )
+  }
+
+  function openRequestForEdit(t: ServiceRequestRow) {
+    const scrollEl = getAppScrollContainer()
+    if (scrollEl) {
+      listScrollRestoreRef.current = { path: location.pathname, scrollTop: scrollEl.scrollTop }
+    }
+    populateFormFromRequest(t)
+    setEditingRequestId(t.id)
+    setEditingReturnPath(location.pathname)
+    setEditDeleteConfirm(false)
+    setErr(null)
+    navigate('/requests')
+    window.requestAnimationFrame(() => {
+      const el = getAppScrollContainer()
+      if (el) el.scrollTop = 0
+    })
+  }
+
+  function cancelEditing() {
+    const returnPath = editingReturnPath
+    setTitle('')
+    setDescription('')
+    resetCreateFormAfterSubmit()
+    if (returnPath && returnPath !== '/requests') navigate(returnPath)
+  }
+
+  async function onSubmitRequest(e: FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
     setSaving(true)
@@ -1668,7 +1704,7 @@ export function ServiceRequestsPage() {
       if (closedParsed) {
         effectiveStatus = createStatus === 'cancelled' ? 'cancelled' : 'done'
       }
-      await api.createServiceRequest({
+      const body = {
         title: title.trim(),
         description: description.trim() || null,
         status: effectiveStatus,
@@ -1681,15 +1717,32 @@ export function ServiceRequestsPage() {
         opened_at: fromDatetimeLocalValue(openedAtLocal),
         planned_close_at: plannedCloseLocal.trim() ? fromDatetimeLocalValue(plannedCloseLocal) : null,
         closed_at: closedParsed ?? undefined,
-      })
-      pushRecentTitle(title.trim())
-      setRecentTitles(readRecentTitles())
-      setTitle('')
-      setDescription('')
-      resetCreateFormAfterSubmit()
-      setToast('Заявка создана')
-      await load()
-      void refreshSummary()
+      }
+
+      if (editingRequestId != null) {
+        const updated = await api.updateServiceRequest(editingRequestId, {
+          ...body,
+          closed_at: closedParsed,
+        })
+        const returnPath = editingReturnPath
+        setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+        setTitle('')
+        setDescription('')
+        resetCreateFormAfterSubmit()
+        setToast('Сохранено')
+        void refreshSummary()
+        if (returnPath && returnPath !== '/requests') navigate(returnPath)
+      } else {
+        await api.createServiceRequest(body)
+        pushRecentTitle(title.trim())
+        setRecentTitles(readRecentTitles())
+        setTitle('')
+        setDescription('')
+        resetCreateFormAfterSubmit()
+        setToast('Заявка создана')
+        await load()
+        void refreshSummary()
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Ошибка')
     } finally {
@@ -1868,83 +1921,26 @@ export function ServiceRequestsPage() {
     }
   }
 
-  async function removeRequest() {
-    if (!requestModal || modalDeleting) return
-    setModalErr(null)
+  async function removeEditingRequest() {
+    if (editingRequestId == null || editDeleting) return
     setErr(null)
-    setModalDeleting(true)
+    setEditDeleting(true)
     try {
-      await api.deleteServiceRequest(requestModal.id)
-      const id = requestModal.id
+      await api.deleteServiceRequest(editingRequestId)
+      const id = editingRequestId
       if (datesEdit?.id === id) setDatesEdit(null)
-      setRequestModal(null)
-      setModalToast(null)
-      setModalDeleteConfirm(false)
+      const returnPath = editingReturnPath
+      setTitle('')
+      setDescription('')
+      resetCreateFormAfterSubmit()
       setToast('Заявка удалена')
       await load()
       void refreshSummary()
+      if (returnPath && returnPath !== '/requests') navigate(returnPath)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Ошибка удаления'
-      setModalErr(msg)
-      setErr(msg)
+      setErr(e instanceof Error ? e.message : 'Ошибка удаления')
     } finally {
-      setModalDeleting(false)
-    }
-  }
-
-  useEffect(() => {
-    if (!requestModal) return
-    setModalToast(null)
-    setModalErr(null)
-    setModalDeleteConfirm(false)
-    setModalTitle(requestModal.title ?? '')
-    setModalDescription(requestModal.description ?? '')
-    setModalRequesterName((requestModal.requester_name ?? '').trim())
-    setModalCategory((requestModal.category ?? '').trim())
-    setModalLocation((requestModal.location ?? '').trim())
-    setModalStatus(isRequestStatus(requestModal.status) ? requestModal.status : 'open')
-    setModalPriority(isRequestPriority(requestModal.priority) ? requestModal.priority : 'normal')
-    setModalAssigneeIds(Array.isArray(requestModal.assignee_ids) ? requestModal.assignee_ids : [])
-    setModalComputerId(requestModal.computer_id != null ? String(requestModal.computer_id) : '')
-    setModalOpenedAtLocal(requestModal.opened_at ? toDatetimeLocalValue(requestModal.opened_at) : '')
-    setModalPlannedCloseLocal(requestModal.planned_close_at ? toDatetimeLocalValue(requestModal.planned_close_at) : '')
-    setModalClosedAtLocal(requestModal.closed_at ? toDatetimeLocalValue(requestModal.closed_at) : '')
-  }, [requestModal])
-
-  async function saveModal() {
-    if (!requestModal) return
-    if (!modalTitle.trim()) return
-    setModalSaving(true)
-    setErr(null)
-    try {
-      const closedParsed = modalClosedAtLocal.trim() ? fromDatetimeLocalValue(modalClosedAtLocal) : null
-      let effectiveStatus: RequestStatus = modalStatus
-      if (closedParsed) {
-        effectiveStatus = modalStatus === 'cancelled' ? 'cancelled' : 'done'
-      }
-      const updated = await api.updateServiceRequest(requestModal.id, {
-        title: modalTitle.trim(),
-        description: modalDescription.trim() || null,
-        status: effectiveStatus,
-        priority: modalPriority,
-        requester_name: modalRequesterName.trim() || null,
-        category: modalCategory.trim() || null,
-        location: modalLocation.trim() || null,
-        assignee_ids: modalAssigneeIds,
-        computer_id: modalComputerId ? Number(modalComputerId) : null,
-        opened_at: modalOpenedAtLocal.trim() ? fromDatetimeLocalValue(modalOpenedAtLocal) : null,
-        planned_close_at: modalPlannedCloseLocal.trim() ? fromDatetimeLocalValue(modalPlannedCloseLocal) : null,
-        closed_at: closedParsed,
-      })
-      setRequestModal(updated)
-      setModalToast('Сохранено')
-      window.setTimeout(() => setModalToast(null), 2500)
-      await load()
-      void refreshSummary()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка сохранения')
-    } finally {
-      setModalSaving(false)
+      setEditDeleting(false)
     }
   }
 
@@ -2059,288 +2055,6 @@ export function ServiceRequestsPage() {
   return (
     <div>
       {toast ? <Toast message={toast} onDismiss={() => setToast(null)} /> : null}
-      {requestModal ? (
-        <div
-          className="fixed inset-0 z-[95] flex items-end justify-center bg-neutral-950/35 p-3 backdrop-blur-[2px] sm:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Заявка ${requestDisplayNo(requestModal)}`}
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setRequestModal(null)
-          }}
-        >
-          <div className="w-full max-w-5xl overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-200/90 bg-neutral-50/80 px-4 py-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-700 ring-1 ring-slate-200/80">
-                    #{requestDisplayNo(requestModal)}
-                  </span>
-                  <span
-                    className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                      STATUS_PILL[requestModal.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
-                    }`}
-                  >
-                    {STATUS_RU[requestModal.status] ?? requestModal.status}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-700">
-                    {PRIORITY_RU[requestModal.priority] ?? requestModal.priority}
-                  </span>
-                </div>
-                <div className="mt-1 truncate text-base font-semibold text-slate-900" title={requestModal.title}>
-                  {requestModal.title}
-                </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
-                  <span>
-                    Последнее изменение:{' '}
-                    <span className="font-semibold text-slate-800">{fmtRuShortDateTime(pickLastChangeIso(requestModal))}</span>
-                  </span>
-                  <span>
-                    Дата открытия:{' '}
-                    <span className="font-semibold text-slate-800">
-                      {fmtRuShortDateTime(requestModal.opened_at ?? requestModal.created_at)}
-                    </span>
-                  </span>
-                  {requestModal.planned_close_at ? (
-                    <span>
-                      Дата закрытия:{' '}
-                      <span className="font-semibold text-slate-800">
-                        {fmtRuShortDateTime(requestModal.planned_close_at)}
-                      </span>
-                    </span>
-                  ) : null}
-                  <span>
-                    Фактическая дата закрытия:{' '}
-                    <span className="font-semibold text-slate-800">{fmtRuShortDateTime(requestModal.closed_at)}</span>
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="app-btn app-btn-secondary min-h-[36px] px-3 py-1.5 text-xs"
-                  onClick={() => setRequestModal(null)}
-                >
-                  Закрыть
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-12">
-              <div className="lg:col-span-7">
-                {modalErr ? (
-                  <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-900">
-                    {modalErr}
-                  </div>
-                ) : null}
-                {modalToast ? (
-                  <div className="mb-3 rounded-xl border border-zinc-200/90 bg-zinc-50 px-4 py-2.5 text-sm font-medium text-neutral-900">
-                    {modalToast}
-                  </div>
-                ) : null}
-
-                <div className="space-y-3">
-                  <label className="block">
-                    <span className="app-label">Заголовок</span>
-                    <input
-                      className="app-input app-input--lg"
-                      value={modalTitle}
-                      onChange={(e) => setModalTitle(e.target.value)}
-                      placeholder="Коротко: что нужно сделать"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <span className="app-label">Описание</span>
-                    <textarea
-                      className="app-input min-h-[8rem] resize-y"
-                      value={modalDescription}
-                      onChange={(e) => setModalDescription(e.target.value)}
-                      placeholder="Детали заявки (ошибка, модель, кабинет, контакты и т.д.)"
-                    />
-                  </label>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <DirectoryRequesterPicker
-                      users={userDir}
-                      value={modalRequesterName}
-                      onChange={setModalRequesterName}
-                      label="Инициатор"
-                      placeholder="Начните вводить и выберите из списка"
-                      labelClassName="app-label"
-                      inputClassName="app-input"
-                      hint="Те же пользователи, что в «Ответственные» (локальные и LDAP после синхронизации)."
-                    />
-                    <CategoryPicker
-                      value={modalCategory}
-                      onChange={setModalCategory}
-                      tree={categoryTree}
-                      label="Категория"
-                    />
-                    <label className="block sm:col-span-2">
-                      <span className="app-label">Местоположение</span>
-                      <input
-                        className="app-input"
-                        value={modalLocation}
-                        onChange={(e) => setModalLocation(e.target.value)}
-                        placeholder="Например: Каб. 101 / склад / удалённо"
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="lg:col-span-5">
-                <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Редактирование</div>
-
-                  <label className="mb-3 block">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Статус</span>
-                    <select
-                      value={modalStatus}
-                      onChange={(e) => setModalStatus(isRequestStatus(e.target.value) ? e.target.value : 'open')}
-                      className="app-input"
-                    >
-                      {Object.entries(STATUS_RU).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="mb-3 block">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Приоритет</span>
-                    <select
-                      value={modalPriority}
-                      onChange={(e) => setModalPriority(isRequestPriority(e.target.value) ? e.target.value : 'normal')}
-                      className="app-input"
-                    >
-                      {Object.entries(PRIORITY_RU).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <DirectoryAssigneesPicker
-                    users={userDir}
-                    selectedIds={modalAssigneeIds}
-                    onChange={setModalAssigneeIds}
-                    label="Ответственные за исполнение"
-                    labelClassName="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400"
-                    inputClassName="app-input w-full"
-                  />
-
-                  <label className="mb-3 block">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">ПК</span>
-                    <select className="app-input" value={modalComputerId} onChange={(e) => setModalComputerId(e.target.value)}>
-                      <option value="">—</option>
-                      {pcList.map((pc) => (
-                        <option key={pc.id} value={String(pc.id)}>
-                          {pc.hostname}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                        Дата открытия
-                      </span>
-                      <input
-                        type="datetime-local"
-                        className="app-input"
-                        value={modalOpenedAtLocal}
-                        onChange={(e) => setModalOpenedAtLocal(e.target.value)}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                        Дата закрытия
-                      </span>
-                      <input
-                        type="datetime-local"
-                        className="app-input"
-                        value={modalPlannedCloseLocal}
-                        onChange={(e) => setModalPlannedCloseLocal(e.target.value)}
-                      />
-                    </label>
-                    <label className="block sm:col-span-2">
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                        Фактическая дата закрытия
-                      </span>
-                      <input
-                        type="datetime-local"
-                        className="app-input"
-                        value={modalClosedAtLocal}
-                        onChange={(e) => setModalClosedAtLocal(e.target.value)}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="mt-4 flex flex-col gap-2">
-                    <button
-                      type="button"
-                      disabled={modalSaving || modalDeleting || !modalTitle.trim()}
-                      onClick={() => void saveModal()}
-                      className="app-btn app-btn-primary w-full"
-                    >
-                      {modalSaving ? 'Сохранение…' : 'Сохранить изменения'}
-                    </button>
-
-                    {canManageRequests ? (
-                      modalDeleteConfirm ? (
-                        <div className="rounded-xl border border-red-200 bg-red-50/90 p-3">
-                          <p className="text-sm font-medium text-red-950">
-                            Удалить заявку «{requestModal.title}»? Действие необратимо.
-                          </p>
-                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                            <button
-                              type="button"
-                              disabled={modalDeleting}
-                              onClick={() => void removeRequest()}
-                              className="app-btn app-btn-danger flex-1 !min-h-10"
-                            >
-                              {modalDeleting ? 'Удаление…' : 'Да, удалить'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={modalDeleting}
-                              onClick={() => setModalDeleteConfirm(false)}
-                              className="app-btn app-btn-secondary flex-1 !min-h-10"
-                            >
-                              Отмена
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={modalSaving || modalDeleting}
-                          onClick={() => {
-                            setModalErr(null)
-                            setModalDeleteConfirm(true)
-                          }}
-                          className="app-btn app-btn-danger w-full"
-                        >
-                          Удалить заявку
-                        </button>
-                      )
-                    ) : (
-                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center text-xs text-slate-500">
-                        Удаление доступно пользователям с ролью «редактор».
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       <div className="mb-5 overflow-hidden rounded-2xl border border-neutral-200/70 bg-gradient-to-br from-white via-neutral-50 to-red-50/40 px-5 py-4 shadow-sm ring-1 ring-neutral-200/30 sm:px-8 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
@@ -2382,19 +2096,22 @@ export function ServiceRequestsPage() {
               ) : null}
 
               <form
-                onSubmit={onCreate}
+                onSubmit={onSubmitRequest}
                 className="min-w-0 w-full flex-1 overflow-hidden rounded-lg border border-slate-200/70 bg-white shadow-sm ring-1 ring-slate-200/40 sm:max-w-2xl"
               >
                 <div className="border-b border-slate-100 bg-gradient-to-br from-white via-slate-50 to-red-50/40 px-3 py-2 text-center">
                   <h2 className="font-[family-name:var(--font-display)] text-[13px] font-semibold tracking-tight text-slate-900">
-                    Новая заявка
+                    {editingRequestId != null ? `Редактирование заявки #${editingRequestId}` : 'Новая заявка'}
                   </h2>
                   <p className="mt-0.5 text-[10px] text-slate-600">
-                    Шаблон подставит даты, статус и исполнителей.
+                    {editingRequestId != null
+                      ? 'Те же поля и списки, что при создании. После сохранения вернётесь к списку.'
+                      : 'Шаблон подставит даты, статус и исполнителей.'}
                   </p>
                 </div>
 
                 <div className="space-y-2.5 p-4 sm:p-5">
+              {editingRequestId == null ? (
               <label className="block">
                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   Шаблон
@@ -2441,6 +2158,7 @@ export function ServiceRequestsPage() {
                   )}
                 </div>
               </label>
+              ) : null}
 
               <label className="block">
                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -2730,13 +2448,79 @@ export function ServiceRequestsPage() {
                 </p>
               </div>
 
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full rounded-md bg-red-600 py-2 text-[13px] font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-50"
-              >
-                {saving ? 'Создание…' : 'Создать заявку'}
-              </button>
+              {err && editingRequestId != null ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-900">
+                  {err}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-2">
+                <button
+                  type="submit"
+                  disabled={saving || editDeleting}
+                  className="w-full rounded-md bg-red-600 py-2 text-[13px] font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-50"
+                >
+                  {saving
+                    ? editingRequestId != null
+                      ? 'Сохранение…'
+                      : 'Создание…'
+                    : editingRequestId != null
+                      ? 'Сохранить изменения'
+                      : 'Создать заявку'}
+                </button>
+
+                {editingRequestId != null ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={saving || editDeleting}
+                      onClick={cancelEditing}
+                      className="w-full rounded-md border border-slate-200 bg-white py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Отмена
+                    </button>
+                    {canManageRequests ? (
+                      editDeleteConfirm ? (
+                        <div className="rounded-xl border border-red-200 bg-red-50/90 p-3">
+                          <p className="text-sm font-medium text-red-950">
+                            Удалить заявку «{title}»? Действие необратимо.
+                          </p>
+                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <button
+                              type="button"
+                              disabled={editDeleting}
+                              onClick={() => void removeEditingRequest()}
+                              className="app-btn app-btn-danger flex-1 !min-h-10"
+                            >
+                              {editDeleting ? 'Удаление…' : 'Да, удалить'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={editDeleting}
+                              onClick={() => setEditDeleteConfirm(false)}
+                              className="app-btn app-btn-secondary flex-1 !min-h-10"
+                            >
+                              Отмена
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={saving || editDeleting}
+                          onClick={() => {
+                            setEditDeleteConfirm(true)
+                            setErr(null)
+                          }}
+                          className="w-full rounded-md border border-red-200 bg-red-50 py-2 text-[13px] font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-50"
+                        >
+                          Удалить заявку
+                        </button>
+                      )
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
                 </div>
               </form>
             </div>
@@ -2819,11 +2603,10 @@ export function ServiceRequestsPage() {
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm"
                   aria-label="Сортировка списка заявок"
                 >
-                  <option value="last_change_desc">Последние изменения ↓</option>
+                  <option value="id_desc">ID ↓ (новые сверху)</option>
+                  <option value="id_asc">ID ↑</option>
                   <option value="opened_desc">Дата открытия ↓</option>
                   <option value="closed_desc">Дата закрытия ↓</option>
-                  <option value="id_desc">ID ↓</option>
-                  <option value="id_asc">ID ↑</option>
                   <option value="priority_desc">Приоритет (high→low)</option>
                 </select>
                 <button
@@ -3016,9 +2799,6 @@ export function ServiceRequestsPage() {
                           ID{sortHint('id_asc', 'id_desc')}
                         </th>
                         <th className="px-3 py-2.5">Заголовок</th>
-                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('last_change_desc')} title="Сортировать по последнему изменению">
-                          Последнее изменение{sortHint('last_change_desc')}
-                        </th>
                         <th className="px-3 py-2.5">Инициатор</th>
                         <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('opened_desc')} title="Сортировать по дате открытия">
                           Дата открытия{sortHint('opened_desc')}
@@ -3037,10 +2817,11 @@ export function ServiceRequestsPage() {
                       {visibleRows.map((t) => (
                         <tr
                           key={t.id}
+                          data-request-id={t.id}
                           className="border-b border-slate-100/80 bg-white align-top transition hover:bg-zinc-50/60"
-                          onClick={() => setRequestModal(t)}
+                          onClick={() => openRequestForEdit(t)}
                           role="button"
-                          title="Открыть заявку"
+                          title="Редактировать заявку"
                         >
                               <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-700">
                                 <button
@@ -3049,7 +2830,7 @@ export function ServiceRequestsPage() {
                                   title="Найти по этому ID"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    const q = t.ticket_no ?? t.id
+                                    const q = t.id
                                     setQuery(String(q))
                                   }}
                                 >
@@ -3078,9 +2859,6 @@ export function ServiceRequestsPage() {
                                   </div>
                                 </div>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800">{fmtRuShortDateTime(pickLastChangeIso(t))}</span>
-                              </td>
                               <td className="px-3 py-3 text-xs text-slate-700">
                                 <span className="line-clamp-2">{t.requester_name || '—'}</span>
                               </td>
@@ -3088,8 +2866,8 @@ export function ServiceRequestsPage() {
                                 <span className="font-medium text-slate-800">{fmtRuShortDateTime(t.opened_at ?? t.created_at)}</span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800" title="Фактическая дата закрытия">
-                                  {fmtRuShortDateTime(t.closed_at)}
+                                <span className="font-medium text-slate-800">
+                                  {fmtRuShortDateTime(t.closed_at ?? t.planned_close_at)}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs">
@@ -3295,7 +3073,8 @@ export function ServiceRequestsPage() {
                     onChange={(e) => setSortKey(e.target.value as SortKey)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
                   >
-                    <option value="last_change_desc">Последнее изменение (новые сверху)</option>
+                    <option value="id_desc">ID (по убыванию)</option>
+                    <option value="id_asc">ID (по возрастанию)</option>
                     <option value="opened_desc">Дата открытия (новые сверху)</option>
                     <option value="closed_desc">Дата закрытия (новые сверху)</option>
                     <option value="priority_desc">Приоритет (высокий сверху)</option>
@@ -3504,8 +3283,8 @@ export function ServiceRequestsPage() {
                             <tr
                               key={t.id}
                               className="cursor-pointer border-b border-slate-100/80 bg-white align-top transition hover:bg-zinc-50/60"
-                              onClick={() => setRequestModal(t)}
-                              title="Открыть заявку"
+                              onClick={() => openRequestForEdit(t)}
+                              title="Редактировать заявку"
                             >
                               <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-700">
                                 {requestDisplayNo(t)}
@@ -3533,8 +3312,8 @@ export function ServiceRequestsPage() {
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800" title="Фактическая дата закрытия">
-                                  {fmtRuShortDateTime(t.closed_at)}
+                                <span className="font-medium text-slate-800">
+                                  {fmtRuShortDateTime(t.closed_at ?? t.planned_close_at)}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">

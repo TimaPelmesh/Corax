@@ -152,7 +152,7 @@ def _migrate_users_columns(sync_conn) -> None:
         text(
             "UPDATE users SET role = CASE "
             "WHEN role IS NULL OR TRIM(role) = '' THEN 'observer' "
-            "WHEN lower(role) NOT IN ('observer','editor') THEN 'observer' "
+            "WHEN lower(role) NOT IN ('observer','editor','directory') THEN 'observer' "
             "ELSE lower(role) END"
         )
     )
@@ -433,6 +433,16 @@ def _migrate_ldap_users_default_observer(sync_conn) -> None:
     )
 
 
+def _migrate_ldap_users_directory_only(sync_conn) -> None:
+    """LDAP и импорт — только справочник заявок, без входа в панель."""
+    sync_conn.execute(
+        text(
+            "UPDATE users SET role = 'directory', is_superuser = FALSE "
+            "WHERE is_ldap = TRUE"
+        )
+    )
+
+
 def _migrate_purge_orphan_computer_children(sync_conn) -> None:
     """Удаляет ПО/периферию/диски без родительского ПК."""
     orphan_filter = "computer_id NOT IN (SELECT id FROM computers)"
@@ -450,6 +460,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-04-16_users_is_ldap", _migrate_users_columns),
     ("2026-05-08_users_role", _migrate_users_columns),
     ("2026-05-20_ldap_users_observer", _migrate_ldap_users_default_observer),
+    ("2026-07-03_ldap_users_directory", _migrate_ldap_users_directory_only),
     ("2026-04-22_monitors", _migrate_monitors_table),
     ("2026-04-24_diagrams", _migrate_diagrams),
     ("2026-04-24_diagrams_floor_plan", _migrate_diagrams_floor_plan),

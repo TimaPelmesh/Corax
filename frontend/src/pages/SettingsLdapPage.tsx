@@ -212,7 +212,7 @@ export function SettingsLdapPage() {
         <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
           <div className="font-medium">
             Импорт из LDAP: создано {syncResult.created_count}, пропущено {syncResult.skipped_count}. Новые учётки —
-            наблюдатели (редактор назначается в «Пользователи»).
+            Синхронизация добавляет людей в справочник заявок (без входа в CORAX). Учётки панели создаёт администратор в «Пользователи».
           </div>
           {typeof syncResult.scanned_count === 'number' || typeof syncResult.missing_username_attr === 'number' ? (
             <div className="mt-1 text-xs text-slate-600">

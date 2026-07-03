@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.database import AsyncSessionLocal, Base, DiagramsBase, DiagramsSessionLocal, WarehouseBase, WarehouseSessionLocal, diagrams_engine, engine, warehouse_engine
-from app.auth import hash_password, verify_password
+from app.auth import hash_password
 from app.migrations import apply_diagrams_migrations, apply_migrations, apply_warehouse_migrations
 from app.warehouse_models import StockItem, StockMovement, WarehouseRoom  # noqa: F401 — register ORM metadata
 from app.models import ServiceRequestTemplate, Tag, User
@@ -139,20 +139,11 @@ async def lifespan(_: FastAPI):
                         hashed_password=hash_password(p),
                         is_superuser=True,
                         is_active=True,
+                        role="editor",
+                        is_ldap=False,
                     )
                 )
                 await db.commit()
-
-        cfg_user = settings.bootstrap_admin_username.strip()
-        cfg_pass = (settings.bootstrap_admin_password or "").strip()
-        if cfg_user and cfg_pass:
-            r = await db.execute(select(User))
-            users = r.scalars().all()
-            if len(users) == 1:
-                u = users[0]
-                if u.username == cfg_user and not verify_password(cfg_pass, u.hashed_password):
-                    u.hashed_password = hash_password(cfg_pass)
-                    await db.commit()
 
         await _seed_dev_data(db)
 

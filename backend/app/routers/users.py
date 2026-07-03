@@ -2,16 +2,40 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_superuser, get_current_user, hash_password, verify_password
 from app.database import get_db
 from app.ldap_config import get_effective_ldap_config
 from app.models import Computer, Monitor, User, service_request_assignees, service_request_template_assignees
-from app.schemas import UserCreate, UserDirectoryItem, UserOut
+from app.schemas import UserCreate, UserDirectoryItem, UserOut, UserProfilePatch, UserServiceAccountPatch
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+PANEL_ROLES = frozenset({"observer", "editor"})
+
+
+def _normalized_role(user: User) -> str:
+    role = (getattr(user, "role", "") or "").strip().lower()
+    if role in PANEL_ROLES or role == "directory":
+        return role
+    return "observer"
+
+
+def _is_directory_user(user: User) -> bool:
+    return bool(user.is_ldap) or _normalized_role(user) == "directory"
+
+
+async def _ensure_unique_username(db: AsyncSession, username: str, exclude_id: int) -> None:
+    name = username.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Логин не может быть пустым")
+    r = await db.execute(
+        select(User).where(func.lower(User.username) == name.lower(), User.id != exclude_id)
+    )
+    if r.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=400, detail="Пользователь с таким логином уже есть")
 
 
 @router.get("", response_model=list[UserOut])
@@ -74,6 +98,62 @@ class ChangeMyPasswordBody(BaseModel):
     new_password: str
 
 
+@router.patch("/me/profile", response_model=UserOut)
+async def update_my_profile(
+    body: UserProfilePatch,
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if _is_directory_user(current):
+        raise HTTPException(status_code=403, detail="Учётная запись справочника не может входить в панель")
+    if body.username is not None:
+        new_name = body.username.strip()
+        if new_name != current.username:
+            await _ensure_unique_username(db, new_name, current.id)
+            current.username = new_name
+    if body.full_name is not None:
+        current.full_name = body.full_name.strip() or None
+    if body.email is not None:
+        current.email = body.email.strip() or None
+    await db.commit()
+    await db.refresh(current)
+    return current
+
+
+@router.patch("/{user_id}", response_model=UserOut)
+async def update_service_account(
+    user_id: int,
+    body: UserServiceAccountPatch,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    u = await db.get(User, user_id)
+    if u is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if _is_directory_user(u):
+        raise HTTPException(
+            status_code=400,
+            detail="Запись справочника (LDAP/импорт) только для заявок. Создайте локальную учётку CORAX.",
+        )
+    if body.username is not None:
+        new_name = body.username.strip()
+        if new_name != u.username:
+            await _ensure_unique_username(db, new_name, u.id)
+            u.username = new_name
+    if body.full_name is not None:
+        u.full_name = body.full_name.strip() or None
+    if body.email is not None:
+        u.email = body.email.strip() or None
+    if body.password is not None:
+        pwd = body.password.strip()
+        if len(pwd) < 6 or len(pwd) > 128:
+            raise HTTPException(status_code=400, detail="Пароль: 6..128 символов")
+        u.hashed_password = hash_password(pwd)
+    await db.commit()
+    await db.refresh(u)
+    return u
+
+
 @router.patch("/{user_id}/admin", response_model=UserOut)
 async def set_user_admin(
     user_id: int,
@@ -84,6 +164,8 @@ async def set_user_admin(
     u = await db.get(User, user_id)
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if _is_directory_user(u):
+        raise HTTPException(status_code=400, detail="Нельзя назначить администратором запись справочника")
     if u.id == current.id and not body.is_superuser:
         raise HTTPException(status_code=400, detail="Нельзя снять права администратора у самого себя")
     u.is_superuser = bool(body.is_superuser)
@@ -107,6 +189,8 @@ async def set_user_role(
     u = await db.get(User, user_id)
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if _is_directory_user(u):
+        raise HTTPException(status_code=400, detail="Роль справочника заявок не меняется — создайте учётку CORAX")
     if u.is_superuser:
         raise HTTPException(status_code=400, detail="Для администратора роль фиксирована")
     u.role = role
@@ -121,12 +205,17 @@ async def change_my_password(
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if _is_directory_user(current):
+        raise HTTPException(status_code=403, detail="Учётная запись справочника не может менять пароль панели")
+    u = await db.get(User, current.id)
+    if u is None:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     new_password = (body.new_password or "").strip()
     if len(new_password) < 6 or len(new_password) > 128:
         raise HTTPException(status_code=400, detail="Новый пароль: 6..128 символов")
-    if not verify_password(body.current_password or "", current.hashed_password):
+    if not verify_password(body.current_password or "", u.hashed_password):
         raise HTTPException(status_code=400, detail="Текущий пароль неверный")
-    current.hashed_password = hash_password(new_password)
+    u.hashed_password = hash_password(new_password)
     await db.commit()
     return {"ok": True}
 
@@ -258,6 +347,8 @@ async def ldap_sync(
             continue
         username = username_raw.strip()
         username_key = username.lower()
+        full_name = _attr_value(e, eff.display_name_attr)
+        email = _attr_value(e, eff.email_attr)
         existing = existing_by_name.get(username_key)
         if existing is not None:
             if full_name and existing.full_name != full_name:
@@ -266,12 +357,12 @@ async def ldap_sync(
                 existing.email = email
             if not existing.is_ldap:
                 existing.is_ldap = True
+            existing.role = "directory"
+            existing.is_superuser = False
             skipped_count += 1
             result_entries.append({"username": username, "created": False, "one_time_password": None})
             continue
 
-        full_name = _attr_value(e, eff.display_name_attr)
-        email = _attr_value(e, eff.email_attr)
         one_time_password = secrets.token_urlsafe(9)
         user = User(
             username=username,
@@ -279,7 +370,7 @@ async def ldap_sync(
             full_name=full_name,
             hashed_password=hash_password(one_time_password),
             is_superuser=False,
-            role="observer",
+            role="directory",
             is_active=True,
             is_ldap=True,
         )

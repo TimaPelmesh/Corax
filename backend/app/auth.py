@@ -9,11 +9,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.ldap_auth import authenticate_via_ldap
-from app.ldap_config import get_effective_ldap_config
 from app.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+PANEL_ROLES = frozenset({"observer", "editor"})
+
+
+def can_access_panel(user: User) -> bool:
+    if not user.is_active:
+        return False
+    if user.is_ldap:
+        return False
+    role = (getattr(user, "role", "") or "").strip().lower()
+    if role == "directory":
+        return False
+    if user.is_superuser:
+        return True
+    return role in PANEL_ROLES
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -49,18 +62,12 @@ async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
 
 async def authenticate_user(db: AsyncSession, username: str, password: str) -> User | None:
     user = await get_user_by_username(db, username)
-    if user and verify_password(password, user.hashed_password):
+    if user is None:
+        return None
+    if not can_access_panel(user):
+        return None
+    if verify_password(password, user.hashed_password):
         return user
-
-    # Fallback to LDAP if enabled/configured.
-    try:
-        cfg, _ = await get_effective_ldap_config(db)
-        ldap_user = await authenticate_via_ldap(db, cfg, username, password)
-        if ldap_user:
-            return ldap_user
-    except Exception:
-        # Do not break local auth due to LDAP issues.
-        pass
     return None
 
 
@@ -85,7 +92,7 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     user = await get_user_by_username(db, sub)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or not can_access_panel(user):
         raise credentials_exception
     return user
 

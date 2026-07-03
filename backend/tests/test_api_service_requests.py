@@ -32,7 +32,13 @@ def test_service_requests_crud(client: TestClient, auth_headers: dict[str, str])
         json={"status": "in_progress", "priority": "high"},
     )
     assert patched.status_code == 200
+    assert patched.json()["id"] == req_id
     assert patched.json()["status"] == "in_progress"
+
+    listed_after = client.get("/api/v1/service-requests", headers=auth_headers, params={"limit": 50})
+    assert listed_after.status_code == 200
+    ids = [x["id"] for x in listed_after.json()["items"]]
+    assert ids == sorted(ids, reverse=True)
 
     deleted = client.post(f"/api/v1/service-requests/{req_id}/delete", headers=auth_headers)
     assert deleted.status_code == 200

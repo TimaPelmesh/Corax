@@ -103,7 +103,7 @@ export type User = {
   is_active: boolean
   is_superuser: boolean
   is_ldap: boolean
-  role: 'observer' | 'editor'
+  role: 'observer' | 'editor' | 'directory'
   created_at: string
 }
 
@@ -1083,6 +1083,14 @@ export const api = {
 
   changeMyPassword: (body: { current_password: string; new_password: string }) =>
     request<{ ok: boolean }>(`${API_PREFIX}/users/me/change-password`, { method: 'POST', json: body }),
+
+  updateMyProfile: (body: { username?: string; full_name?: string | null; email?: string | null }) =>
+    request<User>(`${API_PREFIX}/users/me/profile`, { method: 'PATCH', json: body }),
+
+  updateUser: (
+    id: number,
+    body: { username?: string; full_name?: string | null; email?: string | null; password?: string },
+  ) => request<User>(`${API_PREFIX}/users/${id}`, { method: 'PATCH', json: body }),
 
   agentTokens: () => request<AgentTokenRow[]>(`${API_PREFIX}/agent-tokens`),
 
