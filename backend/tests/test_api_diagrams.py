@@ -52,4 +52,7 @@ def test_floor_blank_and_exports(client: TestClient, auth_headers: dict[str, str
 
     layout = client.get(f"/api/v1/diagrams/{diagram_id}/export.json", headers=auth_headers)
     assert layout.status_code == 200
-    assert "version" in layout.json()
+    body = layout.json()
+    assert body["diagram_id"] == diagram_id
+    assert body["title"] == "Тест этаж"
+    assert body["layout"]["version"] == 1
