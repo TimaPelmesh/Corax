@@ -13,6 +13,12 @@ def test_converter_status(client: TestClient, auth_headers: dict[str, str]):
     assert body["ok"] is svg_export_available()[0]
 
 
+def test_diagrams_list(client: TestClient, auth_headers: dict[str, str]):
+    r = client.get("/api/v1/diagrams", headers=auth_headers)
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
 def test_import_visio_gone(client: TestClient, auth_headers: dict[str, str]):
     r = client.post("/api/v1/diagrams/import-visio", headers=auth_headers)
     assert r.status_code == 410
@@ -43,3 +49,7 @@ def test_floor_blank_and_exports(client: TestClient, auth_headers: dict[str, str
     pdf = client.get(f"/api/v1/diagrams/{diagram_id}/export.pdf", headers=auth_headers)
     assert pdf.status_code == 200
     assert pdf.content.startswith(b"%PDF")
+
+    layout = client.get(f"/api/v1/diagrams/{diagram_id}/export.json", headers=auth_headers)
+    assert layout.status_code == 200
+    assert "version" in layout.json()

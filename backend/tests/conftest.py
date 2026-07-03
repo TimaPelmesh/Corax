@@ -29,3 +29,10 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     token = r.json().get("access_token")
     assert token
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(scope="session")
+def agent_headers() -> dict[str, str]:
+    token = (settings.agent_token or "").strip()
+    assert token, "AGENT_TOKEN must be set for agent API tests"
+    return {"Authorization": f"Bearer {token}"}
