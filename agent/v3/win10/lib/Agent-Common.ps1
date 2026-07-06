@@ -105,8 +105,17 @@ function Test-IsWmiPlaceholder {
     return ($t -match '^(System Product Name|System Manufacturer|System Model|System Version|System SKU|System Serial Number|Default string|Default String|To be filled by O\.E\.M\.|To Be Filled By O\.E\.M\.|To be filled|Not Specified|OEM|O\.E\.M\.|INVALID|Invalid|All Series|Type1Family0|Bad string|undefined|Not Available|N/?A|Product Name|Not Applicable)$')
 }
 
+function Get-SanitizedAgentText {
+    param([string]$Value)
+    if ($null -eq $Value) { return $null }
+    $t = $Value -replace "`0", ''
+    if ([string]::IsNullOrWhiteSpace($t)) { return $null }
+    return $t.Trim()
+}
+
 function Get-CleanWmiText {
     param([string]$value)
+    $value = Get-SanitizedAgentText $value
     if ([string]::IsNullOrWhiteSpace($value)) { return $null }
     $t = $value.Trim()
     if ($t.Length -gt 256) { $t = $t.Substring(0, 256) }

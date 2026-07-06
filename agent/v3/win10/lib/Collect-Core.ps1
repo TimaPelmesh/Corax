@@ -40,15 +40,16 @@ function Get-InstalledSoftwareMax([int]$Max = 12000) {
             if ($list.Count -ge $Max) { break outer }
             $dn = $prop.DisplayName
             if (-not $dn) { continue }
-            $name = $dn.ToString().Trim()
+            $name = Get-SanitizedAgentText $dn.ToString()
+            if (-not $name) { continue }
             if ($name.Length -gt 512) { $name = $name.Substring(0, 512) }
             $v = $null
             if ($prop.DisplayVersion) {
-                $v = $prop.DisplayVersion.ToString().Trim()
-                if ($v.Length -gt 255) { $v = $v.Substring(0, 255) }
+                $v = Get-SanitizedAgentText $prop.DisplayVersion.ToString()
+                if ($v -and $v.Length -gt 255) { $v = $v.Substring(0, 255) }
             }
             $verKey = if ($v) { $v.ToLowerInvariant() } else { '' }
-            $dedupe = $name.ToLowerInvariant() + [char]0 + $verKey
+            $dedupe = $name.ToLowerInvariant() + '|' + $verKey
             if ($seen.ContainsKey($dedupe)) { continue }
             $seen[$dedupe] = $true
             [void]$list.Add(@{ name = $name; version = $v })
@@ -225,7 +226,7 @@ function Get-CoreInventoryPayload {
     }
 
     $ram = [math]::Round([double]$cs.TotalPhysicalMemory / 1GB, 2)
-    $cpuName = if ($cpu.Name) { $cpu.Name.Trim() } else { $null }
+    $cpuName = Get-SanitizedAgentText $(if ($cpu.Name) { $cpu.Name })
     $memPct = $null
     try {
         $tMem = [double]$os.TotalVisibleMemorySize * 1KB

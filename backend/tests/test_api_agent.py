@@ -21,6 +21,34 @@ def test_agent_inventory_rejects_bad_token(client: TestClient):
     assert r.status_code == 403
 
 
+def test_agent_inventory_strips_nul_bytes_in_strings(
+    client: TestClient, agent_headers: dict[str, str], auth_headers: dict[str, str]
+):
+    hn = unique_hostname("nul-pc")
+    body = sample_inventory(hn)
+    body["software"] = [
+        {"name": "Roblox Player for Boris\u0000", "version": "1.0\u0000"},
+        {"name": "Roblox Studio for \u0411\u043e\u0440\u0438\u0441\u0000", "version": None},
+    ]
+    body["hostname"] = hn + "\u0000"
+    body["cpu"] = "Intel\u0000Core"
+
+    created = client.post("/api/v1/agent/inventory", json=body, headers=agent_headers)
+    assert created.status_code == 200, created.text
+    computer_id = created.json()["computer_id"]
+
+    detail = client.get(f"/api/v1/computers/{computer_id}", headers=auth_headers)
+    assert detail.status_code == 200
+    d = detail.json()
+    assert d["hostname"] == hn
+    assert d["cpu"] == "IntelCore"
+    names = {s["name"] for s in d["software"]}
+    assert "Roblox Player for Boris" in names
+    assert "Roblox Studio for \u0411\u043e\u0440\u0438\u0441" in names
+
+    client.delete(f"/api/v1/computers/{computer_id}", headers=auth_headers)
+
+
 def test_agent_inventory_create_update_and_list(client: TestClient, agent_headers: dict[str, str], auth_headers: dict[str, str]):
     hn = unique_hostname()
     body = sample_inventory(hn)

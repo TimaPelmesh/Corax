@@ -177,6 +177,14 @@ function Get-GpuName() {
     return $null
 }
 
+function Get-SanitizedAgentText {
+    param([string]$Value)
+    if ($null -eq $Value) { return $null }
+    $t = $Value -replace "`0", ''
+    if ([string]::IsNullOrWhiteSpace($t)) { return $null }
+    return $t.Trim()
+}
+
 function Get-InstalledSoftwareBasic([int]$Max = 500) {
     # Minimal Win7-safe approach via reg.exe (no ConvertTo-Json, no registry providers assumptions).
     $paths = @(
@@ -200,13 +208,13 @@ function Get-InstalledSoftwareBasic([int]$Max = 500) {
                 $dnOut = & reg.exe query $key /v DisplayName 2>&1
                 $dnLine = ($dnOut | Select-String -Pattern 'DisplayName').Line
                 if (-not $dnLine) { continue }
-                $name = ($dnLine -replace '.*REG_\w+\s+', '').Trim()
+                $name = Get-SanitizedAgentText (($dnLine -replace '.*REG_\w+\s+', '').Trim())
                 if (-not $name) { continue }
                 $verOut = & reg.exe query $key /v DisplayVersion 2>&1
                 $verLine = ($verOut | Select-String -Pattern 'DisplayVersion').Line
                 $ver = $null
-                if ($verLine) { $ver = ($verLine -replace '.*REG_\w+\s+', '').Trim() }
-                $nameKey = ($name.ToLower() + [char]0 + ($(if ($ver) { $ver.ToLower() } else { '' })))
+                if ($verLine) { $ver = Get-SanitizedAgentText (($verLine -replace '.*REG_\w+\s+', '').Trim()) }
+                $nameKey = ($name.ToLower() + '|' + ($(if ($ver) { $ver.ToLower() } else { '' })))
                 if ($seen.ContainsKey($nameKey)) { continue }
                 $seen[$nameKey] = $true
                 [void]$out.Add(@{ name = $name; version = $(if ($ver) { $ver } else { $null }) })
@@ -232,11 +240,11 @@ function Get-InstalledSoftwareBasic([int]$Max = 500) {
                     if (-not $props) { continue }
                     $dn = $props.DisplayName
                     if (-not $dn) { continue }
-                    $name = ([string]$dn).Trim()
+                    $name = Get-SanitizedAgentText ([string]$dn)
                     if (-not $name) { continue }
                     $ver = $null
-                    if ($props.DisplayVersion) { $ver = ([string]$props.DisplayVersion).Trim() }
-                    $nameKey = ($name.ToLower() + [char]0 + ($(if ($ver) { $ver.ToLower() } else { '' })))
+                    if ($props.DisplayVersion) { $ver = Get-SanitizedAgentText ([string]$props.DisplayVersion) }
+                    $nameKey = ($name.ToLower() + '|' + ($(if ($ver) { $ver.ToLower() } else { '' })))
                     if ($seen.ContainsKey($nameKey)) { continue }
                     $seen[$nameKey] = $true
                     [void]$out.Add(@{ name = $name; version = $(if ($ver) { $ver } else { $null }) })

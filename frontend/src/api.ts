@@ -394,6 +394,8 @@ export type DashboardSummary = {
   software_unique_titles: number
   tags_in_directory: number
   snmp_printers_total: number
+  /** Устаревшее поле API (до разделения SNMP / парк ПК) */
+  workstation_printers_total?: number
   service_requests_total: number
   service_requests_active: number
   service_requests_by_status: DashboardNameCount[]

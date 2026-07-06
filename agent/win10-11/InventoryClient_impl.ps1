@@ -17,6 +17,14 @@ function Log([string]$Msg) {
     Write-Host $Msg
 }
 
+function Get-SanitizedAgentText {
+    param([string]$Value)
+    if ($null -eq $Value) { return $null }
+    $t = $Value -replace "`0", ''
+    if ([string]::IsNullOrWhiteSpace($t)) { return $null }
+    return $t.Trim()
+}
+
 function Log-ConnectHints {
     param([string]$HostName, [int]$Port, $Err)
     Log "----- Set / server (read if POST failed) -----"
@@ -248,16 +256,16 @@ function Get-InstalledSoftwareMax([int]$Max = 12000) {
             if ($list.Count -ge $Max) { break outer }
             $dn = $prop.DisplayName
             if (-not $dn) { continue }
-            $verRaw = $prop.DisplayVersion
-            $verKey = if ($verRaw) { $verRaw.ToString().Trim().ToLowerInvariant() } else { '' }
-            $name = $dn.ToString().Trim()
+            $name = Get-SanitizedAgentText $dn.ToString()
+            if (-not $name) { continue }
             if ($name.Length -gt 512) { $name = $name.Substring(0, 512) }
             $v = $null
-            if ($verRaw) {
-                $v = $verRaw.ToString().Trim()
-                if ($v.Length -gt 255) { $v = $v.Substring(0, 255) }
+            if ($prop.DisplayVersion) {
+                $v = Get-SanitizedAgentText $prop.DisplayVersion.ToString()
+                if ($v -and $v.Length -gt 255) { $v = $v.Substring(0, 255) }
             }
-            $dedupe = $name.ToLowerInvariant() + [char]0 + $verKey
+            $verKey = if ($v) { $v.ToLowerInvariant() } else { '' }
+            $dedupe = $name.ToLowerInvariant() + '|' + $verKey
             if ($seen.ContainsKey($dedupe)) { continue }
             $seen[$dedupe] = $true
             $list.Add(@{ name = $name; version = $v })

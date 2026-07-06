@@ -59,7 +59,7 @@ export function parseAgentExtras(ext: Record<string, unknown> | null | undefined
   const tpm = asObj(ext.tpm)
 
   let dnsV4 = asArr(net?.dns_v4).map(s).filter((x): x is string => Boolean(x))
-  const dnsLegacy = asArr(net?.dns).map(s).filter((x): x is string => x && isUsefulDns(x))
+  const dnsLegacy = asArr(net?.dns).map(s).filter((x): x is string => typeof x === 'string' && isUsefulDns(x))
   if (!dnsV4.length) dnsV4 = dnsLegacy.filter((x) => !x.includes(':'))
 
   const gateways = asArr(net?.gateways).map(s).filter((x): x is string => Boolean(x))

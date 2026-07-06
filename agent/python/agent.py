@@ -29,7 +29,15 @@ _WMI_PLACEHOLDER_RE = re.compile(
 _DRIVE_LETTER_RE = re.compile(r"^[A-Za-z]:$")
 
 
+def _strip_nul(s: str | None) -> str | None:
+    if not s:
+        return s
+    t = s.replace("\x00", "")
+    return t if t else None
+
+
 def _clean_wmi(s: str | None, max_len: int = 256) -> str | None:
+    s = _strip_nul(s)
     if not s or not (t := s.strip()):
         return None
     if len(t) > max_len:
@@ -307,8 +315,14 @@ def _enum_uninstall_under(
                 reg.CloseKey(sk)
                 if not name or not isinstance(name, str):
                     continue
-                nm = name.strip()[:512]
-                vs: str | None = str(ver).strip()[:255] if ver else None
+                nm = (_strip_nul(name.strip()) or "")[:512]
+                if not nm:
+                    continue
+                vs: str | None = None
+                if ver is not None:
+                    vs = (_strip_nul(str(ver).strip()) or None)
+                    if vs:
+                        vs = vs[:255]
                 dedupe = (nm.lower(), (vs or "").lower())
                 if dedupe in seen:
                     continue

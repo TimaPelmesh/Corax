@@ -246,7 +246,12 @@ export function Layout() {
       },
     ]
     if (user?.is_superuser || user?.role === 'editor') {
-      const settingsItems = [
+      const settingsItems: Array<{
+        to: string
+        icon: ComponentType<{ className?: string }>
+        label: string
+        keywords?: string[]
+      }> = [
         { to: '/settings/tags', icon: IconTag, label: 'Теги' },
         { to: '/settings/categories', icon: IconTicket, label: 'Категории' },
       ]

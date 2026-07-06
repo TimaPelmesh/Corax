@@ -4,7 +4,9 @@ import re
 
 from typing import Any
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
+
+from app.text_sanitize import deep_strip_nul
 
 
 class Token(BaseModel):
@@ -168,6 +170,11 @@ class AgentInventoryReport(BaseModel):
     peripherals: list[PeripheralItem] = []
     printers: list[AgentPrinterItem] = []
     extended: dict[str, Any] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_nul_bytes(cls, data: Any) -> Any:
+        return deep_strip_nul(data)
 
 
 class DiskVolume(BaseModel):
