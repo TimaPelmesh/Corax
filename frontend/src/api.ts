@@ -24,6 +24,22 @@ function apiUrl(path: string): string {
 }
 
 const REQUEST_TIMEOUT_MS = 25_000
+/** WikiRAG: бэкенд ждёт LM Studio до lm_studio_timeout_seconds (по умолчанию 300 с). */
+const WIKIRAG_LM_TIMEOUT_MS = 330_000
+const WIKIRAG_IMPORT_TIMEOUT_MS = 120_000
+
+function requestTimeoutMessage(path: string): string {
+  if (path.includes('/wiki-rag/chat')) {
+    return (
+      'Модель не ответила вовремя (лимит ~5 мин). LM Studio: модель загружена в RAM, ' +
+      'Server Timeout увеличен; для лёгких моделей ответ обычно 30–90 с.'
+    )
+  }
+  if (path.includes('/wiki-rag/import/corax')) {
+    return 'Импорт CORAX занял слишком много времени. Проверьте, что API запущен, и повторите.'
+  }
+  return 'Нет ответа от сервера (таймаут). Проверьте, что API запущен (uvicorn / start_all.bat) и порт совпадает.'
+}
 
 function getCookie(name: string): string | null {
   try {
@@ -76,7 +92,7 @@ async function request<T>(
     })
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      throw new Error('Нет ответа от сервера (таймаут). Проверьте, что запущен uvicorn и порт совпадает.')
+      throw new Error(requestTimeoutMessage(path))
     }
     throw e instanceof Error ? e : new Error(String(e))
   } finally {
@@ -1354,19 +1370,44 @@ export const api = {
       json: { content },
     }),
 
-  wikiRagLmStudioStatus: () => request<WikiRagLmStudioStatus>(`${API_PREFIX}/wiki-rag/lm-studio/status`),
+  wikiRagLmStudioStatus: (params?: { base_url?: string; model?: string }) => {
+    const sp = new URLSearchParams()
+    if (params?.base_url) sp.set('base_url', params.base_url)
+    if (params?.model) sp.set('model', params.model)
+    const qs = sp.toString()
+    return request<WikiRagLmStudioStatus>(`${API_PREFIX}/wiki-rag/lm-studio/status${qs ? `?${qs}` : ''}`)
+  },
+
+  importWikiRagCorax: () =>
+    request<WikiRagCoraxImportResult>(`${API_PREFIX}/wiki-rag/import/corax`, {
+      method: 'POST',
+      timeout_ms: WIKIRAG_IMPORT_TIMEOUT_MS,
+    }),
 
   wikiRagChat: (body: {
     message: string
     document_ids?: number[] | null
     history?: { role: 'user' | 'assistant'; content: string }[]
-  }) => request<WikiRagChatResponse>(`${API_PREFIX}/wiki-rag/chat`, { method: 'POST', json: body }),
+    lm_base_url?: string | null
+    lm_model?: string | null
+    include_corax?: boolean
+  }) =>
+    request<WikiRagChatResponse>(`${API_PREFIX}/wiki-rag/chat`, {
+      method: 'POST',
+      json: body,
+      timeout_ms: WIKIRAG_LM_TIMEOUT_MS,
+    }),
 
   wikiRagChatPreview: (body: {
     message: string
     document_ids?: number[] | null
     history?: { role: 'user' | 'assistant'; content: string }[]
-  }) => request<WikiRagChatPreview>(`${API_PREFIX}/wiki-rag/chat/preview`, { method: 'POST', json: body }),
+  }) =>
+    request<WikiRagChatPreview>(`${API_PREFIX}/wiki-rag/chat/preview`, {
+      method: 'POST',
+      json: body,
+      timeout_ms: WIKIRAG_LM_TIMEOUT_MS,
+    }),
 
   warehousePresets: () => request<WarehousePreset[]>(`${API_PREFIX}/warehouse/presets`),
 
@@ -1490,6 +1531,19 @@ export type WikiRagLmStudioStatus = {
   ok: boolean
   models: string[]
   detail?: string | null
+  selected_model?: string | null
+  base_url?: string | null
+}
+
+export type WikiRagCoraxImportResult = {
+  document: WikiRagDocumentRow
+  documents?: WikiRagDocumentRow[]
+  computers: number
+  requests: number
+  tags: number
+  chars: number
+  files?: number
+  created: boolean
 }
 
 export type WikiRagChatParsed = {
@@ -1510,6 +1564,8 @@ export type WikiRagChatResponse = {
     mode?: string
     total_chars?: number
     documents?: { id: number; filename: string; chars: number }[]
+    corax?: { computers?: number; requests?: number; tags?: number; chars?: number }
+    lm_base_url?: string
     proxy_bypass?: boolean
   } | null
 }

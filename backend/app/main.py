@@ -388,6 +388,12 @@ if _FRONTEND_DIST.is_dir() and (_FRONTEND_DIST / "index.html").is_file():
     if assets.is_dir():
         app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
 
+    @app.api_route("/api/v1/{rest:path}", methods=["POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+    @app.api_route("/api/{rest:path}", methods=["POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+    async def api_unmatched(rest: str):
+        """Неизвестный API-метод → 404, а не 405 от GET spa_fallback."""
+        raise HTTPException(status_code=404, detail="Not Found")
+
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         if full_path == "api" or full_path.startswith("api/"):

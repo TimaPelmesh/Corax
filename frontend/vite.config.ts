@@ -15,7 +15,15 @@ export default defineConfig(({ mode }) => {
       // In Docker we need 0.0.0.0; locally host=true is fine too.
       host: true,
       port: 3000,
-      proxy: { '/api': { target: proxyTarget, changeOrigin: true, ws: true } },
+      proxy: {
+        '/api': {
+          target: proxyTarget,
+          changeOrigin: true,
+          ws: true,
+          timeout: 360_000,
+          proxyTimeout: 360_000,
+        },
+      },
     },
   }
 })

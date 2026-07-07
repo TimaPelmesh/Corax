@@ -140,6 +140,8 @@ export function WikiRagPage() {
   const [err, setErr] = useState<string | null>(null)
   const [uploadComment, setUploadComment] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [importingCorax, setImportingCorax] = useState(false)
+  const [importMsg, setImportMsg] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [modalDocId, setModalDocId] = useState<number | null>(null)
@@ -249,13 +251,57 @@ export function WikiRagPage() {
         <div>
           <h1 className="page-title">WikiRAG</h1>
           <p className="mt-1 max-w-2xl text-slate-600">
-            Загрузка документов, просмотр по клику, чат с LM Studio (Gemma) справа.
+            Загрузка документов, импорт базы CORAX, чат с LM Studio справа.
           </p>
         </div>
       </div>
 
       {err ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
+      ) : null}
+
+      {importMsg ? (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
+          {importMsg}
+        </div>
+      ) : null}
+
+      {canManage ? (
+        <section className="app-card mb-6 p-5 sm:p-6">
+          <h2 className="text-sm font-semibold text-neutral-950">Импорт из CORAX</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Снимок в CSV: компьютеры, ПО, теги, периферия, принтеры, заявки — с привязкой computer_id к каждому ПК.
+          </p>
+          <button
+            type="button"
+            disabled={importingCorax}
+            onClick={() => void (async () => {
+              setImportingCorax(true)
+              setImportMsg(null)
+              setErr(null)
+              try {
+                const res = await api.importWikiRagCorax()
+                setImportMsg(
+                  `${res.created ? 'Создано' : 'Обновлено'} ${res.files ?? res.documents?.length ?? 1} файлов CORAX (CSV + README): ${res.computers} ПК, ${res.requests} заявок, ${res.tags} тегов.`,
+                )
+                await load()
+                setModalDocId(res.document.id)
+              } catch (ex) {
+                const msg = ex instanceof Error ? ex.message : 'Не удалось импортировать'
+                setErr(
+                  msg === 'Method Not Allowed'
+                    ? 'Сервер не знает этот API (перезапустите start_all.bat / python run.py после обновления кода).'
+                    : msg,
+                )
+              } finally {
+                setImportingCorax(false)
+              }
+            })()}
+            className="mt-4 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {importingCorax ? 'Импорт…' : 'Импортировать базу CORAX'}
+          </button>
+        </section>
       ) : null}
 
       {/* Загрузка — крупная карточка */}

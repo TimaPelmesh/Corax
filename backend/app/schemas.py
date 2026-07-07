@@ -647,6 +647,9 @@ class WikiRagChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     document_ids: list[int] | None = None
     history: list[WikiRagChatMessage] = Field(default_factory=list)
+    lm_base_url: str | None = Field(default=None, max_length=512)
+    lm_model: str | None = Field(default=None, max_length=256)
+    include_corax: bool = True
 
 
 class WikiRagChatResponse(BaseModel):
@@ -670,3 +673,16 @@ class WikiRagLmStudioStatus(BaseModel):
     ok: bool
     models: list[str] = Field(default_factory=list)
     detail: str | None = None
+    selected_model: str | None = None
+    base_url: str | None = None
+
+
+class WikiRagCoraxImportOut(BaseModel):
+    document: WikiRagDocumentOut
+    documents: list[WikiRagDocumentOut] = Field(default_factory=list)
+    computers: int
+    requests: int
+    tags: int
+    chars: int
+    files: int = 0
+    created: bool

@@ -1,9 +1,10 @@
 import re
 import secrets
 from pathlib import Path
+from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,11 +18,27 @@ from app.schemas import (
     WikiRagChatPreviewOut,
     WikiRagChatRequest,
     WikiRagChatResponse,
+    WikiRagCoraxImportOut,
     WikiRagDocumentContentOut,
     WikiRagDocumentContentUpdate,
     WikiRagDocumentOut,
     WikiRagDocumentUpdate,
     WikiRagLmStudioStatus,
+)
+from app.wikirag_corax import (
+    CORAX_BUNDLE_FILENAMES,
+    CORAX_FILE_PREFIX,
+    CORAX_IMPORT_COMMENT,
+    CORAX_README_FILENAME,
+    CoraxLevel,
+    build_corax_context_excerpt,
+    build_corax_knowledge_bundle,
+    pick_corax_level,
+)
+from app.wikirag_context_budget import (
+    chars_for_tokens,
+    estimate_messages_tokens,
+    prompt_token_budget,
 )
 from app.wikirag_content import (
     _PREVIEW_MAX_CHARS,
@@ -35,8 +52,11 @@ from app.wikirag_content import (
 )
 from app.wikirag_lm import (
     build_messages,
+    classify_wikirag_question,
     coerce_parsed,
+    is_bad_lm_answer,
     is_small_talk,
+    normalize_lm_base_url,
     sanitize_chat_history,
     lm_studio_chat,
     lm_studio_health,
@@ -109,12 +129,87 @@ def _doc_to_out(row: WikiRagDocument) -> WikiRagDocumentOut:
 
 
 @router.get("/lm-studio/status", response_model=WikiRagLmStudioStatus)
-async def lm_studio_status(_: User = Depends(get_current_user)):
-    data = await lm_studio_health()
+async def lm_studio_status(
+    _: User = Depends(get_current_user),
+    base_url: str | None = Query(default=None, max_length=512),
+    model: str | None = Query(default=None, max_length=256),
+):
+    data = await lm_studio_health(base_url=base_url, preferred_model=model)
     return WikiRagLmStudioStatus(
         ok=bool(data.get("ok")),
         models=list(data.get("models") or []),
         detail=data.get("detail"),
+        selected_model=data.get("selected_model"),
+        base_url=data.get("base_url"),
+    )
+
+
+@router.post("/import/corax", response_model=WikiRagCoraxImportOut)
+async def import_corax_snapshot(
+    current: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    bundle, stats = await build_corax_knowledge_bundle(db)
+    saved_docs: list[WikiRagDocument] = []
+    created_count = 0
+
+    for filename in CORAX_BUNDLE_FILENAMES:
+        if filename not in bundle:
+            continue
+        content = bundle[filename]
+        raw = content.encode("utf-8")
+        mime = "text/csv" if filename.lower().endswith(".csv") else "text/markdown"
+        r = await db.execute(select(WikiRagDocument).where(WikiRagDocument.original_filename == filename))
+        row = r.scalar_one_or_none()
+        if row is None:
+            ext = Path(filename).suffix or ".txt"
+            stored = f"{secrets.token_hex(8)}_{_safe_stem(filename)}{ext}"
+            dest = _storage_dir() / stored
+            dest.write_bytes(raw)
+            row = WikiRagDocument(
+                original_filename=filename,
+                stored_filename=stored,
+                mime_type=mime,
+                size_bytes=len(raw),
+                comment=CORAX_IMPORT_COMMENT,
+                uploaded_by_id=current.id,
+            )
+            db.add(row)
+            created_count += 1
+        else:
+            dest = _storage_dir() / row.stored_filename
+            dest.write_bytes(raw)
+            row.size_bytes = len(raw)
+            row.comment = CORAX_IMPORT_COMMENT
+            row.mime_type = mime
+        saved_docs.append(row)
+
+    # Удалить устаревший монолитный файл прошлых версий
+    legacy_r = await db.execute(
+        select(WikiRagDocument).where(WikiRagDocument.original_filename == "CORAX_база_знаний.md")
+    )
+    for legacy in legacy_r.scalars().all():
+        try:
+            (_storage_dir() / legacy.stored_filename).unlink(missing_ok=True)
+        except OSError:
+            pass
+        await db.delete(legacy)
+
+    await db.commit()
+    for row in saved_docs:
+        await db.refresh(row, attribute_names=["uploaded_by"])
+        row.uploaded_by = current
+
+    main = next((d for d in saved_docs if d.original_filename == CORAX_README_FILENAME), saved_docs[0])
+    return WikiRagCoraxImportOut(
+        document=_doc_to_out(main),
+        documents=[_doc_to_out(d) for d in saved_docs],
+        computers=int(stats.get("computers") or 0),
+        requests=int(stats.get("requests") or 0),
+        tags=int(stats.get("tags") or 0),
+        chars=int(stats.get("chars") or 0),
+        files=len(saved_docs),
+        created=created_count > 0,
     )
 
 
@@ -131,21 +226,69 @@ async def list_documents(
     return [_doc_to_out(row) for row in r.scalars().all()]
 
 
-def _build_documents_context(rows: list[WikiRagDocument]) -> tuple[str, list[dict[str, str | int]]]:
-    max_ctx = int(getattr(settings, "wiki_rag_chat_context_max_chars", None) or 4_000)
+def _doc_context_hint(filename: str) -> str:
+    fn = filename.lower()
+    if fn.startswith("corax_") and fn.endswith(".csv"):
+        return "таблица CORAX; строки связаны по computer_id и hostname"
+    if fn.startswith("corax_"):
+        return "справочник CORAX (схема данных)"
+    return "документ"
+
+
+def _doc_excerpt_limit(
+    filename: str,
+    *,
+    max_chars: int | None = None,
+    question_focus: str = "general",
+) -> int:
+    fn = filename.lower()
+    cap = max_chars or 10_000
+    if fn == "corax_компьютеры.csv" and question_focus == "os_hardware":
+        return min(5000, cap)
+    if fn.startswith("corax_") and fn.endswith(".csv"):
+        return min(1200, cap)
+    if fn.startswith("corax_"):
+        return min(800, cap)
+    return min(900, cap)
+
+
+def _build_documents_context(
+    rows: list[WikiRagDocument],
+    *,
+    max_chars: int | None = None,
+    question_focus: str = "general",
+) -> tuple[str, list[dict[str, str | int]]]:
+    max_ctx = max_chars
+    if max_ctx is None:
+        max_ctx = int(getattr(settings, "wiki_rag_chat_context_max_chars", None) or 16_000)
+    ordered = sorted(
+        rows,
+        key=lambda r: (
+            0 if (r.original_filename or "").upper().startswith(CORAX_FILE_PREFIX) else 1,
+            0 if (r.original_filename or "").lower().endswith(".csv") else 1,
+            -(r.id or 0),
+        ),
+    )
     blocks: list[str] = []
     meta: list[dict[str, str | int]] = []
     used = 0
-    for row in rows:
+    for row in ordered:
         path = _doc_path(row)
         if not path.is_file():
             continue
         kind, text, _ = extract_plaintext(path, row.original_filename)
+        hint = _doc_context_hint(row.original_filename)
         if kind == "image":
-            snippet = f"[изображение, текст не извлекается]"
+            snippet = "[изображение, текст не извлекается]"
         else:
-            snippet = excerpt_for_context(text, 1200)
-        block = f"### id={row.id} file={row.original_filename}\n{snippet}"
+            snippet = excerpt_for_context(
+                text,
+                _doc_excerpt_limit(row.original_filename, max_chars=max_ctx, question_focus=question_focus),
+            )
+        block = (
+            f"### doc_id={row.id} | file={row.original_filename} | тип={hint}\n"
+            f"{snippet}"
+        )
         if used + len(block) > max_ctx:
             break
         blocks.append(block)
@@ -154,27 +297,160 @@ def _build_documents_context(rows: list[WikiRagDocument]) -> tuple[str, list[dic
     return "\n\n".join(blocks), meta
 
 
+_CORAX_DOC_PRIORITY = (
+    "CORAX_ПО.csv",
+    "CORAX_заявки.csv",
+    "CORAX_компьютеры.csv",
+    "CORAX_теги_пк.csv",
+    CORAX_README_FILENAME,
+)
+
+_HARDWARE_DOC_PRIORITY = (
+    "CORAX_компьютеры.csv",
+    "CORAX_диски.csv",
+    "CORAX_теги_пк.csv",
+    CORAX_README_FILENAME,
+    "CORAX_ПО.csv",
+    "CORAX_заявки.csv",
+)
+
+
+def _doc_priority_for_question(question: str) -> tuple[str, ...]:
+    from app.wikirag_lm import classify_wikirag_question
+
+    if classify_wikirag_question(question) == "os_hardware":
+        return _HARDWARE_DOC_PRIORITY
+    return _CORAX_DOC_PRIORITY
+
+
+def _has_corax_import_docs(rows: list[WikiRagDocument]) -> bool:
+    return any((r.original_filename or "").startswith(CORAX_FILE_PREFIX) for r in rows)
+
+
+def _prioritize_corax_docs(rows: list[WikiRagDocument], *, question: str = "") -> list[WikiRagDocument]:
+    if not rows:
+        return rows
+    by_name = {r.original_filename: r for r in rows}
+    ordered: list[WikiRagDocument] = []
+    seen: set[int] = set()
+    for name in _doc_priority_for_question(question):
+        row = by_name.get(name)
+        if row and row.id not in seen:
+            ordered.append(row)
+            seen.add(row.id)
+    for row in rows:
+        if row.id not in seen:
+            ordered.append(row)
+            seen.add(row.id)
+    return ordered
+
+
 async def _prepare_chat_messages(
     q: str,
     document_ids: list[int] | None,
     history: list[dict[str, str]],
     db: AsyncSession,
-) -> tuple[list[dict[str, str]], str, list[dict[str, str | int]]]:
+    *,
+    include_corax: bool = True,
+) -> tuple[list[dict[str, str]], str, list[dict[str, str | int]], dict[str, Any], str]:
     r = await db.execute(select(WikiRagDocument).order_by(WikiRagDocument.id.desc()))
     rows = list(r.scalars().all())
     if document_ids:
         id_set = set(document_ids)
         rows = [row for row in rows if row.id in id_set]
     elif rows:
-        rows = rows[:3]
+        rows = rows[:10]
 
     mode = "simple" if is_small_talk(q) else "rag"
+    question_focus = classify_wikirag_question(q)
+    corax_stats: dict[str, Any] = {}
+    token_budget = prompt_token_budget()
+
     if mode == "simple":
-        doc_block, doc_meta = "", []
+        messages = build_messages(q, "", history, mode=mode)
+        return messages, mode, [], corax_stats, ""
+
+    has_corax_docs = _has_corax_import_docs(rows)
+    if has_corax_docs:
+        rows = _prioritize_corax_docs(rows, question=q)
+
+    from app.wikirag_corax import _load_snapshot, build_corax_context_from_data, build_os_hardware_fallback_answer
+
+    corax_data = await _load_snapshot(db) if include_corax else None
+    n_pc_hint = len(corax_data["computers"]) if corax_data else 0
+
+    level_order: list[CoraxLevel] = ["micro", "compact", "medium", "full"]
+    if include_corax and corax_data is not None:
+        start = pick_corax_level(n_pc_hint, has_imported_files=has_corax_docs, question=q)
+        start_i = level_order.index(start)
+        try_levels = list(reversed(level_order[: start_i + 1]))
     else:
-        doc_block, doc_meta = _build_documents_context(rows)
-    messages = build_messages(q, doc_block, history, mode=mode)
-    return messages, mode, doc_meta
+        try_levels = ["micro"]
+
+    messages: list[dict[str, str]] = []
+    doc_meta: list[dict[str, str | int]] = []
+    used_level: CoraxLevel = "micro"
+
+    corax_fallback = ""
+    if corax_data is not None and question_focus == "os_hardware":
+        corax_fallback = build_os_hardware_fallback_answer(corax_data, q)
+
+    for level in try_levels:
+        corax_block = ""
+        if include_corax and corax_data is not None:
+            corax_share = 0.72 if question_focus == "os_hardware" else 0.5
+            corax_chars = chars_for_tokens(int(token_budget * corax_share))
+            corax_block = build_corax_context_from_data(corax_data, corax_chars, level, question=q)
+            corax_stats = {
+                "computers": n_pc_hint,
+                "tags": len(corax_data["tags"]),
+                "chars": len(corax_block),
+                "level": level,
+                "focus": question_focus,
+            }
+        docs_chars = chars_for_tokens(token_budget - int(token_budget * (0.72 if question_focus == "os_hardware" else 0.5)))
+        if has_corax_docs:
+            docs_cap = 4000 if question_focus == "os_hardware" else 2800
+            docs_chars = min(docs_chars, docs_cap)
+        doc_block, doc_meta = _build_documents_context(
+            rows, max_chars=docs_chars, question_focus=question_focus
+        )
+        messages = build_messages(
+            q,
+            doc_block,
+            history,
+            corax_block=corax_block,
+            mode=mode,
+            data_char_budget=chars_for_tokens(token_budget),
+            question_focus=question_focus,
+        )
+        if estimate_messages_tokens(messages) <= token_budget:
+            used_level = level
+            break
+        used_level = level
+    else:
+        messages = build_messages(
+            q, "", history, corax_block="", mode=mode, data_char_budget=800, question_focus=question_focus
+        )
+        corax_stats = {**corax_stats, "level": "micro", "fallback": True}
+
+    corax_stats["estimated_tokens"] = estimate_messages_tokens(messages)
+    corax_stats["token_budget"] = token_budget
+    corax_stats["level"] = corax_stats.get("level") or used_level
+    if has_corax_docs:
+        corax_stats["imported_docs"] = True
+    if corax_fallback:
+        corax_stats["fallback_ready"] = True
+    return messages, mode, doc_meta, corax_stats, corax_fallback
+
+
+def _resolve_lm_base_url(raw: str | None) -> str | None:
+    if raw is None or not str(raw).strip():
+        return None
+    try:
+        return normalize_lm_base_url(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/chat/preview", response_model=WikiRagChatPreviewOut)
@@ -185,7 +461,9 @@ async def wiki_rag_chat_preview(
 ):
     q = body.message.strip()
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
-    messages, mode, doc_meta = await _prepare_chat_messages(q, body.document_ids, history, db)
+    messages, mode, doc_meta, corax_stats, _corax_fallback = await _prepare_chat_messages(
+        q, body.document_ids, history, db, include_corax=body.include_corax
+    )
     stats = messages_stats(messages)
     return WikiRagChatPreviewOut(
         mode=mode,
@@ -195,7 +473,7 @@ async def wiki_rag_chat_preview(
         hint=(
             "Режим «simple»: без документов (приветствие и короткие фразы)."
             if mode == "simple"
-            else f"Режим «rag»: до {len(doc_meta)} документов в контексте."
+            else f"Режим «rag»: CORAX {corax_stats.get('computers', 0)} ПК, до {len(doc_meta)} документов."
         ),
     )
 
@@ -208,22 +486,42 @@ async def wiki_rag_chat(
 ):
     q = body.message.strip()
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
-    messages, mode, doc_meta = await _prepare_chat_messages(q, body.document_ids, history, db)
+    messages, mode, doc_meta, corax_stats, corax_fallback = await _prepare_chat_messages(
+        q, body.document_ids, history, db, include_corax=body.include_corax
+    )
     stats = messages_stats(messages)
+    lm_base = _resolve_lm_base_url(body.lm_base_url)
     meta = {
         "mode": mode,
         "total_chars": stats["total_chars"],
         "documents": doc_meta,
+        "corax": corax_stats,
+        "lm_base_url": lm_base or settings.lm_studio_base_url,
         "proxy_bypass": True,
     }
     try:
-        raw, model = await lm_studio_chat(messages)
+        raw, model = await lm_studio_chat(
+            messages,
+            base_url=lm_base,
+            model=body.lm_model,
+            mode=mode if mode in ("simple", "rag") else "rag",
+        )
         parsed = coerce_parsed(raw)
+        if corax_fallback and is_bad_lm_answer(parsed.get("answer") or raw):
+            parsed["answer"] = corax_fallback
+            parsed["confidence"] = "high"
+            parsed["_corax_fallback"] = True
+        if corax_stats.get("fallback"):
+            parsed["answer"] = (
+                str(parsed.get("answer") or "")
+                + "\n\n(Контекст был сильно сжат из‑за лимита модели — для точности импортируйте CORAX CSV.)"
+            ).strip()
         return WikiRagChatResponse(ok=True, raw=raw, parsed=parsed, model=model, meta=meta)
     except httpx.HTTPError as e:
+        shown_url = lm_base or settings.lm_studio_base_url
         return WikiRagChatResponse(
             ok=False,
-            error=f"Ошибка связи с LM Studio ({settings.lm_studio_base_url}): {e}",
+            error=f"Нет связи с LM Studio ({shown_url}): {e}",
             meta=meta,
         )
     except RuntimeError as e:

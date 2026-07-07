@@ -181,82 +181,106 @@ function Get-SanitizedAgentText {
     param([string]$Value)
     if ($null -eq $Value) { return $null }
     $t = $Value -replace "`0", ''
-    if ([string]::IsNullOrWhiteSpace($t)) { return $null }
-    return $t.Trim()
+    if (-not $t) { return $null }
+    $t = $t.Trim()
+    if ($t.Length -eq 0) { return $null }
+    return $t
+}
+
+function Add-InstalledSoftwareEntry {
+    param(
+        $List,
+        $Seen,
+        [string]$Name,
+        [string]$Version,
+        [int]$Max
+    )
+    if ($List.Count -ge $Max) { return }
+    $name = Get-SanitizedAgentText $Name
+    if (-not $name) { return }
+    $ver = $null
+    if ($Version) { $ver = Get-SanitizedAgentText $Version }
+    $verKey = if ($ver) { $ver.ToLower() } else { '' }
+    $dedupe = ($name.ToLower() + '|' + $verKey)
+    if ($Seen.ContainsKey($dedupe)) { return }
+    $Seen[$dedupe] = $true
+    [void]$List.Add(@{ name = $name; version = $ver })
 }
 
 function Get-InstalledSoftwareBasic([int]$Max = 500) {
-    # Minimal Win7-safe approach via reg.exe (no ConvertTo-Json, no registry providers assumptions).
-    $paths = @(
-        'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-        'HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-    )
+    # Win7 / PS 2.0: reg.exe lists keys as HKEY_LOCAL_MACHINE\..., not HKLM\...
     $seen = @{}
     $out = New-Object System.Collections.ArrayList
 
-    foreach ($base in $paths) {
+    $regBases = @(
+        @{ Query = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'; Prefix = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' },
+        @{ Query = 'HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'; Prefix = 'HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall' },
+        @{ Query = 'HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'; Prefix = 'HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' }
+    )
+
+    foreach ($base in $regBases) {
+        if ($out.Count -ge $Max) { break }
         try {
-            $keys = & reg.exe query $base 2>&1
+            $keys = & reg.exe query $base.Query 2>&1
             if ($INV_DEBUG) {
-                Log ("DBG: reg query " + $base + " exit=" + $LASTEXITCODE + " lines=" + $keys.Count)
-                $keys | Select-Object -First 3 | ForEach-Object { Log ("DBG: reg> " + [string]$_) }
+                Log ("DBG: reg query " + $base.Query + " lines=" + $keys.Count)
             }
             foreach ($k in $keys) {
                 if ($out.Count -ge $Max) { break }
-                $key = [string]$k
-                if (-not $key.Trim().StartsWith($base)) { continue }
+                $key = ([string]$k).Trim()
+                if ($key.Length -eq 0) { continue }
+                if ($key -match '(?i)^error') { continue }
+                if (-not $key.StartsWith($base.Prefix)) { continue }
+                if ($key -eq $base.Prefix) { continue }
                 $dnOut = & reg.exe query $key /v DisplayName 2>&1
-                $dnLine = ($dnOut | Select-String -Pattern 'DisplayName').Line
+                $dnLine = $null
+                foreach ($line in @($dnOut)) {
+                    $s = [string]$line
+                    if ($s -match 'DisplayName') { $dnLine = $s; break }
+                }
                 if (-not $dnLine) { continue }
-                $name = Get-SanitizedAgentText (($dnLine -replace '.*REG_\w+\s+', '').Trim())
+                $name = Get-SanitizedAgentText (($dnLine -replace '(?i).*REG_\w+\s+', '').Trim())
                 if (-not $name) { continue }
-                $verOut = & reg.exe query $key /v DisplayVersion 2>&1
-                $verLine = ($verOut | Select-String -Pattern 'DisplayVersion').Line
                 $ver = $null
-                if ($verLine) { $ver = Get-SanitizedAgentText (($verLine -replace '.*REG_\w+\s+', '').Trim()) }
-                $nameKey = ($name.ToLower() + '|' + ($(if ($ver) { $ver.ToLower() } else { '' })))
-                if ($seen.ContainsKey($nameKey)) { continue }
-                $seen[$nameKey] = $true
-                [void]$out.Add(@{ name = $name; version = $(if ($ver) { $ver } else { $null }) })
+                $verOut = & reg.exe query $key /v DisplayVersion 2>&1
+                foreach ($line in @($verOut)) {
+                    $s = [string]$line
+                    if ($s -match 'DisplayVersion') {
+                        $ver = Get-SanitizedAgentText (($s -replace '(?i).*REG_\w+\s+', '').Trim())
+                        break
+                    }
+                }
+                Add-InstalledSoftwareEntry -List $out -Seen $seen -Name $name -Version $ver -Max $Max
             }
         } catch {
-            if ($INV_DEBUG) { Log ("DBG: reg exception on " + $base + ": " + $_.Exception.Message) }
+            if ($INV_DEBUG) { Log ("DBG: reg exception on " + $base.Query + ": " + $_.Exception.Message) }
         }
     }
 
-    # Fallback: registry provider (sometimes more reliable than parsing reg.exe output)
-    if ($out.Count -eq 0) {
-        $provPaths = @(
-            'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-            'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-        )
-        foreach ($p in $provPaths) {
-            try {
-                $kids = Get-ChildItem -Path $p -ErrorAction SilentlyContinue
-                if ($INV_DEBUG) { Log ("DBG: regprov enum " + $p + " keys=" + $kids.Count) }
-                foreach ($k in $kids) {
-                    if ($out.Count -ge $Max) { break }
-                    $props = Get-ItemProperty -Path $k.PSPath -ErrorAction SilentlyContinue
-                    if (-not $props) { continue }
-                    $dn = $props.DisplayName
-                    if (-not $dn) { continue }
-                    $name = Get-SanitizedAgentText ([string]$dn)
-                    if (-not $name) { continue }
-                    $ver = $null
-                    if ($props.DisplayVersion) { $ver = Get-SanitizedAgentText ([string]$props.DisplayVersion) }
-                    $nameKey = ($name.ToLower() + '|' + ($(if ($ver) { $ver.ToLower() } else { '' })))
-                    if ($seen.ContainsKey($nameKey)) { continue }
-                    $seen[$nameKey] = $true
-                    [void]$out.Add(@{ name = $name; version = $(if ($ver) { $ver } else { $null }) })
-                }
-            } catch {
-                if ($INV_DEBUG) { Log ("DBG: regprov exception on " + $p + ": " + $_.Exception.Message) }
+    $psPaths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )
+    foreach ($pattern in $psPaths) {
+        if ($out.Count -ge $Max) { break }
+        try {
+            $propsList = Get-ItemProperty -Path $pattern -ErrorAction SilentlyContinue
+            if (-not $propsList) { continue }
+            foreach ($props in @($propsList)) {
+                if ($out.Count -ge $Max) { break }
+                if (-not $props -or -not $props.DisplayName) { continue }
+                $ver = $null
+                if ($props.DisplayVersion) { $ver = [string]$props.DisplayVersion }
+                Add-InstalledSoftwareEntry -List $out -Seen $seen -Name ([string]$props.DisplayName) -Version $ver -Max $Max
             }
+        } catch {
+            if ($INV_DEBUG) { Log ("DBG: Get-ItemProperty failed on " + $pattern + ": " + $_.Exception.Message) }
         }
     }
 
-    if ($INV_DEBUG -and $out.Count -eq 0) {
-        Log "DBG: software still empty after reg.exe + registry provider fallback"
+    if ($INV_DEBUG) {
+        Log ("DBG: software collected count=" + $out.Count)
     }
     return @($out.ToArray())
 }

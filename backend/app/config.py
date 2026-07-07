@@ -76,13 +76,17 @@ class Settings(BaseSettings):
     # WikiRAG: uploaded knowledge-base files (absolute or relative to backend/).
     wiki_rag_dir: str = "wiki_rag_docs"
     wiki_rag_context_max_chars: int = 18_000
-    # Контекст для чата (меньше — быстрее для лёгких моделей).
-    wiki_rag_chat_context_max_chars: int = 4_000
+    # Контекст для чата (документы + данные CORAX).
+    wiki_rag_chat_context_max_chars: int = 16_000
+    # Доля контекста чата под авто-сводку CORAX (ПК, теги, заявки).
+    wiki_rag_corax_context_max_chars: int = 10_000
     # LM Studio OpenAI-compatible API (Local Server).
     lm_studio_base_url: str = "http://127.0.0.1:1234/v1"
     lm_studio_model: str = "google/gemma-3-1b"
     lm_studio_timeout_seconds: int = 300
     lm_studio_max_tokens: int = 768
+    # Лимит контекста промпта под слабые модели (4096 ctx → ~3584 безопасно).
+    wiki_rag_lm_context_tokens: int = 3584
     # pg_dump/pg_restore (резервная копия в настройках). Путь к bin, любой диск (F:\...\bin).
     pg_bin_dir: str = ""
     postgres_admin_user: str = "postgres"
