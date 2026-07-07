@@ -257,11 +257,11 @@ export function WikiRagPage() {
       </div>
 
       {err ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
+        <div className="app-alert app-alert-error mb-4">{err}</div>
       ) : null}
 
       {importMsg ? (
-        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
+        <div className="app-alert app-alert-success mb-4">
           {importMsg}
         </div>
       ) : null}

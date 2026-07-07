@@ -444,7 +444,7 @@ export function Layout() {
         {sidebarNav}
       </aside>
 
-      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain border-l border-neutral-100 bg-[radial-gradient(circle_at_82%_0%,rgb(254_226_226/0.45),transparent_28rem),linear-gradient(180deg,#fafafa_0%,#f5f5f6_100%)] px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 transition-[padding] sm:px-5 sm:py-6 lg:border-l-0 lg:px-10 lg:pb-12 lg:pt-10">
+      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain border-l border-neutral-100 bg-neutral-50 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 transition-[padding] sm:px-5 sm:py-6 lg:border-l-0 lg:px-10 lg:pb-12 lg:pt-10">
         {welcomeToast ? (
           <div
             className={`pointer-events-none fixed right-4 top-4 z-[200] max-w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white/95 px-4 py-3 text-sm text-neutral-800 shadow-[0_18px_44px_-20px_rgba(2,6,23,0.55)] backdrop-blur sm:right-6 sm:top-6 ${

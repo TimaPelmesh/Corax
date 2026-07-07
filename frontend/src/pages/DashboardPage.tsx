@@ -732,19 +732,19 @@ function SectionCard({
 function DashboardSkeleton() {
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 app-stack-3 lg:grid-cols-4">
         {[0, 1, 2, 3].map((k) => (
           <div
             key={k}
-            className="dashboard-skeleton-shimmer h-24 rounded-2xl bg-gradient-to-br from-neutral-100 to-neutral-50 ring-1 ring-neutral-200/50 sm:h-[5.25rem]"
+            className="dashboard-skeleton-shimmer h-24 rounded-[1rem] bg-neutral-100 ring-1 ring-neutral-200/50 sm:h-[5.25rem]"
           />
         ))}
       </div>
       <div className="space-y-3">
-        <div className="dashboard-skeleton-shimmer h-32 rounded-2xl ring-1 ring-neutral-200/50" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="dashboard-skeleton-shimmer h-32 rounded-[1rem] ring-1 ring-neutral-200/50" />
+        <div className="grid app-stack-3 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((k) => (
-            <div key={k} className="dashboard-skeleton-shimmer h-56 rounded-2xl ring-1 ring-neutral-200/50" />
+            <div key={k} className="dashboard-skeleton-shimmer h-56 rounded-[1rem] ring-1 ring-neutral-200/50" />
           ))}
         </div>
       </div>
@@ -800,9 +800,7 @@ export function DashboardPage() {
 
   return (
     <div>
-      <div className="relative mb-6 overflow-hidden rounded-[1.25rem] border border-neutral-200/70 bg-white px-4 py-5 shadow-[0_18px_50px_-38px_rgb(15_23_42/0.55),0_1px_2px_rgb(15_23_42/0.04)] sm:px-6 sm:py-6">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-red-50 blur-3xl" />
-        <div className="pointer-events-none absolute -left-20 bottom-0 h-40 w-40 rounded-full bg-neutral-100 blur-3xl" />
+      <div className="relative mb-6 overflow-hidden rounded-[1rem] border border-neutral-200/70 bg-white px-4 py-5 shadow-[0_18px_50px_-38px_rgb(15_23_42/0.55),0_1px_2px_rgb(15_23_42/0.04)] sm:px-6 sm:py-6">
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600 shadow-[inset_0_1px_0_rgb(255_255_255/0.82)] [&_svg]:!h-6 [&_svg]:!w-6">
             <IconDashboard className="h-6 w-6" />
@@ -817,7 +815,7 @@ export function DashboardPage() {
       </div>
 
       {err && (
-        <div className="mb-6 rounded-xl border border-red-200/90 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
+        <div className="app-alert app-alert-error mb-6 shadow-sm">
           {err}
         </div>
       )}
@@ -831,7 +829,7 @@ export function DashboardPage() {
           widgets['stat.tags_in_directory'] ||
           widgets['stat.snmp_printers_total'] ||
           widgets['stat.physical_disks_total'] ? (
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+            <div className="grid grid-cols-2 app-stack-3 lg:grid-cols-5">
               {widgets['stat.computers_total'] ? (
                 <MiniStatCard
                   label="Рабочих станций"

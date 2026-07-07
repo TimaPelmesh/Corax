@@ -7,6 +7,7 @@ from typing import Any, Literal
 import httpx
 
 from app.config import settings
+from app.wikirag_context_budget import shrink_messages
 
 ChatMode = Literal["simple", "rag"]
 QuestionFocus = Literal["os_hardware", "software", "tickets", "general"]
@@ -220,6 +221,7 @@ _LM_ERROR_MARKERS = (
     "client error",
     "server error",
 )
+_CHANNEL_ERR_RE = re.compile(r"channel error", re.IGNORECASE)
 
 
 def _is_error_turn(content: str) -> bool:
@@ -462,6 +464,34 @@ def normalize_assistant_for_history(content: str) -> str:
     return c[:1500]
 
 
+def _messages_without_system_role(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """
+    Фолбэк для моделей/шаблонов LM Studio, где разрешены только user/assistant.
+    Переносим system-инструкцию в начало первого user-сообщения.
+    """
+    if not messages:
+        return messages
+    system_parts: list[str] = []
+    out: list[dict[str, str]] = []
+    for m in messages:
+        role = (m.get("role") or "").strip()
+        content = (m.get("content") or "").strip()
+        if not content:
+            continue
+        if role == "system":
+            system_parts.append(content)
+            continue
+        if role in ("user", "assistant"):
+            out.append({"role": role, "content": content})
+    if system_parts:
+        preface = "Инструкция:\n" + "\n\n".join(system_parts).strip()
+        if out and out[0].get("role") == "user":
+            out[0]["content"] = f"{preface}\n\n{out[0]['content']}"
+        else:
+            out.insert(0, {"role": "user", "content": preface})
+    return out
+
+
 async def _fetch_model_ids(client: httpx.AsyncClient, base: str) -> list[str]:
     res = await client.get(f"{base}/models")
     if res.status_code != 200:
@@ -508,7 +538,6 @@ async def lm_studio_chat(
         human_lm_studio_error,
         is_context_overflow_error,
         parse_lm_error_body,
-        shrink_messages,
     )
 
     base = _base_url(base_url)
@@ -524,6 +553,7 @@ async def lm_studio_chat(
 
     attempt_messages = [dict(m) for m in messages]
     last_detail = ""
+    role_fallback_applied = False
 
     async with _lm_client(read=read_timeout) as client:
         available: list[str] = []
@@ -535,13 +565,16 @@ async def lm_studio_chat(
 
         url = f"{base}/chat/completions"
         for attempt in range(3):
+            # На первом заходе пытаемся с "богатым" payload; при Channel Error ниже
+            # будем понижать нагрузку и убирать chat_template_kwargs.
+            use_template_kwargs = mode == "rag" and attempt == 0
             payload: dict[str, Any] = {
                 "messages": attempt_messages,
                 "temperature": 0.35 if mode == "rag" else 0.3,
                 "max_tokens": max_tokens,
                 "stream": False,
             }
-            if mode == "rag":
+            if use_template_kwargs:
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
             if picked_model:
                 payload["model"] = picked_model
@@ -578,6 +611,21 @@ async def lm_studio_chat(
             last_detail = parse_lm_error_body(body_text, body_json)
             if is_context_overflow_error(last_detail) and attempt < 2:
                 attempt_messages = shrink_messages(attempt_messages)
+                max_tokens = max(256, int(max_tokens * 0.8))
+                continue
+            if (
+                "only user and assistant roles are supported" in (last_detail or "").lower()
+                and not role_fallback_applied
+                and attempt < 2
+            ):
+                attempt_messages = _messages_without_system_role(attempt_messages)
+                role_fallback_applied = True
+                continue
+            if _CHANNEL_ERR_RE.search(last_detail or "") and attempt < 2:
+                # Часто на локальных моделях это перегруз контекста/памяти:
+                # ужимаем контекст и выход, затем пробуем ещё раз.
+                attempt_messages = shrink_messages(attempt_messages)
+                max_tokens = max(256, int(max_tokens * 0.7))
                 continue
             if res.status_code == 504:
                 raise RuntimeError(human_lm_studio_error(504, last_detail))

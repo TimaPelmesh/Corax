@@ -211,12 +211,12 @@ export function ComputersPage() {
       </div>
 
       {err && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+        <div className="app-alert app-alert-error mb-4">
           {err}
         </div>
       )}
 
-      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200/90 bg-white/90 p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+      <div className="mb-4 flex flex-col app-stack-3 app-radius-lg border border-slate-200/90 bg-white/90 p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-end sm:app-stack-4">
         <div className="min-w-[min(100%,18rem)] flex-1">
           <label htmlFor="pc-host-search" className="app-label">
             Имя хоста
