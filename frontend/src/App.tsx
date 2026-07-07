@@ -1,5 +1,7 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import { titleForPath } from './documentTitle'
 import { ComputersPage } from './pages/ComputersPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { SoftwarePage } from './pages/SoftwarePage'
@@ -19,6 +21,14 @@ import { KnowledgeSitemapPage } from './pages/KnowledgeSitemapPage'
 import { WikiRagPage } from './pages/WikiRagPage'
 import { WarehousePage } from './pages/WarehousePage'
 import { PrintersPage } from './pages/PrintersPage'
+
+function DocumentTitle() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    document.title = titleForPath(pathname)
+  }, [pathname])
+  return null
+}
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -41,7 +51,9 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <DocumentTitle />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/"
@@ -75,5 +87,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
