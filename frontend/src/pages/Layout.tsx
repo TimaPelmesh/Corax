@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
+import { CoraxLogo } from '../components/CoraxLogo'
 import {
   IconClose,
   IconDashboard,
@@ -10,7 +11,6 @@ import {
   IconGraph,
   IconWarehouse,
   IconKey,
-  IconLogo,
   IconLogout,
   IconMenu,
   IconPcs,
@@ -287,9 +287,8 @@ export function Layout() {
       <div className="shrink-0 border-b border-neutral-200/80 bg-gradient-to-b from-white via-white to-red-50/30 px-4 py-5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-red-500 via-red-600 to-neutral-950 text-white shadow-[0_18px_38px_-18px_rgba(220,38,38,0.8)] ring-1 ring-red-400/30">
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_28%_18%,rgb(255_255_255/0.28),transparent_54%)]" aria-hidden />
-              <IconLogo className="relative h-[1.25rem] w-[1.25rem] drop-shadow-sm" />
+            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-white via-red-50/90 to-white shadow-[0_14px_32px_-18px_rgba(220,38,38,0.45)] ring-1 ring-red-200/70">
+              <CoraxLogo variant="icon" alt="CORAX" />
             </div>
             <div className="min-w-0">
               <div className="brand-wordmark truncate text-[0.95rem] font-bold leading-tight tracking-tight text-neutral-950">
@@ -419,7 +418,12 @@ export function Layout() {
         >
           <IconMenu className="h-6 w-6" />
         </button>
-        <span className="brand-wordmark min-w-0 truncate text-base font-bold text-neutral-950">CORAX</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-white to-red-50/90 ring-1 ring-red-200/60">
+            <CoraxLogo variant="icon" alt="" />
+          </div>
+          <span className="brand-wordmark min-w-0 truncate text-base font-bold text-neutral-950">CORAX</span>
+        </div>
       </header>
 
       {mobileNavVisible ? (

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 400" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="corax-raven" x1="72" y1="48" x2="248" y2="248" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ef4444"/>
+      <stop offset="0.55" stop-color="#dc2626"/>
+      <stop offset="1" stop-color="#991b1b"/>
+    </linearGradient>
+    <linearGradient id="corax-word" x1="32" y1="0" x2="288" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f87171"/>
+      <stop offset="0.5" stop-color="#dc2626"/>
+      <stop offset="1" stop-color="#b91c1c"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#corax-raven)">
+    <path d="M88 118c18-34 52-58 92-58 8 0 16 1 24 4-6-18-22-30-42-30-28 0-50 22-50 50 0 8 2 16 5 23-12 4-22 10-29 11Z" opacity="0.45"/>
+    <path d="M104 86c34-6 66 12 82 44 14 30 2 66-26 82-24 14-54 10-72-10 18-14 30-34 30-58 0-6-1-12-3-17 2-14 10-28-11-41Z"/>
+    <path d="M126 108c22-4 42 10 50 30 8 20-2 42-20 52-16 10-36 6-48-10 8-14 13-30 14-46 1-8 2-16 4-26Z"/>
+    <path d="M198 98 248 72v18l-36 20-14-12Z"/>
+    <ellipse cx="168" cy="132" rx="7" ry="4" fill="#030303" transform="rotate(-16 168 132)"/>
+  </g>
+  <text
+    x="160"
+    y="352"
+    text-anchor="middle"
+    fill="url(#corax-word)"
+    font-family="Inter, Arial, sans-serif"
+    font-size="54"
+    font-weight="700"
+    letter-spacing="10"
+  >CORAX</text>
+</svg>

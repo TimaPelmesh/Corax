@@ -1117,6 +1117,7 @@ function DirectoryAssigneesPicker({
 }
 
 export function ServiceRequestsPage() {
+  const DB_PAGE_SIZE = 100
   const location = useLocation()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -1140,6 +1141,7 @@ export function ServiceRequestsPage() {
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [dbShowAll, setDbShowAll] = useState(false)
+  const [dbPage, setDbPage] = useState(1)
 
   const [pcList, setPcList] = useState<Computer[]>([])
   const [categoryTree, setCategoryTree] = useState<RequestCategoryTreeNode[]>([])
@@ -1531,6 +1533,18 @@ export function ServiceRequestsPage() {
     })
   }, [filterCategory, query, rows, sortKey])
 
+  const dbPageCount = useMemo(
+    () => Math.max(1, Math.ceil(visibleRows.length / DB_PAGE_SIZE)),
+    [visibleRows.length, DB_PAGE_SIZE],
+  )
+
+  const dbRowsToRender = useMemo(() => {
+    if (tab !== 'database') return visibleRows
+    const p = Math.min(dbPage, dbPageCount)
+    const start = (p - 1) * DB_PAGE_SIZE
+    return visibleRows.slice(start, start + DB_PAGE_SIZE)
+  }, [tab, visibleRows, dbPage, dbPageCount, DB_PAGE_SIZE])
+
   const load = useCallback(async () => {
     if (skipNextListReload && (tab === 'database' || tab === 'stats')) {
       skipNextListReload = false
@@ -1584,6 +1598,17 @@ export function ServiceRequestsPage() {
   }, [loading, tab, location.pathname, visibleRows.length])
 
   useEffect(() => {
+    if (tab === 'database') {
+      setDbPage(1)
+    }
+  }, [tab, query, filterCategory, filterStatus, sortKey])
+
+  useEffect(() => {
+    if (dbPage > dbPageCount) setDbPage(dbPageCount)
+  }, [dbPage, dbPageCount])
+
+  useEffect(() => {
+    if (tab !== 'create' && tab !== 'templates') return
     void (async () => {
       try {
         const r = await api.computers({ limit: 500 })
@@ -1592,7 +1617,7 @@ export function ServiceRequestsPage() {
         setPcList([])
       }
     })()
-  }, [])
+  }, [tab])
 
   useEffect(() => {
     void (async () => {
@@ -2831,7 +2856,7 @@ export function ServiceRequestsPage() {
               <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/95 shadow-sm ring-1 ring-slate-200/25">
                 <div className="overflow-x-auto">
                   <table className="min-w-[980px] w-full border-collapse text-left text-sm">
-                    <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur supports-[backdrop-filter]:bg-slate-50/80">
+                    <thead className="sticky top-0 z-10 bg-slate-50">
                       <tr className="border-b border-slate-200/70 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
                         <th
                           className="cursor-pointer px-3 py-2.5"
@@ -2856,7 +2881,7 @@ export function ServiceRequestsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleRows.map((t) => (
+                      {dbRowsToRender.map((t) => (
                         <tr
                           key={t.id}
                           data-request-id={t.id}
@@ -2934,6 +2959,34 @@ export function ServiceRequestsPage() {
                 </div>
               </div>
             )}
+            {!loading && visibleRows.length > DB_PAGE_SIZE ? (
+              <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-600">
+                <span>
+                  Показано {dbRowsToRender.length} из {visibleRows.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                    onClick={() => setDbPage((p) => Math.max(1, p - 1))}
+                    disabled={dbPage <= 1}
+                  >
+                    Назад
+                  </button>
+                  <span className="text-xs font-medium">
+                    Страница {Math.min(dbPage, dbPageCount)} / {dbPageCount}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                    onClick={() => setDbPage((p) => Math.min(dbPageCount, p + 1))}
+                    disabled={dbPage >= dbPageCount}
+                  >
+                    Далее
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
         ) : null}

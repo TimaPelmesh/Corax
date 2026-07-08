@@ -1,5 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="6" fill="#0a0a0a"/>
-  <rect x="6" y="10" width="20" height="12" rx="2" stroke="#ffffff" stroke-width="1.5" fill="none"/>
-  <path stroke="#dc2626" stroke-width="2" stroke-linecap="round" d="M10 14h5M10 17h8"/>
+  <rect width="32" height="32" rx="7" fill="#0a0a0a"/>
+  <path
+    fill="#dc2626"
+    d="M8 22.5c2.2-5.8 5.4-9.8 9.6-12.1 1.2-.6 2.5-.9 3.8-.8-.6-2.1-2.4-3.6-4.7-3.6-2.9 0-5.2 2.3-5.2 5.2 0 .6.1 1.2.3 1.7C9.8 14.2 8.6 18 8 22.5Z"
+    opacity="0.55"
+  />
+  <path
+    fill="#dc2626"
+    d="M10.5 8.2c3.8-.4 7.2 1.6 8.8 5.1 1.8 3.9.4 8.6-3.2 10.7-3.2 1.8-7.2 1.1-9.6-1.7 2.8-2.4 4.6-5.8 4.6-9.7 0-.5 0-1-.1-1.5.2-.9.8-1.7 1.5-2.9Z"
+  />
+  <path
+    fill="#ef4444"
+    d="M12.8 10.8c2.6-.2 4.9 1.4 5.8 3.8.9 2.4-.1 5.1-2.2 6.4-2 1.2-4.5.8-6-1 .9-1.8 1.5-3.8 1.7-5.9.1-.8.3-1.6.7-2.3Z"
+  />
+  <ellipse cx="17.6" cy="13.8" rx="1.1" ry="0.55" fill="#0a0a0a" transform="rotate(-18 17.6 13.8)"/>
+  <path
+    stroke="#fca5a5"
+    stroke-width="0.8"
+    stroke-linecap="round"
+    d="M19.8 11.2 24.5 8.5"
+  />
 </svg>

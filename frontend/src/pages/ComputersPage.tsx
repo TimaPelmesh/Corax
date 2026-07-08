@@ -61,6 +61,7 @@ function useClickOutside(refs: Array<RefObject<HTMLElement | null>>, onClose: ()
 }
 
 export function ComputersPage() {
+  const PAGE_SIZE = 100
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<Computer[]>([])
   const [total, setTotal] = useState(0)
@@ -78,6 +79,7 @@ export function ComputersPage() {
     key: 'last',
     dir: 'desc',
   })
+  const [page, setPage] = useState(1)
 
   const visibleColumnCount = useMemo(
     () => 1 + PC_COLUMN_DEFS.filter((c) => columns[c.key]).length,
@@ -134,6 +136,25 @@ export function ComputersPage() {
     })
     return copy
   }, [rows, sort.dir, sort.key])
+
+  const pageCount = useMemo(
+    () => Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE)),
+    [sortedRows.length, PAGE_SIZE],
+  )
+
+  const pagedRows = useMemo(() => {
+    const p = Math.min(page, pageCount)
+    const start = (p - 1) * PAGE_SIZE
+    return sortedRows.slice(start, start + PAGE_SIZE)
+  }, [page, pageCount, sortedRows, PAGE_SIZE])
+
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedHostSearch, filterTagIds, sort.key, sort.dir])
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
 
   function toggleSort(key: typeof sort.key) {
     setSort((prev) => {
@@ -377,7 +398,7 @@ export function ComputersPage() {
                 </td>
               </tr>
             ) : (
-              sortedRows.map((r) => (
+              pagedRows.map((r) => (
                 <tr
                   key={r.id}
                   className="app-table-row cursor-pointer"
@@ -435,6 +456,35 @@ export function ComputersPage() {
         </table>
         </div>
       </div>
+
+      {!loading && sortedRows.length > PAGE_SIZE ? (
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-600">
+          <span>
+            Показано {pagedRows.length} из {sortedRows.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="app-btn app-btn-secondary min-h-0 px-3 py-1.5 text-xs"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              Назад
+            </button>
+            <span className="text-xs font-medium">
+              Страница {Math.min(page, pageCount)} / {pageCount}
+            </span>
+            <button
+              type="button"
+              className="app-btn app-btn-secondary min-h-0 px-3 py-1.5 text-xs"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+            >
+              Далее
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <ComputerDetailModal
         computerId={detailComputerId}
