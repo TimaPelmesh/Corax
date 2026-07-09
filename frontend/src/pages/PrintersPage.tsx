@@ -64,7 +64,7 @@ function PrinterToast({ message, onDismiss }: { message: string; onDismiss: () =
 
 function supplyBarColor(pct: number | null) {
   if (pct == null) return 'bg-slate-300'
-  if (pct <= 10) return 'bg-red-600'
+  if (pct <= 10) return 'bg-blue-600'
   if (pct <= 25) return 'bg-amber-500'
   return 'bg-emerald-500'
 }
@@ -539,7 +539,7 @@ export function PrintersPage() {
                 onClick={() => setFilter(key)}
                 className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                   filter === key
-                    ? 'bg-red-600 text-white ring-2 ring-red-300 ring-offset-1'
+                    ? 'bg-blue-600 text-white ring-2 ring-red-300 ring-offset-1'
                     : 'rounded-full bg-zinc-50 px-2 py-0.5 text-neutral-900 ring-1 ring-zinc-200/80 opacity-90 hover:opacity-100'
                 }`}
               >
@@ -641,7 +641,7 @@ export function PrintersPage() {
                           <div className="inline-flex flex-col items-end gap-0.5">
                             <button
                               type="button"
-                              className="rounded-lg px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                              className="rounded-lg px-2 py-1 text-xs font-medium text-red-700 hover:bg-blue-50"
                               onClick={() => void pollOne(r)}
                             >
                               SNMP
@@ -781,7 +781,7 @@ export function PrintersPage() {
 
       {deleteTarget ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-          <div className="app-card w-full max-w-md border-red-200 p-4 shadow-2xl ring-1 ring-red-100">
+          <div className="app-card w-full max-w-md border-red-200 p-4 shadow-2xl ring-1 ring-blue-100">
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-red-800">Удаление принтеров</h2>
@@ -795,7 +795,7 @@ export function PrintersPage() {
                 <IconClose className="h-5 w-5" />
               </button>
             </div>
-            <ul className="mb-4 max-h-40 overflow-y-auto rounded-xl border border-red-100 bg-red-50/50 px-3 py-2 text-sm text-slate-800">
+            <ul className="mb-4 max-h-40 overflow-y-auto rounded-xl border border-red-100 bg-blue-50/50 px-3 py-2 text-sm text-slate-800">
               {deleteTarget.labels.slice(0, 12).map((label) => (
                 <li key={label} className="truncate py-0.5">
                   {label}

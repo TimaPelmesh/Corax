@@ -89,12 +89,12 @@ function DocRow({
   }
 
   return (
-    <tr className={`border-t border-neutral-100 ${active ? 'bg-red-50/50' : 'hover:bg-neutral-50/80'}`}>
+    <tr className={`border-t border-neutral-100 ${active ? 'bg-blue-50/50' : 'hover:bg-neutral-50/80'}`}>
       <td className="px-3 py-2.5 align-top">
         <button
           type="button"
           onClick={onOpen}
-          className="text-left font-medium text-red-700 underline decoration-red-200 underline-offset-2 hover:text-red-800"
+          className="text-left font-medium text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-800"
         >
           {row.original_filename}
         </button>
@@ -337,10 +337,10 @@ export function WikiRagPage() {
                 onDrop={onDrop}
                 className={`flex min-h-[11rem] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center transition sm:min-h-[12rem] ${
                   dragOver
-                    ? 'border-red-400 bg-red-50/80 ring-2 ring-red-400/25'
+                    ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-400/25'
                     : selectedFile
                       ? 'border-emerald-300 bg-emerald-50/40'
-                      : 'border-neutral-200 bg-neutral-50/50 hover:border-red-200 hover:bg-red-50/20'
+                      : 'border-neutral-200 bg-neutral-50/50 hover:border-blue-200 hover:bg-blue-50/20'
                 } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
               >
                 {dragOver ? (
@@ -351,7 +351,7 @@ export function WikiRagPage() {
                     <p className="mt-2 text-sm text-slate-500">{formatBytes(selectedFile.size)}</p>
                     <button
                       type="button"
-                      className="relative z-10 mt-4 text-sm font-medium text-red-700 underline"
+                      className="relative z-10 mt-4 text-sm font-medium text-blue-700 underline"
                       onClick={(e) => {
                         e.stopPropagation()
                         clearSelectedFile()
@@ -378,13 +378,13 @@ export function WikiRagPage() {
                   onChange={(e) => setUploadComment(e.target.value)}
                   rows={5}
                   placeholder="О чём документ, для кого, ключевые темы…"
-                  className="w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-500/20"
+                  className="w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
               <button
                 type="submit"
                 disabled={uploading || !selectedFile}
-                className="mt-auto rounded-xl bg-gradient-to-r from-red-600 to-red-500 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:from-red-700 hover:to-red-600 disabled:opacity-50"
+                className="mt-auto rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:from-blue-700 hover:to-blue-600 disabled:opacity-50"
               >
                 {uploading ? 'Загрузка…' : 'Загрузить в базу'}
               </button>
@@ -445,7 +445,7 @@ export function WikiRagPage() {
         <button
           type="button"
           onClick={() => setChatOpen(true)}
-          className="fixed bottom-6 right-4 z-30 rounded-full bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-red-700"
+          className="fixed bottom-6 right-4 z-30 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-blue-700"
         >
           Чат AI
         </button>
@@ -468,7 +468,7 @@ export function WikiRagPage() {
               <button
                 type="button"
                 onClick={() => setModalDocId(null)}
-                className="shrink-0 rounded-xl border border-neutral-200 bg-white p-2 text-neutral-600 hover:bg-red-50 hover:text-red-700"
+                className="shrink-0 rounded-xl border border-neutral-200 bg-white p-2 text-neutral-600 hover:bg-blue-50 hover:text-blue-700"
                 aria-label="Закрыть"
               >
                 <IconClose className="h-5 w-5" />

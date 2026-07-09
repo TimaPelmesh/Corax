@@ -265,7 +265,7 @@ export function ComputersPage() {
                     onClick={() => toggleFilterTag(t.id)}
                     className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                       on
-                        ? 'bg-red-600 text-white ring-2 ring-red-300 ring-offset-1'
+                        ? 'bg-blue-600 text-white ring-2 ring-red-300 ring-offset-1'
                         : `${pill.className} opacity-90 hover:opacity-100`
                     }`}
                     style={on ? undefined : pill.style}

@@ -121,7 +121,7 @@ export function KnowledgeBasePage() {
           width: size,
           height: size,
           borderRadius: 9999,
-          border: t.id === Number(selectedTagId) ? '1px solid rgb(220 38 38)' : '1px solid rgb(229 229 229)',
+          border: t.id === Number(selectedTagId) ? '1px solid rgb(37 99 235)' : '1px solid rgb(229 229 229)',
           background: t.id === Number(selectedTagId) ? 'rgba(254,242,242,0.95)' : 'rgba(255,255,255,0.92)',
           boxShadow: '0 10px 35px -22px rgba(0,0,0,0.22)',
           padding: 14,

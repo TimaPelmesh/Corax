@@ -196,7 +196,7 @@ export function WikiRagDocViewer({
 
             onClick={() => void save()}
 
-            className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
 
           >
 
@@ -240,7 +240,7 @@ export function WikiRagDocViewer({
 
             onChange={(e) => setDraft(e.target.value)}
 
-            className="h-[min(65vh,32rem)] w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-neutral-900 shadow-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-500/20"
+            className="h-[min(65vh,32rem)] w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-neutral-900 shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/20"
 
             spellCheck={false}
 

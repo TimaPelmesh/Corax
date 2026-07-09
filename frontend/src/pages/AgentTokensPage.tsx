@@ -66,7 +66,7 @@ export function AgentTokensPage() {
     <div>
       <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
         <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconKey className="h-7 w-7 text-red-600" />
+          <IconKey className="h-7 w-7 text-blue-600" />
         </div>
         <div>
           <h1 className="page-title">Токены агентов</h1>
@@ -86,7 +86,7 @@ export function AgentTokensPage() {
           </pre>
           <button
             type="button"
-            className="mt-2 text-sm font-medium text-red-700 underline"
+            className="mt-2 text-sm font-medium text-blue-700 underline"
             onClick={() => void navigator.clipboard.writeText(createdOnce.token)}
           >
             Копировать
@@ -165,7 +165,7 @@ export function AgentTokensPage() {
                     ) : (
                       <button
                         type="button"
-                        className="text-sm font-medium text-red-600 hover:text-red-700"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
                         onClick={() => void onRevoke(r.id)}
                       >
                         Отозвать

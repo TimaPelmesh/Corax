@@ -284,28 +284,20 @@ export function Layout() {
 
   const sidebarNav = (
     <>
-      <div className="shrink-0 border-b border-neutral-200/80 bg-gradient-to-b from-white via-white to-red-50/30 px-4 py-5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-white via-red-50/90 to-white shadow-[0_14px_32px_-18px_rgba(220,38,38,0.45)] ring-1 ring-red-200/70">
-              <CoraxLogo variant="icon" alt="CORAX" />
-            </div>
-            <div className="min-w-0">
-              <div className="brand-wordmark truncate text-[0.95rem] font-bold leading-tight tracking-tight text-neutral-950">
-                CORAX
-              </div>
-            </div>
-          </div>
+      <div className="shrink-0 border-b border-neutral-200/80 bg-gradient-to-b from-white via-white to-blue-50/30 px-4 py-5">
+        <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center lg:grid-cols-1 lg:justify-items-center">
+          <div className="lg:hidden" aria-hidden />
+          <CoraxLogo variant="wordmark" alt="CORAX" className="mx-auto justify-self-center" />
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 lg:hidden"
+            className="flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 lg:hidden"
             onClick={closeNav}
             aria-label="Закрыть меню"
           >
             <IconClose className="h-6 w-6" />
           </button>
         </div>
-        <div className="mt-4 h-px w-full bg-gradient-to-r from-transparent via-red-600/50 to-transparent" aria-hidden />
+        <div className="mt-4 h-px w-full bg-gradient-to-r from-transparent via-blue-600/50 to-transparent" aria-hidden />
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-3 py-4">
@@ -314,7 +306,7 @@ export function Layout() {
             value={menuQuery}
             onChange={(e) => setMenuQuery(e.target.value)}
             placeholder="Поиск по меню..."
-            className="w-full rounded-lg border border-neutral-200/90 bg-white px-3 py-1.5 text-sm text-neutral-900 shadow-sm outline-none transition focus:border-red-300 focus:ring-2 focus:ring-red-100"
+            className="w-full rounded-lg border border-neutral-200/90 bg-white px-3 py-1.5 text-sm text-neutral-900 shadow-sm outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
             aria-label="Поиск разделов меню"
           />
         </div>
@@ -393,7 +385,7 @@ export function Layout() {
               window.location.href = '/login'
             })()
           }}
-          className="flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-2 rounded-2xl border border-neutral-200/90 bg-white/95 px-3 py-2.5 text-sm font-semibold text-neutral-800 shadow-sm transition hover:border-red-200 hover:bg-red-50/50 hover:text-red-700 active:scale-[0.99]"
+          className="flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-2 rounded-2xl border border-neutral-200/90 bg-white/95 px-3 py-2.5 text-sm font-semibold text-neutral-800 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-700 active:scale-[0.99]"
         >
           <IconLogout className="h-4 w-4 text-red-500" />
           Выйти
@@ -418,11 +410,8 @@ export function Layout() {
         >
           <IconMenu className="h-6 w-6" />
         </button>
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-white to-red-50/90 ring-1 ring-red-200/60">
-            <CoraxLogo variant="icon" alt="" />
-          </div>
-          <span className="brand-wordmark min-w-0 truncate text-base font-bold text-neutral-950">CORAX</span>
+        <div className="flex min-w-0 flex-1 items-center">
+          <CoraxLogo variant="wordmark" alt="CORAX" className="h-8" />
         </div>
       </header>
 

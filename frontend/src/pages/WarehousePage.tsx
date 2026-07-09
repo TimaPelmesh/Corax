@@ -303,7 +303,7 @@ export function WarehousePage() {
                 <div className="relative">
                   <button
                     type="button"
-                    className="rounded-lg px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                    className="rounded-lg px-2 py-1 text-xs font-semibold text-red-700 hover:bg-blue-50"
                     onClick={() => setRoomMenuOpen((v) => !v)}
                   >
                     ⋮
@@ -316,7 +316,7 @@ export function WarehousePage() {
                       <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50" onClick={() => void renameRoom()} disabled={!activeRoom}>
                         Переименовать
                       </button>
-                      <button type="button" className="block w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50" onClick={() => void deleteRoom()} disabled={!activeRoom}>
+                      <button type="button" className="block w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-blue-50" onClick={() => void deleteRoom()} disabled={!activeRoom}>
                         Удалить
                       </button>
                     </div>
@@ -464,7 +464,7 @@ export function WarehousePage() {
                               <button
                                 type="button"
                                 title="Удалить запись"
-                                className="rounded-lg p-1 text-neutral-400 hover:bg-red-50 hover:text-red-700"
+                                className="rounded-lg p-1 text-neutral-400 hover:bg-blue-50 hover:text-blue-700"
                                 onClick={() => void deleteItem(item)}
                               >
                                 <IconTrash className="h-4 w-4" />

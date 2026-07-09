@@ -42,7 +42,7 @@ const REQUEST_STATUSES = ['open', 'in_progress', 'done', 'cancelled'] as const
 const REQUEST_PRIORITIES = ['low', 'normal', 'high'] as const
 
 const CREATE_FORM_INPUT_CLS =
-  'w-full rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-[13px] text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20'
+  'w-full rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-[13px] text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
 const CREATE_FORM_LABEL_CLS =
   'mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500'
 const STATS_BASES = ['opened', 'last_change', 'closed'] as const
@@ -56,7 +56,7 @@ type StatsGroup = (typeof STATS_GROUPS)[number]
 type StatsChartMode = (typeof STATS_CHART_MODES)[number]
 
 const STATUS_PILL: Record<string, string> = {
-  open: 'bg-red-50 text-red-950 ring-1 ring-red-200/90',
+  open: 'bg-red-50 text-red-950 ring-1 ring-blue-200/90',
   in_progress: 'bg-white text-neutral-950 ring-1 ring-neutral-200/90',
   done: 'bg-neutral-50 text-neutral-950 ring-1 ring-neutral-200/90',
   cancelled: 'bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200/90',
@@ -316,7 +316,7 @@ function CategoryPicker({
               }
             }
           }}
-          className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+          className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
         />
         {value.trim() ? (
           <button
@@ -429,7 +429,7 @@ function topNWithOther(
 }
 
 /** Согласованная нейтрально‑красная палитра для диаграмм */
-const DONUT_COLORS = ['#0a0a0a', '#dc2626', '#404040', '#737373', '#991b1b', '#525252', '#a3a3a3', '#d4d4d4']
+const DONUT_COLORS = ['#0a0a0a', '#2563eb', '#404040', '#737373', '#1d4ed8', '#525252', '#a3a3a3', '#d4d4d4']
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180
@@ -599,7 +599,7 @@ function HorizontalBars({
                 <span className="shrink-0 font-mono text-slate-900">{item.count}</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-gradient-to-r from-red-600 to-zinc-700" style={{ width: `${pct}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-zinc-700" style={{ width: `${pct}%` }} />
               </div>
             </div>
           )
@@ -640,7 +640,7 @@ function MiniStatCard({
   compact?: boolean
 }) {
   const ring =
-    variant === 'danger' ? 'ring-red-200/80' : 'ring-neutral-200/90'
+    variant === 'danger' ? 'ring-blue-200/80' : 'ring-neutral-200/90'
   const iconBg =
     variant === 'danger' ? 'bg-red-50 text-red-950' : 'bg-neutral-100 text-neutral-700'
 
@@ -922,7 +922,7 @@ function DirectoryRequesterPicker({
           autoComplete="off"
           className={
             inputClassName ??
-            'w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20'
+            'w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
           }
         />
         {open ? (
@@ -1023,7 +1023,7 @@ function DirectoryAssigneesPicker({
 
   const inputCls =
     inputClassName ??
-    'w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20'
+    'w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
 
   return (
     <div className={className ?? 'mb-3'}>
@@ -1414,7 +1414,7 @@ export function ServiceRequestsPage() {
     const labels = statsSeries.items.map((x) => x.key)
     const data = statsSeries.items.map((x) => x.total)
     const statusDatasetDefs = [
-      { key: 'open', label: 'Открыты', color: '#dc2626', bg: 'rgb(220 38 38 / 0.1)' },
+      { key: 'open', label: 'Открыты', color: '#2563eb', bg: 'rgb(37 99 235 / 0.1)' },
       { key: 'in_progress', label: 'В работе', color: '#0f172a', bg: 'rgb(15 23 42 / 0.1)' },
       { key: 'done', label: 'Закрыты', color: '#334155', bg: 'rgb(51 65 85 / 0.1)' },
       { key: 'cancelled', label: 'Отменены', color: '#64748b', bg: 'rgb(100 116 139 / 0.1)' },
@@ -1443,8 +1443,8 @@ export function ServiceRequestsPage() {
                 {
                   label: 'Заявки',
                   data,
-                  borderColor: 'rgb(220 38 38)',
-                  backgroundColor: 'rgb(220 38 38 / 0.12)',
+                  borderColor: 'rgb(37 99 235)',
+                  backgroundColor: 'rgb(37 99 235 / 0.12)',
                   pointRadius: 3,
                   pointHoverRadius: 5,
                   tension: 0.25,
@@ -2123,7 +2123,7 @@ export function ServiceRequestsPage() {
     <div>
       {toast ? <Toast message={toast} onDismiss={() => setToast(null)} /> : null}
 
-      <div className="mb-5 overflow-hidden rounded-2xl border border-neutral-200/70 bg-gradient-to-br from-white via-neutral-50 to-red-50/40 px-5 py-4 shadow-sm ring-1 ring-neutral-200/30 sm:px-8 sm:py-5">
+      <div className="mb-5 overflow-hidden rounded-2xl border border-neutral-200/70 bg-gradient-to-br from-white via-neutral-50 to-blue-50/40 px-5 py-4 shadow-sm ring-1 ring-neutral-200/30 sm:px-8 sm:py-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
           <div className="page-hero-icon mt-0.5 shadow-md shadow-neutral-900/5 ring-1 ring-zinc-100/90">
             <IconTicket className="h-6 w-6" />
@@ -2166,7 +2166,7 @@ export function ServiceRequestsPage() {
                 onSubmit={onSubmitRequest}
                 className="min-w-0 w-full flex-1 overflow-hidden rounded-lg border border-slate-200/70 bg-white shadow-sm ring-1 ring-slate-200/40 sm:max-w-2xl"
               >
-                <div className="border-b border-slate-100 bg-gradient-to-br from-white via-slate-50 to-red-50/40 px-3 py-2 text-center">
+                <div className="border-b border-slate-100 bg-gradient-to-br from-white via-slate-50 to-blue-50/40 px-3 py-2 text-center">
                   <h2 className="font-[family-name:var(--font-display)] text-[13px] font-semibold tracking-tight text-slate-900">
                     {editingRequestId != null ? `Редактирование заявки #${editingRequestId}` : 'Новая заявка'}
                   </h2>
@@ -2195,7 +2195,7 @@ export function ServiceRequestsPage() {
                       if (t) applyTemplateToForm(t)
                       setCreateTemplateSelect('')
                     }}
-                    className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[13px] font-medium text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20 disabled:opacity-60"
+                    className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[13px] font-medium text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60"
                   >
                     <option value="">— Выберите шаблон —</option>
                     {tplRows.map((t) => (
@@ -2210,7 +2210,7 @@ export function ServiceRequestsPage() {
                     <button
                       type="button"
                       onClick={() => navigate('/requests/templates')}
-                      className="whitespace-nowrap text-left text-xs font-semibold text-red-700 hover:underline"
+                      className="whitespace-nowrap text-left text-xs font-semibold text-blue-700 hover:underline"
                     >
                       Нет шаблонов — создать на вкладке «Шаблоны»
                     </button>
@@ -2400,7 +2400,7 @@ export function ServiceRequestsPage() {
               <label className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-100 bg-slate-50/80 px-2 py-1.5">
                 <input
                   type="checkbox"
-                  className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-red-600 focus:ring-red-500/30"
+                  className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
                   checked={closedSameAsPlanned}
                   onChange={(e) => {
                     const on = e.target.checked
@@ -2508,7 +2508,7 @@ export function ServiceRequestsPage() {
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
                   Здесь появится выдача и установка комплектующих (ОЗУ, SSD, сетевое и др.) с привязкой к этой
                   заявке. Пока учёт свободного оборудования — в разделе{' '}
-                  <a href="/knowledge-base/warehouse" className="font-medium text-red-700 underline decoration-red-200">
+                  <a href="/knowledge-base/warehouse" className="font-medium text-blue-700 underline decoration-blue-200">
                     Склад
                   </a>
                   .
@@ -2525,7 +2525,7 @@ export function ServiceRequestsPage() {
                 <button
                   type="submit"
                   disabled={saving || editDeleting}
-                  className="w-full rounded-md bg-red-600 py-2 text-[13px] font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-50"
+                  className="w-full rounded-md bg-blue-600 py-2 text-[13px] font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-blue-700 disabled:opacity-50"
                 >
                   {saving
                     ? editingRequestId != null
@@ -2682,7 +2682,7 @@ export function ServiceRequestsPage() {
                   onClick={() => void downloadPdf()}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-neutral-900 shadow-sm transition hover:bg-neutral-50 disabled:opacity-50"
                 >
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-600" aria-hidden />
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-600" aria-hidden />
                   {pdfBusy ? 'PDF…' : 'PDF'}
                 </button>
               </div>
@@ -2789,7 +2789,7 @@ export function ServiceRequestsPage() {
                                   </div>
                                   <div className="h-2 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/60">
                                     <div
-                                      className="h-full rounded-full bg-gradient-to-r from-neutral-800 to-red-700"
+                                      className="h-full rounded-full bg-gradient-to-r from-neutral-800 to-blue-700"
                                       style={{ width: `${Math.max(3, Math.round((x.v / max) * 100))}%` }}
                                     />
                                   </div>
@@ -3029,7 +3029,7 @@ export function ServiceRequestsPage() {
                   <button
                     type="button"
                     onClick={() => void downloadPdf()}
-                    className="rounded-xl bg-red-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700"
+                    className="rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
                     title="Скачать табличный PDF из сервера"
                   >
                     PDF (таблица)
@@ -3204,7 +3204,7 @@ export function ServiceRequestsPage() {
               <div className="lg:col-span-4">
                 <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
                   <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
-                    <span className="h-8 w-1 rounded-full bg-red-600/90" aria-hidden />
+                    <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
                     <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
                       KPI периода
                     </h3>
@@ -3343,7 +3343,7 @@ export function ServiceRequestsPage() {
                 <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6">
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-2">
-                      <span className="h-8 w-1 rounded-full bg-red-600/90" aria-hidden />
+                      <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
                       <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
                         Заявки за период
                       </h3>
@@ -3443,7 +3443,7 @@ export function ServiceRequestsPage() {
               <div className="lg:col-span-4">
                 <div className="app-card rounded-2xl border-slate-200/70 p-5 sm:p-6">
                   <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">
-                    <span className="h-8 w-1 rounded-full bg-red-600/90" aria-hidden />
+                    <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
                     <h2 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
                       {tplEditingId != null ? 'Редактирование шаблона' : 'Новый шаблон'}
                     </h2>
@@ -3581,7 +3581,7 @@ export function ServiceRequestsPage() {
                     <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-slate-100 bg-slate-50/80 px-2 py-1.5">
                       <input
                         type="checkbox"
-                        className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-red-600 focus:ring-red-500/30"
+                        className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
                         checked={tplClosedSameAsPlanned}
                         onChange={(e) => {
                           const on = e.target.checked
@@ -3616,7 +3616,7 @@ export function ServiceRequestsPage() {
                     users={userDir}
                     selectedIds={tplAssigneeIds}
                     onChange={setTplAssigneeIds}
-                    inputClassName="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/15"
+                    inputClassName="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/15"
                     hint="Клик по строке в списке добавляет или убирает исполнителя. Справочник тот же, что у инициатора."
                   />
                   <div className="mb-4">
@@ -3638,7 +3638,7 @@ export function ServiceRequestsPage() {
                       type="button"
                       disabled={tplBusy || !tplTitle.trim()}
                       onClick={() => void saveTemplateFromForm()}
-                      className="w-full flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-red-700 disabled:opacity-50"
+                      className="w-full flex-1 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-blue-700 disabled:opacity-50"
                     >
                       {tplBusy ? 'Сохранение…' : tplEditingId != null ? 'Сохранить изменения' : 'Сохранить шаблон'}
                     </button>
@@ -3740,7 +3740,7 @@ export function ServiceRequestsPage() {
                             <button
                               type="button"
                               onClick={() => applyTemplateToForm(t)}
-                              className="min-h-[40px] rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700"
+                              className="min-h-[40px] rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
                             >
                               Применить
                             </button>
@@ -3748,7 +3748,7 @@ export function ServiceRequestsPage() {
                               type="button"
                               disabled={tplBusy}
                               onClick={() => void deleteTemplate(t.id, t.title)}
-                              className="min-h-[40px] rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                              className="min-h-[40px] rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-blue-50 disabled:opacity-50"
                             >
                               Удалить
                             </button>

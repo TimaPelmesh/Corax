@@ -1,23 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="7" fill="#0a0a0a"/>
-  <path
-    fill="#dc2626"
-    d="M8 22.5c2.2-5.8 5.4-9.8 9.6-12.1 1.2-.6 2.5-.9 3.8-.8-.6-2.1-2.4-3.6-4.7-3.6-2.9 0-5.2 2.3-5.2 5.2 0 .6.1 1.2.3 1.7C9.8 14.2 8.6 18 8 22.5Z"
-    opacity="0.55"
-  />
-  <path
-    fill="#dc2626"
-    d="M10.5 8.2c3.8-.4 7.2 1.6 8.8 5.1 1.8 3.9.4 8.6-3.2 10.7-3.2 1.8-7.2 1.1-9.6-1.7 2.8-2.4 4.6-5.8 4.6-9.7 0-.5 0-1-.1-1.5.2-.9.8-1.7 1.5-2.9Z"
-  />
-  <path
-    fill="#ef4444"
-    d="M12.8 10.8c2.6-.2 4.9 1.4 5.8 3.8.9 2.4-.1 5.1-2.2 6.4-2 1.2-4.5.8-6-1 .9-1.8 1.5-3.8 1.7-5.9.1-.8.3-1.6.7-2.3Z"
-  />
-  <ellipse cx="17.6" cy="13.8" rx="1.1" ry="0.55" fill="#0a0a0a" transform="rotate(-18 17.6 13.8)"/>
-  <path
-    stroke="#fca5a5"
-    stroke-width="0.8"
-    stroke-linecap="round"
-    d="M19.8 11.2 24.5 8.5"
-  />
+  <rect width="32" height="32" rx="7" fill="#0f172a"/>
+  <defs>
+    <linearGradient id="b" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#93c5fd"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <path d="M4 22c4-1 8-1 12 0 3 1 6 2 10 3" stroke="#78350f" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+  <path d="M10 18c2-3 5-5 9-5 3 0 5 1 7 3 1 2 0 4-2 5-2 1-4 1-6 0-2-2-4-4-6-5-2 2-2 4-2 2Z" fill="url(#b)"/>
+  <path d="M18 12c2-2 4-3 6-3 1 0 2 1 2 2 0 1-1 2-2 2" fill="url(#b)"/>
+  <path d="M21 11.5 24 10.5 25.5 11.5" stroke="url(#b)" stroke-width="0.8" stroke-linecap="round"/>
+  <path d="M8 20c-1 2-2 4-3 6 2-1 3-2 4-4" fill="url(#b)" opacity="0.7"/>
 </svg>

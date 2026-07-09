@@ -99,9 +99,9 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden bg-[#030303] px-4 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-10 lg:px-14">
+    <div className="relative flex min-h-dvh w-full items-center justify-start overflow-hidden bg-[#030303] px-4 py-10 pb-[max(2rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-10 lg:px-14">
       <div className="pointer-events-none absolute inset-0" aria-hidden>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_50%,rgba(220,38,38,0.18),transparent_38%),radial-gradient(circle_at_88%_48%,rgba(255,255,255,0.04),transparent_28%),linear-gradient(180deg,rgba(8,8,8,0.12),rgba(3,3,3,0.98))]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_50%,rgba(37,99,235,0.2),transparent_36%),radial-gradient(circle_at_78%_42%,rgba(34,211,238,0.12),transparent_32%),radial-gradient(circle_at_92%_68%,rgba(99,102,241,0.14),transparent_28%),linear-gradient(180deg,rgba(8,8,8,0.12),rgba(3,3,3,0.98))]" />
         <div
           className="absolute inset-0 opacity-[0.14]"
           style={{
@@ -124,7 +124,7 @@ export function LoginPage() {
               .filter(Boolean)
               .join(' ')}
           >
-            <div className="flex items-start gap-3 rounded-2xl border border-red-500/35 bg-black/80 px-4 py-3.5 text-sm text-red-100 shadow-[0_24px_60px_-20px_rgba(220,38,38,0.55)] ring-1 ring-red-500/20 backdrop-blur-xl">
+            <div className="flex items-start gap-3 rounded-2xl border border-red-500/35 bg-black/80 px-4 py-3.5 text-sm text-red-100 shadow-[0_24px_60px_-20px_rgba(37,99,235,0.55)] ring-1 ring-red-500/20 backdrop-blur-xl">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-xs font-bold text-red-300">
                 !
               </span>
@@ -134,26 +134,56 @@ export function LoginPage() {
         </div>
       ) : null}
 
-      <div className="relative z-10 flex w-full max-w-[1180px] flex-col items-center gap-10 md:flex-row md:items-center md:justify-between md:gap-6 lg:gap-10">
-        <div className="relative z-20 flex w-full shrink-0 items-center justify-center md:w-auto md:justify-start md:pl-0 lg:-ml-4 xl:-ml-8">
-          <div className="relative flex shrink-0 items-center justify-center">
-            <div
-              className="login-logo-glow pointer-events-none absolute h-[min(70vw,22rem)] w-[min(70vw,22rem)] rounded-full bg-red-600/18 blur-3xl"
-              aria-hidden
-            />
+      <div className="relative z-10 flex w-full max-w-[1180px] flex-col items-center gap-10 lg:ml-[max(2.75rem,7vw)] lg:flex-row lg:items-center lg:justify-start lg:gap-10 xl:ml-[max(3.5rem,10vw)] xl:gap-12">
+        <div className="relative z-20 flex w-full shrink-0 items-center justify-center lg:flex-1 lg:justify-start">
+          <div className="login-brand-stage relative flex min-h-[min(72vw,420px)] w-full max-w-[560px] translate-x-1 items-center justify-center sm:min-h-[380px] sm:translate-x-2 lg:min-h-[460px] lg:max-w-[620px] lg:translate-x-5 xl:translate-x-8">
+            <div className="login-brand-backdrop pointer-events-none absolute inset-0" aria-hidden>
+              <div className="login-brand-orb login-brand-orb-a" />
+              <div className="login-brand-orb login-brand-orb-b" />
+              <div className="login-brand-orb login-brand-orb-c" />
+              <svg className="login-brand-leaf login-brand-leaf-a" viewBox="0 0 80 120" fill="none">
+                <path
+                  d="M40 8C18 34 10 68 14 104C34 88 52 58 58 28C54 18 48 12 40 8Z"
+                  fill="url(#login-leaf-a)"
+                  opacity="0.55"
+                />
+                <defs>
+                  <linearGradient id="login-leaf-a" x1="14" y1="8" x2="58" y2="104" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="#22d3ee" stopOpacity="0.5" />
+                    <stop offset="1" stopColor="#2563eb" stopOpacity="0.15" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <svg className="login-brand-leaf login-brand-leaf-b" viewBox="0 0 80 120" fill="none">
+                <path
+                  d="M40 10C58 30 66 62 60 98C42 84 28 58 22 32C26 20 32 14 40 10Z"
+                  fill="url(#login-leaf-b)"
+                  opacity="0.45"
+                />
+                <defs>
+                  <linearGradient id="login-leaf-b" x1="22" y1="10" x2="66" y2="98" gradientUnits="userSpaceOnUse">
+                    <stop stopColor="#60a5fa" stopOpacity="0.45" />
+                    <stop offset="1" stopColor="#1e40af" stopOpacity="0.1" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <svg className="login-brand-leaf login-brand-leaf-c" viewBox="0 0 60 60" fill="none">
+                <ellipse cx="30" cy="30" rx="22" ry="10" fill="#38bdf8" opacity="0.12" transform="rotate(-24 30 30)" />
+              </svg>
+            </div>
             <CoraxLogo
               animated
-              className="relative drop-shadow-[0_20px_60px_rgba(220,38,38,0.28)]"
+              className="relative z-10 drop-shadow-[0_28px_80px_rgba(37,99,235,0.35)]"
             />
           </div>
         </div>
 
-        <div className="login-card-enter relative z-20 w-full max-w-[420px] shrink-0 md:mr-0 md:max-w-[440px] lg:mr-2 xl:mr-6">
-          <div className="relative overflow-hidden rounded-[1.75rem] border border-white/12 bg-black/50 p-8 shadow-[0_40px_100px_-36px_rgba(0,0,0,0.98),0_0_0_1px_rgba(220,38,38,0.08)] ring-1 ring-red-500/15 backdrop-blur-xl">
+        <div className="login-card-enter relative z-20 w-full max-w-[420px] shrink-0 lg:max-w-[440px]">
+          <div className="relative overflow-hidden rounded-[1.75rem] border border-white/12 bg-black/50 p-8 shadow-[0_40px_100px_-36px_rgba(0,0,0,0.98),0_0_0_1px_rgba(37,99,235,0.08)] ring-1 ring-blue-500/15 backdrop-blur-xl">
             <div className="pointer-events-none absolute inset-0 opacity-80" aria-hidden>
-              <div className="absolute -left-12 -top-12 h-56 w-56 rounded-full bg-red-500/20 blur-3xl" />
+              <div className="absolute -left-12 -top-12 h-56 w-56 rounded-full bg-blue-500/20 blur-3xl" />
               <div className="absolute -bottom-14 -right-14 h-64 w-64 rounded-full bg-white/5 blur-3xl" />
-              <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-red-400/40 to-transparent" />
+              <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/40 to-transparent" />
             </div>
 
             <div className="relative mb-6">
@@ -167,7 +197,7 @@ export function LoginPage() {
                   Логин
                 </label>
                 <input
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-red-500/60 focus:ring-2 focus:ring-red-500/25"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/25"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -183,7 +213,7 @@ export function LoginPage() {
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 pr-12 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-red-500/60 focus:ring-2 focus:ring-red-500/25"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 pr-12 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/25"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
@@ -235,7 +265,7 @@ export function LoginPage() {
               <button
                 type="submit"
                 disabled={pending}
-                className="login-field-enter flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-gradient-to-r from-red-700 via-red-600 to-red-500 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_-18px_rgba(220,38,38,0.95)] transition hover:brightness-110 hover:shadow-[0_20px_48px_-16px_rgba(220,38,38,1)] disabled:opacity-50"
+                className="login-field-enter flex w-full items-center justify-center gap-2 rounded-xl border border-blue-500/40 bg-gradient-to-r from-blue-700 via-blue-600 to-blue-500 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_-18px_rgba(37,99,235,0.95)] transition hover:brightness-110 hover:shadow-[0_20px_48px_-16px_rgba(37,99,235,1)] disabled:opacity-50"
               >
                 <IconLock className="h-4 w-4 opacity-80" aria-hidden />
                 {pending ? 'Вход…' : 'Войти'}
@@ -247,6 +277,7 @@ export function LoginPage() {
             <p className="mt-6 text-center text-xs leading-relaxed text-white/40">{connectionNote}</p>
           ) : null}
         </div>
+
       </div>
     </div>
   )

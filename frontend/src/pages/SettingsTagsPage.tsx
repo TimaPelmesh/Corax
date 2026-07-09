@@ -118,7 +118,7 @@ function TagRow({
       </td>
       <td className="min-w-[12rem] px-3 py-2 align-middle">
         <input
-          className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+          className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
           value={nameDraft}
           onChange={(e) => setNameDraft(e.target.value)}
           onBlur={() => void saveName()}
@@ -126,7 +126,7 @@ function TagRow({
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
           }}
         />
-        {rowErr ? <p className="mt-1 text-xs text-red-600">{rowErr}</p> : null}
+        {rowErr ? <p className="mt-1 text-xs text-blue-600">{rowErr}</p> : null}
       </td>
       <td className="px-3 py-2 text-right align-middle">
         <button

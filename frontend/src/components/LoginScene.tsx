@@ -129,7 +129,7 @@ function LoginSceneWebGL() {
         const starPositions = new Float32Array(starCount * 3)
         const starColors = new Float32Array(starCount * 3)
         const colorA = new THREE.Color('#ffffff')
-        const colorB = new THREE.Color('#ef4444')
+        const colorB = new THREE.Color('#3b82f6')
         const mixed = new THREE.Color()
 
         for (let i = 0; i < starCount; i += 1) {

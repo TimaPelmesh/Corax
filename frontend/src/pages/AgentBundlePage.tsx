@@ -145,7 +145,7 @@ export function AgentBundlePage() {
     <div>
       <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
         <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconKey className="h-7 w-7 text-red-600" />
+          <IconKey className="h-7 w-7 text-blue-600" />
         </div>
         <div>
           <h1 className="page-title">Сборка агента</h1>
@@ -260,7 +260,7 @@ export function AgentBundlePage() {
                   <label
                     className={`flex cursor-pointer flex-col rounded-xl border px-4 py-3 transition ${
                       level === 'full'
-                        ? 'border-red-300 bg-red-50/50 ring-1 ring-red-200'
+                        ? 'border-blue-300 bg-blue-50/50 ring-1 ring-blue-200'
                         : 'border-neutral-200 hover:border-neutral-300'
                     }`}
                   >
@@ -280,7 +280,7 @@ export function AgentBundlePage() {
                   <label
                     className={`flex cursor-pointer flex-col rounded-xl border px-4 py-3 transition ${
                       level === 'custom'
-                        ? 'border-red-300 bg-red-50/50 ring-1 ring-red-200'
+                        ? 'border-blue-300 bg-blue-50/50 ring-1 ring-blue-200'
                         : 'border-neutral-200 hover:border-neutral-300'
                     }`}
                   >
@@ -327,7 +327,7 @@ export function AgentBundlePage() {
               <p>
                 <strong>Каждая сборка создаёт новый токен.</strong> При скачивании ZIP сервер генерирует пару{' '}
                 <code className="text-[11px]">public_id.secret</code>, сохраняет хеш в базе (раздел{' '}
-                <Link to="/settings/agent-tokens" className="text-red-700 underline-offset-2 hover:underline">
+                <Link to="/settings/agent-tokens" className="text-blue-700 underline-offset-2 hover:underline">
                   Токены агентов
                 </Link>
                 ) и записывает полный токен в agent_env.bat внутри архива.

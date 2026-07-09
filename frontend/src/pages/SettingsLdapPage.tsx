@@ -185,7 +185,7 @@ export function SettingsLdapPage() {
     <div>
       <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
         <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconKey className="h-7 w-7 text-red-600" />
+          <IconKey className="h-7 w-7 text-blue-600" />
         </div>
         <div className="min-w-0">
           <h1 className="page-title">Настройки LDAP</h1>
@@ -268,7 +268,7 @@ export function SettingsLdapPage() {
               value={uri}
               onChange={(e) => setUri(e.target.value)}
               placeholder="ldap://dc.example.local:389 или ldaps://dc.example.local:636"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
@@ -278,7 +278,7 @@ export function SettingsLdapPage() {
               onChange={(e) => setBindDn(e.target.value)}
               placeholder="CN=svc_inventory,OU=Service,DC=example,DC=local"
               disabled={allowAnonymous}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
@@ -289,7 +289,7 @@ export function SettingsLdapPage() {
               onChange={(e) => setBindPassword(e.target.value)}
               placeholder={bindPasswordSet ? '•••••••• (уже задан, можно не менять)' : 'введите пароль'}
               disabled={allowAnonymous}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
             <p className="mt-1 text-xs text-slate-500">
               {allowAnonymous ? (
@@ -307,7 +307,7 @@ export function SettingsLdapPage() {
               value={userSearchBase}
               onChange={(e) => setUserSearchBase(e.target.value)}
               placeholder="DC=example,DC=local или OU=Users,DC=example,DC=local"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div className="sm:col-span-2">
@@ -316,7 +316,7 @@ export function SettingsLdapPage() {
               value={userFilter}
               onChange={(e) => setUserFilter(e.target.value)}
               placeholder="(&(objectClass=user)(objectCategory=person))"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
@@ -325,7 +325,7 @@ export function SettingsLdapPage() {
               value={usernameAttr}
               onChange={(e) => setUsernameAttr(e.target.value)}
               placeholder="sAMAccountName"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
@@ -336,7 +336,7 @@ export function SettingsLdapPage() {
               onChange={(e) => setSyncLimit(Number(e.target.value))}
               min={1}
               max={5000}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
@@ -345,7 +345,7 @@ export function SettingsLdapPage() {
               value={displayNameAttr}
               onChange={(e) => setDisplayNameAttr(e.target.value)}
               placeholder="displayName"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
@@ -354,7 +354,7 @@ export function SettingsLdapPage() {
               value={emailAttr}
               onChange={(e) => setEmailAttr(e.target.value)}
               placeholder="mail"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
         </div>
@@ -408,7 +408,7 @@ export function SettingsLdapPage() {
                 value={probeUsername}
                 onChange={(e) => setProbeUsername(e.target.value)}
                 placeholder="jdoe"
-                className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-red-500/20"
+                className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
             <button

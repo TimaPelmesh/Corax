@@ -1715,7 +1715,7 @@ export function KnowledgeSitemapPage() {
                 ) : null}
                 <button
                   type="button"
-                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-700 transition hover:bg-blue-50 disabled:opacity-60"
                   onClick={() => void deleteFloor()}
                   disabled={!canEdit || !activeDiagram || diagrams.length <= 1 || loading}
                 >
@@ -2229,7 +2229,7 @@ export function KnowledgeSitemapPage() {
                     {selectedMarker.meta?.computer_id ? (
                       <button
                         type="button"
-                        className="h-8 rounded-lg border border-red-200 bg-white px-2.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+                        className="h-8 rounded-lg border border-red-200 bg-white px-2.5 text-xs font-medium text-red-700 transition hover:bg-blue-50 disabled:opacity-60"
                         onClick={() =>
                           updateMarker(selectedMarker.id, {
                             meta: {
@@ -2490,7 +2490,7 @@ export function KnowledgeSitemapPage() {
                         />
                         <button
                           type="button"
-                          className="mt-1 w-full rounded-md border border-red-100 bg-white py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          className="mt-1 w-full rounded-md border border-red-100 bg-white py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                           onClick={() => removePlacePhoto(ph.id)}
                           disabled={!canEdit}
                         >
@@ -2527,7 +2527,7 @@ export function KnowledgeSitemapPage() {
 
               <button
                 type="button"
-                className="w-full rounded-lg border border-red-100 bg-white px-2.5 py-1.5 text-sm font-medium text-red-600 transition hover:border-red-200 hover:bg-red-50"
+                className="w-full rounded-lg border border-red-100 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
                 onClick={deleteSelected}
                 disabled={!canEdit}
               >
@@ -2642,7 +2642,7 @@ export function KnowledgeSitemapPage() {
               </div>
               <button
                 type="button"
-                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-red-400 hover:bg-red-50 hover:text-red-700 hover:ring-red-200/90"
+                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90"
                 onClick={() => setPcInfoModalOpen(false)}
                 aria-label="Закрыть"
               >
@@ -2733,7 +2733,7 @@ export function KnowledgeSitemapPage() {
                   placeholder="Поиск в списке ПО…"
                   value={pcInfoSwFilter}
                   onChange={(e) => setPcInfoSwFilter(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                  className="mt-2 w-full rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <p className="mt-1 text-xs text-slate-500">Показано: {filteredPcSoftware.length} из {pcDetail.software.length}</p>
                 <ul className="mt-2 max-h-[min(70vh,32rem)] min-h-[12rem] overflow-y-auto rounded-xl border border-slate-200/90 bg-slate-50/80 text-sm">

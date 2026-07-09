@@ -6,15 +6,15 @@ import { IconDashboard, IconDisk, IconPcs, IconPrinter, IconSoftware, IconTag } 
 
 /** Согласованная палитра для кольцевых диаграмм (нейтральная база + акцент бренда) */
 const DONUT_COLORS = [
-  '#dc2626',
+  '#2563eb',
   '#18181b',
   '#3f3f46',
   '#71717a',
-  '#b91c1c',
+  '#1d4ed8',
   '#52525b',
   '#a1a1aa',
   '#e4e4e7',
-  '#991b1b',
+  '#1e40af',
   '#27272a',
   '#d4d4d8',
   '#78716c',
@@ -428,7 +428,7 @@ function BarDistribution({
               onClick={clickable ? () => onItemClick?.(row.name) : undefined}
             >
               <div
-                className="absolute inset-x-0 bottom-0 rounded-t-xl bg-gradient-to-t from-red-700 via-neutral-800 to-neutral-600 opacity-95 shadow-[0_-4px_16px_-4px_rgb(0_0_0/0.15)] transition-[height] duration-300 ease-out group-hover:opacity-100"
+                className="absolute inset-x-0 bottom-0 rounded-t-xl bg-gradient-to-t from-blue-700 via-neutral-800 to-neutral-600 opacity-95 shadow-[0_-4px_16px_-4px_rgb(0_0_0/0.15)] transition-[height] duration-300 ease-out group-hover:opacity-100"
                 style={{ height: `${Math.max(6, pct)}%` }}
               />
               <div className="absolute inset-x-0 top-2 px-1.5 text-center font-mono text-[11px] font-semibold tabular-nums text-neutral-900 drop-shadow-sm">
@@ -469,9 +469,9 @@ function DiskDevicesByAvgList({
         const pct = Math.min(100, Math.round(row.avg_used_percent))
         const barTone =
           pct >= 92
-            ? 'from-neutral-950 via-red-950 to-red-500'
+            ? 'from-neutral-950 via-blue-950 to-blue-500'
             : pct >= 82
-              ? 'from-neutral-950 via-neutral-900 to-red-700'
+              ? 'from-neutral-950 via-neutral-900 to-blue-700'
               : pct >= 70
                 ? 'from-neutral-900 to-neutral-950'
                 : 'from-neutral-800 to-black'
@@ -653,7 +653,7 @@ function MiniStatCard({
 }) {
   const isBrand = accent === 'brand'
   const iconWrap = isBrand
-    ? 'border border-red-100 bg-red-50 text-red-600 shadow-[inset_0_1px_0_rgb(255_255_255/0.78)]'
+    ? 'border border-red-100 bg-red-50 text-blue-600 shadow-[inset_0_1px_0_rgb(255_255_255/0.78)]'
     : 'border border-neutral-100 bg-neutral-50 text-neutral-700 shadow-[inset_0_1px_0_rgb(255_255_255/0.82)]'
 
   return (
@@ -668,7 +668,7 @@ function MiniStatCard({
       />
       {isBrand ? (
         <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/35 to-transparent"
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-500/35 to-transparent"
           aria-hidden
         />
       ) : (
@@ -712,7 +712,7 @@ function SectionCard({
       className={`group relative overflow-hidden rounded-[1.15rem] border border-neutral-200/70 bg-white ${pad} shadow-[0_16px_44px_-34px_rgb(15_23_42/0.48),0_1px_2px_rgb(15_23_42/0.04)] transition duration-200 hover:border-neutral-300/80 hover:shadow-[0_24px_62px_-40px_rgb(15_23_42/0.52),0_1px_2px_rgb(15_23_42/0.04)] ${className}`}
     >
       <div
-        className="pointer-events-none absolute -right-20 -top-20 h-44 w-44 rounded-full bg-red-50/80 blur-3xl transition-opacity group-hover:opacity-100"
+        className="pointer-events-none absolute -right-20 -top-20 h-44 w-44 rounded-full bg-blue-50/80 blur-3xl transition-opacity group-hover:opacity-100"
         aria-hidden
       />
       <div className="relative flex flex-wrap items-start justify-between gap-3">
@@ -802,7 +802,7 @@ export function DashboardPage() {
     <div>
       <div className="relative mb-6 overflow-hidden rounded-[1rem] border border-neutral-200/70 bg-white px-4 py-5 shadow-[0_18px_50px_-38px_rgb(15_23_42/0.55),0_1px_2px_rgb(15_23_42/0.04)] sm:px-6 sm:py-6">
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-red-600 shadow-[inset_0_1px_0_rgb(255_255_255/0.82)] [&_svg]:!h-6 [&_svg]:!w-6">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-blue-600 shadow-[inset_0_1px_0_rgb(255_255_255/0.82)] [&_svg]:!h-6 [&_svg]:!w-6">
             <IconDashboard className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1">
@@ -1132,7 +1132,7 @@ export function DashboardPage() {
                                 </div>
                                 <div className="h-2 overflow-hidden rounded-full bg-neutral-200/50" title={tip}>
                                   <div
-                                    className="h-full rounded-full bg-gradient-to-r from-red-600 to-neutral-800"
+                                    className="h-full rounded-full bg-gradient-to-r from-blue-600 to-neutral-800"
                                     style={{ width: `${Math.max(5, pct)}%` }}
                                     title={tip}
                                   />

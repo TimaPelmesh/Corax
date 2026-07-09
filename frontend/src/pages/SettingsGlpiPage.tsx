@@ -255,7 +255,7 @@ export function SettingsGlpiPage() {
       <div className="space-y-8">
         <div>
           <div className="mb-4 flex items-center gap-2">
-            <IconPcs className="h-5 w-5 text-red-600" />
+            <IconPcs className="h-5 w-5 text-blue-600" />
             <h2 className="text-sm font-semibold text-slate-900">Парк ПК</h2>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
@@ -329,7 +329,7 @@ export function SettingsGlpiPage() {
 
         <div>
           <div className="mb-4 flex items-center gap-2">
-            <IconTicket className="h-5 w-5 text-red-600" />
+            <IconTicket className="h-5 w-5 text-blue-600" />
             <h2 className="text-sm font-semibold text-slate-900">Заявки</h2>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">

@@ -156,7 +156,7 @@ function TreeNodeRow({
           type="button"
           className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${
             hasChildren
-              ? 'border-slate-200/90 bg-white text-slate-600 shadow-sm hover:border-red-200 hover:bg-red-50/50 hover:text-red-700'
+              ? 'border-slate-200/90 bg-white text-slate-600 shadow-sm hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-700'
               : 'border-transparent bg-transparent text-slate-300'
           }`}
           onClick={() => hasChildren && onToggleExpand(node.id)}
@@ -171,7 +171,7 @@ function TreeNodeRow({
         <div
           className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-lg border px-3 py-2 ${
             hasChildren
-              ? 'border-red-100/80 bg-gradient-to-r from-red-50/50 to-white'
+              ? 'border-red-100/80 bg-gradient-to-r from-blue-50/50 to-white'
               : 'border-slate-200/70 bg-white'
           }`}
         >
@@ -238,14 +238,14 @@ function TreeNodeRow({
               </button>
               <button
                 type="button"
-                className="rounded-lg border border-red-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-700 shadow-sm hover:bg-red-50"
+                className="rounded-lg border border-red-200/80 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-700 shadow-sm hover:bg-blue-50"
                 onClick={() => onStartAddChild(node.id)}
               >
                 + Подгруппа
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-red-50/80 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                className="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-blue-50/80 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
                 onClick={() => onRemove(node.id, node.path, hasChildren)}
               >
                 <IconTrash className="h-3.5 w-3.5" />
@@ -257,14 +257,14 @@ function TreeNodeRow({
       </div>
 
       {rowErr ? (
-        <div className="mb-1 text-xs text-red-600" style={{ marginLeft: `${indentPx + 2.75}rem` }}>
+        <div className="mb-1 text-xs text-blue-600" style={{ marginLeft: `${indentPx + 2.75}rem` }}>
           {rowErr}
         </div>
       ) : null}
 
       {isAddingHere && canManage ? (
         <form
-          className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-red-200/90 bg-red-50/30 px-3 py-2.5"
+          className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-red-200/90 bg-blue-50/30 px-3 py-2.5"
           style={{ marginLeft: `${indentPx + 2.5}rem` }}
           onSubmit={(e) => {
             e.preventDefault()

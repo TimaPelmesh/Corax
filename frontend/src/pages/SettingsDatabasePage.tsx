@@ -146,7 +146,7 @@ export function SettingsDatabasePage() {
               type="text"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100"
+              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
               placeholder="RESTORE"
               autoComplete="off"
             />
@@ -182,7 +182,7 @@ export function SettingsDatabasePage() {
           />
           <button
             type="button"
-            className="app-btn app-btn-secondary border-red-200 text-red-800 hover:bg-red-50"
+            className="app-btn app-btn-secondary border-red-200 text-red-800 hover:bg-blue-50"
             disabled={importBusy || !toolsOk || confirm.trim() !== 'RESTORE'}
             onClick={() => importRef.current?.click()}
           >

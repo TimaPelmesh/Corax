@@ -44,7 +44,7 @@ type ChatTurn = {
 
 function ThinkingBubble() {
   return (
-    <div className="mr-1 flex items-center gap-2.5 rounded-lg border border-red-100/80 bg-gradient-to-r from-white to-red-50/40 px-3 py-2.5 shadow-sm">
+    <div className="mr-1 flex items-center gap-2.5 rounded-lg border border-red-100/80 bg-gradient-to-r from-white to-blue-50/40 px-3 py-2.5 shadow-sm">
       <div className="flex gap-1" aria-hidden>
         {[0, 1, 2].map((i) => (
           <span
@@ -613,7 +613,7 @@ export function WikiRagChat({
                     <li key={j}>
                       <button
                         type="button"
-                        className="text-left text-red-700 underline"
+                        className="text-left text-blue-700 underline"
                         onClick={() => onOpenDocument?.(s.document_id)}
                       >
                         {s.filename}
@@ -634,7 +634,7 @@ export function WikiRagChat({
           onChange={(e) => setInput(e.target.value)}
           rows={2}
           placeholder="Вопрос…"
-          className="min-h-[2.5rem] flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-red-300 focus:ring-1 focus:ring-red-500/30"
+          className="min-h-[2.5rem] flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-500/30"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -646,7 +646,7 @@ export function WikiRagChat({
           type="button"
           disabled={sending || !input.trim()}
           onClick={() => void send()}
-          className="shrink-0 self-end rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          className="shrink-0 self-end rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
         >
           →
         </button>

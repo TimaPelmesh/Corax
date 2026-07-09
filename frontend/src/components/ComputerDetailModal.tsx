@@ -268,7 +268,7 @@ export function ComputerDetailModal({
               </div>
               <button
                 type="button"
-                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-red-400 hover:bg-red-50 hover:text-red-700 hover:ring-red-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
                 onClick={onClose}
                 aria-label="Закрыть"
               >
@@ -468,7 +468,7 @@ export function ComputerDetailModal({
                   {allTags.length === 0 ? (
                     <p className="text-sm text-slate-500">
                       Справочник пуст. Добавьте теги в разделе{' '}
-                      <Link to="/settings/tags" className="font-medium text-red-700 underline underline-offset-2 hover:text-neutral-800">
+                      <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2 hover:text-neutral-800">
                         Теги ПК
                       </Link>
                       .
@@ -486,7 +486,7 @@ export function ComputerDetailModal({
                         >
                           <input
                             type="checkbox"
-                            className="rounded border-slate-300 text-red-600 focus:ring-red-500"
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                             checked={selectedTagIds.includes(t.id)}
                             onChange={() => toggleTag(t.id)}
                           />
@@ -542,7 +542,7 @@ export function ComputerDetailModal({
                   placeholder="Поиск в списке ПО…"
                   value={swFilter}
                   onChange={(e) => setSwFilter(e.target.value)}
-                  className="mt-2 w-full shrink-0 rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                  className="mt-2 w-full shrink-0 rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <p className="mt-1 shrink-0 text-xs text-slate-500">
                   Показано: {filteredSoftware.length} из {detail.software.length}
@@ -628,7 +628,7 @@ export function ComputerDetailModal({
                   <div className="sm:col-span-1 lg:col-span-5">
                     <label className="text-xs font-medium text-slate-500">Локация / помещение</label>
                     <input
-                      className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-red-500/20"
+                      className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                       value={locationDraft}
                       onChange={(e) => setLocationDraft(e.target.value)}
                       placeholder="офис 3, этаж 2"
@@ -637,7 +637,7 @@ export function ComputerDetailModal({
                   <div className="sm:col-span-1 lg:col-span-3">
                     <label className="text-xs font-medium text-slate-500">ID пользователя (0 — снять)</label>
                     <input
-                      className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 font-mono text-sm transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-red-500/20"
+                      className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 font-mono text-sm transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                       value={assignUserId}
                       onChange={(e) => setAssignUserId(e.target.value)}
                       placeholder="1"
@@ -646,7 +646,7 @@ export function ComputerDetailModal({
                   <div className="sm:col-span-2 lg:col-span-4">
                     <label className="text-xs font-medium text-slate-500">Заметка</label>
                     <textarea
-                      className="mt-1 w-full resize-y rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-red-500/20"
+                      className="mt-1 w-full resize-y rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                       rows={2}
                       value={notesDraft}
                       onChange={(e) => setNotesDraft(e.target.value)}

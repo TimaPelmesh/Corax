@@ -18,8 +18,8 @@
   --color-surface: #ffffff;
   --color-panel: #ffffff;
   --color-border: #e5e5e5;
-  --color-primary: #dc2626;
-  --color-primary-hover: #b91c1c;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
   --color-success-bg: #ecfdf3;
   --color-success-border: #a7f3d0;
   --color-success-fg: #065f46;
@@ -55,7 +55,7 @@ body {
 }
 
 ::selection {
-  background: rgb(220 38 38 / 0.12);
+  background: rgb(37 99 235 / 0.12);
   color: inherit;
 }
 
@@ -172,7 +172,7 @@ body {
   }
 
   .app-input {
-    @apply w-full rounded-[0.75rem] border border-neutral-200/80 bg-white px-3.5 py-2.5 text-sm text-neutral-900 shadow-[inset_0_1px_0_rgb(255_255_255/0.9),0_1px_2px_rgb(15_23_42/0.03)] placeholder:text-neutral-400 transition focus:border-red-300 focus:bg-white focus:outline-none focus:ring-4 focus:ring-red-500/10;
+    @apply w-full rounded-[0.75rem] border border-neutral-200/80 bg-white px-3.5 py-2.5 text-sm text-neutral-900 shadow-[inset_0_1px_0_rgb(255_255_255/0.9),0_1px_2px_rgb(15_23_42/0.03)] placeholder:text-neutral-400 transition focus:border-blue-300 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10;
   }
 
   .app-input--lg {
@@ -184,7 +184,7 @@ body {
   }
 
   .app-btn-primary {
-    @apply border-red-600 bg-gradient-to-b from-red-500 to-red-700 text-white shadow-[0_18px_38px_-18px_rgba(220,38,38,0.75)] hover:from-red-500 hover:to-red-800;
+    @apply border-blue-600 bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-[0_18px_38px_-18px_rgba(37,99,235,0.75)] hover:from-blue-500 hover:to-blue-800;
   }
 
   .app-btn-secondary {
@@ -200,7 +200,7 @@ body {
   }
 
   .app-table-row {
-    @apply transition hover:bg-red-50/30;
+    @apply transition hover:bg-blue-50/30;
   }
 
   .app-alert {
@@ -641,15 +641,9 @@ body {
   .login-tagline-enter,
   .login-field-enter,
   .login-error-toast-in,
-  .login-error-toast-out {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
-    filter: none !important;
-  }
-
-  .login-scene-fallback-orb,
-  .login-scene-fallback-ring {
+  .login-error-toast-out,
+  .login-brand-orb,
+  .login-brand-leaf {
     animation: none !important;
   }
 }
@@ -670,7 +664,7 @@ body {
   top: 14%;
   height: 18rem;
   width: 18rem;
-  background: rgb(220 38 38 / 0.22);
+  background: rgb(37 99 235 / 0.22);
   animation: login-scene-drift-a 14s ease-in-out infinite;
 }
 
@@ -691,10 +685,10 @@ body {
   width: min(52vw, 22rem);
   transform: translate(-50%, -50%);
   border-radius: 9999px;
-  border: 1px solid rgb(220 38 38 / 0.18);
+  border: 1px solid rgb(37 99 235 / 0.18);
   box-shadow:
     0 0 0 1px rgb(255 255 255 / 0.04) inset,
-    0 0 80px rgb(220 38 38 / 0.12);
+    0 0 80px rgb(37 99 235 / 0.12);
   animation: login-scene-ring-spin 28s linear infinite;
 }
 
@@ -724,5 +718,159 @@ body {
   }
   to {
     transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Декор слева от логотипа на экране входа */
+.login-brand-stage {
+  isolation: isolate;
+}
+
+.login-brand-backdrop {
+  overflow: visible;
+}
+
+.login-brand-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(56px);
+}
+
+.login-brand-orb-a {
+  left: -8%;
+  top: 18%;
+  height: 16rem;
+  width: 16rem;
+  background: rgb(37 99 235 / 0.34);
+  animation: login-brand-drift-a 16s ease-in-out infinite;
+}
+
+.login-brand-orb-b {
+  right: -4%;
+  bottom: 10%;
+  height: 14rem;
+  width: 14rem;
+  background: rgb(34 211 238 / 0.18);
+  animation: login-brand-drift-b 20s ease-in-out infinite;
+}
+
+.login-brand-orb-c {
+  left: 28%;
+  top: -6%;
+  height: 11rem;
+  width: 11rem;
+  background: rgb(99 102 241 / 0.22);
+  animation: login-brand-drift-c 18s ease-in-out infinite;
+}
+
+.login-brand-leaf {
+  position: absolute;
+  pointer-events: none;
+}
+
+.login-brand-leaf-a {
+  left: -6%;
+  bottom: 8%;
+  width: 5.5rem;
+  opacity: 0.9;
+  transform: rotate(-18deg);
+  animation: login-brand-leaf-a 14s ease-in-out infinite;
+}
+
+.login-brand-leaf-b {
+  right: 0;
+  top: 12%;
+  width: 4.5rem;
+  opacity: 0.85;
+  transform: rotate(24deg);
+  animation: login-brand-leaf-b 17s ease-in-out infinite;
+}
+
+.login-brand-leaf-c {
+  left: 18%;
+  top: 6%;
+  width: 3.5rem;
+  animation: login-brand-leaf-c 12s ease-in-out infinite;
+}
+
+@keyframes login-brand-drift-a {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(18px, -14px) scale(1.08);
+  }
+}
+
+@keyframes login-brand-drift-b {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-16px, 12px) scale(1.05);
+  }
+}
+
+@keyframes login-brand-drift-c {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(10px, 16px) scale(1.06);
+  }
+}
+
+@keyframes login-brand-leaf-a {
+  0%,
+  100% {
+    transform: rotate(-18deg) translate(0, 0);
+  }
+  50% {
+    transform: rotate(-14deg) translate(6px, -8px);
+  }
+}
+
+@keyframes login-brand-leaf-b {
+  0%,
+  100% {
+    transform: rotate(24deg) translate(0, 0);
+  }
+  50% {
+    transform: rotate(28deg) translate(-5px, 6px);
+  }
+}
+
+@keyframes login-brand-leaf-c {
+  0%,
+  100% {
+    transform: rotate(-24deg) translate(0, 0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: rotate(-18deg) translate(4px, 4px);
+    opacity: 1;
+  }
+}
+
+@media (min-width: 768px) {
+  .login-brand-orb-a {
+    height: 20rem;
+    width: 20rem;
+  }
+
+  .login-brand-orb-b {
+    height: 17rem;
+    width: 17rem;
+  }
+
+  .login-brand-leaf-a {
+    width: 7rem;
+  }
+
+  .login-brand-leaf-b {
+    width: 5.5rem;
   }
 }
