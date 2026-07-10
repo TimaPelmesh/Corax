@@ -34,12 +34,12 @@ function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-5 bg-white">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-5 bg-[var(--color-bg)]">
         <div
-          className="h-10 w-10 animate-spin rounded-full border-2 border-neutral-200 border-t-red-600"
+          className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-primary)]"
           aria-hidden
         />
-        <span className="text-sm font-medium text-neutral-500">Загрузка…</span>
+        <span className="text-sm font-medium text-[var(--color-fg-subtle)]">Загрузка…</span>
       </div>
     )
   }

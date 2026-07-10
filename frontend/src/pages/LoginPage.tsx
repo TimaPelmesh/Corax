@@ -113,11 +113,11 @@ export function LoginPage() {
       </div>
 
       {error ? (
-        <div className="pointer-events-none fixed inset-y-0 right-0 z-50 flex items-start justify-end p-4 sm:items-center sm:p-8">
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] sm:top-6">
           <div
             role="alert"
             className={[
-              'login-error-toast pointer-events-auto max-w-[min(22rem,calc(100vw-2rem))]',
+              'login-error-toast pointer-events-auto w-full max-w-[min(22rem,calc(100vw-2rem))]',
               errorPhase === 'in' ? 'login-error-toast-in' : '',
               errorPhase === 'out' ? 'login-error-toast-out' : '',
             ]
@@ -265,7 +265,7 @@ export function LoginPage() {
               <button
                 type="submit"
                 disabled={pending}
-                className="login-field-enter flex w-full items-center justify-center gap-2 rounded-xl border border-blue-500/40 bg-gradient-to-r from-blue-700 via-blue-600 to-blue-500 py-3 text-sm font-semibold text-white shadow-[0_16px_40px_-18px_rgba(37,99,235,0.95)] transition hover:brightness-110 hover:shadow-[0_20px_48px_-16px_rgba(37,99,235,1)] disabled:opacity-50"
+                className="login-field-enter app-btn app-btn-primary !w-full !min-h-[48px]"
               >
                 <IconLock className="h-4 w-4 opacity-80" aria-hidden />
                 {pending ? 'Вход…' : 'Войти'}

@@ -30,12 +30,12 @@ def estimate_messages_tokens(messages: list[dict[str, str]]) -> int:
 
 
 def lm_context_token_limit() -> int:
-    return int(getattr(settings, "wiki_rag_lm_context_tokens", None) or 3584)
+    return int(getattr(settings, "wiki_rag_lm_context_tokens", None) or 20_000)
 
 
 def lm_output_token_reserve() -> int:
-    cap = int(getattr(settings, "lm_studio_max_tokens", None) or 768)
-    return min(max(cap, 256), 1024)
+    cap = int(getattr(settings, "lm_studio_max_tokens", None) or 1536)
+    return min(max(cap, 256), 2048)
 
 
 def prompt_token_budget(*, extra_reserve: int = 120) -> int:
@@ -55,10 +55,10 @@ def human_lm_studio_error(status_code: int, detail: str) -> str:
     low = d.lower()
     if is_context_overflow_error(d):
         return (
-            "Запрос не влез в контекст модели (у Gemma на слабом ПК часто лимит 4096 токенов). "
-            "CORAX уже сжимает данные автоматически — отправьте вопрос ещё раз. "
-            "Если повторяется: в LM Studio → Model → Context Length → 8192, или отключите "
-            "«Подмешивать CORAX» и опирайтесь только на импортированные CSV."
+            "Запрос не влез в контекст модели. В CORAX лимит промпта ~20 000 токенов — "
+            "в LM Studio выставьте Context Length ≥ 20480. "
+            "CORAX сжимает данные автоматически; если ошибка повторяется — отключите "
+            "«Подмешивать CORAX» или упростите вопрос."
         )
     if _CHANNEL_ERR_RE.search(low):
         return (

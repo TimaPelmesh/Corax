@@ -1,0 +1,32 @@
+# CORAX — отдельный UI (Vite preview) на :3000
+# Нужен только если бэкенд слушает :3001 (API-only), а панель — отдельно.
+# Рекомендуемый прод: один corax-backend на :3000 (UI из frontend/dist) — тогда эту службу НЕ включайте.
+#
+# Установка: sudo cp deploy/corax-frontend.service /etc/systemd/system/
+# Перед стартом: cd /opt/corax && npm run build
+
+[Unit]
+Description=CORAX Frontend (Vite preview of frontend/dist)
+Documentation=https://github.com/TimaPelmesh/Corax
+After=network.target corax-backend.service
+
+[Service]
+Type=simple
+User=corax
+Group=corax
+WorkingDirectory=/opt/corax/frontend
+
+# preview отдаёт уже собранный dist (не npm run dev — это только для разработки)
+Environment=HOST=0.0.0.0
+ExecStart=/usr/bin/npm run preview -- --host 0.0.0.0 --port 3000
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=corax-frontend
+
+[Install]
+WantedBy=multi-user.target

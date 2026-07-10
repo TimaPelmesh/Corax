@@ -17,7 +17,7 @@ def test_context_overflow_detection():
     err = "request (5451 tokens) exceeds the available context size (4096 tokens)"
     assert is_context_overflow_error(err)
     msg = human_lm_studio_error(400, err)
-    assert "4096" in msg or "контекст" in msg.lower()
+    assert "контекст" in msg.lower() or "20" in msg
 
 
 def test_shrink_messages_reduces_tokens():

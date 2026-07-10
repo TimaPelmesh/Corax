@@ -1599,23 +1599,23 @@ export function KnowledgeSitemapPage() {
         </div>
         <div>
           <h1 className="page-title">Карта здания</h1>
-          <p className="mt-1 max-w-2xl text-slate-600">
-            Интерактивная схема: PNG-фон, оборудование, подписи и экспорт готовой карты.
+          <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">
+            Схема этажа: загрузите PNG-фон → разместите оборудование → настройте свойства справа → экспортируйте карту.
           </p>
         </div>
       </div>
 
-      {err ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div> : null}
+      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
       {!canEdit ? (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+        <div className="app-alert app-alert-warning mb-4">
           Режим просмотра: перемещение и редактирование объектов доступны только редактору и администратору.
         </div>
       ) : null}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 p-1.5 shadow-sm">
-            <span className="pl-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Этажи</span>
+          <div className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-sm">
+            <span className="pl-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Этажи</span>
             <select
               value={activeId ?? ''}
               onChange={(e) => {
@@ -1625,7 +1625,7 @@ export function KnowledgeSitemapPage() {
                 setActiveId(id)
                 void loadDiagram(id)
               }}
-              className="h-9 min-w-[12rem] rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-800 outline-none transition focus:border-neutral-400"
+              className="h-9 min-w-[12rem] rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-fg)] outline-none transition focus:border-[var(--color-primary)]"
             >
               {diagrams.map((d) => (
                 <option key={d.id} value={d.id}>
@@ -1637,7 +1637,7 @@ export function KnowledgeSitemapPage() {
           <div className="relative" ref={floorMenuRef}>
             <button
               type="button"
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-neutral-200 bg-white/95 px-3.5 text-sm font-semibold text-neutral-800 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 text-sm font-semibold text-[var(--color-fg)] shadow-sm transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
               onClick={() => setFloorMenuOpen((v) => !v)}
               aria-expanded={floorMenuOpen}
               aria-haspopup="menu"
@@ -1645,7 +1645,7 @@ export function KnowledgeSitemapPage() {
             >
               <svg
                 viewBox="0 0 24 24"
-                className="h-4 w-4 text-neutral-500"
+                className="h-4 w-4 text-[var(--color-fg-subtle)]"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.9"
@@ -1659,10 +1659,10 @@ export function KnowledgeSitemapPage() {
               Настройки этажа
             </button>
             {floorMenuOpen ? (
-              <div className="popup-enter absolute left-0 top-11 z-20 min-w-64 overflow-hidden rounded-2xl border border-neutral-200 bg-white/98 p-1.5 shadow-[0_18px_40px_-18px_rgba(2,6,23,0.55)] backdrop-blur">
+              <div className="popup-enter absolute left-0 top-11 z-20 min-w-64 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-xl">
                 <button
                   type="button"
-                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-100/80"
+                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
                   onClick={() => void createFloor()}
                   disabled={!canEdit || loading || saving}
                 >
@@ -1670,7 +1670,7 @@ export function KnowledgeSitemapPage() {
                 </button>
                 <button
                   type="button"
-                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-neutral-800 transition hover:bg-neutral-100/80 disabled:opacity-60"
+                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] disabled:opacity-60"
                   onClick={() => {
                     if (!activeDiagram) return
                     setRenamingFloor(true)
@@ -1682,15 +1682,15 @@ export function KnowledgeSitemapPage() {
                 </button>
                 {renamingFloor ? (
                   <form
-                    className="mt-1 rounded-xl border border-neutral-200 bg-neutral-50/60 p-3"
+                    className="mt-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
                     onSubmit={(e) => {
                       e.preventDefault()
                       void renameFloor()
                     }}
                   >
-                    <label className="mb-1 block text-xs font-medium text-slate-500">Новое имя этажа</label>
+                    <label className="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]">Новое имя этажа</label>
                     <input
-                      className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none focus:border-neutral-400"
+                      className="app-input !min-h-0 !py-2"
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
                       autoFocus
@@ -1698,14 +1698,14 @@ export function KnowledgeSitemapPage() {
                     <div className="mt-2 flex justify-end gap-2">
                       <button
                         type="button"
-                        className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                        className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 !text-xs"
                         onClick={() => setRenamingFloor(false)}
                       >
                         Отмена
                       </button>
                       <button
                         type="submit"
-                        className="rounded-lg bg-neutral-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-neutral-800"
+                        className="app-btn app-btn-primary !min-h-0 !px-2.5 !py-1.5 !text-xs"
                         disabled={!renameValue.trim()}
                       >
                         Сохранить
@@ -1715,7 +1715,7 @@ export function KnowledgeSitemapPage() {
                 ) : null}
                 <button
                   type="button"
-                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-700 transition hover:bg-blue-50 disabled:opacity-60"
+                  className="w-full rounded-xl px-3 py-2.5 text-left text-sm font-medium text-[var(--color-primary)] transition hover:bg-[var(--color-primary-muted)] disabled:opacity-60"
                   onClick={() => void deleteFloor()}
                   disabled={!canEdit || !activeDiagram || diagrams.length <= 1 || loading}
                 >
@@ -1734,17 +1734,19 @@ export function KnowledgeSitemapPage() {
           />
           <button
             type="button"
-            className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-800 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+            className="app-btn app-btn-secondary !h-10"
             onClick={() => fileInputRef.current?.click()}
             disabled={!canEdit}
+            title="Шаг 1: загрузите план этажа (PNG)"
           >
-            Импорт PNG-фона
+            1. Импорт PNG-фона
           </button>
           <button
             type="button"
-            className="h-10 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-800 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+            className="app-btn app-btn-secondary !h-10"
             onClick={() => void exportPng()}
             disabled={!activeId || saving}
+            title="Сохранить готовую карту как PNG"
           >
             Экспорт PNG
           </button>
@@ -1759,24 +1761,25 @@ export function KnowledgeSitemapPage() {
         onDrop={onLayoutDrop}
       >
         <div className="app-card min-w-0 self-start overflow-hidden p-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 bg-white p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] p-2.5">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <div className="relative">
               <button
                 type="button"
-                className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-primary-muted)] px-3 py-2 text-sm font-semibold text-[var(--color-primary)] transition hover:border-[var(--color-primary)]"
                 onClick={() => setToolboxOpen((v) => !v)}
                 disabled={!canEdit}
+                title="Шаг 2: добавить оборудование на карту"
               >
-                + Объекты
+                2. + Объекты
               </button>
               {toolboxOpen ? (
-                <div className="popup-enter absolute left-0 top-11 z-20 grid min-w-64 grid-cols-2 gap-2 rounded-2xl border border-neutral-200 bg-white/98 p-2 shadow-[0_18px_40px_-18px_rgba(2,6,23,0.55)] backdrop-blur">
+                <div className="popup-enter absolute left-0 top-11 z-20 grid min-w-64 grid-cols-2 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-xl">
                   {EQUIPMENT.map((item) => (
                     <button
                       key={item.kind}
                       type="button"
-                      className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-left text-xs font-medium text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                      className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-left text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
                       onClick={() => {
                         addMarker(item.kind)
                       }}
@@ -1789,19 +1792,19 @@ export function KnowledgeSitemapPage() {
                 </div>
               ) : null}
             </div>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
               <input type="checkbox" checked={!showLabels} onChange={(e) => setShowLabels(!e.target.checked)} />
               Скрыть надписи
             </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
               <input
                 type="checkbox"
                 checked={showHoverCard}
                 onChange={(e) => setShowHoverCard(e.target.checked)}
               />
-              Свойства объекта
+              Карточка при наведении
             </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
               <input
                 type="checkbox"
                 checked={outletVis.ethOutlets}
@@ -1809,7 +1812,7 @@ export function KnowledgeSitemapPage() {
               />
               Ethernet-розетки
             </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
               <input
                 type="checkbox"
                 checked={outletVis.phoneOutlets}
@@ -1817,7 +1820,7 @@ export function KnowledgeSitemapPage() {
               />
               Тел. розетки
             </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
               <input
                 type="checkbox"
                 checked={outletVis.ethCables}
@@ -1825,7 +1828,7 @@ export function KnowledgeSitemapPage() {
               />
               Кабели Ethernet
             </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
               <input
                 type="checkbox"
                 checked={outletVis.phoneCables}
@@ -1833,7 +1836,7 @@ export function KnowledgeSitemapPage() {
               />
               Тел. кабели
             </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
               <input
                 type="checkbox"
                 checked={exportWithLabels}
@@ -1843,7 +1846,7 @@ export function KnowledgeSitemapPage() {
             </label>
             {user && activeId ? (
               <div
-                className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs text-neutral-700 shadow-sm"
+                className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs text-[var(--color-fg-muted)] shadow-sm"
                 title="Одновременное редактирование: список учётных записей с открытой картой здания (live по любому этажу). Пока есть несохранённые правки, чужие изменения сами не подтягиваются."
               >
                 <span
@@ -1852,44 +1855,44 @@ export function KnowledgeSitemapPage() {
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full motion-safe:transition-opacity motion-safe:duration-500 ${
-                      liveConnected ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-neutral-300'
+                      liveConnected ? 'bg-emerald-500 motion-safe:animate-pulse' : 'bg-[var(--color-border-strong)]'
                     }`}
                     aria-hidden
                   />
                 </span>
-                <span className="font-medium text-neutral-800">Онлайн</span>
+                <span className="font-medium text-[var(--color-fg)]">Онлайн</span>
                 <span className="flex min-w-0 flex-wrap items-center gap-1">
                   {peers.length ? (
                     peers.map((p) => (
                       <span
                         key={p.user_id}
-                        className="inline-flex max-w-[9rem] truncate rounded-full bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-neutral-900 ring-1 ring-zinc-200/80"
+                        className="inline-flex max-w-[9rem] truncate rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-fg)] ring-1 ring-[var(--color-border)]"
                         title={(p.full_name || '').trim() || p.username}
                       >
                         {p.username}
                       </span>
                     ))
                   ) : (
-                    <span className="text-[11px] text-slate-500">—</span>
+                    <span className="text-[11px] text-[var(--color-fg-subtle)]">—</span>
                   )}
                 </span>
               </div>
             ) : null}
             </div>
             <div
-              className="shrink-0 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-right text-[11px] text-slate-500 transition-colors duration-500 ease-out"
+              className="shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-right text-[11px] text-[var(--color-fg-muted)] transition-colors duration-500 ease-out"
               title="Автосохранение позиций объектов на карте"
             >
               {`Автосохр.: ${lastSavedAt ? new Date(lastSavedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}`}
             </div>
           </div>
 
-          <div className="relative h-[min(72vh,820px)] min-h-[520px] bg-slate-100">
-            <div className="pointer-events-none absolute bottom-2 right-2 z-10 rounded-md bg-white/90 px-2 py-1 text-[11px] text-slate-600 shadow-sm ring-1 ring-black/5">
-              ЛКМ тащить — сдвиг · колёсико — масштаб
+          <div className="relative h-[min(72vh,820px)] min-h-[520px] bg-[var(--color-surface-muted)]">
+            <div className="pointer-events-none absolute bottom-2 right-2 z-10 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[11px] text-[var(--color-fg-muted)] shadow-sm">
+              ЛКМ тащить — сдвиг · колёсико — масштаб · клик по объекту — свойства справа
             </div>
             {loading || !activeDiagram ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-500">Загрузка карты…</div>
+              <div className="flex h-full items-center justify-center text-sm text-[var(--color-fg-subtle)]">Загрузка карты…</div>
             ) : (
               <svg
                 ref={svgRef}
@@ -2121,11 +2124,11 @@ export function KnowledgeSitemapPage() {
           </div>
         </div>
 
-        <aside className="min-h-0 min-w-0 self-start rounded-2xl border border-neutral-200 bg-white/95 p-3 shadow-sm max-h-[min(88dvh,calc(100dvh-9.5rem))] overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
-          <div className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-2">
+        <aside className="min-h-0 min-w-0 self-start rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm max-h-[min(88dvh,calc(100dvh-9.5rem))] overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-2">
             <div>
-              <div className="text-sm font-semibold text-neutral-950">Свойства</div>
-              <div className="mt-0.5 text-xs text-slate-500">
+              <div className="text-sm font-semibold text-[var(--color-fg)]">Свойства</div>
+              <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
                 {selectedIds.length > 1
                   ? `Выбрано объектов: ${selectedIds.length}`
                   : selectedMarker
@@ -2135,19 +2138,39 @@ export function KnowledgeSitemapPage() {
             </div>
           </div>
           {!selectedMarker ? (
-            <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-4 text-sm text-slate-600">
-              {selectedIds.length > 1
-                ? 'Можно перетаскивать выбранные объекты группой. Для выбора нескольких используйте Ctrl/Shift + клик.'
-                : 'Выберите объект на карте или добавьте новый элемент сверху.'}
+            <div className="mt-3 space-y-3">
+              <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-fg-muted)]">
+                {selectedIds.length > 1
+                  ? 'Можно перетаскивать выбранные объекты группой. Для выбора нескольких используйте Ctrl/Shift + клик.'
+                  : 'Выберите объект на карте или добавьте новый элемент сверху.'}
+              </div>
+              <ol className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                <li>
+                  <span className="font-semibold text-[var(--color-fg)]">1.</span> Выберите этаж и при
+                  необходимости загрузите PNG-фон.
+                </li>
+                <li>
+                  <span className="font-semibold text-[var(--color-fg)]">2.</span> Нажмите «+ Объекты» и
+                  добавьте ПК, розетку или другое оборудование.
+                </li>
+                <li>
+                  <span className="font-semibold text-[var(--color-fg)]">3.</span> Кликните объект —
+                  справа появятся свойства; перетащите его на схему.
+                </li>
+                <li>
+                  <span className="font-semibold text-[var(--color-fg)]">4.</span> Экспортируйте готовую
+                  карту кнопкой «Экспорт PNG».
+                </li>
+              </ol>
             </div>
           ) : (
             <div className="mt-3 space-y-2">
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Тип</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Тип</span>
                 <select
                   value={selectedMarker.kind}
                   onChange={(e) => updateMarker(selectedMarker.id, { kind: e.target.value as FloorIconKind })}
-                  className="mt-0.5 h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                  className="app-input mt-0.5 !min-h-0 !py-2"
                   disabled={!canEdit}
                 >
                   {EQUIPMENT.map((item) => (
@@ -2159,11 +2182,11 @@ export function KnowledgeSitemapPage() {
               </label>
 
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Название</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Название</span>
                 <input
                   value={selectedMarker.label ?? ''}
                   onChange={(e) => updateMarker(selectedMarker.id, { label: e.target.value })}
-                  className="mt-0.5 h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                  className="app-input mt-0.5 !min-h-0 !py-2"
                   placeholder="Например: Серверная"
                   disabled={!canEdit}
                 />
@@ -2229,7 +2252,7 @@ export function KnowledgeSitemapPage() {
                     {selectedMarker.meta?.computer_id ? (
                       <button
                         type="button"
-                        className="h-8 rounded-lg border border-red-200 bg-white px-2.5 text-xs font-medium text-red-700 transition hover:bg-blue-50 disabled:opacity-60"
+                        className="h-8 rounded-lg border border-blue-200 bg-white px-2.5 text-xs font-medium text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
                         onClick={() =>
                           updateMarker(selectedMarker.id, {
                             meta: {
@@ -2464,7 +2487,7 @@ export function KnowledgeSitemapPage() {
                     {selectedPlacePhotos.map((ph) => (
                       <div
                         key={ph.id}
-                        className="w-[7.25rem] shrink-0 rounded-lg border border-neutral-200 bg-gradient-to-b from-white to-slate-50/90 p-1.5 shadow-sm"
+                        className="w-[7.25rem] shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-1.5 shadow-sm"
                       >
                         <button
                           type="button"
@@ -2490,7 +2513,7 @@ export function KnowledgeSitemapPage() {
                         />
                         <button
                           type="button"
-                          className="mt-1 w-full rounded-md border border-red-100 bg-white py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                          className="mt-1 w-full rounded-md border border-blue-100 bg-white py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                           onClick={() => removePlacePhoto(ph.id)}
                           disabled={!canEdit}
                         >
@@ -2527,7 +2550,7 @@ export function KnowledgeSitemapPage() {
 
               <button
                 type="button"
-                className="w-full rounded-lg border border-red-100 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
+                className="w-full rounded-lg border border-blue-100 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
                 onClick={deleteSelected}
                 disabled={!canEdit}
               >

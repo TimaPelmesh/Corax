@@ -42,9 +42,9 @@ const REQUEST_STATUSES = ['open', 'in_progress', 'done', 'cancelled'] as const
 const REQUEST_PRIORITIES = ['low', 'normal', 'high'] as const
 
 const CREATE_FORM_INPUT_CLS =
-  'w-full rounded-md border border-slate-200/90 bg-white px-2 py-1.5 text-[13px] text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
+  'w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[13px] text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)] transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-primary)_22%,transparent)]'
 const CREATE_FORM_LABEL_CLS =
-  'mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500'
+  'mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]'
 const STATS_BASES = ['opened', 'last_change', 'closed'] as const
 const STATS_GROUPS = ['day', 'week'] as const
 const STATS_CHART_MODES = ['total', 'status'] as const
@@ -56,7 +56,7 @@ type StatsGroup = (typeof STATS_GROUPS)[number]
 type StatsChartMode = (typeof STATS_CHART_MODES)[number]
 
 const STATUS_PILL: Record<string, string> = {
-  open: 'bg-red-50 text-red-950 ring-1 ring-blue-200/90',
+  open: 'bg-blue-50 text-slate-950 ring-1 ring-blue-200/90',
   in_progress: 'bg-white text-neutral-950 ring-1 ring-neutral-200/90',
   done: 'bg-neutral-50 text-neutral-950 ring-1 ring-neutral-200/90',
   cancelled: 'bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200/90',
@@ -358,7 +358,7 @@ function CategoryPicker({
                 <button
                   type="button"
                   className={`flex w-full items-center gap-1 py-2 text-left text-sm ${
-                    active ? 'bg-red-50/70 text-red-950' : 'text-slate-800 hover:bg-zinc-50/80'
+                    active ? 'bg-blue-50/70 text-slate-950' : 'text-slate-800 hover:bg-zinc-50/80'
                   }`}
                   style={{ paddingLeft: `${12 + depth * 14}px`, paddingRight: '12px' }}
                   onClick={() => {
@@ -642,7 +642,7 @@ function MiniStatCard({
   const ring =
     variant === 'danger' ? 'ring-blue-200/80' : 'ring-neutral-200/90'
   const iconBg =
-    variant === 'danger' ? 'bg-red-50 text-red-950' : 'bg-neutral-100 text-neutral-700'
+    variant === 'danger' ? 'bg-blue-50 text-slate-950' : 'bg-neutral-100 text-neutral-700'
 
   return (
     <div
@@ -674,7 +674,7 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
       role="status"
       className="fixed bottom-6 left-1/2 z-[100] flex max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-medium text-white shadow-lg"
     >
-      <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden />
+      <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
       {message}
       <button
         type="button"
@@ -1093,7 +1093,7 @@ function DirectoryAssigneesPicker({
                 <li key={u.id}>
                   <button
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-zinc-50/80 ${sel ? 'bg-red-50/40 font-semibold text-red-950' : 'text-slate-800'}`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-zinc-50/80 ${sel ? 'bg-blue-50/40 font-semibold text-slate-950' : 'text-slate-800'}`}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => toggle(u.id)}
                   >
@@ -2123,7 +2123,7 @@ export function ServiceRequestsPage() {
     <div>
       {toast ? <Toast message={toast} onDismiss={() => setToast(null)} /> : null}
 
-      <div className="mb-5 overflow-hidden rounded-2xl border border-neutral-200/70 bg-gradient-to-br from-white via-neutral-50 to-blue-50/40 px-5 py-4 shadow-sm ring-1 ring-neutral-200/30 sm:px-8 sm:py-5">
+      <div className="app-panel mb-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
           <div className="page-hero-icon mt-0.5 shadow-md shadow-neutral-900/5 ring-1 ring-zinc-100/90">
             <IconTicket className="h-6 w-6" />
@@ -2164,13 +2164,13 @@ export function ServiceRequestsPage() {
 
               <form
                 onSubmit={onSubmitRequest}
-                className="min-w-0 w-full flex-1 overflow-hidden rounded-lg border border-slate-200/70 bg-white shadow-sm ring-1 ring-slate-200/40 sm:max-w-2xl"
+                className="min-w-0 w-full flex-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm ring-1 ring-[var(--color-border)] sm:max-w-2xl"
               >
-                <div className="border-b border-slate-100 bg-gradient-to-br from-white via-slate-50 to-blue-50/40 px-3 py-2 text-center">
-                  <h2 className="font-[family-name:var(--font-display)] text-[13px] font-semibold tracking-tight text-slate-900">
+                <div className="border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-center">
+                  <h2 className="font-[family-name:var(--font-display)] text-[13px] font-semibold tracking-tight text-[var(--color-fg)]">
                     {editingRequestId != null ? `Редактирование заявки #${editingRequestId}` : 'Новая заявка'}
                   </h2>
-                  <p className="mt-0.5 text-[10px] text-slate-600">
+                  <p className="mt-0.5 text-[10px] text-[var(--color-fg-muted)]">
                     {editingRequestId != null
                       ? 'Те же поля и списки, что при создании. После сохранения вернётесь к списку.'
                       : 'Шаблон подставит даты, статус и исполнителей.'}
@@ -2283,7 +2283,7 @@ export function ServiceRequestsPage() {
               {!showDescription ? (
                 <button
                   type="button"
-                  className="text-xs font-medium text-red-700 hover:text-neutral-800 hover:underline"
+                  className="text-xs font-medium text-blue-700 hover:text-neutral-800 hover:underline"
                   onClick={() => setShowDescription(true)}
                 >
                   + Описание
@@ -2525,7 +2525,7 @@ export function ServiceRequestsPage() {
                 <button
                   type="submit"
                   disabled={saving || editDeleting}
-                  className="w-full rounded-md bg-blue-600 py-2 text-[13px] font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-blue-700 disabled:opacity-50"
+                  className="app-btn app-btn-primary w-full !min-h-[40px] !text-[13px]"
                 >
                   {saving
                     ? editingRequestId != null
@@ -2548,7 +2548,7 @@ export function ServiceRequestsPage() {
                     </button>
                     {canManageRequests ? (
                       editDeleteConfirm ? (
-                        <div className="rounded-xl border border-red-200 bg-red-50/90 p-3">
+                        <div className="rounded-xl border border-red-200 bg-blue-50/90 p-3">
                           <p className="text-sm font-medium text-red-950">
                             Удалить заявку «{title}»? Действие необратимо.
                           </p>
@@ -2579,7 +2579,7 @@ export function ServiceRequestsPage() {
                             setEditDeleteConfirm(true)
                             setErr(null)
                           }}
-                          className="w-full rounded-md border border-red-200 bg-red-50 py-2 text-[13px] font-semibold text-red-800 transition hover:bg-red-100 disabled:opacity-50"
+                          className="w-full rounded-md border border-blue-200 bg-blue-50 py-2 text-[13px] font-semibold text-blue-800 transition hover:bg-blue-100 disabled:opacity-50"
                         >
                           Удалить заявку
                         </button>
@@ -3029,7 +3029,7 @@ export function ServiceRequestsPage() {
                   <button
                     type="button"
                     onClick={() => void downloadPdf()}
-                    className="rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                    className="app-btn app-btn-primary !min-h-[36px] !px-3.5 !py-2 !text-xs"
                     title="Скачать табличный PDF из сервера"
                   >
                     PDF (таблица)
@@ -3638,7 +3638,7 @@ export function ServiceRequestsPage() {
                       type="button"
                       disabled={tplBusy || !tplTitle.trim()}
                       onClick={() => void saveTemplateFromForm()}
-                      className="w-full flex-1 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white shadow-md shadow-red-600/20 transition hover:bg-blue-700 disabled:opacity-50"
+                      className="app-btn app-btn-primary w-full flex-1 !min-h-[48px]"
                     >
                       {tplBusy ? 'Сохранение…' : tplEditingId != null ? 'Сохранить изменения' : 'Сохранить шаблон'}
                     </button>
@@ -3740,7 +3740,7 @@ export function ServiceRequestsPage() {
                             <button
                               type="button"
                               onClick={() => applyTemplateToForm(t)}
-                              className="min-h-[40px] rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                              className="app-btn app-btn-primary !min-h-[40px] !px-3 !py-2 !text-xs"
                             >
                               Применить
                             </button>
@@ -3748,7 +3748,7 @@ export function ServiceRequestsPage() {
                               type="button"
                               disabled={tplBusy}
                               onClick={() => void deleteTemplate(t.id, t.title)}
-                              className="min-h-[40px] rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-blue-50 disabled:opacity-50"
+                              className="min-h-[40px] rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50"
                             >
                               Удалить
                             </button>

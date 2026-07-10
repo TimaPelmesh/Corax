@@ -24,7 +24,7 @@ export function SettingsDatabasePage() {
   }, [user?.is_superuser])
 
   if (authLoading) {
-    return <p className="text-sm text-slate-500">Загрузка…</p>
+    return <p className="text-sm text-[var(--color-fg-subtle)]">Загрузка…</p>
   }
 
   if (!user?.is_superuser) {
@@ -46,7 +46,7 @@ export function SettingsDatabasePage() {
         </div>
         <div>
           <h1 className="page-title">База данных</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-muted)]">
             Резервная копия PostgreSQL (формат <code className="text-xs">pg_dump -Fc</code>) и восстановление на другом
             сервере. Подходит для переноса CORAX между ПК и виртуалками (в т.ч. PG 16 → 18).
           </p>
@@ -54,65 +54,68 @@ export function SettingsDatabasePage() {
       </div>
 
       {toast ? (
-        <div
-          className="mb-4 rounded-xl border border-zinc-200/90 bg-zinc-50 px-4 py-3 text-sm font-medium text-neutral-950 shadow-sm"
-          role="status"
-        >
+        <div className="app-alert app-alert-success mb-4" role="status">
           {toast}
         </div>
       ) : null}
 
-      {err ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
-      ) : null}
+      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
 
-      {statusErr ? (
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
-          {statusErr}
-        </div>
-      ) : null}
+      {statusErr ? <div className="app-alert app-alert-warning mb-4">{statusErr}</div> : null}
 
       {status ? (
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
           <div className="app-card px-4 py-3 text-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">База</div>
-            <div className="mt-1 font-medium text-slate-900">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">База</div>
+            <div className="mt-1 font-medium text-[var(--color-fg)]">
               {status.database ?? '—'} @ {status.host ?? '—'}:{status.port ?? '—'}
             </div>
           </div>
           <div className="app-card px-4 py-3 text-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Записей</div>
-            <div className="mt-1 text-slate-800">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">Записей</div>
+            <div className="mt-1 text-[var(--color-fg-muted)]">
               ПК: {status.counts.computers} · заявки: {status.counts.service_requests} · пользователи:{' '}
               {status.counts.users}
             </div>
           </div>
           <div className="app-card px-4 py-3 text-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">pg_dump / pg_restore</div>
-            <div className={`mt-1 font-medium ${toolsOk ? 'text-emerald-700' : 'text-red-700'}`}>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              pg_dump / pg_restore
+            </div>
+            <div
+              className={`mt-1 font-medium ${
+                toolsOk ? 'text-[var(--color-success-fg)]' : 'text-[var(--color-error-fg)]'
+              }`}
+            >
               {toolsOk ? 'Доступны' : 'Не найдены'}
             </div>
             {status.pg_bin_dir_configured ? (
-              <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{status.pg_bin_dir_configured}</div>
+              <div className="mt-1 break-all font-mono text-[11px] text-[var(--color-fg-subtle)]">
+                {status.pg_bin_dir_configured}
+              </div>
             ) : null}
             {!toolsOk ? (
-              <div className="mt-1 text-xs text-slate-500">Проверьте PG_BIN_DIR в backend/.env и перезапустите сервер.</div>
+              <div className="mt-1 text-xs text-[var(--color-fg-subtle)]">
+                Проверьте PG_BIN_DIR в backend/.env и перезапустите сервер.
+              </div>
             ) : null}
           </div>
         </div>
       ) : null}
 
       {!status?.single_database && status ? (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="app-alert app-alert-warning mb-6">
           В .env заданы разные URL для inventory / diagrams / warehouse. Дамп включает только основную базу из{' '}
           <code className="text-xs">DATABASE_URL</code>.
         </div>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="app-card space-y-4 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Экспорт (дамп)</h2>
-          <p className="text-sm leading-relaxed text-slate-600">
+        <section className="app-card space-y-4 !p-6 sm:!p-7">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            Экспорт (дамп)
+          </h2>
+          <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
             Скачается файл <code className="text-xs">corax-имя_базы-дата.dump</code>. Сохраните его перед переносом на
             другой компьютер.
           </p>
@@ -134,19 +137,22 @@ export function SettingsDatabasePage() {
           </button>
         </section>
 
-        <section className="app-card space-y-4 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Импорт (восстановление)</h2>
-          <p className="text-sm leading-relaxed text-slate-600">
-            <strong className="font-semibold text-red-700">Перезапишет</strong> текущую базу PostgreSQL. Перед импортом
-            сделайте дамп. Совместимо с дампами с другой версии PostgreSQL (16 → 18).
+        <section className="app-card space-y-4 !p-6 sm:!p-7">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            Импорт (восстановление)
+          </h2>
+          <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
+            <strong className="font-semibold text-[var(--color-primary)]">Перезапишет</strong> текущую базу PostgreSQL.
+            Перед импортом сделайте дамп. Совместимо с дампами с другой версии PostgreSQL (16 → 18).
           </p>
-          <label className="block text-sm text-slate-700">
-            Подтверждение: введите <code className="rounded bg-slate-100 px-1 text-xs">RESTORE</code>
+          <label className="block text-sm text-[var(--color-fg-muted)]">
+            Подтверждение: введите{' '}
+            <code className="rounded bg-[var(--color-surface-muted)] px-1 text-xs text-[var(--color-fg)]">RESTORE</code>
             <input
               type="text"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="app-input mt-1.5"
               placeholder="RESTORE"
               autoComplete="off"
             />
@@ -182,7 +188,7 @@ export function SettingsDatabasePage() {
           />
           <button
             type="button"
-            className="app-btn app-btn-secondary border-red-200 text-red-800 hover:bg-blue-50"
+            className="app-btn app-btn-danger"
             disabled={importBusy || !toolsOk || confirm.trim() !== 'RESTORE'}
             onClick={() => importRef.current?.click()}
           >
@@ -191,15 +197,20 @@ export function SettingsDatabasePage() {
         </section>
       </div>
 
-      <div className="mt-8 rounded-xl border border-slate-200/90 bg-slate-50/80 px-4 py-3 text-xs leading-relaxed text-slate-600">
+      <div className="app-panel-sm mt-8 text-xs leading-relaxed text-[var(--color-fg-muted)]">
         <p>
-          На Windows, если кнопки неактивны, добавьте в <code>backend/.env</code>:
+          На Windows, если кнопки неактивны, добавьте в <code className="text-[var(--color-fg)]">backend/.env</code>:
         </p>
-        <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-[11px] text-slate-800">
+        <pre className="mt-2 overflow-x-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 font-mono text-[11px] text-[var(--color-fg)]">
           PG_BIN_DIR=C:\Program Files\PostgreSQL\18\bin
         </pre>
         <p className="mt-2">
-          Для импорта при активных подключениях может понадобиться <code>POSTGRES_ADMIN_PASSWORD</code> в .env.
+          На Linux обычно достаточно пакета <code className="text-[var(--color-fg)]">postgresql-client</code>; путь к
+          bin при необходимости: <code className="text-[var(--color-fg)]">PG_BIN_DIR=/usr/lib/postgresql/16/bin</code>.
+        </p>
+        <p className="mt-2">
+          Для импорта при активных подключениях может понадобиться{' '}
+          <code className="text-[var(--color-fg)]">POSTGRES_ADMIN_PASSWORD</code> в .env.
         </p>
       </div>
     </div>

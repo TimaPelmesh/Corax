@@ -134,6 +134,30 @@ export function IconLogout({ className, title }: Props) {
   )
 }
 
+export function IconSun({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <circle cx="12" cy="12" r="4.25" {...soft} />
+      <circle cx="12" cy="12" r="4.25" {...s} />
+      <path d="M12 3.25v2.25M12 18.5v2.25M4.75 12H2.5M21.5 12h-2.25M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M5.8 18.2l1.6-1.6M16.6 7.4l1.6-1.6" {...s} />
+    </svg>
+  )
+}
+
+export function IconMoon({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <path
+        d="M15.2 4.1a7.25 7.25 0 1 0 4.7 12.75A6.25 6.25 0 0 1 15.2 4.1z"
+        {...soft}
+      />
+      <path d="M15.2 4.1a7.25 7.25 0 1 0 4.7 12.75A6.25 6.25 0 0 1 15.2 4.1z" {...s} />
+    </svg>
+  )
+}
+
 export function IconClose({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">

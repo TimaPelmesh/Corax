@@ -75,18 +75,18 @@ class Settings(BaseSettings):
     bitrix24_bot_inbox_dir: str = "bitrix_bot_inbox"
     # WikiRAG: uploaded knowledge-base files (absolute or relative to backend/).
     wiki_rag_dir: str = "wiki_rag_docs"
-    wiki_rag_context_max_chars: int = 18_000
+    wiki_rag_context_max_chars: int = 48_000
     # Контекст для чата (документы + данные CORAX).
-    wiki_rag_chat_context_max_chars: int = 16_000
+    wiki_rag_chat_context_max_chars: int = 40_000
     # Доля контекста чата под авто-сводку CORAX (ПК, теги, заявки).
-    wiki_rag_corax_context_max_chars: int = 10_000
+    wiki_rag_corax_context_max_chars: int = 24_000
     # LM Studio OpenAI-compatible API (Local Server).
     lm_studio_base_url: str = "http://127.0.0.1:1234/v1"
     lm_studio_model: str = "google/gemma-3-1b"
     lm_studio_timeout_seconds: int = 300
-    lm_studio_max_tokens: int = 768
-    # Лимит контекста промпта под слабые модели (4096 ctx → ~3584 безопасно).
-    wiki_rag_lm_context_tokens: int = 3584
+    lm_studio_max_tokens: int = 1536
+    # Лимит контекста промпта (нужен Context Length ≥ 20480 в LM Studio).
+    wiki_rag_lm_context_tokens: int = 20_000
     # pg_dump/pg_restore (резервная копия в настройках). Путь к bin, любой диск (F:\...\bin).
     pg_bin_dir: str = ""
     postgres_admin_user: str = "postgres"

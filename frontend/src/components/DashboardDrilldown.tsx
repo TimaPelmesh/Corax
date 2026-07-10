@@ -87,10 +87,10 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
           }}
         >
           <div
-            className="dashboard-enter flex max-h-[min(92dvh,36rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-[0_32px_100px_-24px_rgb(15_23_42/0.55)] ring-1 ring-white/60"
+            className="dashboard-enter flex max-h-[min(92dvh,36rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-neutral-100 bg-gradient-to-r from-neutral-50/90 to-white px-5 py-4">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4">
               <div className="min-w-0 pr-2">
                 <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-400">{selection.chartTitle}</div>
                 <h3 id="dashboard-drilldown-title" className="mt-1 text-lg font-semibold tracking-tight text-neutral-950">

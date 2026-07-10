@@ -44,17 +44,17 @@ type ChatTurn = {
 
 function ThinkingBubble() {
   return (
-    <div className="mr-1 flex items-center gap-2.5 rounded-lg border border-red-100/80 bg-gradient-to-r from-white to-blue-50/40 px-3 py-2.5 shadow-sm">
+    <div className="wikirag-msg-enter wikirag-thinking mr-1 flex items-center gap-2.5 rounded-lg border border-[color-mix(in_srgb,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-muted)] px-3 py-2.5 shadow-sm">
       <div className="flex gap-1" aria-hidden>
         {[0, 1, 2].map((i) => (
           <span
             key={i}
-            className="inline-block h-2 w-2 rounded-full bg-red-500/90 motion-safe:animate-bounce"
+            className="inline-block h-2 w-2 rounded-full bg-[var(--color-primary)] motion-safe:animate-bounce"
             style={{ animationDelay: `${i * 160}ms` }}
           />
         ))}
       </div>
-      <span className="text-[11px] font-medium text-slate-600">
+      <span className="text-[11px] font-medium text-[var(--color-fg-muted)]">
         Модель думает… (до 5 мин на слабом ПК)
       </span>
     </div>
@@ -98,11 +98,11 @@ function TypewriterText({
   }, [text, active, onComplete])
 
   return (
-    <p className="whitespace-pre-wrap leading-relaxed">
+    <p className="whitespace-pre-wrap leading-relaxed text-[var(--color-fg)]">
       {shown}
       {active && shown.length < text.length ? (
         <span
-          className="ml-0.5 inline-block h-3.5 w-0.5 translate-y-px animate-pulse bg-red-500 align-middle"
+          className="ml-0.5 inline-block h-3.5 w-0.5 translate-y-px animate-pulse bg-[var(--color-primary)] align-middle"
           aria-hidden
         />
       ) : null}
@@ -397,15 +397,16 @@ export function WikiRagChat({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-start justify-between gap-2 border-b border-neutral-100 pb-2">
+      <div className="flex items-start justify-between gap-2 border-b border-[var(--color-border)] pb-2">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-950">LM Studio</h2>
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">WikiRAG чат</h2>
+          <p className="mt-0.5 text-[10px] text-[var(--color-fg-subtle)]">Контекст до ~20 000 токенов</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => setSettingsOpen((v) => !v)}
-            className="rounded-lg border border-neutral-200 px-2 py-0.5 text-[9px] font-semibold text-neutral-600 hover:bg-neutral-50"
+            className="rounded-lg border border-[var(--color-border)] px-2 py-0.5 text-[9px] font-semibold text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
             title="Настройки LM Studio"
           >
             ⚙
@@ -416,10 +417,10 @@ export function WikiRagChat({
             title={lmDetail ?? undefined}
             className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
               lmOk === true
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                ? 'border-[var(--color-success-border)] bg-[var(--color-success-bg)] text-[var(--color-success-fg)]'
                 : lmOk === false
-                  ? 'border-amber-200 bg-amber-50 text-amber-900'
-                  : 'border-neutral-200 bg-neutral-50 text-neutral-600'
+                  ? 'border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-fg)]'
+                  : 'border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]'
             }`}
           >
             {lmOk === null ? '…' : lmOk ? 'OK' : 'OFF'}
@@ -428,7 +429,7 @@ export function WikiRagChat({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1 text-neutral-500 hover:bg-neutral-100"
+              className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
               aria-label="Свернуть"
             >
               <IconClose className="h-4 w-4" />
@@ -437,33 +438,38 @@ export function WikiRagChat({
         </div>
       </div>
       {lmDetail ? (
-        <p className={`mt-1 truncate text-[10px] ${lmOk ? 'text-slate-400' : 'text-amber-800'}`}>
+        <p
+          className={`mt-1 truncate text-[10px] ${
+            lmOk ? 'text-[var(--color-fg-subtle)]' : 'text-[var(--color-warning-fg)]'
+          }`}
+        >
           {lmDetail}
         </p>
       ) : null}
 
       {settingsOpen ? (
-        <div className="mt-2 space-y-2 rounded-lg border border-neutral-200 bg-white p-2 text-[10px]">
+        <div className="mt-2 space-y-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[10px]">
           <label className="block">
-            <span className="mb-0.5 block font-semibold text-slate-600">Адрес LM Studio</span>
+            <span className="mb-0.5 block font-semibold text-[var(--color-fg-muted)]">Адрес LM Studio</span>
             <input
               type="text"
               value={lmSettings.baseUrl}
               onChange={(e) => setLmSettings((s) => ({ ...s, model: '', baseUrl: e.target.value }))}
               onBlur={() => void checkLm()}
               placeholder="http://192.168.1.10:1234/v1"
-              className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px]"
+              className="app-input !min-h-0 !rounded !px-2 !py-1 !text-[11px]"
             />
           </label>
-          <p className="text-slate-500">
-            С точки зрения сервера CORAX. Если LM Studio на другом ПК — укажите его IP в сети.
+          <p className="text-[var(--color-fg-subtle)]">
+            С точки зрения сервера CORAX. Если LM Studio на другом ПК — укажите его IP. В LM Studio
+            выставьте Context Length ≥ 20480.
           </p>
           <label className="block">
-            <span className="mb-0.5 block font-semibold text-slate-600">Модель</span>
+            <span className="mb-0.5 block font-semibold text-[var(--color-fg-muted)]">Модель</span>
             <select
               value={lmSettings.model}
               onChange={(e) => setLmSettings((s) => ({ ...s, model: e.target.value }))}
-              className="w-full rounded border border-neutral-200 px-2 py-1 text-[11px]"
+              className="app-input !min-h-0 !rounded !px-2 !py-1 !text-[11px]"
               disabled={!lmModels.length}
             >
               {!lmModels.length ? (
@@ -482,7 +488,7 @@ export function WikiRagChat({
               )}
             </select>
           </label>
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-[var(--color-fg)]">
             <input
               type="checkbox"
               checked={lmSettings.includeCorax}
@@ -493,7 +499,7 @@ export function WikiRagChat({
           <button
             type="button"
             onClick={() => void checkLm()}
-            className="rounded border border-neutral-200 px-2 py-1 text-[10px] hover:bg-neutral-50"
+            className="rounded border border-[var(--color-border)] px-2 py-1 text-[10px] text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
           >
             Проверить связь
           </button>
@@ -510,10 +516,10 @@ export function WikiRagChat({
                 setActiveId(s.id)
                 setInput('')
               }}
-              className={`group flex max-w-[7rem] shrink-0 items-center gap-0.5 rounded-lg border px-2 py-1 text-[10px] font-medium ${
+              className={`group flex max-w-[7rem] shrink-0 items-center gap-0.5 rounded-lg border px-2 py-1 text-[10px] font-medium transition ${
                 s.id === activeId
-                  ? 'border-red-200 bg-red-50 text-red-900'
-                  : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                  ? 'border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-border))] bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
+                  : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]'
               }`}
               title={s.title}
             >
@@ -522,7 +528,7 @@ export function WikiRagChat({
                 <span
                   role="button"
                   tabIndex={0}
-                  className="ml-0.5 rounded px-0.5 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+                  className="ml-0.5 rounded px-0.5 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
                   onClick={(e) => {
                     e.stopPropagation()
                     closeSession(s.id)
@@ -544,7 +550,7 @@ export function WikiRagChat({
         <button
           type="button"
           onClick={addSession}
-          className="shrink-0 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-bold text-neutral-700 hover:bg-neutral-50"
+          className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs font-bold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
           title="Новый чат"
         >
           +
@@ -556,7 +562,7 @@ export function WikiRagChat({
           type="button"
           onClick={clearActive}
           disabled={!turns.length}
-          className="rounded-md border border-neutral-200 px-2 py-0.5 text-[10px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+          className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] disabled:opacity-40"
         >
           Очистить
         </button>
@@ -564,28 +570,47 @@ export function WikiRagChat({
 
       <div
         ref={scrollRef}
-        className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto rounded-lg border border-neutral-200/80 bg-neutral-50/60 p-2"
+        className="mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-2"
       >
         {turns.length === 0 ? (
-          <p className="text-xs text-slate-500">
-            Задайте вопрос по документам и данным CORAX (ПК, теги, заявки).
-          </p>
+          <div className="wikirag-msg-enter space-y-2 px-1 py-2">
+            <p className="text-xs text-[var(--color-fg-muted)]">
+              Задайте вопрос по документам и данным CORAX (ПК, теги, заявки).
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                'Какие ПК на Windows 7?',
+                'Кому лучше поставить Windows 10?',
+                'Топ ПО по числу установок',
+              ].map((hint) => (
+                <button
+                  key={hint}
+                  type="button"
+                  className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-[10px] font-medium text-[var(--color-fg-muted)] transition hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+                  onClick={() => setInput(hint)}
+                >
+                  {hint}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           turns.map((t, i) => {
             const display = t.role === 'assistant' ? assistantDisplayText(t) : t.content
             const isRevealing = t.role === 'assistant' && !t.error && revealingTurn === i && Boolean(t.reveal)
             return (
             <div
-              key={i}
-              className={`rounded-lg px-2.5 py-2 text-xs transition-all duration-300 ${
+              key={`${activeId}-${i}-${t.role}`}
+              className={`wikirag-msg-enter rounded-lg px-2.5 py-2 text-xs ${
                 t.role === 'user'
-                  ? 'ml-3 bg-red-50 text-neutral-900'
+                  ? 'ml-3 border border-[color-mix(in_srgb,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
                   : t.error
-                    ? 'mr-1 border border-amber-200 bg-amber-50/80 text-amber-950'
-                    : 'mr-1 border border-neutral-200 bg-white shadow-sm'
+                    ? 'mr-1 border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-fg)]'
+                    : 'mr-1 border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm'
               }`}
+              style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
             >
-              <p className="mb-0.5 text-[9px] font-bold uppercase text-slate-400">
+              <p className="mb-0.5 text-[9px] font-bold uppercase text-[var(--color-fg-subtle)]">
                 {t.role === 'user' ? 'Вы' : t.error ? 'Ошибка' : 'AI'}
                 {t.meta?.mode ? ` · ${t.meta.mode}` : ''}
                 {t.meta?.corax?.computers ? ` · ${t.meta.corax.computers} ПК` : ''}
@@ -608,12 +633,12 @@ export function WikiRagChat({
                 <p className="whitespace-pre-wrap leading-relaxed">{display}</p>
               )}
               {t.parsed?.sources?.length ? (
-                <ul className="mt-1.5 space-y-0.5 border-t border-neutral-100 pt-1.5">
+                <ul className="mt-1.5 space-y-0.5 border-t border-[var(--color-border)] pt-1.5">
                   {t.parsed.sources.map((s, j) => (
                     <li key={j}>
                       <button
                         type="button"
-                        className="text-left text-blue-700 underline"
+                        className="text-left text-[var(--color-primary)] underline"
                         onClick={() => onOpenDocument?.(s.document_id)}
                       >
                         {s.filename}
@@ -634,7 +659,7 @@ export function WikiRagChat({
           onChange={(e) => setInput(e.target.value)}
           rows={2}
           placeholder="Вопрос…"
-          className="min-h-[2.5rem] flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-xs outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-500/30"
+          className="app-input min-h-[2.5rem] flex-1 !rounded-lg !px-2 !py-1.5 !text-xs"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
@@ -646,7 +671,7 @@ export function WikiRagChat({
           type="button"
           disabled={sending || !input.trim()}
           onClick={() => void send()}
-          className="shrink-0 self-end rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          className="shrink-0 self-end app-btn app-btn-primary !min-h-[36px] !px-3 !py-2 !text-xs"
         >
           →
         </button>

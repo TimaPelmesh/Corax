@@ -196,7 +196,7 @@ export function WikiRagDocViewer({
 
             onClick={() => void save()}
 
-            className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            className="app-btn app-btn-primary !min-h-[32px] !px-2.5 !py-1.5 !text-xs"
 
           >
 

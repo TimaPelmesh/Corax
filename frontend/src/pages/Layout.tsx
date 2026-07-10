@@ -13,14 +13,17 @@ import {
   IconKey,
   IconLogout,
   IconMenu,
+  IconMoon,
   IconPcs,
   IconPrinter,
   IconSoftware,
+  IconSun,
   IconTag,
   IconTicket,
   IconUsers,
 } from '../components/icons'
 import { clearLoginGreeting, peekLoginGreeting } from '../loginGreeting'
+import { useTheme } from '../ThemeContext'
 
 function dayGreeting(date = new Date()) {
   const hour = date.getHours()
@@ -53,10 +56,10 @@ function SidebarNavLink({
       end={end}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `group relative flex min-h-[36px] touch-manipulation items-center gap-2 overflow-hidden rounded-lg border border-transparent px-2.5 py-1.5 text-[15px] font-medium no-underline transition-colors active:scale-[0.99] ${
+        `group relative flex min-h-[36px] touch-manipulation items-center gap-2 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-[15px] font-medium no-underline transition-colors active:scale-[0.99] ${
           isActive
-            ? 'bg-neutral-200/80 text-neutral-950'
-            : 'text-neutral-700 hover:bg-neutral-100/80 hover:text-neutral-950'
+            ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
+            : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
         }`
       }
     >
@@ -65,8 +68,8 @@ function SidebarNavLink({
           <span
             className={`relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${
               isActive
-                ? 'text-neutral-900'
-                : 'text-neutral-500 group-hover:text-neutral-900'
+                ? 'text-[var(--color-primary)]'
+                : 'text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg)]'
             }`}
           >
             <Icon className="h-[15px] w-[15px]" />
@@ -81,7 +84,7 @@ function SidebarNavLink({
 function NavBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
-      <div className="mb-1.5 px-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-neutral-400">
+      <div className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">
         {title}
       </div>
       <div className="flex flex-col gap-0.5">{children}</div>
@@ -104,11 +107,11 @@ function SidebarGroupButton({
     <button
       type="button"
       onClick={onToggle}
-      className="group flex min-h-[36px] w-full touch-manipulation items-center justify-between rounded-lg border border-transparent px-2.5 py-1.5 text-left text-[15px] font-semibold text-neutral-800 transition hover:bg-neutral-100/80"
+      className="group flex min-h-[36px] w-full touch-manipulation items-center justify-between rounded-lg border border-transparent px-3 py-2 text-left text-[15px] font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
       aria-expanded={open}
     >
       <span className="flex min-w-0 items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-500 transition group-hover:text-neutral-900">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--color-fg-subtle)] transition group-hover:text-[var(--color-fg)]">
           <Icon className="h-[15px] w-[15px]" />
         </span>
         <span className="truncate">{label}</span>
@@ -135,12 +138,19 @@ function SidebarGroupButton({
 
 export function Layout() {
   const { user, logout } = useAuth()
-  const roleLabel = user?.is_superuser ? 'Админ' : user?.role === 'editor' ? 'Редактор' : 'Наблюдатель'
-  const roleBadgeClass = user?.is_superuser
-    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  const { theme, toggleTheme } = useTheme()
+  const displayName = user?.full_name?.trim() || user?.username || ''
+  const showUsername =
+    Boolean(user?.full_name?.trim()) && user?.username && user.username !== displayName
+  const roleLabel = user?.is_superuser
+    ? null
     : user?.role === 'editor'
-      ? 'border-sky-200 bg-sky-50 text-sky-700'
-      : 'border-amber-200 bg-amber-50 text-amber-700'
+      ? 'Редактор'
+      : 'Наблюдатель'
+  const roleBadgeClass =
+    user?.role === 'editor'
+      ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-300'
+      : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-300'
   const location = useLocation()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileNavPath, setMobileNavPath] = useState(location.pathname)
@@ -284,29 +294,29 @@ export function Layout() {
 
   const sidebarNav = (
     <>
-      <div className="shrink-0 border-b border-neutral-200/80 bg-gradient-to-b from-white via-white to-blue-50/30 px-4 py-5">
+      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4">
         <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center lg:grid-cols-1 lg:justify-items-center">
           <div className="lg:hidden" aria-hidden />
           <CoraxLogo variant="wordmark" alt="CORAX" className="mx-auto justify-self-center" />
           <button
             type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 lg:hidden"
+            className="flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 lg:hidden"
             onClick={closeNav}
             aria-label="Закрыть меню"
           >
             <IconClose className="h-6 w-6" />
           </button>
         </div>
-        <div className="mt-4 h-px w-full bg-gradient-to-r from-transparent via-blue-600/50 to-transparent" aria-hidden />
+        <div className="mt-4 h-px w-full bg-[var(--color-border)]" aria-hidden />
       </div>
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-3 py-4">
-        <div className="px-0.5">
+      <nav className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-[var(--color-surface)] px-3 py-4">
+        <div className="px-1">
           <input
             value={menuQuery}
             onChange={(e) => setMenuQuery(e.target.value)}
             placeholder="Поиск по меню..."
-            className="w-full rounded-lg border border-neutral-200/90 bg-white px-3 py-1.5 text-sm text-neutral-900 shadow-sm outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            className="app-input !min-h-[40px] !py-2"
             aria-label="Поиск разделов меню"
           />
         </div>
@@ -343,7 +353,7 @@ export function Layout() {
                     aria-hidden={!open}
                   >
                     <div className="overflow-hidden">
-                      <div className="border-l border-neutral-300/90 pl-2">
+                      <div className="border-l border-[var(--color-border)] pl-2">
                         <div className="flex flex-col gap-0.5 py-0.5">
                           {section.items.map((item) => (
                             <SidebarNavLink key={item.to} to={item.to} end={item.end} icon={item.icon} onNavigate={closeNav}>
@@ -360,46 +370,65 @@ export function Layout() {
           )
         })}
         {menuQueryNorm && navSections.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/70 px-3 py-4 text-center text-xs text-neutral-500">
+          <div className="app-panel-sm rounded-xl border-dashed text-center text-xs text-[var(--color-fg-subtle)]">
             Ничего не найдено
           </div>
         ) : null}
       </nav>
 
-      <div className="shrink-0 border-t border-neutral-200/80 bg-gradient-to-b from-white to-neutral-50/90 p-3 safe-area-pb">
-        <div className="mb-2 rounded-2xl border border-neutral-200/85 bg-white/90 px-3 py-2.5 shadow-[0_12px_34px_-28px_rgb(15_23_42/0.6)]">
-          <div className="truncate font-mono text-xs font-medium text-neutral-700">{user?.username}</div>
-          <div className="mt-1">
-            <span
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${roleBadgeClass}`}
-            >
-              {roleLabel}
-            </span>
-          </div>
+      <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 safe-area-pb">
+        <div className="app-panel-sm mb-3 !rounded-2xl !py-3">
+          <div className="truncate text-sm font-semibold text-[var(--color-fg)]">{displayName}</div>
+          {showUsername ? (
+            <div className="mt-1 truncate font-mono text-[11px] font-medium text-[var(--color-fg-subtle)]">
+              {user?.username}
+            </div>
+          ) : null}
+          {roleLabel ? (
+            <div className="mt-1">
+              <span
+                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${roleBadgeClass}`}
+              >
+                {roleLabel}
+              </span>
+            </div>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            void (async () => {
-              await logout()
-              window.location.href = '/login'
-            })()
-          }}
-          className="flex min-h-[44px] w-full touch-manipulation items-center justify-center gap-2 rounded-2xl border border-neutral-200/90 bg-white/95 px-3 py-2.5 text-sm font-semibold text-neutral-800 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-700 active:scale-[0.99]"
-        >
-          <IconLogout className="h-4 w-4 text-red-500" />
-          Выйти
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="app-btn app-btn-secondary !min-h-[44px] flex-1 !px-0"
+            aria-label={theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}
+            title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+          >
+            {theme === 'dark' ? <IconSun className="h-5 w-5 text-[var(--color-primary)]" /> : <IconMoon className="h-5 w-5 text-[var(--color-primary)]" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                await logout()
+                window.location.href = '/login'
+              })()
+            }}
+            className="app-btn app-btn-secondary !min-h-[44px] flex-1 !px-0 text-[var(--color-primary)]"
+            aria-label="Выйти"
+            title="Выйти"
+          >
+            <IconLogout className="h-5 w-5" />
+          </button>
+        </div>
       </div>
     </>
   )
 
   return (
-    <div className="app-layout-bg relative isolate flex h-dvh min-h-0 w-full flex-col overflow-hidden bg-white lg:flex-row">
-      <header className="safe-area-pt relative z-10 flex h-14 shrink-0 items-center gap-3 border-b border-neutral-200/80 bg-white/90 px-3 backdrop-blur lg:hidden">
+    <div className="app-layout-bg relative isolate flex h-dvh min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg)] lg:flex-row">
+      <header className="safe-area-pt relative z-10 flex h-14 shrink-0 items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 lg:hidden">
         <button
           type="button"
-          className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-lg text-neutral-800 transition hover:bg-neutral-100 active:bg-neutral-100"
+          className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-lg text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] active:bg-[var(--color-surface-muted)]"
           onClick={() => {
             setMobileNavPath(location.pathname)
             setMobileNavOpen(true)
@@ -418,7 +447,7 @@ export function Layout() {
       {mobileNavVisible ? (
         <button
           type="button"
-          className="fixed inset-0 z-40 cursor-default bg-neutral-950/25 backdrop-blur-[2px] lg:hidden"
+          className="fixed inset-0 z-40 cursor-default bg-black/40 lg:hidden"
           aria-label="Закрыть меню"
           onClick={closeNav}
         />
@@ -426,7 +455,7 @@ export function Layout() {
 
       <aside
         id="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 flex h-full w-[min(18.5rem,92vw)] flex-col border-r border-neutral-200/80 bg-white/95 shadow-[20px_0_70px_-48px_rgb(15_23_42/0.65)] backdrop-blur-xl transition-all duration-300 ease-out lg:static lg:z-auto lg:max-w-none lg:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-full w-[min(18.5rem,92vw)] flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-all duration-300 ease-out lg:static lg:z-auto lg:max-w-none lg:shadow-none ${
           mobileNavVisible ? 'translate-x-0' : '-translate-x-full'
         } ${
           desktopNavHidden
@@ -437,20 +466,20 @@ export function Layout() {
         {sidebarNav}
       </aside>
 
-      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain border-l border-neutral-100 bg-neutral-50 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 transition-[padding] sm:px-5 sm:py-6 lg:border-l-0 lg:px-10 lg:pb-12 lg:pt-10">
+      <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[var(--color-bg)] px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-10 lg:pb-12 lg:pt-10">
         {welcomeToast ? (
           <div
-            className={`pointer-events-none fixed right-4 top-4 z-[200] max-w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white/95 px-4 py-3 text-sm text-neutral-800 shadow-[0_18px_44px_-20px_rgba(2,6,23,0.55)] backdrop-blur sm:right-6 sm:top-6 ${
+            className={`pointer-events-none fixed right-4 top-4 z-[200] max-w-[min(22rem,calc(100vw-2rem))] app-panel-sm !rounded-2xl text-sm text-[var(--color-fg)] sm:right-6 sm:top-6 ${
               welcomeToastLeaving ? 'toast-leave-right' : 'toast-enter-right'
             }`}
           >
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-950">CORAX</div>
-            <div className="mt-1 font-semibold text-neutral-950">{welcomeToast}</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">CORAX</div>
+            <div className="mt-1 font-semibold text-[var(--color-fg)]">{welcomeToast}</div>
           </div>
         ) : null}
         <button
           type="button"
-          className={`hidden lg:flex fixed top-24 z-30 items-center rounded-r-xl border border-neutral-200 bg-white/95 px-2 py-3 text-[11px] font-semibold text-neutral-600 shadow-sm transition-all duration-300 hover:bg-neutral-50 ${
+          className={`hidden lg:flex fixed top-24 z-30 items-center rounded-r-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-3 text-[11px] font-semibold text-[var(--color-fg-muted)] transition-all duration-300 hover:bg-[var(--color-surface-muted)] ${
             desktopNavHidden ? 'left-0' : 'left-[15.9rem]'
           }`}
           onClick={() => setDesktopNavHidden((v) => !v)}

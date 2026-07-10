@@ -1,0 +1,38 @@
+# CORAX — API (+ UI в production после npm run build)
+# Установка: sudo cp deploy/corax-backend.service /etc/systemd/system/
+# Подставьте User= и пути под свой сервер.
+
+[Unit]
+Description=CORAX Backend (FastAPI + static UI)
+Documentation=https://github.com/TimaPelmesh/Corax
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=corax
+Group=corax
+WorkingDirectory=/opt/corax
+
+# Production: один процесс на :3000 отдаёт UI (frontend/dist) и /api/v1
+Environment=ENVIRONMENT=production
+Environment=HOST=0.0.0.0
+Environment=PORT=3000
+Environment=RELOAD=0
+Environment=PYTHONUTF8=1
+Environment=PYTHONIOENCODING=utf-8
+
+# Секреты и DATABASE_URL — в backend/.env (не в unit-файле)
+ExecStart=/opt/corax/.venv/bin/python3 /opt/corax/run.py
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+# Логи: journalctl -u corax-backend -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=corax-backend
+
+[Install]
+WantedBy=multi-user.target

@@ -437,7 +437,7 @@ export function UsersPage() {
                         {u.id !== user.id ? (
                           <button
                             type="button"
-                            className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-blue-50"
+                            className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
                             onClick={() => {
                               void (async () => {
                                 await api.deleteUser(u.id)

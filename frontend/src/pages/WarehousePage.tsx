@@ -47,6 +47,14 @@ export function WarehousePage() {
   const [toast, setToast] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [roomMenuOpen, setRoomMenuOpen] = useState(false)
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+
+  const [roomDialog, setRoomDialog] = useState<null | { mode: 'create' | 'rename'; title: string }>(null)
+  const [roomBusy, setRoomBusy] = useState(false)
+
+  const [transferItemId, setTransferItemId] = useState<number | null>(null)
+  const [transferToId, setTransferToId] = useState<number | null>(null)
+  const [transferBusy, setTransferBusy] = useState(false)
 
   const [addOpen, setAddOpen] = useState(false)
   const [addPreset, setAddPreset] = useState<WarehousePreset | null>(null)
@@ -73,6 +81,16 @@ export function WarehousePage() {
     }
     return map
   }, [presets])
+
+  const transferTarget = useMemo(
+    () => items.find((i) => i.id === transferItemId) ?? null,
+    [items, transferItemId],
+  )
+
+  const otherRooms = useMemo(
+    () => rooms.filter((r) => r.id !== (transferTarget?.room_id ?? activeRoomId)),
+    [rooms, transferTarget, activeRoomId],
+  )
 
   const reload = useCallback(async () => {
     setErr(null)
@@ -127,32 +145,28 @@ export function WarehousePage() {
     return () => window.clearTimeout(t)
   }, [toast])
 
-  const createRoom = async () => {
-    if (!canEdit) return
-    setRoomMenuOpen(false)
-    const title = window.prompt('Название складского помещения', `Склад ${rooms.length + 1}`)?.trim()
-    if (title === undefined) return
+  const submitRoomDialog = async () => {
+    if (!canEdit || !roomDialog) return
+    const title = roomDialog.title.trim()
+    if (!title) return
+    setRoomBusy(true)
+    setErr(null)
     try {
-      const created = await api.createWarehouseRoom({ title: title || `Склад ${rooms.length + 1}` })
-      await reload()
-      setActiveRoomId(created.id)
-      setToast('Помещение создано')
+      if (roomDialog.mode === 'create') {
+        const created = await api.createWarehouseRoom({ title })
+        await reload()
+        setActiveRoomId(created.id)
+        setToast('Помещение создано')
+      } else if (activeRoom) {
+        await api.patchWarehouseRoom(activeRoom.id, { title })
+        await reload()
+        setToast('Название обновлено')
+      }
+      setRoomDialog(null)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось создать помещение')
-    }
-  }
-
-  const renameRoom = async () => {
-    if (!canEdit || !activeRoom) return
-    setRoomMenuOpen(false)
-    const next = window.prompt('Новое название', activeRoom.title)?.trim()
-    if (!next || next === activeRoom.title) return
-    try {
-      await api.patchWarehouseRoom(activeRoom.id, { title: next })
-      await reload()
-      setToast('Название обновлено')
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось переименовать')
+      setErr(e instanceof Error ? e.message : 'Не удалось сохранить помещение')
+    } finally {
+      setRoomBusy(false)
     }
   }
 
@@ -175,6 +189,7 @@ export function WarehousePage() {
 
   const openAdd = (preset: WarehousePreset) => {
     if (!canEdit || !activeRoomId) return
+    setAddMenuOpen(false)
     setAddPreset(preset)
     setAddName(preset.name)
     setAddTracking(preset.default_tracking === 'unit' ? 'unit' : 'lot')
@@ -228,28 +243,31 @@ export function WarehousePage() {
     }
   }
 
-  const transferItem = async (item: WarehouseStockItem) => {
+  const openTransfer = (item: WarehouseStockItem) => {
     if (!canEdit) return
     const others = rooms.filter((r) => r.id !== item.room_id)
     if (!others.length) {
       setErr('Нет другого помещения для перемещения')
       return
     }
-    const labels = others.map((r) => `${r.id}: ${r.title}`).join('\n')
-    const raw = window.prompt(`Куда переместить?\n${labels}\n\nВведите ID помещения:`)
-    if (!raw) return
-    const toId = Number(raw.trim())
-    if (!others.some((r) => r.id === toId)) {
-      setErr('Неверный ID помещения')
-      return
-    }
+    setTransferItemId(item.id)
+    setTransferToId(others[0]?.id ?? null)
+  }
+
+  const submitTransfer = async () => {
+    if (!canEdit || !transferItemId || !transferToId) return
+    setTransferBusy(true)
+    setErr(null)
     try {
-      await api.transferWarehouseItem(item.id, { to_room_id: toId })
+      await api.transferWarehouseItem(transferItemId, { to_room_id: transferToId })
+      setTransferItemId(null)
       if (activeRoomId) await reloadItems(activeRoomId, search)
       await reload()
       setToast('Позиция перемещена')
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Ошибка перемещения')
+    } finally {
+      setTransferBusy(false)
     }
   }
 
@@ -267,56 +285,76 @@ export function WarehousePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-3 py-4 sm:px-4 lg:px-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 text-neutral-900">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-900 text-white">
-              <IconWarehouse className="h-[18px] w-[18px]" />
-            </span>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Склад</h1>
-              <p className="text-sm text-neutral-500">Учёт свободного оборудования и комплектующих</p>
-            </div>
+    <div>
+      <div className="mb-6 flex min-w-0 flex-wrap items-start justify-between gap-3 sm:mb-8 sm:gap-4">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+          <div className="page-hero-icon mt-0.5 shrink-0">
+            <IconWarehouse className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="page-title">Склад</h1>
+            <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">
+              Учёт свободного оборудования и комплектующих по помещениям.
+            </p>
           </div>
         </div>
         {!canEdit ? (
-          <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-medium text-neutral-600">
+          <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs font-medium text-[var(--color-fg-muted)]">
             Только просмотр
           </span>
         ) : null}
-      </header>
+      </div>
 
-      {err ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
-      ) : null}
-      {toast ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{toast}</div>
-      ) : null}
+      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
+      {toast ? <div className="app-alert app-alert-success mb-4">{toast}</div> : null}
 
       <div className="flex flex-col gap-4 lg:flex-row">
         <aside className="lg:w-56 shrink-0">
-          <div className="rounded-2xl border border-neutral-200/90 bg-white p-3 shadow-sm">
+          <div className="app-panel-sm">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">Помещения</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+                Помещения
+              </span>
               {canEdit ? (
                 <div className="relative">
                   <button
                     type="button"
-                    className="rounded-lg px-2 py-1 text-xs font-semibold text-red-700 hover:bg-blue-50"
+                    className="rounded-lg px-2 py-1 text-xs font-semibold text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)]"
                     onClick={() => setRoomMenuOpen((v) => !v)}
+                    aria-expanded={roomMenuOpen}
                   >
                     ⋮
                   </button>
                   {roomMenuOpen ? (
-                    <div className="absolute right-0 z-20 mt-1 min-w-[10rem] rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
-                      <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50" onClick={() => void createRoom()}>
+                    <div className="absolute right-0 z-20 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg">
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-sm text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
+                        onClick={() => {
+                          setRoomMenuOpen(false)
+                          setRoomDialog({ mode: 'create', title: `Склад ${rooms.length + 1}` })
+                        }}
+                      >
                         + Создать
                       </button>
-                      <button type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-neutral-50" onClick={() => void renameRoom()} disabled={!activeRoom}>
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-sm text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+                        onClick={() => {
+                          if (!activeRoom) return
+                          setRoomMenuOpen(false)
+                          setRoomDialog({ mode: 'rename', title: activeRoom.title })
+                        }}
+                        disabled={!activeRoom}
+                      >
                         Переименовать
                       </button>
-                      <button type="button" className="block w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-blue-50" onClick={() => void deleteRoom()} disabled={!activeRoom}>
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-sm text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)] disabled:opacity-50"
+                        onClick={() => void deleteRoom()}
+                        disabled={!activeRoom}
+                      >
                         Удалить
                       </button>
                     </div>
@@ -325,30 +363,37 @@ export function WarehousePage() {
               ) : null}
             </div>
             <ul className="space-y-1">
-              {rooms.map((r) => (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveRoomId(r.id)}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                      activeRoomId === r.id
-                        ? 'bg-neutral-900 text-white'
-                        : 'text-neutral-700 hover:bg-neutral-100'
-                    }`}
-                  >
-                    <span className="truncate">{r.title}</span>
-                    <span className={`ml-2 shrink-0 text-xs ${activeRoomId === r.id ? 'text-white/70' : 'text-neutral-400'}`}>
-                      {r.item_count}
-                    </span>
-                  </button>
-                </li>
-              ))}
+              {rooms.map((r) => {
+                const active = activeRoomId === r.id
+                return (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveRoomId(r.id)}
+                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                        active
+                          ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)] ring-1 ring-[var(--color-primary)]/40'
+                          : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
+                      }`}
+                    >
+                      <span className="truncate">{r.title}</span>
+                      <span
+                        className={`ml-2 shrink-0 text-xs tabular-nums ${
+                          active ? 'text-[var(--color-primary)]' : 'text-[var(--color-fg-subtle)]'
+                        }`}
+                      >
+                        {r.item_count}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
             {canEdit ? (
               <button
                 type="button"
-                onClick={() => void createRoom()}
-                className="mt-2 w-full rounded-xl border border-dashed border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50"
+                onClick={() => setRoomDialog({ mode: 'create', title: `Склад ${rooms.length + 1}` })}
+                className="mt-2 w-full rounded-xl border border-dashed border-[var(--color-border)] px-3 py-2 text-sm font-medium text-[var(--color-fg-muted)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
               >
                 + Помещение
               </button>
@@ -362,56 +407,63 @@ export function WarehousePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Поиск: название, код СК-, партия…"
-              className="min-w-[12rem] flex-1 rounded-xl border border-neutral-200 px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none"
+              className="app-input min-w-[12rem] flex-1"
+              aria-label="Поиск по складу"
             />
             {canEdit && activeRoomId ? (
-              <div className="relative group">
+              <div className="relative">
                 <button
                   type="button"
-                  className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-neutral-800"
+                  className="app-btn app-btn-primary"
+                  onClick={() => setAddMenuOpen((v) => !v)}
+                  aria-expanded={addMenuOpen}
                 >
                   + Добавить
                 </button>
-                <div className="invisible absolute right-0 z-30 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-neutral-200 bg-white p-2 opacity-0 shadow-xl transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
-                  {[...presetsByGroup.entries()].map(([group, list]) => (
-                    <div key={group} className="mb-2 last:mb-0">
-                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-neutral-400">
-                        {GROUP_LABELS[group] ?? group}
+                {addMenuOpen ? (
+                  <div className="absolute right-0 z-30 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-xl">
+                    {[...presetsByGroup.entries()].map(([group, list]) => (
+                      <div key={group} className="mb-2 last:mb-0">
+                        <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                          {GROUP_LABELS[group] ?? group}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {list.map((p) => (
+                            <button
+                              key={p.key}
+                              type="button"
+                              onClick={() => openAdd(p)}
+                              className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {list.map((p) => (
-                          <button
-                            key={p.key}
-                            type="button"
-                            onClick={() => openAdd(p)}
-                            className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-xs font-medium text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
-                          >
-                            {p.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
 
           {activeRoom?.notes ? (
-            <p className="rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">{activeRoom.notes}</p>
+            <p className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-fg-muted)]">
+              {activeRoom.notes}
+            </p>
           ) : null}
 
-          <div className="overflow-hidden rounded-2xl border border-neutral-200/90 bg-white shadow-sm">
+          <div className="app-card overflow-hidden !p-0">
             {loading ? (
-              <div className="px-4 py-10 text-center text-sm text-neutral-500">Загрузка…</div>
+              <div className="px-4 py-10 text-center text-sm text-[var(--color-fg-subtle)]">Загрузка…</div>
             ) : items.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-neutral-500">
+              <div className="app-empty-state !rounded-none border-0">
                 {activeRoom ? 'На складе пока нет позиций' : 'Выберите помещение'}
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="border-b border-neutral-100 bg-neutral-50/80 text-[11px] font-bold uppercase tracking-[0.1em] text-neutral-500">
+                <table className="app-table min-w-[640px]">
+                  <thead className="app-table-head">
                     <tr>
                       <th className="px-3 py-2.5">Тип / название</th>
                       <th className="px-3 py-2.5">Код</th>
@@ -423,32 +475,42 @@ export function WarehousePage() {
                   </thead>
                   <tbody>
                     {items.map((item) => (
-                      <tr key={item.id} className="border-t border-neutral-100 hover:bg-neutral-50/60">
-                        <td className="px-3 py-2.5 align-top">
-                          <div className="font-medium text-neutral-900">{item.name}</div>
-                          <div className="text-xs text-neutral-500">{item.preset_name ?? item.preset_key}</div>
+                      <tr key={item.id} className="app-table-row">
+                        <td className="app-table-cell align-top">
+                          <div className="font-medium">{item.name}</div>
+                          <div className="text-xs text-[var(--color-fg-subtle)]">
+                            {item.preset_name ?? item.preset_key}
+                          </div>
                           {item.batch_label ? (
-                            <div className="mt-0.5 text-xs text-neutral-400">Партия: {item.batch_label}</div>
+                            <div className="mt-0.5 text-xs text-[var(--color-fg-subtle)]">
+                              Партия: {item.batch_label}
+                            </div>
                           ) : null}
-                          {item.notes ? <div className="mt-0.5 text-xs text-neutral-500">{item.notes}</div> : null}
+                          {item.notes ? (
+                            <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{item.notes}</div>
+                          ) : null}
                         </td>
-                        <td className="px-3 py-2.5 align-top font-mono text-xs text-neutral-700">
+                        <td className="app-table-cell align-top font-mono text-xs">
                           {item.internal_code ?? '—'}
                         </td>
-                        <td className="px-3 py-2.5 align-top">
+                        <td className="app-table-cell align-top">
                           {item.tracking_mode === 'lot' ? `${item.quantity_available} шт` : '1 шт'}
                         </td>
-                        <td className="px-3 py-2.5 align-top text-xs">{CONDITION_LABELS[item.condition] ?? item.condition}</td>
-                        <td className="px-3 py-2.5 align-top text-xs text-neutral-500">{fmtWhen(item.updated_at)}</td>
+                        <td className="app-table-cell align-top text-xs">
+                          {CONDITION_LABELS[item.condition] ?? item.condition}
+                        </td>
+                        <td className="app-table-cell align-top text-xs text-[var(--color-fg-subtle)]">
+                          {fmtWhen(item.updated_at)}
+                        </td>
                         {canEdit ? (
-                          <td className="px-3 py-2.5 align-top text-right">
+                          <td className="app-table-cell align-top text-right">
                             <div className="flex justify-end gap-1">
                               {rooms.length > 1 ? (
                                 <button
                                   type="button"
                                   title="Переместить"
-                                  className="rounded-lg px-2 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
-                                  onClick={() => void transferItem(item)}
+                                  className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
+                                  onClick={() => openTransfer(item)}
                                 >
                                   ↔
                                 </button>
@@ -456,7 +518,7 @@ export function WarehousePage() {
                               <button
                                 type="button"
                                 title="Списать"
-                                className="rounded-lg px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                                className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-warning-fg)] hover:bg-[var(--color-warning-bg)]"
                                 onClick={() => void writeOff(item)}
                               >
                                 Списать
@@ -464,7 +526,7 @@ export function WarehousePage() {
                               <button
                                 type="button"
                                 title="Удалить запись"
-                                className="rounded-lg p-1 text-neutral-400 hover:bg-blue-50 hover:text-blue-700"
+                                className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-primary-muted)] hover:text-[var(--color-primary)]"
                                 onClick={() => void deleteItem(item)}
                               >
                                 <IconTrash className="h-4 w-4" />
@@ -482,35 +544,133 @@ export function WarehousePage() {
         </section>
       </div>
 
-      {addOpen && addPreset ? (
+      {roomDialog ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <h2 className="text-lg font-semibold text-[var(--color-fg)]">
+                {roomDialog.mode === 'create' ? 'Новое помещение' : 'Переименовать помещение'}
+              </h2>
+              <button
+                type="button"
+                className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
+                onClick={() => setRoomDialog(null)}
+              >
+                <IconClose className="h-5 w-5" />
+              </button>
+            </div>
+            <label className="block">
+              <span className="app-label">Название</span>
+              <input
+                value={roomDialog.title}
+                onChange={(e) => setRoomDialog((d) => (d ? { ...d, title: e.target.value } : d))}
+                className="app-input"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void submitRoomDialog()
+                  }
+                }}
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="app-btn app-btn-secondary" onClick={() => setRoomDialog(null)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={roomBusy || !roomDialog.title.trim()}
+                className="app-btn app-btn-primary"
+                onClick={() => void submitRoomDialog()}
+              >
+                {roomBusy ? 'Сохранение…' : 'Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {transferTarget ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <h2 className="text-lg font-bold text-neutral-900">Добавить: {addPreset.name}</h2>
-                <p className="text-xs text-neutral-500">{activeRoom?.title}</p>
+                <h2 className="text-lg font-semibold text-[var(--color-fg)]">Переместить</h2>
+                <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">{transferTarget.name}</p>
               </div>
-              <button type="button" className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100" onClick={() => setAddOpen(false)}>
+              <button
+                type="button"
+                className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
+                onClick={() => setTransferItemId(null)}
+              >
+                <IconClose className="h-5 w-5" />
+              </button>
+            </div>
+            <label className="block">
+              <span className="app-label">Куда</span>
+              <select
+                value={transferToId ?? ''}
+                onChange={(e) => setTransferToId(Number(e.target.value))}
+                className="app-input"
+              >
+                {otherRooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="app-btn app-btn-secondary" onClick={() => setTransferItemId(null)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={transferBusy || !transferToId}
+                className="app-btn app-btn-primary"
+                onClick={() => void submitTransfer()}
+              >
+                {transferBusy ? 'Перемещение…' : 'Переместить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {addOpen && addPreset ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-semibold text-[var(--color-fg)]">Добавить: {addPreset.name}</h2>
+                <p className="text-xs text-[var(--color-fg-subtle)]">{activeRoom?.title}</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
+                onClick={() => setAddOpen(false)}
+              >
                 <IconClose className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-3">
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-neutral-600">Название / модель</span>
+                <span className="app-label">Название / модель</span>
                 <input
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
-                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                  className="app-input"
                   placeholder="Например: DDR4 16GB Kingston"
                 />
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-neutral-600">Учёт</span>
+                  <span className="app-label">Учёт</span>
                   <select
                     value={addTracking}
                     onChange={(e) => setAddTracking(e.target.value as 'unit' | 'lot')}
-                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                    className="app-input"
                   >
                     <option value="lot">Партия (кол-во)</option>
                     <option value="unit">Поштучно (СК-код)</option>
@@ -518,14 +678,14 @@ export function WarehousePage() {
                 </label>
                 {addTracking === 'lot' ? (
                   <label className="block">
-                    <span className="mb-1 block text-xs font-semibold text-neutral-600">Количество</span>
+                    <span className="app-label">Количество</span>
                     <input
                       type="number"
                       min={1}
                       max={9999}
                       value={addQty}
                       onChange={(e) => setAddQty(Math.max(1, Number(e.target.value) || 1))}
-                      className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                      className="app-input"
                     />
                   </label>
                 ) : (
@@ -534,18 +694,18 @@ export function WarehousePage() {
                       type="checkbox"
                       checked={addAutoCode}
                       onChange={(e) => setAddAutoCode(e.target.checked)}
-                      className="rounded border-neutral-300"
+                      className="rounded border-[var(--color-border)]"
                     />
-                    <span className="text-xs text-neutral-600">Авто-код СК-0001</span>
+                    <span className="text-xs text-[var(--color-fg-muted)]">Авто-код СК-0001</span>
                   </label>
                 )}
               </div>
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-neutral-600">Состояние</span>
+                <span className="app-label">Состояние</span>
                 <select
                   value={addCondition}
                   onChange={(e) => setAddCondition(e.target.value as 'new' | 'used' | 'defective')}
-                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                  className="app-input"
                 >
                   <option value="new">Новое</option>
                   <option value="used">Б/у</option>
@@ -554,33 +714,33 @@ export function WarehousePage() {
               </label>
               {addTracking === 'lot' ? (
                 <label className="block">
-                  <span className="mb-1 block text-xs font-semibold text-neutral-600">Партия (необяз.)</span>
+                  <span className="app-label">Партия (необяз.)</span>
                   <input
                     value={addBatch}
                     onChange={(e) => setAddBatch(e.target.value)}
-                    className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                    className="app-input"
                     placeholder="Kingston 2024-03"
                   />
                 </label>
               ) : null}
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-neutral-600">Примечание</span>
+                <span className="app-label">Примечание</span>
                 <textarea
                   value={addNotes}
                   onChange={(e) => setAddNotes(e.target.value)}
                   rows={2}
-                  className="w-full resize-y rounded-xl border border-neutral-200 px-3 py-2 text-sm"
+                  className="app-input resize-y"
                 />
               </label>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-xl px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100" onClick={() => setAddOpen(false)}>
+              <button type="button" className="app-btn app-btn-secondary" onClick={() => setAddOpen(false)}>
                 Отмена
               </button>
               <button
                 type="button"
                 disabled={addBusy || !addName.trim()}
-                className="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                className="app-btn app-btn-primary"
                 onClick={() => void submitAdd()}
               >
                 {addBusy ? 'Сохранение…' : 'Добавить на склад'}

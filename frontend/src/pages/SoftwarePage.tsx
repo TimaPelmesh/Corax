@@ -80,7 +80,7 @@ export function SoftwarePage() {
       </div>
 
       {err && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+        <div className="app-alert app-alert-error mb-4">
           {err}
         </div>
       )}
@@ -92,11 +92,7 @@ export function SoftwarePage() {
               key={s.kind}
               type="button"
               onClick={() => setKind(s.kind)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                kind === s.kind
-                  ? 'border-zinc-600 bg-zinc-700 text-white shadow'
-                  : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50'
-              }`}
+              className={`app-chip ${kind === s.kind ? 'app-chip--active' : ''}`}
             >
               {s.label}
             </button>
@@ -111,80 +107,73 @@ export function SoftwarePage() {
           placeholder="Начните вводить для фильтра…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="app-input app-input--lg min-w-[min(100%,24rem)] flex-1 shadow-sm"
+          className="app-input app-input--lg min-w-[min(100%,24rem)] flex-1"
         />
-        {loading ? <span className="text-sm text-slate-500">Обновление…</span> : null}
+        {loading ? <span className="text-sm text-[var(--color-fg-subtle)]">Обновление…</span> : null}
       </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-5">
-        <div className="app-card overflow-hidden p-0 lg:col-span-3">
+        <div className="app-card overflow-hidden !p-0 lg:col-span-3">
           <div className="-mx-0 overflow-x-auto overscroll-x-contain">
-          <table className="min-w-[min(100%,20rem)] w-full text-left text-[13px]">
-            <thead className="app-table-head !text-[10px]">
-              <tr>
-                <th className="px-4 py-2.5">Название</th>
-                <th className="px-4 py-2.5 text-right">ПК</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {rows.length === 0 && !loading ? (
+            <table className="app-table min-w-[min(100%,20rem)]">
+              <thead className="app-table-head !text-[10px]">
                 <tr>
-                  <td colSpan={2} className="px-4 py-12 text-center text-slate-500">
-                    Ничего не найдено. Уточните запрос или отправьте отчёты агента.
-                  </td>
+                  <th className="px-4 py-2.5">Название</th>
+                  <th className="px-4 py-2.5 text-right">ПК</th>
                 </tr>
-              ) : (
-                rows.map((r) => (
-                  <tr
-                    key={r.name}
-                    className={`cursor-pointer ${selected === r.name ? 'bg-neutral-50 ring-2 ring-inset ring-neutral-200/80' : 'app-table-row'}`}
-                    onClick={() => void pickRow(r.name)}
-                  >
-                    <td className="px-4 py-2 text-slate-800" title={r.version ? `${r.name} — ${r.version}` : r.name}>
-                      <div className="font-medium leading-snug">{r.name}</div>
-                      {r.version ? (
-                        <div className="mt-0.5 font-mono text-[11px] font-normal text-neutral-400">{r.version}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-[12px] tabular-nums font-semibold text-neutral-900">
-                      {r.count}
+              </thead>
+              <tbody>
+                {rows.length === 0 && !loading ? (
+                  <tr>
+                    <td colSpan={2} className="app-table-cell py-12 text-center app-table-cell-muted">
+                      Ничего не найдено. Уточните запрос или отправьте отчёты агента.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  rows.map((r) => (
+                    <tr
+                      key={r.name}
+                      className={`cursor-pointer ${selected === r.name ? 'app-table-row-selected' : 'app-table-row hover:bg-[var(--color-surface-muted)]'}`}
+                      onClick={() => void pickRow(r.name)}
+                    >
+                      <td className="app-table-cell" title={r.version ? `${r.name} — ${r.version}` : r.name}>
+                        <div className="font-medium leading-snug">{r.name}</div>
+                        {r.version ? (
+                          <div className="mt-0.5 font-mono text-[11px] font-normal app-table-cell-muted">{r.version}</div>
+                        ) : null}
+                      </td>
+                      <td className="app-table-cell app-table-cell-num">{r.count}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
         <div
           ref={hostsPanelRef}
-          className="app-card p-4 sm:p-6 lg:col-span-2 lg:sticky lg:top-4 lg:z-10 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain"
+          className="app-panel lg:col-span-2 lg:sticky lg:top-4 lg:z-10 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain"
         >
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">У кого установлено</h2>
+          <h2 className="app-side-panel-title">У кого установлено</h2>
           {!selected ? (
-            <p className="mt-4 text-sm text-slate-500">Выберите строку в таблице слева.</p>
+            <p className="app-side-panel-muted mt-4">Выберите строку в таблице слева.</p>
           ) : hostsLoading ? (
-            <p className="mt-4 text-sm text-slate-500">Загрузка списка ПК…</p>
+            <p className="app-side-panel-muted mt-4">Загрузка списка ПК…</p>
           ) : hosts && hosts.length ? (
             <>
-              <p className="mt-2 text-xs text-slate-500">
-                Точное имя пакета: <span className="font-medium text-slate-700">{selected}</span>
+              <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
+                Точное имя пакета: <span className="font-medium text-[var(--color-fg)]">{selected}</span>
               </p>
-              <ul
-                ref={hostsListRef}
-                className="mt-4 max-h-[min(60vh,28rem)] space-y-1 overflow-auto rounded-xl border border-slate-200/70 bg-slate-50/90 p-3 text-sm ring-1 ring-slate-100/90"
-              >
+              <ul ref={hostsListRef} className="app-host-list space-y-1">
                 {hosts.map((h) => (
-                  <li key={h} className="font-mono text-slate-800">
-                    {h}
-                  </li>
+                  <li key={h}>{h}</li>
                 ))}
               </ul>
-              <p className="mt-2 text-xs text-slate-500">Всего: {hosts.length}</p>
+              <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">Всего: {hosts.length}</p>
             </>
           ) : (
-            <p className="mt-4 text-sm text-slate-500">Нет данных по выбранному названию.</p>
+            <p className="app-side-panel-muted mt-4">Нет данных по выбранному названию.</p>
           )}
         </div>
       </div>

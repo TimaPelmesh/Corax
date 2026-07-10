@@ -3,22 +3,8 @@ import { Link } from 'react-router-dom'
 import { api, type DashboardDiskDeviceRank, type DashboardSegmentKind, type DashboardSummary } from '../api'
 import { DashboardDrilldownPanel, type DashboardDrilldownSelection } from '../components/DashboardDrilldown'
 import { IconDashboard, IconDisk, IconPcs, IconPrinter, IconSoftware, IconTag } from '../components/icons'
-
-/** Согласованная палитра для кольцевых диаграмм (нейтральная база + акцент бренда) */
-const DONUT_COLORS = [
-  '#2563eb',
-  '#18181b',
-  '#3f3f46',
-  '#71717a',
-  '#1d4ed8',
-  '#52525b',
-  '#a1a1aa',
-  '#e4e4e7',
-  '#1e40af',
-  '#27272a',
-  '#d4d4d8',
-  '#78716c',
-]
+import { donutColorsForTheme } from '../chartColors'
+import { useTheme } from '../ThemeContext'
 
 /** Короткие подписи в легенде дашборда (полное имя — в title). */
 function formatDashboardLabel(name: string): string {
@@ -157,6 +143,8 @@ function DonutDistribution({
   onItemClick?: (name: string) => void
   selectedName?: string | null
 }) {
+  const { theme } = useTheme()
+  const donutColors = donutColorsForTheme(theme)
   const [hovered, setHovered] = useState<number | null>(null)
   const normalizedItems = useMemo(() => items.filter((i) => i.count > 0), [items])
   const total = useMemo(() => normalizedItems.reduce((s, i) => s + i.count, 0), [normalizedItems])
@@ -178,16 +166,16 @@ function DonutDistribution({
         item,
         i,
         d: ringSlicePath(80, 80, 74, 46, start, end),
-        color: DONUT_COLORS[i % DONUT_COLORS.length],
+        color: donutColors[i % donutColors.length],
       }
     })
-  }, [normalizedItems, total])
+  }, [donutColors, normalizedItems, total])
 
   const clickable = Boolean(onItemClick)
 
   if (!normalizedItems.length || total <= 0) {
     return (
-      <p className="rounded-2xl border border-dashed border-neutral-200/90 bg-gradient-to-b from-neutral-50/90 to-white px-4 py-10 text-center text-sm text-neutral-500">
+      <p className="app-empty-state">
         {emptyText ?? 'Нет данных'}
       </p>
     )
@@ -263,7 +251,7 @@ function DonutDistribution({
               </span>
             </div>
             <span
-              className={`admin-stat-value leading-none tracking-tight text-neutral-950 ${compact ? 'text-[1.35rem]' : 'text-[1.65rem]'}`}
+              className={`admin-stat-value leading-none tracking-tight text-[var(--color-fg)] ${compact ? 'text-[1.35rem]' : 'text-[1.65rem]'}`}
             >
               {total}
             </span>
@@ -294,39 +282,25 @@ function DonutDistribution({
             return (
               <li
                 key={row.name}
-                className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-0.5 rounded-md px-1.5 py-1 text-xs transition-colors duration-150 ${
+                className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-0.5 rounded-md px-1.5 py-1 text-xs transition-colors duration-150 app-legend-item ${
                   clickable ? 'cursor-pointer' : 'cursor-default'
-                } ${
-                  isSelected
-                    ? 'bg-neutral-950 text-white ring-1 ring-neutral-950'
-                    : hovered === i
-                      ? 'bg-white ring-1 ring-neutral-200/70'
-                      : 'hover:bg-neutral-50/90'
-                }`}
+                } ${isSelected ? 'app-legend-item--selected' : ''}`}
                 style={{ opacity: rowDim ? 0.55 : 1 }}
                 title={clickable ? `${row.name} — нажмите для списка ПК` : row.name}
                 onMouseEnter={() => setHovered(i)}
                 onClick={clickable ? legendClick : undefined}
               >
                 <span
-                  className="h-2 w-2 shrink-0 rounded-sm ring-1 ring-neutral-200/60"
-                  style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                  className="app-legend-swatch h-2 w-2 shrink-0 rounded-sm"
+                  style={{ backgroundColor: donutColors[i % donutColors.length] }}
                 />
-                <span
-                  className={`min-w-0 truncate font-medium leading-tight ${
-                    isSelected ? 'text-white' : 'text-neutral-700'
-                  }`}
-                >
+                <span className="min-w-0 truncate font-medium leading-tight">
                   {label}
                 </span>
-                <span
-                  className={`font-mono text-xs font-semibold tabular-nums ${
-                    isSelected ? 'text-white' : 'text-neutral-900'
-                  }`}
-                >
+                <span className="font-mono text-xs font-semibold tabular-nums">
                   {row.count}
                 </span>
-                <span className={`text-[10px] tabular-nums ${isSelected ? 'text-white/70' : 'text-neutral-400'}`}>
+                <span className="text-[10px] tabular-nums app-table-cell-muted">
                   ({pct}%)
                 </span>
               </li>
@@ -335,43 +309,25 @@ function DonutDistribution({
           return (
             <li
               key={row.name}
-              className={`flex items-center gap-3 rounded-xl transition-all duration-150 ${
+              className={`flex items-center gap-3 rounded-xl transition-all duration-150 app-legend-item ${
                 clickable ? 'cursor-pointer' : 'cursor-default'
-              } ${
-                isSelected
-                  ? 'bg-neutral-950 text-white shadow-sm ring-1 ring-neutral-950'
-                  : hovered === i
-                    ? 'bg-white shadow-sm ring-1 ring-neutral-200/80'
-                    : 'hover:bg-neutral-50/90'
-              } ${tallLegend ? 'px-2.5 py-2.5 text-[15px]' : 'px-2 py-1.5 text-sm'}`}
+              } ${isSelected ? 'app-legend-item--selected' : ''} ${tallLegend ? 'px-2.5 py-2.5 text-[15px]' : 'px-2 py-1.5 text-sm'}`}
               style={{ opacity: rowDim ? 0.55 : 1 }}
               title={clickable ? `${row.name} — нажмите для списка ПК` : row.name}
               onMouseEnter={() => setHovered(i)}
               onClick={clickable ? legendClick : undefined}
             >
               <span
-                className={`${tallLegend ? 'h-3 w-3' : 'mt-0.5 h-2.5 w-2.5'} shrink-0 rounded-sm shadow-sm ring-1 ring-neutral-200/60`}
-                style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                className={`app-legend-swatch ${tallLegend ? 'h-3 w-3' : 'mt-0.5 h-2.5 w-2.5'} shrink-0 rounded-sm`}
+                style={{ backgroundColor: donutColors[i % donutColors.length] }}
               />
-              <span
-                className={`min-w-0 flex-1 break-words text-[13px] font-medium leading-snug ${
-                  isSelected ? 'text-white' : 'text-neutral-700'
-                }`}
-              >
+              <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug">
                 {row.name}
               </span>
-              <span
-                className={`shrink-0 font-mono font-semibold ${isSelected ? 'text-white' : 'text-neutral-900'} ${
-                  tallLegend ? 'text-base' : 'text-sm'
-                }`}
-              >
+              <span className={`shrink-0 font-mono font-semibold ${tallLegend ? 'text-base' : 'text-sm'}`}>
                 {row.count}
               </span>
-              <span
-                className={`shrink-0 tabular-nums ${isSelected ? 'text-white/70' : 'text-neutral-400'} ${
-                  tallLegend ? 'text-sm' : 'text-xs'
-                }`}
-              >
+              <span className={`shrink-0 tabular-nums app-table-cell-muted ${tallLegend ? 'text-sm' : 'text-xs'}`}>
                 ({pct}%)
               </span>
             </li>
@@ -400,7 +356,7 @@ function BarDistribution({
   const max = useMemo(() => normalizedItems.reduce((m, i) => Math.max(m, i.count), 0), [normalizedItems])
   if (!normalizedItems.length || max <= 0) {
     return (
-      <p className="rounded-2xl border border-dashed border-neutral-200/90 bg-gradient-to-b from-neutral-50/90 to-white px-4 py-10 text-center text-sm text-neutral-500">
+      <p className="app-empty-state">
         {emptyText ?? 'Нет данных'}
       </p>
     )
@@ -418,10 +374,10 @@ function BarDistribution({
         return (
           <div key={`${row.name}-${idx}`} className="min-w-0 flex-1">
             <div
-              className={`group relative h-36 overflow-hidden rounded-2xl bg-gradient-to-b from-neutral-100/90 to-neutral-50/80 shadow-inner ring-1 transition ${
+              className={`group relative h-36 overflow-hidden rounded-2xl bg-[var(--color-surface-muted)] shadow-inner ring-1 transition ${
                 isSelected
-                  ? 'ring-neutral-900'
-                  : 'ring-neutral-200/60 group-hover:ring-neutral-300/70'
+                  ? 'ring-[var(--color-fg)]'
+                  : 'ring-[var(--color-border)] group-hover:ring-[var(--color-border-strong)]'
               } ${clickable ? 'cursor-pointer' : ''}`}
               title={tip}
               aria-label={tip}
@@ -431,11 +387,11 @@ function BarDistribution({
                 className="absolute inset-x-0 bottom-0 rounded-t-xl bg-gradient-to-t from-blue-700 via-neutral-800 to-neutral-600 opacity-95 shadow-[0_-4px_16px_-4px_rgb(0_0_0/0.15)] transition-[height] duration-300 ease-out group-hover:opacity-100"
                 style={{ height: `${Math.max(6, pct)}%` }}
               />
-              <div className="absolute inset-x-0 top-2 px-1.5 text-center font-mono text-[11px] font-semibold tabular-nums text-neutral-900 drop-shadow-sm">
+              <div className="absolute inset-x-0 top-2 px-1.5 text-center font-mono text-[11px] font-semibold tabular-nums text-[var(--color-fg)] drop-shadow-sm">
                 {row.count}
               </div>
             </div>
-            <div className="mt-2 text-center text-[11px] font-medium leading-snug text-neutral-600" title={row.name}>
+            <div className="mt-2 text-center text-[11px] font-medium leading-snug text-[var(--color-fg-muted)]" title={row.name}>
               <span className="line-clamp-2 break-words">{row.name}</span>
             </div>
           </div>
@@ -458,7 +414,7 @@ function DiskDevicesByAvgList({
 }) {
   if (!items.length) {
     return (
-      <p className="rounded-2xl border border-dashed border-neutral-200/90 bg-gradient-to-b from-neutral-50/90 to-white px-4 py-10 text-center text-sm text-neutral-500">
+      <p className="app-empty-state">
         {emptyText ?? 'Нет данных'}
       </p>
     )
@@ -469,49 +425,41 @@ function DiskDevicesByAvgList({
         const pct = Math.min(100, Math.round(row.avg_used_percent))
         const barTone =
           pct >= 92
-            ? 'from-neutral-950 via-blue-950 to-blue-500'
+            ? 'bg-[var(--color-primary)]'
             : pct >= 82
-              ? 'from-neutral-950 via-neutral-900 to-blue-700'
+              ? 'bg-[var(--color-primary-hover)]'
               : pct >= 70
-                ? 'from-neutral-900 to-neutral-950'
-                : 'from-neutral-800 to-black'
+                ? 'bg-[var(--color-fg-muted)]'
+                : 'bg-[var(--color-border-strong)]'
         const volLabel =
           row.volume_count === 1 ? '1 локальный том' : `${row.volume_count} локальных томов`
         const isSelected = selectedName === row.hostname
         return (
           <li
             key={row.hostname}
-            className={`rounded-xl px-3 py-2.5 ring-1 transition ${
-              isSelected
-                ? 'bg-neutral-950 text-white ring-neutral-950'
-                : 'bg-neutral-50/50 ring-neutral-100 hover:bg-white hover:ring-neutral-200/80'
+            className={`rounded-xl px-3 py-2.5 transition app-legend-item ${
+              isSelected ? 'app-legend-item--selected' : ''
             } ${onItemClick ? 'cursor-pointer' : ''}`}
             onClick={onItemClick ? () => onItemClick(row.hostname) : undefined}
             title={onItemClick ? 'Нажмите, чтобы показать сведения о ПК' : undefined}
           >
             <div className="mb-1.5 flex justify-between gap-2 text-sm">
               <span className="min-w-0">
-                <span className={`font-semibold ${isSelected ? 'text-white' : 'text-neutral-800'}`}>{row.hostname}</span>
-                <span className={`block truncate text-xs ${isSelected ? 'text-white/70' : 'text-neutral-500'}`}>
+                <span className="font-semibold text-[var(--color-fg)]">{row.hostname}</span>
+                <span className="block truncate text-xs text-[var(--color-fg-subtle)]">
                   {volLabel}
                 </span>
               </span>
-              <span
-                className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-sm font-semibold tabular-nums ring-1 ${
-                  isSelected
-                    ? 'bg-white/10 text-white ring-white/20'
-                    : 'bg-white/80 text-neutral-900 ring-neutral-200/60'
-                }`}
-              >
+              <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-sm font-semibold tabular-nums text-[var(--color-fg)]">
                 {pct}%
               </span>
             </div>
             <div
-              className="h-2 overflow-hidden rounded-full bg-neutral-200/60"
+              className="h-2 overflow-hidden rounded-full bg-[var(--color-border)]"
               title={`Заполнено ${pct}% (по объёму дисков)`}
             >
               <div
-                className={`h-full rounded-full bg-gradient-to-r ${barTone} shadow-sm transition-all duration-500`}
+                className={`h-full rounded-full ${barTone} transition-all duration-500`}
                 style={{ width: `${Math.max(4, pct)}%` }}
               />
             </div>
@@ -538,7 +486,7 @@ function RankedMetricList({
 }) {
   if (!items.length) {
     return (
-      <p className="rounded-2xl border border-dashed border-neutral-200/90 bg-gradient-to-b from-neutral-50/90 to-white px-4 py-10 text-center text-sm text-neutral-500">
+      <p className="app-empty-state">
         {emptyText ?? 'Нет данных'}
       </p>
     )
@@ -550,34 +498,26 @@ function RankedMetricList({
         return (
         <li
           key={`${row.name}-${idx}`}
-          className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 ring-1 transition sm:gap-3 sm:px-3 sm:py-2.5 ${
-            isSelected
-              ? 'bg-neutral-950 ring-neutral-950'
-              : 'bg-neutral-50/60 ring-neutral-100 hover:bg-white hover:shadow-sm hover:ring-neutral-200/70'
+          className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 transition app-legend-item sm:gap-3 sm:px-3 sm:py-2.5 ${
+            isSelected ? 'app-legend-item--selected' : ''
           } ${onItemClick ? 'cursor-pointer' : ''}`}
           onClick={onItemClick ? () => onItemClick(row.name) : undefined}
           title={onItemClick ? 'Нажмите, чтобы показать список ПК' : row.name}
         >
           <span
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold shadow-inner ${
-              isSelected
-                ? 'bg-white/10 text-white'
-                : 'bg-gradient-to-br from-neutral-200/80 to-neutral-100 text-neutral-600'
-            }`}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] font-mono text-[11px] font-bold text-[var(--color-fg-muted)]"
             aria-hidden
           >
             {idx + 1}
           </span>
           <span
-            className={`min-w-0 flex-1 truncate text-sm font-medium ${isSelected ? 'text-white' : 'text-neutral-800'}`}
+            className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--color-fg)]"
             title={row.name}
           >
             {row.name}
           </span>
           <span
-            className={`shrink-0 rounded-lg px-2.5 py-1 font-mono text-xs font-semibold tabular-nums shadow-sm ${
-              isSelected ? 'bg-white/10 text-white' : 'bg-neutral-900 text-white'
-            }`}
+            className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-primary-muted)] px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-[var(--color-primary)]"
             title={`${valueTitle}: ${row.count}`}
           >
             {row.count}
@@ -615,7 +555,7 @@ function PhysicalDisksPanel({
 }) {
   if (!total) {
     return (
-      <p className="rounded-2xl border border-dashed border-neutral-200/90 bg-gradient-to-b from-neutral-50/90 to-white px-4 py-10 text-center text-sm text-neutral-500">
+      <p className="app-empty-state">
         Нет данных по физическим дискам — включите модуль <span className="font-medium">storage_health</span> в агенте и
         обновите отчёты.
       </p>
@@ -653,36 +593,17 @@ function MiniStatCard({
 }) {
   const isBrand = accent === 'brand'
   const iconWrap = isBrand
-    ? 'border border-red-100 bg-red-50 text-blue-600 shadow-[inset_0_1px_0_rgb(255_255_255/0.78)]'
-    : 'border border-neutral-100 bg-neutral-50 text-neutral-700 shadow-[inset_0_1px_0_rgb(255_255_255/0.82)]'
+    ? 'border border-[var(--color-border)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
+    : 'border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]'
 
   return (
-    <div
-      className={`group relative overflow-hidden rounded-[1.15rem] border border-neutral-200/70 bg-white p-5 shadow-[0_16px_40px_-32px_rgb(15_23_42/0.5),0_1px_2px_rgb(15_23_42/0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-neutral-300/80 hover:shadow-[0_24px_60px_-38px_rgb(15_23_42/0.55),0_1px_2px_rgb(15_23_42/0.04)] ${className}`}
-    >
-      <div
-        className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-2xl transition-opacity duration-300 group-hover:opacity-100 ${
-          isBrand ? 'bg-red-100/70 opacity-80' : 'bg-neutral-200/70 opacity-60'
-        }`}
-        aria-hidden
-      />
-      {isBrand ? (
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-500/35 to-transparent"
-          aria-hidden
-        />
-      ) : (
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-neutral-300/40 to-transparent"
-          aria-hidden
-        />
-      )}
-      <div className="relative flex items-start gap-4">
+    <div className={`app-panel transition-colors hover:border-[var(--color-border-strong)] ${className}`}>
+      <div className="flex items-start gap-4">
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconWrap}`}>{icon}</div>
         <div className="min-w-0 flex-1 pt-0.5">
-          <div className="text-[11px] font-semibold leading-snug text-neutral-500">{label}</div>
-          <div className="admin-stat-value mt-5 text-[1.55rem] leading-none text-neutral-950 sm:text-[1.7rem]">{value}</div>
-          {sub ? <div className="mt-2 text-[11px] font-medium leading-snug text-neutral-500">{sub}</div> : null}
+          <div className="text-[11px] font-semibold leading-snug text-[var(--color-fg-subtle)]">{label}</div>
+          <div className="admin-stat-value mt-3 text-[1.55rem] leading-none text-[var(--color-fg)] sm:text-[1.7rem]">{value}</div>
+          {sub ? <div className="mt-2 text-[11px] font-medium leading-snug text-[var(--color-fg-subtle)]">{sub}</div> : null}
         </div>
       </div>
     </div>
@@ -706,25 +627,19 @@ function SectionCard({
   dense?: boolean
   bodyClassName?: string
 }) {
-  const pad = dense ? 'p-4 sm:p-4' : 'p-5 sm:p-6'
+  const pad = dense ? '!p-4' : ''
   return (
-    <div
-      className={`group relative overflow-hidden rounded-[1.15rem] border border-neutral-200/70 bg-white ${pad} shadow-[0_16px_44px_-34px_rgb(15_23_42/0.48),0_1px_2px_rgb(15_23_42/0.04)] transition duration-200 hover:border-neutral-300/80 hover:shadow-[0_24px_62px_-40px_rgb(15_23_42/0.52),0_1px_2px_rgb(15_23_42/0.04)] ${className}`}
-    >
-      <div
-        className="pointer-events-none absolute -right-20 -top-20 h-44 w-44 rounded-full bg-blue-50/80 blur-3xl transition-opacity group-hover:opacity-100"
-        aria-hidden
-      />
-      <div className="relative flex flex-wrap items-start justify-between gap-3">
+    <div className={`app-panel transition-colors hover:border-[var(--color-border-strong)] ${pad} ${className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[0.95rem] font-semibold tracking-tight text-neutral-950">{title}</h2>
+          <h2 className="text-[0.95rem] font-semibold tracking-tight text-[var(--color-fg)]">{title}</h2>
           {description ? (
-            <p className="mt-2 max-w-prose text-xs leading-relaxed text-neutral-500">{description}</p>
+            <p className="mt-2 max-w-prose text-xs leading-relaxed text-[var(--color-fg-subtle)]">{description}</p>
           ) : null}
         </div>
         {action}
       </div>
-      <div className={`relative ${dense ? 'mt-4' : 'mt-5'} ${bodyClassName}`}>{children}</div>
+      <div className={`${dense ? 'mt-4' : 'mt-5'} ${bodyClassName}`}>{children}</div>
     </div>
   )
 }
@@ -800,14 +715,14 @@ export function DashboardPage() {
 
   return (
     <div>
-      <div className="relative mb-6 overflow-hidden rounded-[1rem] border border-neutral-200/70 bg-white px-4 py-5 shadow-[0_18px_50px_-38px_rgb(15_23_42/0.55),0_1px_2px_rgb(15_23_42/0.04)] sm:px-6 sm:py-6">
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-red-100 bg-red-50 text-blue-600 shadow-[inset_0_1px_0_rgb(255_255_255/0.82)] [&_svg]:!h-6 [&_svg]:!w-6">
+      <div className="app-panel mb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
+          <div className="page-hero-icon [&_svg]:!h-6 [&_svg]:!w-6">
             <IconDashboard className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="page-title !text-xl sm:!text-[1.4rem]">Дашборд</h1>
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-neutral-600">
+            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
               Парк машин: распределение ОС и железа, заполненность дисков и топы по ПО и периферии.
             </p>
           </div>
@@ -889,8 +804,8 @@ export function DashboardPage() {
           <div className="space-y-4">
               <div className="flex flex-col gap-1 border-b border-neutral-200/70 pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
                 <div>
-                  <h2 className="text-base font-semibold tracking-tight text-neutral-950">Распределение и нагрузка</h2>
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <h2 className="text-base font-semibold tracking-tight text-[var(--color-fg)]">Распределение и нагрузка</h2>
+                  <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
                     Диаграммы по данным агентов; клик по сегменту — список ПК с ОС, дисками и железом.
                   </p>
                 </div>
@@ -1086,7 +1001,7 @@ export function DashboardPage() {
                       dense
                     >
                       {!data.peripheral_kinds.length ? (
-                        <p className="rounded-2xl border border-dashed border-neutral-200/90 bg-gradient-to-b from-neutral-50/90 to-white px-4 py-10 text-center text-sm text-neutral-500">
+                        <p className="app-empty-state">
                           Нет данных — обновите агент.
                         </p>
                       ) : (

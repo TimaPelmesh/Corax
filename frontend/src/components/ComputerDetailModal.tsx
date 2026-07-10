@@ -268,7 +268,7 @@ export function ComputerDetailModal({
               </div>
               <button
                 type="button"
-                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 onClick={onClose}
                 aria-label="Закрыть"
               >
@@ -414,7 +414,7 @@ export function ComputerDetailModal({
                           <span
                             className={`ml-auto shrink-0 rounded-md px-2 py-0.5 font-mono text-xs font-medium sm:ml-0 ${
                               d.used_percent >= 90
-                                ? 'bg-red-100 text-red-900'
+                                ? 'bg-blue-100 text-blue-900'
                                 : d.used_percent >= 75
                                   ? 'bg-amber-50 text-amber-950'
                                   : 'bg-zinc-100 text-neutral-900'

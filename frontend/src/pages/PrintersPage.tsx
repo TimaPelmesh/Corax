@@ -48,7 +48,7 @@ function PrinterToast({ message, onDismiss }: { message: string; onDismiss: () =
       role="status"
       className="toast-enter-left fixed bottom-6 left-6 z-[100] flex max-w-[min(24rem,calc(100vw-3rem))] items-start gap-3 rounded-xl border border-neutral-200/90 bg-white px-4 py-3 text-sm font-medium leading-snug text-neutral-950 shadow-[0_18px_40px_-16px_rgb(15_23_42/0.45)]"
     >
-      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden />
+      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
       <span className="min-w-0 flex-1 whitespace-pre-line">{message}</span>
       <button
         type="button"
@@ -152,7 +152,7 @@ function SupplyChip({
       title={s.name}
     >
       <div
-        className={`flex items-center gap-1 text-[10px] ${low && colored ? 'font-semibold text-red-700' : 'font-medium text-slate-600'}`}
+        className={`flex items-center gap-1 text-[10px] ${low && colored ? 'font-semibold text-blue-700' : 'font-medium text-slate-600'}`}
       >
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-black/10 ${tone.dot}`} />
         <span className={`min-w-0 truncate ${tone.text}`}>{s.name}</span>
@@ -511,8 +511,8 @@ export function PrintersPage() {
         {[
           ['Всего', stats.total, ''],
           ['Доступно', stats.online, 'text-emerald-700'],
-          ['Offline', stats.offline, 'text-red-700'],
-          ['SNMP OK', stats.snmpOk, 'text-red-700'],
+          ['Offline', stats.offline, 'text-amber-700'],
+          ['SNMP OK', stats.snmpOk, 'text-blue-700'],
           ['Мало тонера', stats.lowToner, 'text-amber-700'],
         ].map(([label, val, cls]) => (
           <div key={String(label)} className="rounded-2xl border border-slate-200/90 bg-white/90 px-3 py-2.5 shadow-sm">
@@ -539,7 +539,7 @@ export function PrintersPage() {
                 onClick={() => setFilter(key)}
                 className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                   filter === key
-                    ? 'bg-blue-600 text-white ring-2 ring-red-300 ring-offset-1'
+                    ? 'bg-blue-600 text-white ring-2 ring-blue-300 ring-offset-1'
                     : 'rounded-full bg-zinc-50 px-2 py-0.5 text-neutral-900 ring-1 ring-zinc-200/80 opacity-90 hover:opacity-100'
                 }`}
               >
@@ -641,7 +641,7 @@ export function PrintersPage() {
                           <div className="inline-flex flex-col items-end gap-0.5">
                             <button
                               type="button"
-                              className="rounded-lg px-2 py-1 text-xs font-medium text-red-700 hover:bg-blue-50"
+                              className="rounded-lg px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
                               onClick={() => void pollOne(r)}
                             >
                               SNMP
@@ -781,10 +781,10 @@ export function PrintersPage() {
 
       {deleteTarget ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-          <div className="app-card w-full max-w-md border-red-200 p-4 shadow-2xl ring-1 ring-blue-100">
+          <div className="app-card w-full max-w-md border-blue-200 p-4 shadow-2xl ring-1 ring-blue-100">
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-red-800">Удаление принтеров</h2>
+                <h2 className="text-lg font-bold text-blue-800">Удаление принтеров</h2>
                 <p className="mt-1 text-sm text-slate-600">
                   {deleteTarget.ids.length === 1
                     ? 'Принтер будет удалён из базы. SNMP-данные тоже пропадут.'

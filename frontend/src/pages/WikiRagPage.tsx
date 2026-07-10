@@ -250,8 +250,8 @@ export function WikiRagPage() {
         </div>
         <div>
           <h1 className="page-title">WikiRAG</h1>
-          <p className="mt-1 max-w-2xl text-slate-600">
-            Загрузка документов, импорт базы CORAX, чат с LM Studio справа.
+          <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">
+            Документы базы знаний и чат с локальной моделью (контекст до ~20 000 токенов).
           </p>
         </div>
       </div>
@@ -344,7 +344,7 @@ export function WikiRagPage() {
                 } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
               >
                 {dragOver ? (
-                  <p className="text-base font-semibold text-red-700">Отпустите файл</p>
+                  <p className="text-base font-semibold text-blue-700">Отпустите файл</p>
                 ) : selectedFile ? (
                   <>
                     <p className="text-base font-semibold text-neutral-950">{selectedFile.name}</p>
@@ -384,7 +384,7 @@ export function WikiRagPage() {
               <button
                 type="submit"
                 disabled={uploading || !selectedFile}
-                className="mt-auto rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:from-blue-700 hover:to-blue-600 disabled:opacity-50"
+                className="app-btn app-btn-primary mt-auto !w-full"
               >
                 {uploading ? 'Загрузка…' : 'Загрузить в базу'}
               </button>
@@ -445,7 +445,7 @@ export function WikiRagPage() {
         <button
           type="button"
           onClick={() => setChatOpen(true)}
-          className="fixed bottom-6 right-4 z-30 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-blue-700"
+          className="fixed bottom-6 right-4 z-30 app-btn app-btn-primary !rounded-full !px-4"
         >
           Чат AI
         </button>
