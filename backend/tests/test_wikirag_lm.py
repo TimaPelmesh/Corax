@@ -1,4 +1,6 @@
 from app.wikirag_lm import (
+    _append_no_think_hint,
+    _has_reasoning_only,
     _looks_like_reasoning_dump,
     _message_text_from_lm,
     _sanitize_model_output,
@@ -36,6 +38,45 @@ def test_message_text_prefers_content_over_reasoning():
         "reasoning_content": "длинные размышления",
     }
     assert _message_text_from_lm(msg) == "Ответ пользователю."
+
+
+def test_message_text_empty_content_english_reasoning_is_empty():
+    """Gemma-style: content='', reasoning truncated mid-CoT → no usable answer."""
+    msg = {
+        "content": "",
+        "reasoning_content": (
+            "Here's a thinking process to arrive at the desired output:\n\n"
+            "1. Analyze the Request: The user wants who should be prioritized "
+            "for upgrading to Windows 10, based on the provided CO"
+        ),
+    }
+    assert _message_text_from_lm(msg) == ""
+    assert _has_reasoning_only(msg)
+
+
+def test_message_text_salvages_russian_from_reasoning():
+    msg = {
+        "content": "",
+        "reasoning_content": (
+            "Here's a thinking process to construct the suggested response:\n\n"
+            "1. Analyze the Request: The user wants Windows 10 recommendations.\n\n"
+            "**Вывод:** ПК PC-OLD на Windows 7 — кандидат на миграцию.\n"
+            "Hostname PC-NEW уже на Windows 10."
+        ),
+    }
+    out = _message_text_from_lm(msg)
+    assert "PC-OLD" in out
+    assert "thinking process" not in out.lower()
+
+
+def test_append_no_think_hint_on_last_user():
+    msgs = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "Кому ставить Win10?"},
+    ]
+    out = _append_no_think_hint(msgs)
+    assert "thinking process" in out[-1]["content"].lower()
+    assert out[-1]["content"].startswith("Кому ставить Win10?")
 
 
 def test_coerce_parsed_never_empty_placeholder_on_raw():

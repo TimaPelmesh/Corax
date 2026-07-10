@@ -34,8 +34,9 @@ def lm_context_token_limit() -> int:
 
 
 def lm_output_token_reserve() -> int:
-    cap = int(getattr(settings, "lm_studio_max_tokens", None) or 1536)
-    return min(max(cap, 256), 2048)
+    cap = int(getattr(settings, "lm_studio_max_tokens", None) or 3072)
+    # Резерв под ответ (+ reasoning у thinking-моделей), но не съедаем весь контекст.
+    return min(max(cap, 256), 4096)
 
 
 def prompt_token_budget(*, extra_reserve: int = 120) -> int:

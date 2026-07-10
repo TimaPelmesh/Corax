@@ -987,9 +987,17 @@ sudo -u corax -H git clone https://github.com/TimaPelmesh/Corax.git /opt/corax
 На Linux удобнее создать БД через peer-auth (`sudo -u postgres`):
 
 ```bash
-sudo -u postgres psql -c "CREATE ROLE inventory LOGIN PASSWORD 'inventory';" 2>/dev/null || true
-sudo -u postgres psql -c "CREATE DATABASE inventory OWNER inventory;" 2>/dev/null || true
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE inventory TO inventory;"
+sudo -u postgres psql <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'inventory') THEN
+    CREATE ROLE inventory LOGIN PASSWORD 'inventory';
+  END IF;
+END$$;
+SELECT 'CREATE DATABASE inventory OWNER inventory'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'inventory')\gexec
+GRANT ALL PRIVILEGES ON DATABASE inventory TO inventory;
+SQL
 ```
 
 > В production смените пароль `inventory` на сильный и пропишите его в `DATABASE_URL`.

@@ -445,7 +445,48 @@ def _message_text_from_lm(msg: dict[str, Any]) -> str:
             cleaned = _sanitize_model_output(v.strip())
             if cleaned and not _looks_like_reasoning_dump(cleaned):
                 return cleaned
+            # Truncated English CoT often still ends with a Russian draft — salvage it.
+            extracted = _extract_russian_answer(v.strip())
+            if extracted and not is_bad_lm_answer(extracted):
+                return extracted
     return ""
+
+
+def _has_reasoning_only(msg: dict[str, Any]) -> bool:
+    """True if LM filled reasoning_* but left content empty (typical for thinking models)."""
+    if not isinstance(msg, dict):
+        return False
+    content = msg.get("content")
+    if isinstance(content, str) and content.strip():
+        return False
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                t = block.get("text") or block.get("content")
+                if isinstance(t, str) and t.strip():
+                    return False
+    for key in ("reasoning_content", "reasoning"):
+        v = msg.get(key)
+        if isinstance(v, str) and v.strip():
+            return True
+    return False
+
+
+_EMPTY_LENGTH_HINT = (
+    "\n\n[Служебно: ответь сразу по-русски финальным текстом. "
+    "Без thinking process, без плана, без английских рассуждений.]"
+)
+
+
+def _append_no_think_hint(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    out = [dict(m) for m in messages]
+    for i in range(len(out) - 1, -1, -1):
+        if out[i].get("role") == "user":
+            body = (out[i].get("content") or "").rstrip()
+            if _EMPTY_LENGTH_HINT.strip() not in body:
+                out[i]["content"] = body + _EMPTY_LENGTH_HINT
+            break
+    return out
 
 
 def coerce_parsed(raw: str) -> dict[str, Any]:
@@ -557,16 +598,19 @@ async def lm_studio_chat(
     read_timeout = float(settings.lm_studio_timeout_seconds or 300)
     configured = (settings.lm_studio_model or "").strip()
     preferred = (model or "").strip() or None
-    max_tokens = int(settings.lm_studio_max_tokens or 1536)
+    max_tokens = int(settings.lm_studio_max_tokens or 3072)
     last_len = len((messages[-1].get("content") or "")) if messages else 0
     if mode == "simple" and last_len < 80:
-        max_tokens = min(max_tokens, 256)
+        max_tokens = min(max_tokens, 512)
     elif mode == "rag" or last_len > 800:
-        max_tokens = max(max_tokens, 1024)
+        # Reasoning-модели часто съедают 1–2k токенов на CoT до content.
+        max_tokens = max(max_tokens, 2048)
 
     attempt_messages = [dict(m) for m in messages]
     last_detail = ""
     role_fallback_applied = False
+    length_retry_done = False
+    _MAX_OUT_TOKENS = 4096
 
     async with _lm_client(read=read_timeout) as client:
         available: list[str] = []
@@ -577,10 +621,10 @@ async def lm_studio_chat(
         picked_model = _pick_model(configured, available, preferred)
 
         url = f"{base}/chat/completions"
-        for attempt in range(3):
+        for attempt in range(4):
             # На первом заходе пытаемся с "богатым" payload; при Channel Error ниже
             # будем понижать нагрузку и убирать chat_template_kwargs.
-            use_template_kwargs = mode == "rag" and attempt == 0
+            use_template_kwargs = attempt <= 1
             payload: dict[str, Any] = {
                 "messages": attempt_messages,
                 "temperature": 0.35 if mode == "rag" else 0.3,
@@ -588,6 +632,7 @@ async def lm_studio_chat(
                 "stream": False,
             }
             if use_template_kwargs:
+                # Gemma 4 / thinking-модели в LM Studio: выключаем CoT, если шаблон умеет.
                 payload["chat_template_kwargs"] = {"enable_thinking": False}
             if picked_model:
                 payload["model"] = picked_model
@@ -606,15 +651,29 @@ async def lm_studio_chat(
                     raise RuntimeError("LM Studio вернул пустой ответ")
                 choice0 = choices[0] if isinstance(choices[0], dict) else {}
                 msg = choice0.get("message") or {}
+                if not isinstance(msg, dict):
+                    msg = {}
                 content = _message_text_from_lm(msg)
-                if not content:
-                    fr = choice0.get("finish_reason") or data.get("finish_reason")
-                    raise RuntimeError(
-                        f"LM Studio вернул пустой текст (finish_reason={fr!r}). "
-                        "Попробуйте модель без reasoning или увеличьте max tokens."
-                    )
-                used_model = data.get("model") or picked_model
-                return content, used_model
+                if content:
+                    used_model = data.get("model") or picked_model
+                    return content, used_model
+
+                fr = str(choice0.get("finish_reason") or data.get("finish_reason") or "").lower()
+                # Thinking-модель исчерпала бюджет на reasoning → content пустой.
+                # Повторяем с большим max_tokens и явной просьбой без CoT.
+                if (
+                    not length_retry_done
+                    and attempt < 3
+                    and (fr in ("length", "max_tokens") or _has_reasoning_only(msg))
+                ):
+                    length_retry_done = True
+                    max_tokens = min(_MAX_OUT_TOKENS, max(max_tokens * 2, 3072))
+                    attempt_messages = _append_no_think_hint(attempt_messages)
+                    continue
+                raise RuntimeError(
+                    f"LM Studio вернул пустой текст (finish_reason={fr!r}). "
+                    "Попробуйте модель без reasoning или увеличьте LM_STUDIO_MAX_TOKENS."
+                )
 
             body_text = res.text
             try:
@@ -622,19 +681,19 @@ async def lm_studio_chat(
             except Exception:
                 body_json = None
             last_detail = parse_lm_error_body(body_text, body_json)
-            if is_context_overflow_error(last_detail) and attempt < 2:
+            if is_context_overflow_error(last_detail) and attempt < 3:
                 attempt_messages = shrink_messages(attempt_messages)
                 max_tokens = max(256, int(max_tokens * 0.8))
                 continue
             if (
                 "only user and assistant roles are supported" in (last_detail or "").lower()
                 and not role_fallback_applied
-                and attempt < 2
+                and attempt < 3
             ):
                 attempt_messages = _messages_without_system_role(attempt_messages)
                 role_fallback_applied = True
                 continue
-            if _CHANNEL_ERR_RE.search(last_detail or "") and attempt < 2:
+            if _CHANNEL_ERR_RE.search(last_detail or "") and attempt < 3:
                 # Часто на локальных моделях это перегруз контекста/памяти:
                 # ужимаем контекст и выход, затем пробуем ещё раз.
                 attempt_messages = shrink_messages(attempt_messages)

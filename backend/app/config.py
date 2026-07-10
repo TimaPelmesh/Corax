@@ -84,7 +84,9 @@ class Settings(BaseSettings):
     lm_studio_base_url: str = "http://127.0.0.1:1234/v1"
     lm_studio_model: str = "google/gemma-3-1b"
     lm_studio_timeout_seconds: int = 300
-    lm_studio_max_tokens: int = 1536
+    # Reasoning-модели (Gemma 4 и т.п.) тратят часть бюджета на thinking —
+    # 3072 даёт запас, чтобы успел появиться content после reasoning.
+    lm_studio_max_tokens: int = 3072
     # Лимит контекста промпта (нужен Context Length ≥ 20480 в LM Studio).
     wiki_rag_lm_context_tokens: int = 20_000
     # pg_dump/pg_restore (резервная копия в настройках). Путь к bin, любой диск (F:\...\bin).

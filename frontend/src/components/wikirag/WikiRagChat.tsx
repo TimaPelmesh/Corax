@@ -231,7 +231,12 @@ function loadSessions(): { sessions: ChatSession[]; activeId: string } {
       return { sessions: [s], activeId: s.id }
     }
     const data = JSON.parse(raw) as { sessions?: ChatSession[]; activeId?: string }
-    const sessions = (data.sessions ?? []).filter((s) => s?.id)
+    const sessions = (data.sessions ?? [])
+      .filter((s) => s?.id)
+      .map((s) => ({
+        ...s,
+        turns: (s.turns ?? []).map((t) => ({ ...t, reveal: false })),
+      }))
     if (!sessions.length) {
       const s = newSession()
       return { sessions: [s], activeId: s.id }
@@ -244,8 +249,31 @@ function loadSessions(): { sessions: ChatSession[]; activeId: string } {
   }
 }
 
+/** Пишем сразу (не ждём useEffect) — иначе F5 до эффекта теряет ответ. */
 function saveSessions(sessions: ChatSession[], activeId: string) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions, activeId }))
+  const payload = {
+    sessions: sessions.map((s) => ({
+      ...s,
+      // reveal только для анимации в текущей сессии вкладки
+      turns: s.turns.map((t) => (t.reveal ? { ...t, reveal: false } : t)),
+    })),
+    activeId,
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  } catch {
+    // Quota: оставляем активный чат + ещё 2 свежих
+    try {
+      const sorted = [...payload.sessions].sort((a, b) => b.updatedAt - a.updatedAt)
+      const keepIds = new Set(
+        [activeId, ...sorted.map((s) => s.id)].filter(Boolean).slice(0, 3),
+      )
+      const trimmed = payload.sessions.filter((s) => keepIds.has(s.id))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions: trimmed, activeId }))
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function WikiRagChat({
@@ -267,23 +295,46 @@ export function WikiRagChat({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [revealingTurn, setRevealingTurn] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const activeIdRef = useRef(activeId)
+  const sessionsRef = useRef(sessions)
 
   const active = sessions.find((s) => s.id === activeId) ?? sessions[0]
   const turns = active?.turns ?? []
 
   useEffect(() => {
+    activeIdRef.current = activeId
+  }, [activeId])
+
+  useEffect(() => {
+    sessionsRef.current = sessions
+  }, [sessions])
+
+  useEffect(() => {
     saveSessions(sessions, activeId)
   }, [sessions, activeId])
 
+  // На случай закрытия вкладки до следующего React commit
+  useEffect(() => {
+    const flush = () => saveSessions(sessionsRef.current, activeIdRef.current)
+    window.addEventListener('pagehide', flush)
+    window.addEventListener('beforeunload', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      window.removeEventListener('beforeunload', flush)
+    }
+  }, [])
+
   const updateActive = useCallback((patch: (s: ChatSession) => ChatSession) => {
-    setSessions((list) =>
-      list.map((s) => {
-        if (s.id !== activeId) return s
-        const next = patch(s)
-        return { ...next, title: sessionTitle(next.turns), updatedAt: Date.now() }
-      }),
-    )
-  }, [activeId])
+    setSessions((list) => {
+      const next = list.map((s) => {
+        if (s.id !== activeIdRef.current) return s
+        const patched = patch(s)
+        return { ...patched, title: sessionTitle(patched.turns), updatedAt: Date.now() }
+      })
+      saveSessions(next, activeIdRef.current)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     saveLmSettings(lmSettings)
@@ -327,7 +378,11 @@ export function WikiRagChat({
 
   function addSession() {
     const s = newSession()
-    setSessions((list) => [...list, s])
+    setSessions((list) => {
+      const next = [...list, s]
+      saveSessions(next, s.id)
+      return next
+    })
     setActiveId(s.id)
     setInput('')
   }
@@ -342,10 +397,13 @@ export function WikiRagChat({
       if (list.length <= 1) {
         const s = newSession()
         setActiveId(s.id)
+        saveSessions([s], s.id)
         return [s]
       }
       const next = list.filter((s) => s.id !== id)
-      if (activeId === id) setActiveId(next[0].id)
+      const nextActive = activeIdRef.current === id ? next[0].id : activeIdRef.current
+      if (activeIdRef.current === id) setActiveId(next[0].id)
+      saveSessions(next, nextActive)
       return next
     })
   }
@@ -376,6 +434,7 @@ export function WikiRagChat({
       }
       const parsed = res.parsed
       const text = answerFromResponse(res)
+      // Сразу полный текст в storage; reveal только для анимации на экране
       updateActive((s) => {
         const nextTurns: ChatTurn[] = [
           ...s.turns,

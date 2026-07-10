@@ -525,7 +525,30 @@ async def wiki_rag_chat(
             meta=meta,
         )
     except RuntimeError as e:
-        return WikiRagChatResponse(ok=False, error=str(e), meta=meta)
+        err = str(e)
+        # Reasoning-модель съела весь max_tokens → пустой content. Для OS/железа
+        # отдаём детерминированный ответ по CORAX вместо ошибки в UI.
+        if corax_fallback and (
+            "пустой текст" in err.lower()
+            or "finish_reason" in err.lower()
+            or "пустой ответ" in err.lower()
+        ):
+            return WikiRagChatResponse(
+                ok=True,
+                raw=corax_fallback,
+                parsed={
+                    "answer": corax_fallback,
+                    "confidence": "high",
+                    "sources": [],
+                    "follow_up_questions": [],
+                    "suggested_actions": [],
+                    "_corax_fallback": True,
+                    "_lm_empty_fallback": True,
+                },
+                model=None,
+                meta={**meta, "lm_error": err[:240]},
+            )
+        return WikiRagChatResponse(ok=False, error=err, meta=meta)
     except Exception as e:
         return WikiRagChatResponse(ok=False, error=str(e), meta=meta)
 
