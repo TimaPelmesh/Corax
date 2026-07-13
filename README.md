@@ -35,7 +35,7 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 7. [Агенты, заявки, карта, LDAP, Bitrix24](#агент-инвентаризации)
 8. [Тесты](#тесты-и-проверки)
 9. [Production checklist](#production-checklist)
-10. [Linux: установка с нуля, systemd, cron](#linux-установка-с-нуля-systemd-cron)
+10. [Linux: установка с нуля, systemd, cron](#linux-установка-с-нуля-systemd-cron) (руководство по развёртыванию)
 11. [Эксплуатация и бэкапы](#эксплуатация)
 
 ## Возможности
@@ -922,17 +922,32 @@ E2E-тесты находятся в `e2e/` и запускаются Playwright
 
 ## Linux: установка с нуля, systemd, cron
 
-Инструкция для **Ubuntu 22.04 / 24.04** и совместимых Debian. Docker **не нужен**: PostgreSQL и CORAX ставятся нативно, автозапуск — через systemd.
+**Руководство по развёртыванию CORAX на Linux** (Ubuntu 22.04 / 24.04 LTS, Debian 12 и совместимые).  
+Docker **не нужен**: PostgreSQL и CORAX ставятся нативно, автозапуск — через systemd, ночные обновления — через `update.sh` + cron.
 
-Целевая схема (рекомендуется):
+### Системные требования
+
+| Компонент | Требование |
+|-----------|------------|
+| ОС | Linux (рекомендуется Ubuntu 22.04/24.04 или Debian 12) |
+| СУБД | PostgreSQL **15+** (на практике 16 из репозитория дистрибутива) |
+| Backend | Python **3.12+**, `venv` |
+| Frontend | Node.js **18+** (рекомендуется **20 LTS** через NodeSource) |
+| Сборка / PDF карт | Git; системные библиотеки **Cairo/Pango** (`cairosvg`); опционально LibreOffice |
+| Автозапуск | systemd |
+| Обновления | `update.sh` + cron |
+
+### Целевая схема (рекомендуется)
 
 | Компонент | Как работает |
 |-----------|----------------|
 | PostgreSQL | служба `postgresql` |
-| CORAX | один процесс `corax-backend` на **:3000** (UI + API после `npm run build`) |
+| CORAX | **один** процесс `corax-backend` на **:3000** (UI из `frontend/dist` + API `/api/v1`) |
 | Обновления | `update.sh` + cron в 04:00 |
 
-Пути по умолчанию: `/opt/corax`, venv `/opt/corax/.venv`, пользователь ОС `corax`.
+Пути по умолчанию: `/opt/corax`, venv **`/opt/corax/.venv`** (в корне репо, не в `backend/`), пользователь ОС **`corax`**.
+
+> **Не копируйте «dev-схемы» в production:** не ставьте `--reload` в systemd, не поднимайте отдельно `uvicorn :3001` + `npm run preview :3000` без нужды, не делайте `git reset --hard` в cron (в репозитории — безопасный `git pull --ff-only` в `update.sh`). Unit-файлы берите из `deploy/`, а не собирайте вручную с нуля.
 
 ### Файлы в репозитории
 
@@ -940,7 +955,7 @@ E2E-тесты находятся в `e2e/` и запускаются Playwright
 |------|------------|------------|
 | `deploy/corax-backend.service` | `/etc/systemd/system/corax-backend.service` | FastAPI + UI (`run.py`, порт 3000) |
 | `deploy/corax-frontend.service` | `/etc/systemd/system/corax-frontend.service` | Опционально: split UI на :3000 |
-| `update.sh` | `/opt/corax/update.sh` | `git pull` → pip/npm → build → restart |
+| `update.sh` | `/opt/corax/update.sh` | `git pull --ff-only` → pip/npm → build → restart → healthcheck |
 | `deploy/README.md` | — | краткая шпаргалка по unit-файлам |
 
 ---
@@ -948,14 +963,15 @@ E2E-тесты находятся в `e2e/` и запускаются Playwright
 ### A. Пакеты и пользователь
 
 ```bash
-sudo apt update
+sudo apt update && sudo apt upgrade -y
 sudo apt install -y \
   git curl ca-certificates build-essential \
   python3 python3-venv python3-pip \
   postgresql postgresql-contrib postgresql-client \
+  libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
   ufw
 
-# Node.js 20 LTS (NodeSource) — нужен для сборки frontend
+# Node.js 20 LTS (NodeSource) — пакетный nodejs из Ubuntu часто устаревший
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
@@ -963,6 +979,8 @@ node --version   # v20.x
 python3 --version
 psql --version
 ```
+
+> `libcairo2` / Pango нужны для экспорта карт SVG→PNG/PDF (`cairosvg`). Без них pip-пакет может встать, а экспорт в панели — нет.
 
 Пользователь и каталог:
 
@@ -972,12 +990,18 @@ sudo mkdir -p /opt/corax
 sudo chown corax:corax /opt/corax
 ```
 
-Клон репозитория (подставьте свой URL):
+Клон репозитория:
 
 ```bash
 sudo -u corax -H git clone https://github.com/TimaPelmesh/Corax.git /opt/corax
 # или, если каталог не пустой:
 # sudo -u corax -H bash -lc 'cd /opt/corax && git init && git remote add origin … && git pull origin main'
+```
+
+Если обновления/`update.sh` будут идти от **root** (cron), один раз разрешите Git для каталога (иначе `fatal: detected dubious ownership`):
+
+```bash
+sudo git config --global --add safe.directory /opt/corax
 ```
 
 ---
@@ -991,7 +1015,7 @@ sudo -u postgres psql <<'SQL'
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'inventory') THEN
-    CREATE ROLE inventory LOGIN PASSWORD 'inventory';
+    CREATE ROLE inventory LOGIN PASSWORD 'your_secure_password';
   END IF;
 END$$;
 SELECT 'CREATE DATABASE inventory OWNER inventory'
@@ -1000,12 +1024,12 @@ GRANT ALL PRIVILEGES ON DATABASE inventory TO inventory;
 SQL
 ```
 
-> В production смените пароль `inventory` на сильный и пропишите его в `DATABASE_URL`.
+> Замените `your_secure_password` на сильный пароль и пропишите его в `DATABASE_URL`. Для быстрой лаборатории допустим временный пароль `inventory` — в production не оставляйте.
 
 Проверка:
 
 ```bash
-psql "postgresql://inventory:inventory@127.0.0.1:5432/inventory" -c "SELECT 1"
+psql "postgresql://inventory:your_secure_password@127.0.0.1:5432/inventory" -c "SELECT 1"
 ```
 
 Если пароль отклоняется — в `/etc/postgresql/*/main/pg_hba.conf` для localhost нужна `md5`/`scram-sha-256`, затем `sudo systemctl reload postgresql`.
@@ -1036,9 +1060,9 @@ AGENT_TOKEN=<длинная случайная строка>
 AGENT_TOKEN_PEPPER=<openssl rand -hex 32>
 BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=<пароль ≥12 символов>
-DATABASE_URL=postgresql+asyncpg://inventory:ВАШ_ПАРОЛЬ@127.0.0.1:5432/inventory
-DIAGRAMS_DATABASE_URL=postgresql+asyncpg://inventory:ВАШ_ПАРОЛЬ@127.0.0.1:5432/inventory
-WAREHOUSE_DATABASE_URL=postgresql+asyncpg://inventory:ВАШ_ПАРОЛЬ@127.0.0.1:5432/inventory
+DATABASE_URL=postgresql+asyncpg://inventory:your_secure_password@127.0.0.1:5432/inventory
+DIAGRAMS_DATABASE_URL=postgresql+asyncpg://inventory:your_secure_password@127.0.0.1:5432/inventory
+WAREHOUSE_DATABASE_URL=postgresql+asyncpg://inventory:your_secure_password@127.0.0.1:5432/inventory
 CORS_ORIGINS=http://IP_СЕРВЕРА:3000,http://127.0.0.1:3000
 # PG_BIN_DIR=/usr/lib/postgresql/16/bin
 # SOFFICE_PATH=/usr/bin/soffice
@@ -1074,7 +1098,8 @@ sudo -u corax -H bash -lc '
 
 ### D. systemd: `corax-backend`
 
-Unit в репозитории: `deploy/corax-backend.service` (`User=corax`, `PORT=3000`, `RELOAD=0`, `ExecStart=…/.venv/bin/python3 …/run.py`).
+Unit в репозитории: `deploy/corax-backend.service`  
+(`User=corax`, `PORT=3000`, `RELOAD=0`, `ExecStart=/opt/corax/.venv/bin/python3 /opt/corax/run.py`).
 
 ```bash
 sudo cp /opt/corax/deploy/corax-backend.service /etc/systemd/system/
@@ -1087,9 +1112,17 @@ journalctl -u corax-backend -f
 
 #### Опционально: `corax-frontend` (split)
 
-Только если API на `:3001`, а UI отдельно (`npm run preview`). В обычном production **не включайте**.
+Только если API специально слушает `:3001`, а UI — отдельно (`npm run preview` на `:3000`).  
+В обычном production **не включайте** — достаточно одного `corax-backend`.
 
-> В systemd **не** используйте `npm run dev`.
+```bash
+# только для split-режима:
+sudo cp /opt/corax/deploy/corax-frontend.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now corax-frontend
+```
+
+> В systemd **не** используйте `npm run dev` и **не** добавляйте `--reload` к uvicorn/`run.py`.
 
 ---
 
@@ -1108,14 +1141,15 @@ sudo ufw status
 
 ### F. `update.sh` и ночной cron
 
+Скрипт уже в репозитории (`/opt/corax/update.sh`):  
+`git fetch` + `git pull --ff-only` → `pip install -r backend/requirements.txt` → `npm install` + `npm run build` → restart `corax-backend` (и `corax-frontend`, если enabled) → healthcheck на `:3000` или `:3001`.
+
 ```bash
 sudo chmod +x /opt/corax/update.sh
 sudo /opt/corax/update.sh
 ```
 
-Скрипт: `git pull` → pip → `npm install` + `npm run build` → restart служб → healthcheck.
-
-Cron от **root**:
+Cron от **root** (ежедневно в 04:00):
 
 ```bash
 sudo crontab -e
@@ -1125,11 +1159,14 @@ sudo crontab -e
 0 4 * * * /bin/bash /opt/corax/update.sh >> /var/log/corax_update.log 2>&1
 ```
 
+Лог и live-статус:
+
 ```bash
 sudo tail -n 100 /var/log/corax_update.log
+sudo journalctl -u corax-backend -n 50 --no-pager
 ```
 
-Если cron от `corax`, NOPASSWD в `/etc/sudoers.d/corax`:
+Если cron от пользователя `corax`, нужен NOPASSWD в `/etc/sudoers.d/corax`:
 
 ```text
 corax ALL=(root) NOPASSWD: /bin/systemctl restart corax-backend.service, /bin/systemctl restart corax-frontend.service
@@ -1137,7 +1174,25 @@ corax ALL=(root) NOPASSWD: /bin/systemctl restart corax-backend.service, /bin/sy
 
 ---
 
-### G. Шпаргалка после clone и `.env`
+### G. Проверка работоспособности
+
+```bash
+# порт 3000 должен слушать процесс CORAX (python / run.py)
+sudo ss -tulpn | grep -E ':3000|:3001'
+
+curl -sS http://127.0.0.1:3000/api/v1/health
+sudo systemctl status corax-backend --no-pager
+sudo journalctl -u corax-backend -f
+
+# история ночных обновлений
+sudo cat /var/log/corax_update.log
+```
+
+Откройте в браузере `http://<IP_сервера>:3000/` — вход bootstrap-админом из `.env`.
+
+---
+
+### H. Шпаргалка после clone и `.env`
 
 ```bash
 cd /opt/corax
@@ -1146,6 +1201,7 @@ sudo -u corax .venv/bin/pip install -r backend/requirements.txt
 sudo -u corax bash -lc 'cd /opt/corax && npm install && npm run build'
 sudo cp deploy/corax-backend.service /etc/systemd/system/
 sudo chmod +x update.sh
+sudo git config --global --add safe.directory /opt/corax
 sudo systemctl daemon-reload
 sudo systemctl enable --now corax-backend
 curl -sS http://127.0.0.1:3000/api/v1/health
@@ -1153,19 +1209,21 @@ curl -sS http://127.0.0.1:3000/api/v1/health
 
 ---
 
-### H. Типичные проблемы на Linux
+### I. Типичные проблемы на Linux
 
 | Симптом | Что проверить |
 |---------|----------------|
-| служба падает сразу | `journalctl -u corax-backend -n 50`; секреты; production без дефолтных ключей |
+| служба падает сразу | `journalctl -u corax-backend -n 50`; секреты; `ENVIRONMENT=production` без дефолтных ключей |
 | нет UI | не выполнен `npm run build`; нет `frontend/dist/index.html` |
 | password authentication failed | `DATABASE_URL`, `pg_hba.conf`, роль `\du` |
 | порт занят | `ss -tlnp \| grep 3000` |
 | агент не достучится | UFW; в сборке агента LAN IP и порт **3000** |
-| `update.sh` / git pull | локальные правки — stash или commit |
+| `update.sh` / git pull | локальные правки — stash или commit; **не** `reset --hard` на сервере с правками `.env` |
+| `fatal: detected dubious ownership` | `sudo git config --global --add safe.directory /opt/corax` |
+| экспорт карты PNG/PDF падает | `apt install libcairo2 libpangocairo-1.0-0 …`; переустановка `cairosvg` в `.venv` |
 | нет `pg_dump` в панели | `apt install postgresql-client`; при необходимости `PG_BIN_DIR` |
 
-LibreOffice (Visio/PDF карт):
+LibreOffice (Visio/доп. PDF):
 
 ```bash
 sudo apt install -y libreoffice
