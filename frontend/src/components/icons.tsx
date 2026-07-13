@@ -1,12 +1,11 @@
 /**
- * Иконки: мягкий duotone (лёгкая заливка + обводка), единая толщина и скругления.
- * Цвет задаётся классом на родителе (text-blue-600, text-neutral-500 и т.д.).
+ * Иконки в духе Windows Fluent: чуть плотнее заливка, толще обводка, узнаваемые силуэты.
+ * Цвет — через className (text-*).
  */
 
 type Props = { className?: string; title?: string }
 
-// Slightly thinner strokes for a more minimalist UI.
-const sw = 1.35
+const sw = 1.65
 
 const s = {
   stroke: 'currentColor' as const,
@@ -16,8 +15,7 @@ const s = {
   fill: 'none' as const,
 }
 
-// Softer duotone fill (less "heavy" in nav/sidebar).
-const soft = { fill: 'currentColor' as const, fillOpacity: 0.08, stroke: 'none' as const }
+const soft = { fill: 'currentColor' as const, fillOpacity: 0.16, stroke: 'none' as const }
 
 export function IconLogo({ className, title }: Props) {
   return (
@@ -29,17 +27,11 @@ export function IconLogo({ className, title }: Props) {
       role={title ? 'img' : 'presentation'}
     >
       {title ? <title>{title}</title> : null}
-      <path
-        d="M12 3.25 18.75 7v6.5L12 20.75 5.25 13.5V7L12 3.25z"
-        {...soft}
-      />
+      <path d="M12 3.25 18.75 7v6.5L12 20.75 5.25 13.5V7L12 3.25z" {...soft} />
       <path d="M12 3.25 18.75 7v6.5L12 20.75 5.25 13.5V7L12 3.25z" {...s} />
-      <path d="M12 7.25v9.5M8.1 9.35l7.8 4.5M15.9 9.35l-7.8 4.5" {...s} strokeWidth={sw * 0.9} opacity={0.55} />
-      <circle cx="12" cy="12" r="2.35" fill="currentColor" fillOpacity={0.22} stroke="none" />
-      <circle cx="12" cy="12" r="1.15" fill="currentColor" fillOpacity={0.9} stroke="none" />
-      <circle cx="5.25" cy="7" r="1.05" fill="currentColor" fillOpacity={0.45} stroke="none" />
-      <circle cx="18.75" cy="7" r="1.05" fill="currentColor" fillOpacity={0.45} stroke="none" />
-      <circle cx="12" cy="20.75" r="1.05" fill="currentColor" fillOpacity={0.45} stroke="none" />
+      <path d="M12 7.25v9.5M8.1 9.35l7.8 4.5M15.9 9.35l-7.8 4.5" {...s} strokeWidth={sw * 0.85} opacity={0.55} />
+      <circle cx="12" cy="12" r="2.35" fill="currentColor" fillOpacity={0.28} stroke="none" />
+      <circle cx="12" cy="12" r="1.15" fill="currentColor" fillOpacity={0.95} stroke="none" />
     </svg>
   )
 }
@@ -48,14 +40,14 @@ export function IconDashboard({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path
-        d="M4.5 18.5v-1.5a1 1 0 0 1 1-1h1.5a1 1 0 0 1 1 1v2.5h-3.5a1 1 0 0 1-1-1zM9.5 18.5v-5a1 1 0 0 1 1-1H12a1 1 0 0 1 1 1v7h-2.5a1 1 0 0 1-1-1zM14.5 18.5V8a1 1 0 0 1 1-1h1.5a1 1 0 0 1 1 1v11.5h-3.5a1 1 0 0 1-1-1z"
-        {...soft}
-      />
-      <path
-        d="M4.5 18.5v-1.5a1 1 0 0 1 1-1h1.5a1 1 0 0 1 1 1v2.5M9.5 18.5v-5a1 1 0 0 1 1-1H12a1 1 0 0 1 1 1v7M14.5 18.5V8a1 1 0 0 1 1-1h1.5a1 1 0 0 1 1 1v11.5"
-        {...s}
-      />
+      <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.75" {...soft} />
+      <rect x="13" y="3.5" width="7.5" height="4.5" rx="1.5" {...soft} />
+      <rect x="13" y="10.5" width="7.5" height="10" rx="1.75" {...soft} />
+      <rect x="3.5" y="13.5" width="7.5" height="7" rx="1.75" {...soft} />
+      <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.75" {...s} />
+      <rect x="13" y="3.5" width="7.5" height="4.5" rx="1.5" {...s} />
+      <rect x="13" y="10.5" width="7.5" height="10" rx="1.75" {...s} />
+      <rect x="3.5" y="13.5" width="7.5" height="7" rx="1.75" {...s} />
     </svg>
   )
 }
@@ -64,9 +56,9 @@ export function IconTag({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path d="M4.25 5.75h5.82l9.68 8.75-6.46 6.46L4.25 12.21V5.75z" {...soft} />
-      <path d="M4.25 5.75h5.82l9.68 8.75-6.46 6.46L4.25 12.21V5.75z" {...s} />
-      <circle cx="7.85" cy="9.1" r="1.35" fill="currentColor" fillOpacity={0.35} stroke="none" />
+      <path d="M3.75 5.5h6.2l10.3 9.05-5.55 5.55L3.75 12.15V5.5z" {...soft} />
+      <path d="M3.75 5.5h6.2l10.3 9.05-5.55 5.55L3.75 12.15V5.5z" {...s} />
+      <circle cx="7.6" cy="9.2" r="1.45" fill="currentColor" fillOpacity={0.45} stroke="none" />
     </svg>
   )
 }
@@ -75,14 +67,14 @@ export function IconSoftware({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path
-        d="M6 6.75h12A2.25 2.25 0 0 1 20.25 9v6A2.25 2.25 0 0 1 18 17.25H6A2.25 2.25 0 0 1 3.75 15V9A2.25 2.25 0 0 1 6 6.75z"
-        {...soft}
-      />
-      <path d="M6 6.75h12A2.25 2.25 0 0 1 20.25 9v6A2.25 2.25 0 0 1 18 17.25H6A2.25 2.25 0 0 1 3.75 15V9A2.25 2.25 0 0 1 6 6.75z" {...s} />
-      <path d="M9 19h6" {...s} strokeWidth={sw * 0.9} />
-      <path d="M12 17v2" {...s} strokeWidth={sw * 0.9} />
-      <path d="M8.5 11h7M8.5 13h4.5" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" opacity={0.88} />
+      <rect x="3.5" y="5.5" width="17" height="11.5" rx="2.25" {...soft} />
+      <rect x="3.5" y="5.5" width="17" height="11.5" rx="2.25" {...s} />
+      <path d="M3.5 9h17" {...s} />
+      <circle cx="6.25" cy="7.25" r="0.7" fill="currentColor" stroke="none" />
+      <circle cx="8.35" cy="7.25" r="0.7" fill="currentColor" fillOpacity={0.55} stroke="none" />
+      <circle cx="10.45" cy="7.25" r="0.7" fill="currentColor" fillOpacity={0.35} stroke="none" />
+      <path d="M8.5 12.25h7M8.5 14.75h4.5" {...s} strokeWidth={sw * 0.9} opacity={0.9} />
+      <path d="M9 19.5h6M12 17v2.5" {...s} strokeWidth={sw * 0.9} />
     </svg>
   )
 }
@@ -91,11 +83,11 @@ export function IconPcs({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path d="M5 5.5h14a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2z" {...soft} />
-      <rect x="4" y="5.5" width="16" height="11.5" rx="2" {...s} />
-      <path d="M9 19.5h6" {...s} />
-      <path d="M12 16.5v3" {...s} strokeWidth={sw * 0.85} />
-      <path d="M9 9.5h6" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" opacity={0.75} />
+      <rect x="3.5" y="4" width="17" height="12" rx="2" {...soft} />
+      <rect x="3.5" y="4" width="17" height="12" rx="2" {...s} />
+      <path d="M3.5 13.5h17" {...s} />
+      <path d="M9.5 19.5h5M12 16v3.5" {...s} />
+      <path d="M7.5 8h4.5M7.5 10.25h7" {...s} strokeWidth={sw * 0.85} opacity={0.75} />
     </svg>
   )
 }
@@ -104,12 +96,12 @@ export function IconUsers({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path d="M16 20v-2a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18v2" {...soft} />
-      <circle cx="9" cy="8.25" r="3.25" {...soft} />
-      <path d="M16 20v-2a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18v2" {...s} />
-      <circle cx="9" cy="8.25" r="3.25" {...s} />
-      <path d="M21 20v-1.5a4 4 0 0 0-2.9-3.85" {...s} />
-      <path d="M17.35 7.75a3 3 0 0 1 0 5.66" {...s} />
+      <circle cx="9" cy="8" r="3.4" {...soft} />
+      <path d="M3.5 19.5v-1.4A4.6 4.6 0 0 1 8.1 13.5h1.8a4.6 4.6 0 0 1 4.6 4.6v1.4" {...soft} />
+      <circle cx="9" cy="8" r="3.4" {...s} />
+      <path d="M3.5 19.5v-1.4A4.6 4.6 0 0 1 8.1 13.5h1.8a4.6 4.6 0 0 1 4.6 4.6v1.4" {...s} />
+      <circle cx="17.2" cy="9.2" r="2.55" {...s} />
+      <path d="M20.5 19.5v-1.1a3.5 3.5 0 0 0-2.55-3.35" {...s} />
     </svg>
   )
 }
@@ -118,7 +110,7 @@ export function IconMenu({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path d="M4.5 7.5h15M4.5 12h15M4.5 16.5h15" {...s} />
+      <path d="M4.25 7h15.5M4.25 12h15.5M4.25 17h15.5" {...s} />
     </svg>
   )
 }
@@ -127,9 +119,9 @@ export function IconLogout({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path d="M10.5 6.75H6a2 2 0 0 0-2 2v8.5a2 2 0 0 0 2 2h4.5" {...soft} />
-      <path d="M10.5 6.75H6a2 2 0 0 0-2 2v8.5a2 2 0 0 0 2 2h4.5" {...s} />
-      <path d="M15.75 12H9.75M19.75 12l-3.25-3.25M19.75 12l-3.25 3.25" {...s} />
+      <path d="M10.25 6.5H6.25A2.25 2.25 0 0 0 4 8.75v6.5A2.25 2.25 0 0 0 6.25 17.5h4" {...soft} />
+      <path d="M10.25 6.5H6.25A2.25 2.25 0 0 0 4 8.75v6.5A2.25 2.25 0 0 0 6.25 17.5h4" {...s} />
+      <path d="M15.5 12H9.75M19.5 12l-3.4-3.4M19.5 12l-3.4 3.4" {...s} />
     </svg>
   )
 }
@@ -138,9 +130,9 @@ export function IconSun({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <circle cx="12" cy="12" r="4.25" {...soft} />
-      <circle cx="12" cy="12" r="4.25" {...s} />
-      <path d="M12 3.25v2.25M12 18.5v2.25M4.75 12H2.5M21.5 12h-2.25M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M5.8 18.2l1.6-1.6M16.6 7.4l1.6-1.6" {...s} />
+      <circle cx="12" cy="12" r="4.4" {...soft} />
+      <circle cx="12" cy="12" r="4.4" {...s} />
+      <path d="M12 2.75v2.1M12 19.15v2.1M2.75 12h2.1M19.15 12h2.1M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M5.4 18.6l1.5-1.5M17.1 6.9l1.5-1.5" {...s} />
     </svg>
   )
 }
@@ -149,11 +141,8 @@ export function IconMoon({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path
-        d="M15.2 4.1a7.25 7.25 0 1 0 4.7 12.75A6.25 6.25 0 0 1 15.2 4.1z"
-        {...soft}
-      />
-      <path d="M15.2 4.1a7.25 7.25 0 1 0 4.7 12.75A6.25 6.25 0 0 1 15.2 4.1z" {...s} />
+      <path d="M15.1 3.9a7.5 7.5 0 1 0 5 13.1A6.4 6.4 0 0 1 15.1 3.9z" {...soft} />
+      <path d="M15.1 3.9a7.5 7.5 0 1 0 5 13.1A6.4 6.4 0 0 1 15.1 3.9z" {...s} />
     </svg>
   )
 }
@@ -162,15 +151,15 @@ export function IconClose({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <circle cx="12" cy="12" r="9" {...soft} />
-      <path d="M9 9l6 6M15 9l-6 6" {...s} />
+      <circle cx="12" cy="12" r="9.25" {...soft} />
+      <path d="M8.75 8.75l6.5 6.5M15.25 8.75l-6.5 6.5" {...s} />
     </svg>
   )
 }
 
 /** Узнаваемая корзина (контур: ручка, объём, полоски) — без лишней заливки. */
 export function IconTrash({ className, title }: Props) {
-  const w = 1.7
+  const w = 1.75
   return (
     <svg
       className={className}
@@ -204,10 +193,10 @@ export function IconKey({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <circle cx="8.25" cy="8.25" r="3.75" {...soft} />
-      <circle cx="8.25" cy="8.25" r="3.75" {...s} />
-      <path d="M11.5 11.5 20 19" {...s} />
-      <path d="M17 17h2.5M18.25 15.5v3" {...s} strokeWidth={sw * 0.9} />
+      <circle cx="8" cy="8.25" r="4" {...soft} />
+      <circle cx="8" cy="8.25" r="4" {...s} />
+      <path d="M11.6 11.6 20.25 20.25" {...s} />
+      <path d="M16.75 16.75h2.75M18.1 15.1v3.5" {...s} strokeWidth={sw * 0.9} />
     </svg>
   )
 }
@@ -217,14 +206,14 @@ export function IconTicket({ className, title }: Props) {
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
       <path
-        d="M5 8.5h14a1.5 1.5 0 0 1 1.5 1.5v2a2 2 0 0 0 0 4v2a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18v-2a2 2 0 0 0 0-4v-2A1.5 1.5 0 0 1 5 8.5Z"
+        d="M4.5 7.75h15a1.75 1.75 0 0 1 1.75 1.75v1.6a2.1 2.1 0 0 0 0 4.2v1.6A1.75 1.75 0 0 1 19.5 18.65h-15A1.75 1.75 0 0 1 2.75 16.9v-1.6a2.1 2.1 0 0 0 0-4.2V9.5A1.75 1.75 0 0 1 4.5 7.75Z"
         {...soft}
       />
       <path
-        d="M5 8.5h14a1.5 1.5 0 0 1 1.5 1.5v2a2 2 0 0 0 0 4v2a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18v-2a2 2 0 0 0 0-4v-2A1.5 1.5 0 0 1 5 8.5Z"
+        d="M4.5 7.75h15a1.75 1.75 0 0 1 1.75 1.75v1.6a2.1 2.1 0 0 0 0 4.2v1.6A1.75 1.75 0 0 1 19.5 18.65h-15A1.75 1.75 0 0 1 2.75 16.9v-1.6a2.1 2.1 0 0 0 0-4.2V9.5A1.75 1.75 0 0 1 4.5 7.75Z"
         {...s}
       />
-      <path d="M8 12.5h8" {...s} strokeWidth={sw * 0.85} opacity={0.85} />
+      <path d="M8 11.5v5" {...s} strokeWidth={sw * 0.9} opacity={0.85} strokeDasharray="2.2 2.4" />
     </svg>
   )
 }
@@ -233,15 +222,11 @@ export function IconBook({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path
-        d="M6.5 5.75h4.25a2.25 2.25 0 0 1 2.25 2.25V18.5H6.5a1.75 1.75 0 0 0-1.75 1.75V7.5A1.75 1.75 0 0 1 6.5 5.75zM13 8h4.5a1.75 1.75 0 0 1 1.75 1.75v10.5H13V8z"
-        {...soft}
-      />
-      <path
-        d="M6.5 5.75h4.25a2.25 2.25 0 0 1 2.25 2.25V18.5M13 8h4.5a1.75 1.75 0 0 1 1.75 1.75v10.5H13V8M6.5 18.5H4.75A1.75 1.75 0 0 1 3 16.75V7.5A1.75 1.75 0 0 1 4.75 5.75H6.5"
-        {...s}
-      />
-      <path d="M13 8V5.75A1.75 1.75 0 0 1 14.75 4h4.5A1.75 1.75 0 0 1 21 5.75v11A1.75 1.75 0 0 1 19.25 18.5H13" {...s} strokeWidth={sw * 0.9} opacity={0.85} />
+      <path d="M5 4.75h6.25A2.5 2.5 0 0 1 13.75 7.25V19.5H5.75A1.75 1.75 0 0 1 4 17.75V6.5A1.75 1.75 0 0 1 5.75 4.75H5z" {...soft} />
+      <path d="M13.75 7.25H18.5A1.75 1.75 0 0 1 20.25 9v10.5H13.75V7.25z" {...soft} />
+      <path d="M12 5.25v14.25M5 4.75h6.25A2.5 2.5 0 0 1 13.75 7.25V19.5H5.75A1.75 1.75 0 0 1 4 17.75V6.5A1.75 1.75 0 0 1 5.75 4.75H5" {...s} />
+      <path d="M13.75 7.25H18.5A1.75 1.75 0 0 1 20.25 9v10.5H13.75" {...s} />
+      <path d="M16 11h2.5M16 13.5h2.5" {...s} strokeWidth={sw * 0.85} opacity={0.8} />
     </svg>
   )
 }
@@ -250,14 +235,13 @@ export function IconGraph({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path
-        d="M6.25 7.75a2.25 2.25 0 1 1 4.5 0 2.25 2.25 0 0 1-4.5 0ZM13.25 6.75a2.25 2.25 0 1 1 4.5 0 2.25 2.25 0 0 1-4.5 0ZM13.25 16.75a2.25 2.25 0 1 1 4.5 0 2.25 2.25 0 0 1-4.5 0Z"
-        {...soft}
-      />
-      <circle cx="8.5" cy="7.75" r="2.25" {...s} />
-      <circle cx="15.5" cy="6.75" r="2.25" {...s} />
-      <circle cx="15.5" cy="16.75" r="2.25" {...s} />
-      <path d="M10.65 7.3l2.75-0.8M10.35 8.55l2.95 6.85" {...s} strokeWidth={sw * 0.9} opacity={0.9} />
+      <circle cx="6.5" cy="8" r="2.6" {...soft} />
+      <circle cx="17" cy="6.5" r="2.6" {...soft} />
+      <circle cx="15.5" cy="16.5" r="2.6" {...soft} />
+      <circle cx="6.5" cy="8" r="2.6" {...s} />
+      <circle cx="17" cy="6.5" r="2.6" {...s} />
+      <circle cx="15.5" cy="16.5" r="2.6" {...s} />
+      <path d="M8.7 7.2 14.7 6.4M8.5 9.4l5.1 5.6" {...s} />
     </svg>
   )
 }
@@ -266,12 +250,12 @@ export function IconWarehouse({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path
-        d="M3.5 10.5 12 5.5l8.5 5v8.25A1.25 1.25 0 0 1 19.25 20.5H4.75A1.25 1.25 0 0 1 3.5 19.25V10.5Z"
-        {...soft}
-      />
-      <path d="M3.5 10.5 12 5.5l8.5 5M12 5.5v15" {...s} />
-      <path d="M8.25 13.5h2.5v4.25H8.25V13.5Zm5 0H16v4.25h-2.75V13.5Z" {...s} opacity={0.85} />
+      <path d="M3.25 10.75 12 4.75l8.75 6V19.5A1.75 1.75 0 0 1 19 21.25H5A1.75 1.75 0 0 1 3.25 19.5v-8.75Z" {...soft} />
+      <path d="M3.25 10.75 12 4.75l8.75 6" {...s} />
+      <path d="M5 21.25h14A1.75 1.75 0 0 0 20.75 19.5v-8" {...s} />
+      <path d="M12 4.75v16.5" {...s} opacity={0.55} />
+      <rect x="7" y="13.25" width="3.5" height="4.75" rx="0.6" {...s} />
+      <rect x="13.5" y="13.25" width="3.5" height="4.75" rx="0.6" {...s} />
     </svg>
   )
 }
@@ -280,17 +264,18 @@ export function IconPrinter({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path
-        d="M6.5 8.25h11A2.25 2.25 0 0 1 19.75 10.5v5.5A2.25 2.25 0 0 1 17.5 18.25H6.5A2.25 2.25 0 0 1 4.25 16V10.5A2.25 2.25 0 0 1 6.5 8.25Z"
-        {...soft}
-      />
-      <path
-        d="M6.5 8.25h11A2.25 2.25 0 0 1 19.75 10.5v5.5A2.25 2.25 0 0 1 17.5 18.25H6.5A2.25 2.25 0 0 1 4.25 16V10.5A2.25 2.25 0 0 1 6.5 8.25Z"
-        {...s}
-      />
-      <path d="M7.5 5.75h9v2.5H7.5V5.75Z" {...s} />
-      <path d="M7.5 18.25V20h9v-1.75" {...s} />
-      <path d="M17.75 12.5h1.5" {...s} strokeWidth={sw * 0.9} />
+      {/* корпус */}
+      <path d="M6 9.25h12a2.5 2.5 0 0 1 2.5 2.5v5A1.75 1.75 0 0 1 18.75 18.5H5.25A1.75 1.75 0 0 1 3.5 16.75v-5A2.5 2.5 0 0 1 6 9.25Z" {...soft} />
+      <path d="M6 9.25h12a2.5 2.5 0 0 1 2.5 2.5v5A1.75 1.75 0 0 1 18.75 18.5H5.25A1.75 1.75 0 0 1 3.5 16.75v-5A2.5 2.5 0 0 1 6 9.25Z" {...s} />
+      {/* лоток сверху */}
+      <path d="M7.5 3.75h9A1.25 1.25 0 0 1 17.75 5v4.25H6.25V5A1.25 1.25 0 0 1 7.5 3.75Z" {...soft} />
+      <path d="M7.5 3.75h9A1.25 1.25 0 0 1 17.75 5v4.25H6.25V5A1.25 1.25 0 0 1 7.5 3.75Z" {...s} />
+      {/* бумага снизу */}
+      <path d="M7.25 18.5v2.25A1 1 0 0 0 8.25 21.75h7.5a1 1 0 0 0 1-1V18.5" {...s} />
+      <path d="M8.5 20h7" {...s} strokeWidth={sw * 0.85} opacity={0.7} />
+      {/* индикатор / кнопка */}
+      <circle cx="17.35" cy="13" r="1" fill="currentColor" fillOpacity={0.85} stroke="none" />
+      <path d="M6.5 13h5.5" {...s} strokeWidth={sw * 0.85} opacity={0.7} />
     </svg>
   )
 }
@@ -299,11 +284,11 @@ export function IconDisk({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <ellipse cx="12" cy="12" rx="8.5" ry="3.25" {...soft} />
-      <ellipse cx="12" cy="12" rx="8.5" ry="3.25" {...s} />
-      <path d="M3.5 12v5.25c0 1.79 3.81 3.25 8.5 3.25s8.5-1.46 8.5-3.25V12" {...s} />
-      <ellipse cx="12" cy="17.25" rx="8.5" ry="3.25" {...s} />
-      <circle cx="12" cy="12" r="2.1" {...s} strokeWidth={sw * 0.9} />
+      <ellipse cx="12" cy="7.5" rx="8.25" ry="3.5" {...soft} />
+      <ellipse cx="12" cy="7.5" rx="8.25" ry="3.5" {...s} />
+      <path d="M3.75 7.5v9c0 1.93 3.7 3.5 8.25 3.5s8.25-1.57 8.25-3.5v-9" {...s} />
+      <ellipse cx="12" cy="16.5" rx="8.25" ry="3.5" {...s} />
+      <ellipse cx="12" cy="12" rx="8.25" ry="3.5" {...s} opacity={0.55} />
     </svg>
   )
 }
@@ -312,10 +297,9 @@ export function IconPencil({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <path d="M4.5 19.5h3.6l10-10a2 2 0 0 0 0-2.8l-0.8-0.8a2 2 0 0 0-2.8 0l-10 10V19.5z" {...soft} />
-      <path d="M4.5 19.5h3.6l10-10a2 2 0 0 0 0-2.8l-0.8-0.8a2 2 0 0 0-2.8 0l-10 10V19.5z" {...s} />
-      <path d="M13.25 6.75l4 4" {...s} opacity={0.85} />
-      <path d="M4.5 19.5H20" {...s} strokeWidth={sw * 0.9} opacity={0.7} />
+      <path d="M4.25 19.75h3.75l10.2-10.2a2.1 2.1 0 0 0 0-3l-0.95-0.95a2.1 2.1 0 0 0-3 0L4.25 15.8v3.95z" {...soft} />
+      <path d="M4.25 19.75h3.75l10.2-10.2a2.1 2.1 0 0 0 0-3l-0.95-0.95a2.1 2.1 0 0 0-3 0L4.25 15.8v3.95z" {...s} />
+      <path d="M13 6.75l4.25 4.25" {...s} opacity={0.85} />
     </svg>
   )
 }
@@ -324,9 +308,28 @@ export function IconLock({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <rect x="5.5" y="10.5" width="13" height="10" rx="2" {...soft} />
-      <rect x="5.5" y="10.5" width="13" height="10" rx="2" {...s} />
-      <path d="M8.75 10.5V8a3.25 3.25 0 0 1 6.5 0v2.5" {...s} />
+      <rect x="5" y="10.25" width="14" height="10.25" rx="2.25" {...soft} />
+      <rect x="5" y="10.25" width="14" height="10.25" rx="2.25" {...s} />
+      <path d="M8.25 10.25V8a3.75 3.75 0 0 1 7.5 0v2.25" {...s} />
+      <circle cx="12" cy="15.25" r="1.35" fill="currentColor" fillOpacity={0.85} stroke="none" />
+    </svg>
+  )
+}
+
+export function IconSettings({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <path
+        d="M10.15 3.55c.28-1.05 1.77-1.05 2.05 0l.22.82a1.75 1.75 0 0 0 2.12 1.18l.8-.27c1.02-.34 1.9.78 1.32 1.68l-.45.7a1.75 1.75 0 0 0 .64 2.4l.76.4c.97.5.72 1.95-.38 2.17l-.85.17a1.75 1.75 0 0 0-1.35 1.99l.12.86c.16 1.08-1.1 1.78-1.95 1.08l-.66-.54a1.75 1.75 0 0 0-2.22 0l-.66.54c-.85.7-2.11 0-1.95-1.08l.12-.86a1.75 1.75 0 0 0-1.35-1.99l-.85-.17c-1.1-.22-1.35-1.67-.38-2.17l.76-.4a1.75 1.75 0 0 0 .64-2.4l-.45-.7c-.58-.9.3-2.02 1.32-1.68l.8.27a1.75 1.75 0 0 0 2.12-1.18l.22-.82Z"
+        {...soft}
+      />
+      <path
+        d="M10.15 3.55c.28-1.05 1.77-1.05 2.05 0l.22.82a1.75 1.75 0 0 0 2.12 1.18l.8-.27c1.02-.34 1.9.78 1.32 1.68l-.45.7a1.75 1.75 0 0 0 .64 2.4l.76.4c.97.5.72 1.95-.38 2.17l-.85.17a1.75 1.75 0 0 0-1.35 1.99l.12.86c.16 1.08-1.1 1.78-1.95 1.08l-.66-.54a1.75 1.75 0 0 0-2.22 0l-.66.54c-.85.7-2.11 0-1.95-1.08l.12-.86a1.75 1.75 0 0 0-1.35-1.99l-.85-.17c-1.1-.22-1.35-1.67-.38-2.17l.76-.4a1.75 1.75 0 0 0 .64-2.4l-.45-.7c-.58-.9.3-2.02 1.32-1.68l.8.27a1.75 1.75 0 0 0 2.12-1.18l.22-.82Z"
+        {...s}
+      />
+      <circle cx="12" cy="12" r="3.1" {...soft} fillOpacity={0.22} />
+      <circle cx="12" cy="12" r="3.1" {...s} />
     </svg>
   )
 }

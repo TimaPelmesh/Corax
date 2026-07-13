@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { api, type WikiRagDocContent, type WikiRagDocumentRow } from '../../api'
+import { useT } from '../../i18n/LocaleContext'
 
 
 
@@ -25,6 +26,7 @@ export function WikiRagDocViewer({
   embedded?: boolean
 
 }) {
+  const t = useT()
 
   const [content, setContent] = useState<WikiRagDocContent | null>(null)
 
@@ -66,7 +68,7 @@ export function WikiRagDocViewer({
 
       setContent(null)
 
-      setErr(e instanceof Error ? e.message : 'Не удалось открыть файл')
+      setErr(e instanceof Error ? e.message : t('wikirag.viewer.openFailed'))
 
     } finally {
 
@@ -74,7 +76,7 @@ export function WikiRagDocViewer({
 
     }
 
-  }, [doc])
+  }, [doc, t])
 
 
 
@@ -106,7 +108,7 @@ export function WikiRagDocViewer({
 
     } catch (e) {
 
-      setErr(e instanceof Error ? e.message : 'Ошибка сохранения')
+      setErr(e instanceof Error ? e.message : t('wikirag.viewer.saveFailed'))
 
     } finally {
 
@@ -124,7 +126,7 @@ export function WikiRagDocViewer({
 
       <div className="flex min-h-[14rem] items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 p-6 text-center text-sm text-slate-500">
 
-        Выберите документ в списке.
+        {t('wikirag.viewer.chooseDocument')}
 
       </div>
 
@@ -182,7 +184,7 @@ export function WikiRagDocViewer({
 
         >
 
-          Скачать
+          {t('wikirag.viewer.download')}
 
         </a>
 
@@ -200,7 +202,7 @@ export function WikiRagDocViewer({
 
           >
 
-            {saving ? 'Сохранение…' : 'Сохранить файл'}
+            {saving ? t('wikirag.viewer.saving') : t('wikirag.viewer.saveFile')}
 
           </button>
 
@@ -218,7 +220,7 @@ export function WikiRagDocViewer({
 
         {loading ? (
 
-          <p className="text-sm text-slate-500">Загрузка содержимого…</p>
+          <p className="text-sm text-slate-500">{t('wikirag.viewer.loadingContent')}</p>
 
         ) : content?.kind === 'image' && previewSrc ? (
 
@@ -258,7 +260,7 @@ export function WikiRagDocViewer({
 
         {content?.truncated ? (
 
-          <p className="mt-2 text-xs text-amber-700">Показана только часть файла.</p>
+          <p className="mt-2 text-xs text-amber-700">{t('wikirag.viewer.truncated')}</p>
 
         ) : null}
 

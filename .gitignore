@@ -80,3 +80,8 @@ cookies.txt
 glpi*.csv
 *glpi*.csv
 **/glpi*.csv
+
+## Local planning (never push to GitHub)
+ROADMAP.local.md
+OPS.local.md
+*.local.md

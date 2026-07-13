@@ -11,10 +11,34 @@ def test_printers_list_and_poll_config(client: TestClient, auth_headers: dict[st
 
     cfg = client.get("/api/v1/printers/poll-config", headers=auth_headers)
     assert cfg.status_code == 200
-    assert "poll_enabled" in cfg.json()
+    body = cfg.json()
+    assert "poll_enabled" in body
+    assert "poll_concurrency" in body
+    assert "snmp_timeout_seconds" in body
 
     sched = client.get("/api/v1/printers/scheduler-status", headers=auth_headers)
     assert sched.status_code == 200
+
+
+def test_printer_poll_config_update(client: TestClient, auth_headers: dict[str, str]):
+    updated = client.put(
+        "/api/v1/printers/poll-config",
+        headers=auth_headers,
+        json={
+            "poll_enabled": True,
+            "poll_interval_minutes": 15,
+            "snmp_enabled": True,
+            "snmp_community": "public",
+            "snmp_timeout_seconds": 3.5,
+            "ping_timeout_ms": 900,
+            "poll_concurrency": 10,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["poll_interval_minutes"] == 15
+    assert body["poll_concurrency"] == 10
+    assert float(body["snmp_timeout_seconds"]) == 3.5
 
 
 def test_printer_manual_crud(client: TestClient, auth_headers: dict[str, str]):

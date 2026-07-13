@@ -4,7 +4,10 @@ import { api, type DashboardDiskDeviceRank, type DashboardSegmentKind, type Dash
 import { DashboardDrilldownPanel, type DashboardDrilldownSelection } from '../components/DashboardDrilldown'
 import { IconDashboard, IconDisk, IconPcs, IconPrinter, IconSoftware, IconTag } from '../components/icons'
 import { donutColorsForTheme } from '../chartColors'
+import { useT } from '../i18n/LocaleContext'
 import { useTheme } from '../ThemeContext'
+
+type TranslateFn = ReturnType<typeof useT>
 
 /** Короткие подписи в легенде дашборда (полное имя — в title). */
 function formatDashboardLabel(name: string): string {
@@ -143,6 +146,7 @@ function DonutDistribution({
   onItemClick?: (name: string) => void
   selectedName?: string | null
 }) {
+  const t = useT()
   const { theme } = useTheme()
   const donutColors = donutColorsForTheme(theme)
   const [hovered, setHovered] = useState<number | null>(null)
@@ -176,7 +180,7 @@ function DonutDistribution({
   if (!normalizedItems.length || total <= 0) {
     return (
       <p className="app-empty-state">
-        {emptyText ?? 'Нет данных'}
+        {emptyText ?? t('dashboard.noData')}
       </p>
     )
   }
@@ -203,7 +207,7 @@ function DonutDistribution({
           viewBox="0 0 160 160"
           className="drop-shadow-[0_12px_32px_-8px_rgb(15_23_42_/_0.12)]"
           role="img"
-          aria-label="Круговая диаграмма распределения"
+          aria-label={t('dashboard.donutAriaLabel')}
         >
           {segments.length === 1 ? (
             <circle
@@ -233,7 +237,7 @@ function DonutDistribution({
                 }}
                 onMouseEnter={() => setHovered(s.i)}
                 onClick={clickable ? () => onItemClick?.(s.item.name) : undefined}
-                aria-label={clickable ? `Показать ПК: ${s.item.name}` : undefined}
+                aria-label={clickable ? t('dashboard.showPcsFor', { name: s.item.name }) : undefined}
               />
             )
           })}
@@ -286,7 +290,7 @@ function DonutDistribution({
                   clickable ? 'cursor-pointer' : 'cursor-default'
                 } ${isSelected ? 'app-legend-item--selected' : ''}`}
                 style={{ opacity: rowDim ? 0.55 : 1 }}
-                title={clickable ? `${row.name} — нажмите для списка ПК` : row.name}
+                title={clickable ? t('dashboard.clickForPcList', { name: row.name }) : row.name}
                 onMouseEnter={() => setHovered(i)}
                 onClick={clickable ? legendClick : undefined}
               >
@@ -313,7 +317,7 @@ function DonutDistribution({
                 clickable ? 'cursor-pointer' : 'cursor-default'
               } ${isSelected ? 'app-legend-item--selected' : ''} ${tallLegend ? 'px-2.5 py-2.5 text-[15px]' : 'px-2 py-1.5 text-sm'}`}
               style={{ opacity: rowDim ? 0.55 : 1 }}
-              title={clickable ? `${row.name} — нажмите для списка ПК` : row.name}
+              title={clickable ? t('dashboard.clickForPcList', { name: row.name }) : row.name}
               onMouseEnter={() => setHovered(i)}
               onClick={clickable ? legendClick : undefined}
             >
@@ -342,7 +346,7 @@ function DonutDistribution({
 function BarDistribution({
   items,
   emptyText,
-  valueTitle = 'ПК',
+  valueTitle,
   onItemClick,
   selectedName,
 }: {
@@ -352,12 +356,14 @@ function BarDistribution({
   onItemClick?: (name: string) => void
   selectedName?: string | null
 }) {
+  const t = useT()
   const normalizedItems = useMemo(() => items.filter((i) => i.count > 0), [items])
   const max = useMemo(() => normalizedItems.reduce((m, i) => Math.max(m, i.count), 0), [normalizedItems])
+  const effectiveValueTitle = valueTitle ?? t('dashboard.pcsValueTitle')
   if (!normalizedItems.length || max <= 0) {
     return (
       <p className="app-empty-state">
-        {emptyText ?? 'Нет данных'}
+        {emptyText ?? t('dashboard.noData')}
       </p>
     )
   }
@@ -368,8 +374,8 @@ function BarDistribution({
       {top.map((row, idx) => {
         const pct = Math.round((row.count / max) * 100)
         const tip = clickable
-          ? `${row.name}: ${valueTitle} ${row.count} — нажмите для списка`
-          : `${row.name}: ${valueTitle} ${row.count}`
+          ? t('dashboard.barTipClickable', { name: row.name, valueTitle: effectiveValueTitle, count: row.count })
+          : t('dashboard.barTipStatic', { name: row.name, valueTitle: effectiveValueTitle, count: row.count })
         const isSelected = selectedName === row.name
         return (
           <div key={`${row.name}-${idx}`} className="min-w-0 flex-1">
@@ -412,10 +418,11 @@ function DiskDevicesByAvgList({
   onItemClick?: (hostname: string) => void
   selectedName?: string | null
 }) {
+  const t = useT()
   if (!items.length) {
     return (
       <p className="app-empty-state">
-        {emptyText ?? 'Нет данных'}
+        {emptyText ?? t('dashboard.noData')}
       </p>
     )
   }
@@ -432,7 +439,9 @@ function DiskDevicesByAvgList({
                 ? 'bg-[var(--color-fg-muted)]'
                 : 'bg-[var(--color-border-strong)]'
         const volLabel =
-          row.volume_count === 1 ? '1 локальный том' : `${row.volume_count} локальных томов`
+          row.volume_count === 1
+            ? t('dashboard.volumeSingle')
+            : t('dashboard.volumeMany', { count: row.volume_count })
         const isSelected = selectedName === row.hostname
         return (
           <li
@@ -441,7 +450,7 @@ function DiskDevicesByAvgList({
               isSelected ? 'app-legend-item--selected' : ''
             } ${onItemClick ? 'cursor-pointer' : ''}`}
             onClick={onItemClick ? () => onItemClick(row.hostname) : undefined}
-            title={onItemClick ? 'Нажмите, чтобы показать сведения о ПК' : undefined}
+            title={onItemClick ? t('dashboard.showComputerDetails') : undefined}
           >
             <div className="mb-1.5 flex justify-between gap-2 text-sm">
               <span className="min-w-0">
@@ -456,7 +465,7 @@ function DiskDevicesByAvgList({
             </div>
             <div
               className="h-2 overflow-hidden rounded-full bg-[var(--color-border)]"
-              title={`Заполнено ${pct}% (по объёму дисков)`}
+              title={t('dashboard.diskUsageTitle', { pct })}
             >
               <div
                 className={`h-full rounded-full ${barTone} transition-all duration-500`}
@@ -474,7 +483,7 @@ function DiskDevicesByAvgList({
 function RankedMetricList({
   items,
   emptyText,
-  valueTitle = 'ПК',
+  valueTitle,
   onItemClick,
   selectedName,
 }: {
@@ -484,10 +493,12 @@ function RankedMetricList({
   onItemClick?: (name: string) => void
   selectedName?: string | null
 }) {
+  const t = useT()
+  const effectiveValueTitle = valueTitle ?? t('dashboard.pcsValueTitle')
   if (!items.length) {
     return (
       <p className="app-empty-state">
-        {emptyText ?? 'Нет данных'}
+        {emptyText ?? t('dashboard.noData')}
       </p>
     )
   }
@@ -502,7 +513,7 @@ function RankedMetricList({
             isSelected ? 'app-legend-item--selected' : ''
           } ${onItemClick ? 'cursor-pointer' : ''}`}
           onClick={onItemClick ? () => onItemClick(row.name) : undefined}
-          title={onItemClick ? 'Нажмите, чтобы показать список ПК' : row.name}
+          title={onItemClick ? t('dashboard.showPcList') : row.name}
         >
           <span
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] font-mono text-[11px] font-bold text-[var(--color-fg-muted)]"
@@ -518,7 +529,7 @@ function RankedMetricList({
           </span>
           <span
             className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-primary-muted)] px-2.5 py-1 font-mono text-xs font-semibold tabular-nums text-[var(--color-primary)]"
-            title={`${valueTitle}: ${row.count}`}
+            title={`${effectiveValueTitle}: ${row.count}`}
           >
             {row.count}
           </span>
@@ -533,13 +544,13 @@ function physicalDisksCount(items: { name: string; count: number }[], media: str
   return items.find((i) => i.name.toLowerCase() === media.toLowerCase())?.count ?? 0
 }
 
-function physicalDisksStatSub(items: { name: string; count: number }[]) {
+function physicalDisksStatSub(items: { name: string; count: number }[], t: TranslateFn) {
   const ssd = physicalDisksCount(items, 'ssd')
   const hdd = physicalDisksCount(items, 'hdd')
   const parts: string[] = []
   if (ssd) parts.push(`${ssd} SSD`)
   if (hdd) parts.push(`${hdd} HDD`)
-  return parts.length ? parts.join(' и ') : null
+  return parts.length ? parts.join(` ${t('dashboard.and')} `) : null
 }
 
 function PhysicalDisksPanel({
@@ -553,11 +564,12 @@ function PhysicalDisksPanel({
   onItemClick?: (name: string) => void
   selectedName?: string | null
 }) {
+  const t = useT()
   if (!total) {
     return (
       <p className="app-empty-state">
-        Нет данных по физическим дискам — включите модуль <span className="font-medium">storage_health</span> в агенте и
-        обновите отчёты.
+        {t('dashboard.physicalDisksEmptyBeforeModule')}{' '}
+        <span className="font-medium">storage_health</span> {t('dashboard.physicalDisksEmptyAfterModule')}
       </p>
     )
   }
@@ -565,7 +577,7 @@ function PhysicalDisksPanel({
   return (
     <DonutDistribution
       items={byVariant}
-      emptyText="Нет данных"
+      emptyText={t('dashboard.noData')}
       compact
       center
       svgSizePx={140}
@@ -668,6 +680,7 @@ function DashboardSkeleton() {
 }
 
 export function DashboardPage() {
+  const t = useT()
   const [data, setData] = useState<DashboardSummary | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -694,11 +707,11 @@ export function DashboardPage() {
     try {
       setData(await api.dashboardSummary())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -721,9 +734,9 @@ export function DashboardPage() {
             <IconDashboard className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="page-title !text-xl sm:!text-[1.4rem]">Дашборд</h1>
+            <h1 className="page-title !text-xl sm:!text-[1.4rem]">{t('titles.dashboard')}</h1>
             <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
-              Парк машин: распределение ОС и железа, заполненность дисков и топы по ПО и периферии.
+              {t('pages.dashboardSubtitle')}
             </p>
           </div>
         </div>
@@ -747,49 +760,49 @@ export function DashboardPage() {
             <div className="grid grid-cols-2 app-stack-3 lg:grid-cols-5">
               {widgets['stat.computers_total'] ? (
                 <MiniStatCard
-                  label="Рабочих станций"
+                  label={t('dashboard.stats.computers.label')}
                   value={data.computers_total}
-                  sub="в инвентаризации"
+                  sub={t('dashboard.stats.computers.sub')}
                   icon={<IconPcs className="h-[18px] w-[18px]" />}
                   accent="brand"
                 />
               ) : null}
               {widgets['stat.software_unique_titles'] ? (
                 <MiniStatCard
-                  label="Названий ПО"
+                  label={t('dashboard.stats.softwareTitles.label')}
                   value={data.software_unique_titles}
-                  sub="уникальных в каталоге"
+                  sub={t('dashboard.stats.softwareTitles.sub')}
                   icon={<IconSoftware className="h-[18px] w-[18px]" />}
                   accent="neutral"
                 />
               ) : null}
               {widgets['stat.tags_in_directory'] ? (
                 <MiniStatCard
-                  label="Тегов"
+                  label={t('dashboard.stats.tags.label')}
                   value={data.tags_in_directory}
-                  sub="в справочнике"
+                  sub={t('dashboard.stats.tags.sub')}
                   icon={<IconTag className="h-[18px] w-[18px]" />}
                   accent="neutral"
                 />
               ) : null}
               {widgets['stat.snmp_printers_total'] ? (
                 <MiniStatCard
-                  label="Принтеры"
+                  label={t('dashboard.stats.printers.label')}
                   value={data.snmp_printers_total}
-                  sub="SNMP в инвентаризации"
+                  sub={t('dashboard.stats.printers.sub')}
                   icon={<IconPrinter className="h-[18px] w-[18px]" />}
                   accent="neutral"
                 />
               ) : null}
               {widgets['stat.physical_disks_total'] ? (() => {
-                const disksBreakdown = physicalDisksStatSub(data.physical_disks_by_media)
+                const disksBreakdown = physicalDisksStatSub(data.physical_disks_by_media, t)
                 return (
                   <MiniStatCard
-                    label="Всего"
+                    label={t('common.total')}
                     value={data.physical_disks_total}
                     sub={
                       <>
-                        <span>физических дисков</span>
+                        <span>{t('dashboard.stats.physicalDisks.sub')}</span>
                         {disksBreakdown ? <span className="mt-1 block">{disksBreakdown}</span> : null}
                       </>
                     }
@@ -804,9 +817,9 @@ export function DashboardPage() {
           <div className="space-y-4">
               <div className="flex flex-col gap-1 border-b border-neutral-200/70 pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
                 <div>
-                  <h2 className="text-base font-semibold tracking-tight text-[var(--color-fg)]">Распределение и нагрузка</h2>
+                  <h2 className="text-base font-semibold tracking-tight text-[var(--color-fg)]">{t('dashboard.overview.title')}</h2>
                   <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
-                    Диаграммы по данным агентов; клик по сегменту — список ПК с ОС, дисками и железом.
+                    {t('dashboard.overview.description')}
                   </p>
                 </div>
               </div>
@@ -819,129 +832,129 @@ export function DashboardPage() {
               widgets['dist.physical_disks'] ? (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {widgets['dist.by_os'] ? (
-                    <SectionCard title="Операционные системы" dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
+                    <SectionCard title={t('dashboard.sections.byOs.title')} dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
                       {chartsMode === 'bars' ? (
-                        <BarDistribution items={data.by_os} emptyText="Нет ПК в базе" {...drillChart('os', 'Операционные системы')} />
+                        <BarDistribution items={data.by_os} emptyText={t('dashboard.sections.byOs.empty')} {...drillChart('os', t('dashboard.sections.byOs.title'))} />
                       ) : (
                         <DonutDistribution
                           items={data.by_os}
-                          emptyText="Нет ПК в базе"
+                          emptyText={t('dashboard.sections.byOs.empty')}
                           compact
                           center
                           svgSizePx={132}
                           evenLegend
-                          {...drillChart('os', 'Операционные системы')}
+                          {...drillChart('os', t('dashboard.sections.byOs.title'))}
                         />
                       )}
                     </SectionCard>
                   ) : null}
                   {widgets['dist.by_manufacturer'] ? (
-                    <SectionCard title="Производители (OEM)" dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
+                    <SectionCard title={t('dashboard.sections.byManufacturer.title')} dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
                       {chartsMode === 'bars' ? (
-                        <BarDistribution items={data.by_manufacturer} emptyText="Нет данных" {...drillChart('manufacturer', 'Производители (OEM)')} />
+                        <BarDistribution items={data.by_manufacturer} emptyText={t('dashboard.sections.byManufacturer.empty')} {...drillChart('manufacturer', t('dashboard.sections.byManufacturer.title'))} />
                       ) : (
                         <DonutDistribution
                           items={data.by_manufacturer}
-                          emptyText="Нет данных"
+                          emptyText={t('dashboard.sections.byManufacturer.empty')}
                           compact
                           center
                           svgSizePx={132}
                           evenLegend
-                          {...drillChart('manufacturer', 'Производители (OEM)')}
+                          {...drillChart('manufacturer', t('dashboard.sections.byManufacturer.title'))}
                         />
                       )}
                     </SectionCard>
                   ) : null}
                   {widgets['dist.ram_buckets'] ? (
-                    <SectionCard title="Оперативная память" dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
+                    <SectionCard title={t('dashboard.sections.ram.title')} dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
                       {chartsMode === 'bars' ? (
                         <BarDistribution
                           items={data.ram_buckets.map((b) => ({ name: b.label, count: b.count }))}
-                          emptyText="Нет данных"
-                          {...drillChart('ram', 'Оперативная память')}
+                          emptyText={t('dashboard.sections.ram.empty')}
+                          {...drillChart('ram', t('dashboard.sections.ram.title'))}
                         />
                       ) : (
                         <DonutDistribution
                           items={data.ram_buckets.map((b) => ({ name: b.label, count: b.count }))}
-                          emptyText="Нет данных"
+                          emptyText={t('dashboard.sections.ram.empty')}
                           compact
                           center
                           svgSizePx={132}
                           evenLegend
-                          {...drillChart('ram', 'Оперативная память')}
+                          {...drillChart('ram', t('dashboard.sections.ram.title'))}
                         />
                       )}
                     </SectionCard>
                   ) : null}
                   {widgets['dist.top_monitors'] ? (
-                    <SectionCard title="Мониторы" dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
+                    <SectionCard title={t('dashboard.sections.monitors.title')} dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
                       {chartsMode === 'bars' ? (
                         <BarDistribution
                           items={data.top_monitors}
-                          emptyText="Нет строк мониторов. Обновите агент и проверьте PnP."
-                          valueTitle="ПК"
-                          {...drillChart('monitor', 'Мониторы')}
+                          emptyText={t('dashboard.sections.monitors.empty')}
+                          valueTitle={t('dashboard.pcsValueTitle')}
+                          {...drillChart('monitor', t('dashboard.sections.monitors.title'))}
                         />
                       ) : (
                         <DonutDistribution
                           items={data.top_monitors}
-                          emptyText="Нет строк мониторов. Обновите агент и проверьте PnP."
+                          emptyText={t('dashboard.sections.monitors.empty')}
                           compact
                           center
                           svgSizePx={132}
                           evenLegend
-                          {...drillChart('monitor', 'Мониторы')}
+                          {...drillChart('monitor', t('dashboard.sections.monitors.title'))}
                         />
                       )}
                     </SectionCard>
                   ) : null}
                   {widgets['dist.by_system_model'] ? (
                     <SectionCard
-                      title="Модели (WMI)"
+                      title={t('dashboard.sections.bySystemModel.title')}
                       dense
                       className="flex flex-col"
                       bodyClassName="flex flex-1 items-center justify-center"
                     >
                       {chartsMode === 'bars' ? (
-                        <BarDistribution items={data.by_system_model} emptyText="Нет данных" {...drillChart('system_model', 'Модели (WMI)')} />
+                        <BarDistribution items={data.by_system_model} emptyText={t('dashboard.sections.bySystemModel.empty')} {...drillChart('system_model', t('dashboard.sections.bySystemModel.title'))} />
                       ) : (
                         <DonutDistribution
                           items={data.by_system_model}
-                          emptyText="Нет данных"
+                          emptyText={t('dashboard.sections.bySystemModel.empty')}
                           compact
                           center
                           svgSizePx={132}
                           evenLegend
-                          {...drillChart('system_model', 'Модели (WMI)')}
+                          {...drillChart('system_model', t('dashboard.sections.bySystemModel.title'))}
                         />
                       )}
                     </SectionCard>
                   ) : null}
                   {widgets['dist.top_cpu'] ? (
-                    <SectionCard title="Процессоры" dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
+                    <SectionCard title={t('dashboard.sections.cpu.title')} dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
                       {chartsMode === 'bars' ? (
                         <BarDistribution
                           items={data.top_cpu.map((c) => ({ name: c.name, count: c.count }))}
-                          emptyText="Нет данных по CPU"
-                          {...drillChart('cpu', 'Процессоры')}
+                          emptyText={t('dashboard.sections.cpu.empty')}
+                          {...drillChart('cpu', t('dashboard.sections.cpu.title'))}
                         />
                       ) : (
                         <DonutDistribution
                           items={data.top_cpu.map((c) => ({ name: c.name, count: c.count }))}
-                          emptyText="Нет данных по CPU"
+                          emptyText={t('dashboard.sections.cpu.empty')}
                           compact
                           center
                           svgSizePx={132}
                           evenLegend
-                          {...drillChart('cpu', 'Процессоры')}
+                          {...drillChart('cpu', t('dashboard.sections.cpu.title'))}
                         />
                       )}
                     </SectionCard>
                   ) : null}
                   {widgets['dist.physical_disks'] ? (
                     <SectionCard
-                      title="Физические диски"
-                      description="SSD/HDD (агент v3) и тома C:/D: (агент v2) — единая диаграмма."
+                      title={t('dashboard.sections.physicalDisks.title')}
+                      description={t('dashboard.sections.physicalDisks.description')}
                       dense
                       className="flex flex-col"
                       bodyClassName="flex flex-1 items-center justify-center"
@@ -949,7 +962,7 @@ export function DashboardPage() {
                       <PhysicalDisksPanel
                         total={data.physical_disks_total}
                         byVariant={data.physical_disks_by_variant}
-                        {...drillChart('physical_disk', 'Физические диски')}
+                        {...drillChart('physical_disk', t('dashboard.sections.physicalDisks.title'))}
                       />
                     </SectionCard>
                   ) : null}
@@ -958,36 +971,36 @@ export function DashboardPage() {
 
               {widgets['list.top_disk_devices'] ? (
                 <SectionCard
-                  title="Локальные диски"
-                  description="Топ 10 ПК по заполненности томов (по объёму в отчёте агента)."
+                  title={t('dashboard.sections.localDisks.title')}
+                  description={t('dashboard.sections.localDisks.description')}
                   dense
                 >
                   <DiskDevicesByAvgList
                     items={data.top_disk_devices}
-                    emptyText="Нет данных по дискам — в отчёте нужен блок disks."
-                    {...drillChart('hostname', 'Локальные диски')}
+                    emptyText={t('dashboard.sections.localDisks.empty')}
+                    {...drillChart('hostname', t('dashboard.sections.localDisks.title'))}
                   />
                 </SectionCard>
               ) : null}
 
               {widgets['list.top_software'] ? (
                 <SectionCard
-                  title="Топ установленного ПО"
-                  description="По числу ПК с пакетом в реестре."
+                  title={t('dashboard.sections.topSoftware.title')}
+                  description={t('dashboard.sections.topSoftware.description')}
                   dense
                   action={
                     <Link
                       to="/software"
                       className="shrink-0 rounded-xl border border-neutral-200/90 bg-white px-3.5 py-2 text-xs font-semibold text-neutral-800 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
                     >
-                      Каталог ПО →
+                      {t('dashboard.sections.topSoftware.action')}
                     </Link>
                   }
                 >
                   <RankedMetricList
                     items={data.top_software}
-                    emptyText="Нет данных — отправьте отчёты агента"
-                    {...drillChart('software', 'Топ установленного ПО')}
+                    emptyText={t('dashboard.sections.topSoftware.empty')}
+                    {...drillChart('software', t('dashboard.sections.topSoftware.title'))}
                   />
                 </SectionCard>
               ) : null}
@@ -996,22 +1009,26 @@ export function DashboardPage() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   {widgets['list.peripheral_kinds'] ? (
                     <SectionCard
-                      title="Периферия по категориям"
-                      description="ПК с хотя бы одним устройством класса PnP."
+                      title={t('dashboard.sections.peripheralKinds.title')}
+                      description={t('dashboard.sections.peripheralKinds.description')}
                       dense
                     >
                       {!data.peripheral_kinds.length ? (
                         <p className="app-empty-state">
-                          Нет данных — обновите агент.
+                          {t('dashboard.sections.peripheralKinds.empty')}
                         </p>
                       ) : (
                         <ul className="space-y-3 text-sm">
                           {data.peripheral_kinds.map((p) => {
                             const pct = Math.round((p.pc_count / Math.max(1, data.computers_total)) * 100)
-                            const tip = `${p.label}: ${p.pc_count} ПК (${pct}%)`
+                            const tip = t('dashboard.sections.peripheralKinds.tip', {
+                              label: p.label,
+                              count: p.pc_count,
+                              pct,
+                            })
                             const isSelected =
                               drilldown?.kind === 'peripheral_kind' &&
-                              drilldown.chartTitle === 'Периферия по категориям' &&
+                              drilldown.chartTitle === t('dashboard.sections.peripheralKinds.title') &&
                               drilldown.name === p.kind
                             return (
                               <li
@@ -1025,11 +1042,11 @@ export function DashboardPage() {
                                   toggleDrilldown({
                                     kind: 'peripheral_kind',
                                     name: p.kind,
-                                    chartTitle: 'Периферия по категориям',
+                                    chartTitle: t('dashboard.sections.peripheralKinds.title'),
                                     displayName: p.label,
                                   })
                                 }
-                                title="Нажмите, чтобы показать список ПК"
+                                title={t('dashboard.showPcList')}
                               >
                                 <div className="mb-1.5 flex justify-between gap-2">
                                   <span className={`font-medium ${isSelected ? 'text-white' : 'text-neutral-700'}`}>
@@ -1060,11 +1077,11 @@ export function DashboardPage() {
                     </SectionCard>
                   ) : null}
                   {widgets['list.top_peripherals'] ? (
-                    <SectionCard title="Частые устройства (PnP)" dense>
+                    <SectionCard title={t('dashboard.sections.topPeripherals.title')} dense>
                       <RankedMetricList
                         items={data.top_peripherals}
-                        emptyText="Нет периферии в базе"
-                        {...drillChart('peripheral', 'Частые устройства (PnP)')}
+                        emptyText={t('dashboard.sections.topPeripherals.empty')}
+                        {...drillChart('peripheral', t('dashboard.sections.topPeripherals.title'))}
                       />
                     </SectionCard>
                   ) : null}

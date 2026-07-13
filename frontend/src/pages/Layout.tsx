@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
 import { CoraxLogo } from '../components/CoraxLogo'
+import { UserPrefsPanel, type PrefsNavItem } from '../components/UserPrefsPanel'
+import { UserAvatar } from '../components/UserAvatar'
 import {
   IconClose,
   IconDashboard,
@@ -13,24 +15,25 @@ import {
   IconKey,
   IconLogout,
   IconMenu,
-  IconMoon,
   IconPcs,
   IconPrinter,
   IconSoftware,
-  IconSun,
   IconTag,
   IconTicket,
   IconUsers,
+  IconPencil,
+  IconLock,
+  IconSettings,
 } from '../components/icons'
+import { useLocale, type MessageKey } from '../i18n/LocaleContext'
 import { clearLoginGreeting, peekLoginGreeting } from '../loginGreeting'
-import { useTheme } from '../ThemeContext'
 
-function dayGreeting(date = new Date()) {
+function dayGreetingKey(date = new Date()): MessageKey {
   const hour = date.getHours()
-  if (hour >= 5 && hour < 12) return 'Доброе утро'
-  if (hour >= 12 && hour < 18) return 'Добрый день'
-  if (hour >= 18 && hour < 23) return 'Добрый вечер'
-  return 'Доброй ночи'
+  if (hour >= 5 && hour < 12) return 'greet.morning'
+  if (hour >= 12 && hour < 18) return 'greet.afternoon'
+  if (hour >= 18 && hour < 23) return 'greet.evening'
+  return 'greet.night'
 }
 
 function normMenuText(v: string): string {
@@ -66,13 +69,13 @@ function SidebarNavLink({
       {({ isActive }) => (
         <>
           <span
-            className={`relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${
+            className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition ${
               isActive
                 ? 'text-[var(--color-primary)]'
                 : 'text-[var(--color-fg-subtle)] group-hover:text-[var(--color-fg)]'
             }`}
           >
-            <Icon className="h-[15px] w-[15px]" />
+            <Icon className="h-[18px] w-[18px]" />
           </span>
           <span className="relative min-w-0">{children}</span>
         </>
@@ -111,8 +114,8 @@ function SidebarGroupButton({
       aria-expanded={open}
     >
       <span className="flex min-w-0 items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--color-fg-subtle)] transition group-hover:text-[var(--color-fg)]">
-          <Icon className="h-[15px] w-[15px]" />
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-fg-subtle)] transition group-hover:text-[var(--color-fg)]">
+          <Icon className="h-[18px] w-[18px]" />
         </span>
         <span className="truncate">{label}</span>
       </span>
@@ -136,17 +139,25 @@ function SidebarGroupButton({
   )
 }
 
+type NavItemDef = {
+  to: string
+  end?: boolean
+  icon: ComponentType<{ className?: string }>
+  labelKey: MessageKey
+  keywords?: string[]
+}
+
 export function Layout() {
   const { user, logout } = useAuth()
-  const { theme, toggleTheme } = useTheme()
+  const { t, isNavHidden } = useLocale()
   const displayName = user?.full_name?.trim() || user?.username || ''
   const showUsername =
     Boolean(user?.full_name?.trim()) && user?.username && user.username !== displayName
   const roleLabel = user?.is_superuser
     ? null
     : user?.role === 'editor'
-      ? 'Редактор'
-      : 'Наблюдатель'
+      ? t('roles.editor')
+      : t('roles.viewer')
   const roleBadgeClass =
     user?.role === 'editor'
       ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/35 dark:bg-sky-500/15 dark:text-sky-300'
@@ -159,6 +170,7 @@ export function Layout() {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [welcomeToast, setWelcomeToast] = useState<string | null>(null)
   const [welcomeToastLeaving, setWelcomeToastLeaving] = useState(false)
+  const [prefsOpen, setPrefsOpen] = useState(false)
   const mobileNavVisible = mobileNavOpen && mobileNavPath === location.pathname
   const menuQueryNorm = normMenuText(menuQuery)
 
@@ -168,8 +180,8 @@ export function Layout() {
     if (!stored) return
     const accountName = user.full_name?.trim() || user.username || stored
     setWelcomeToastLeaving(false)
-    setWelcomeToast(`${dayGreeting()}, ${accountName}`)
-  }, [user])
+    setWelcomeToast(`${t(dayGreetingKey())}, ${accountName}`)
+  }, [user, t])
 
   useEffect(() => {
     if (!welcomeToast) return
@@ -209,88 +221,172 @@ export function Layout() {
     setMobileNavPath(location.pathname)
   }
 
+  const allNavForPrefs: PrefsNavItem[] = useMemo(() => {
+    const items: PrefsNavItem[] = [
+      { path: '/', labelKey: 'nav.dashboard' },
+      { path: '/computers', labelKey: 'nav.computers' },
+      { path: '/software', labelKey: 'nav.software' },
+      { path: '/printers', labelKey: 'nav.printers' },
+      { path: '/knowledge-base/warehouse', labelKey: 'nav.warehouse' },
+      { path: '/requests', labelKey: 'nav.requestNew' },
+      { path: '/requests/database', labelKey: 'nav.requestList' },
+      { path: '/requests/templates', labelKey: 'nav.requestTemplates' },
+      { path: '/requests/stats', labelKey: 'nav.requestStats' },
+      { path: '/knowledge-base/sitemap', labelKey: 'nav.sitemap' },
+      { path: '/knowledge-base/wikirag', labelKey: 'nav.wikirag' },
+    ]
+    if (user?.is_superuser || user?.role === 'editor') {
+      items.push(
+        { path: '/settings/tags', labelKey: 'nav.tags' },
+        { path: '/settings/categories', labelKey: 'nav.categories' },
+      )
+    }
+    if (user?.is_superuser) {
+      items.push(
+        { path: '/users', labelKey: 'nav.users' },
+        { path: '/settings/ldap', labelKey: 'nav.ldap' },
+        { path: '/settings/bitrix24', labelKey: 'nav.bitrix24' },
+        { path: '/settings/database', labelKey: 'nav.database' },
+        { path: '/settings/glpi', labelKey: 'nav.glpi' },
+        { path: '/settings/agent-tokens', labelKey: 'nav.agentTokens' },
+        { path: '/settings/agent-bundle', labelKey: 'nav.agentBundle' },
+      )
+    }
+    return items
+  }, [user?.is_superuser, user?.role])
+
   const navSections = useMemo(() => {
     const sections: Array<{
-      title: string
+      titleKey: MessageKey
       icon: ComponentType<{ className?: string }>
       collapsible?: boolean
-      items: Array<{
-        to: string
-        end?: boolean
-        icon: ComponentType<{ className?: string }>
-        label: string
-        keywords?: string[]
-      }>
+      items: NavItemDef[]
     }> = [
       {
-        title: 'Парк ПК',
+        titleKey: 'nav.inventory',
         icon: IconPcs,
         collapsible: false,
         items: [
-          { to: '/', end: true, icon: IconDashboard, label: 'Дашборд', keywords: ['главная'] },
-          { to: '/software', icon: IconSoftware, label: 'Каталог', keywords: ['софт', 'программы'] },
-          { to: '/computers', icon: IconPcs, label: 'Парк ПК', keywords: ['компьютеры', 'пк'] },
-          { to: '/printers', icon: IconPrinter, label: 'Принтеры' },
+          { to: '/', end: true, icon: IconDashboard, labelKey: 'nav.dashboard', keywords: ['home', 'главная'] },
+          {
+            to: '/computers',
+            icon: IconPcs,
+            labelKey: 'nav.computers',
+            keywords: ['парк', 'пк', 'машины', 'pc', 'fleet'],
+          },
+          {
+            to: '/software',
+            icon: IconSoftware,
+            labelKey: 'nav.software',
+            keywords: ['каталог', 'софт', 'программы', 'apps'],
+          },
+          { to: '/printers', icon: IconPrinter, labelKey: 'nav.printers', keywords: ['snmp', 'toner'] },
+          {
+            to: '/knowledge-base/warehouse',
+            icon: IconWarehouse,
+            labelKey: 'nav.warehouse',
+            keywords: ['warehouse', 'ТМЦ', 'stock'],
+          },
         ],
       },
       {
-        title: 'Заявки',
+        titleKey: 'nav.requests',
         icon: IconTicket,
         collapsible: true,
         items: [
-          { to: '/requests', end: true, icon: IconTicket, label: 'Создание заявки', keywords: ['новая заявка'] },
-          { to: '/requests/database', end: true, icon: IconTicket, label: 'База' },
-          { to: '/requests/templates', end: true, icon: IconTicket, label: 'Шаблоны' },
-          { to: '/requests/stats', end: true, icon: IconTicket, label: 'Статистика' },
+          {
+            to: '/requests',
+            end: true,
+            icon: IconPencil,
+            labelKey: 'nav.requestNew',
+            keywords: ['создание', 'создать', 'new'],
+          },
+          {
+            to: '/requests/database',
+            end: true,
+            icon: IconTicket,
+            labelKey: 'nav.requestList',
+            keywords: ['база заявок', 'все заявки', 'list'],
+          },
+          { to: '/requests/templates', end: true, icon: IconBook, labelKey: 'nav.requestTemplates' },
+          { to: '/requests/stats', end: true, icon: IconDashboard, labelKey: 'nav.requestStats' },
         ],
       },
       {
-        title: 'База знаний',
+        titleKey: 'nav.knowledge',
         icon: IconBook,
         collapsible: true,
         items: [
-          { to: '/knowledge-base/sitemap', end: true, icon: IconGraph, label: 'Карта здания', keywords: ['карта знаний', 'sitemap'] },
-          { to: '/knowledge-base/wikirag', icon: IconBook, label: 'WikiRAG' },
-          { to: '/knowledge-base/warehouse', icon: IconWarehouse, label: 'Склад' },
+          {
+            to: '/knowledge-base/sitemap',
+            end: true,
+            icon: IconGraph,
+            labelKey: 'nav.sitemap',
+            keywords: ['карта знаний', 'sitemap', 'этаж', 'floor'],
+          },
+          {
+            to: '/knowledge-base/wikirag',
+            icon: IconBook,
+            labelKey: 'nav.wikirag',
+            keywords: ['wikirag', 'wiki', 'lm', 'rag', 'чат', 'chat'],
+          },
         ],
       },
     ]
     if (user?.is_superuser || user?.role === 'editor') {
-      const settingsItems: Array<{
-        to: string
-        icon: ComponentType<{ className?: string }>
-        label: string
-        keywords?: string[]
-      }> = [
-        { to: '/settings/tags', icon: IconTag, label: 'Теги' },
-        { to: '/settings/categories', icon: IconTicket, label: 'Категории' },
+      const settingsItems: NavItemDef[] = [
+        { to: '/settings/tags', icon: IconTag, labelKey: 'nav.tags' },
+        { to: '/settings/categories', icon: IconTag, labelKey: 'nav.categories', keywords: ['заявки', 'tickets'] },
       ]
       if (user?.is_superuser) {
         settingsItems.push(
-          { to: '/users', icon: IconUsers, label: 'Пользователи' },
-          { to: '/settings/ldap', icon: IconKey, label: 'LDAP' },
-          { to: '/settings/bitrix24', icon: IconTicket, label: 'Bitrix24' },
-          { to: '/settings/database', icon: IconDisk, label: 'База данных', keywords: ['дамп', 'backup', 'postgresql', 'pg_dump', 'импорт', 'экспорт'] },
-          { to: '/settings/glpi', icon: IconPcs, label: 'GLPI', keywords: ['импорт', 'экспорт', 'csv'] },
-          { to: '/settings/agent-tokens', icon: IconKey, label: 'Токены агентов' },
-          { to: '/settings/agent-bundle', icon: IconKey, label: 'Сборка агента', keywords: ['zip', 'батник', 'deploy', 'win7'] },
+          { to: '/users', icon: IconUsers, labelKey: 'nav.users' },
+          { to: '/settings/ldap', icon: IconLock, labelKey: 'nav.ldap' },
+          { to: '/settings/bitrix24', icon: IconGraph, labelKey: 'nav.bitrix24' },
+          {
+            to: '/settings/database',
+            icon: IconDisk,
+            labelKey: 'nav.database',
+            keywords: ['дамп', 'backup', 'postgresql', 'pg_dump', 'импорт', 'экспорт'],
+          },
+          {
+            to: '/settings/glpi',
+            icon: IconSoftware,
+            labelKey: 'nav.glpi',
+            keywords: ['импорт', 'экспорт', 'csv'],
+          },
+          { to: '/settings/agent-tokens', icon: IconKey, labelKey: 'nav.agentTokens' },
+          {
+            to: '/settings/agent-bundle',
+            icon: IconDisk,
+            labelKey: 'nav.agentBundle',
+            keywords: ['zip', 'батник', 'deploy', 'win7', 'пакет', 'агент', 'agent'],
+          },
         )
       }
-      sections.push({ title: 'Настройки', icon: IconKey, collapsible: true, items: settingsItems })
+      sections.push({ titleKey: 'nav.settings', icon: IconKey, collapsible: true, items: settingsItems })
     }
-    if (!menuQueryNorm) return sections
-    return sections
+
+    const visibleSections = sections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => !isNavHidden(item.to)),
+      }))
+      .filter((section) => section.items.length > 0)
+
+    if (!menuQueryNorm) return visibleSections
+    return visibleSections
       .map((section) => {
-        const titleMatch = normMenuText(section.title).includes(menuQueryNorm)
+        const titleMatch = normMenuText(t(section.titleKey)).includes(menuQueryNorm)
         if (titleMatch) return section
         const filteredItems = section.items.filter((item) => {
-          const hay = [item.label, ...(item.keywords ?? [])].map(normMenuText).join(' ')
+          const hay = [t(item.labelKey), ...(item.keywords ?? [])].map(normMenuText).join(' ')
           return hay.includes(menuQueryNorm)
         })
         return { ...section, items: filteredItems }
       })
       .filter((section) => section.items.length > 0)
-  }, [menuQueryNorm, user?.is_superuser, user?.role])
+  }, [menuQueryNorm, user?.is_superuser, user?.role, isNavHidden, t])
 
   const sidebarNav = (
     <>
@@ -302,7 +398,7 @@ export function Layout() {
             type="button"
             className="flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 lg:hidden"
             onClick={closeNav}
-            aria-label="Закрыть меню"
+            aria-label={t('nav.closeMenu')}
           >
             <IconClose className="h-6 w-6" />
           </button>
@@ -315,34 +411,35 @@ export function Layout() {
           <input
             value={menuQuery}
             onChange={(e) => setMenuQuery(e.target.value)}
-            placeholder="Поиск по меню..."
+            placeholder={t('nav.searchMenu')}
             className="app-input !min-h-[40px] !py-2"
-            aria-label="Поиск разделов меню"
+            aria-label={t('nav.searchMenuAria')}
           />
         </div>
         {navSections.map((section) => {
+          const sectionTitle = t(section.titleKey)
           const forcedOpen = Boolean(menuQueryNorm)
-          const open = forcedOpen || section.collapsible === false || openGroups[section.title] !== false
+          const open = forcedOpen || section.collapsible === false || openGroups[section.titleKey] !== false
           return (
-            <div key={section.title} className="space-y-1">
+            <div key={section.titleKey} className="space-y-1">
               {section.collapsible === false ? (
-                <NavBlock title={section.title}>
+                <NavBlock title={sectionTitle}>
                   {section.items.map((item) => (
                     <SidebarNavLink key={item.to} to={item.to} end={item.end} icon={item.icon} onNavigate={closeNav}>
-                      {item.label}
+                      {t(item.labelKey)}
                     </SidebarNavLink>
                   ))}
                 </NavBlock>
               ) : (
                 <>
                   <SidebarGroupButton
-                    label={section.title}
+                    label={sectionTitle}
                     icon={section.icon}
                     open={open}
                     onToggle={() =>
                       setOpenGroups((prev) => ({
                         ...prev,
-                        [section.title]: !open,
+                        [section.titleKey]: !open,
                       }))
                     }
                   />
@@ -357,7 +454,7 @@ export function Layout() {
                         <div className="flex flex-col gap-0.5 py-0.5">
                           {section.items.map((item) => (
                             <SidebarNavLink key={item.to} to={item.to} end={item.end} icon={item.icon} onNavigate={closeNav}>
-                              {item.label}
+                              {t(item.labelKey)}
                             </SidebarNavLink>
                           ))}
                         </div>
@@ -371,38 +468,48 @@ export function Layout() {
         })}
         {menuQueryNorm && navSections.length === 0 ? (
           <div className="app-panel-sm rounded-xl border-dashed text-center text-xs text-[var(--color-fg-subtle)]">
-            Ничего не найдено
+            {t('common.nothingFound')}
           </div>
         ) : null}
       </nav>
 
       <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 safe-area-pb">
         <div className="app-panel-sm mb-3 !rounded-2xl !py-3">
-          <div className="truncate text-sm font-semibold text-[var(--color-fg)]">{displayName}</div>
-          {showUsername ? (
-            <div className="mt-1 truncate font-mono text-[11px] font-medium text-[var(--color-fg-subtle)]">
-              {user?.username}
+          <div className="flex items-center gap-3">
+            <UserAvatar
+              size="md"
+              src={user?.avatar_data}
+              name={user?.full_name}
+              username={user?.username}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-[var(--color-fg)]">{displayName}</div>
+              {showUsername ? (
+                <div className="mt-0.5 truncate font-mono text-[11px] font-medium text-[var(--color-fg-subtle)]">
+                  {user?.username}
+                </div>
+              ) : null}
+              {roleLabel ? (
+                <div className="mt-1">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${roleBadgeClass}`}
+                  >
+                    {roleLabel}
+                  </span>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {roleLabel ? (
-            <div className="mt-1">
-              <span
-                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${roleBadgeClass}`}
-              >
-                {roleLabel}
-              </span>
-            </div>
-          ) : null}
+          </div>
         </div>
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={toggleTheme}
+            onClick={() => setPrefsOpen(true)}
             className="app-btn app-btn-secondary !min-h-[44px] flex-1 !px-0"
-            aria-label={theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему'}
-            title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+            aria-label={t('prefs.open')}
+            title={t('prefs.open')}
           >
-            {theme === 'dark' ? <IconSun className="h-5 w-5 text-[var(--color-primary)]" /> : <IconMoon className="h-5 w-5 text-[var(--color-primary)]" />}
+            <IconSettings className="h-5 w-5 text-[var(--color-primary)]" />
           </button>
           <button
             type="button"
@@ -413,8 +520,8 @@ export function Layout() {
               })()
             }}
             className="app-btn app-btn-secondary !min-h-[44px] flex-1 !px-0 text-[var(--color-primary)]"
-            aria-label="Выйти"
-            title="Выйти"
+            aria-label={t('nav.logout')}
+            title={t('nav.logout')}
           >
             <IconLogout className="h-5 w-5" />
           </button>
@@ -435,7 +542,7 @@ export function Layout() {
           }}
           aria-expanded={mobileNavVisible}
           aria-controls="app-sidebar"
-          aria-label="Открыть меню"
+          aria-label={t('nav.openMenu')}
         >
           <IconMenu className="h-6 w-6" />
         </button>
@@ -448,7 +555,7 @@ export function Layout() {
         <button
           type="button"
           className="fixed inset-0 z-40 cursor-default bg-black/40 lg:hidden"
-          aria-label="Закрыть меню"
+          aria-label={t('nav.closeMenu')}
           onClick={closeNav}
         />
       ) : null}
@@ -483,12 +590,14 @@ export function Layout() {
             desktopNavHidden ? 'left-0' : 'left-[15.9rem]'
           }`}
           onClick={() => setDesktopNavHidden((v) => !v)}
-          title={desktopNavHidden ? 'Показать меню' : 'Скрыть меню'}
+          title={desktopNavHidden ? t('nav.showSidebar') : t('nav.hideSidebar')}
         >
           {desktopNavHidden ? '▶' : '◀'}
         </button>
         <Outlet />
       </main>
+
+      <UserPrefsPanel open={prefsOpen} onClose={() => setPrefsOpen(false)} navItems={allNavForPrefs} />
     </div>
   )
 }

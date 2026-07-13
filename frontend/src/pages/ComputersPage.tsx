@@ -3,18 +3,11 @@ import { useSearchParams } from 'react-router-dom'
 import { api, type Computer, type TagBrief } from '../api'
 import { ComputerDetailModal, fmtDate, tagPillProps } from '../components/ComputerDetailModal'
 import { IconPcs } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
-const PC_COLUMN_DEFS = [
-  { key: 'location', label: 'Локация' },
-  { key: 'tags', label: 'Теги' },
-  { key: 'os', label: 'ОС' },
-  { key: 'ram', label: 'RAM' },
-  { key: 'software', label: 'ПО' },
-  { key: 'peripheral', label: 'Периферия' },
-  { key: 'last', label: 'Последний отчёт' },
-] as const
+const PC_COLUMN_KEYS = ['location', 'tags', 'os', 'ram', 'software', 'peripheral', 'last'] as const
 
-type PcColumnKey = (typeof PC_COLUMN_DEFS)[number]['key']
+type PcColumnKey = (typeof PC_COLUMN_KEYS)[number]
 
 const LS_PC_COLUMNS = 'corax.pcs.columns.v1'
 
@@ -61,6 +54,7 @@ function useClickOutside(refs: Array<RefObject<HTMLElement | null>>, onClose: ()
 }
 
 export function ComputersPage() {
+  const t = useT()
   const PAGE_SIZE = 100
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<Computer[]>([])
@@ -81,9 +75,22 @@ export function ComputersPage() {
   })
   const [page, setPage] = useState(1)
 
+  const pcColumnDefs = useMemo(
+    () => [
+      { key: 'location' as const, label: t('computers.columns.location') },
+      { key: 'tags' as const, label: t('computers.columns.tags') },
+      { key: 'os' as const, label: t('computers.columns.os') },
+      { key: 'ram' as const, label: t('computers.columns.ram') },
+      { key: 'software' as const, label: t('computers.columns.software') },
+      { key: 'peripheral' as const, label: t('computers.columns.peripheral') },
+      { key: 'last' as const, label: t('computers.columns.last') },
+    ],
+    [t],
+  )
+
   const visibleColumnCount = useMemo(
-    () => 1 + PC_COLUMN_DEFS.filter((c) => columns[c.key]).length,
-    [columns],
+    () => 1 + pcColumnDefs.filter((c) => columns[c.key]).length,
+    [columns, pcColumnDefs],
   )
 
   useClickOutside(
@@ -179,11 +186,11 @@ export function ComputersPage() {
       setRows(data.items)
       setTotal(data.total)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [debouncedHostSearch, filterTagIds])
+  }, [debouncedHostSearch, filterTagIds, t])
 
   useEffect(() => {
     void load()
@@ -228,7 +235,7 @@ export function ComputersPage() {
         <div className="page-hero-icon shrink-0">
           <IconPcs className="h-6 w-6" />
         </div>
-        <h1 className="page-title">Парк ПК</h1>
+        <h1 className="page-title">{t('titles.computers')}</h1>
       </div>
 
       {err && (
@@ -240,20 +247,22 @@ export function ComputersPage() {
       <div className="mb-4 flex flex-col app-stack-3 app-radius-lg border border-slate-200/90 bg-white/90 p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-end sm:app-stack-4">
         <div className="min-w-[min(100%,18rem)] flex-1">
           <label htmlFor="pc-host-search" className="app-label">
-            Имя хоста
+            {t('computers.hostLabel')}
           </label>
           <input
             id="pc-host-search"
             type="search"
             value={hostSearch}
             onChange={(e) => setHostSearch(e.target.value)}
-            placeholder="Часть имени, например DESKTOP…"
+            placeholder={t('computers.hostPlaceholder')}
             className="app-input"
           />
         </div>
         {allTags.length > 0 ? (
           <div className="min-w-0 flex-1">
-            <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Теги (любой из выбранных)</div>
+            <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+              {t('computers.tagsAnySelected')}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {allTags.map((t) => {
                 const on = filterTagIds.includes(t.id)
@@ -285,7 +294,7 @@ export function ComputersPage() {
             aria-expanded={columnsMenuOpen}
             aria-haspopup="menu"
           >
-            Вид таблицы
+            {t('computers.tableView')}
             <svg
               viewBox="0 0 20 20"
               className={`h-3.5 w-3.5 opacity-50 transition ${columnsMenuOpen ? 'rotate-180' : ''}`}
@@ -300,8 +309,10 @@ export function ComputersPage() {
               role="menu"
               className="popup-enter absolute right-0 top-[calc(100%+0.35rem)] z-30 w-52 overflow-hidden rounded-2xl border border-neutral-200 bg-white/98 p-2 shadow-[0_18px_40px_-18px_rgba(2,6,23,0.55)] backdrop-blur"
             >
-              <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Столбцы</p>
-              {PC_COLUMN_DEFS.map((col) => (
+              <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                {t('computers.columnsTitle')}
+              </p>
+              {pcColumnDefs.map((col) => (
                 <label
                   key={col.key}
                   className="flex cursor-pointer items-center gap-2.5 rounded-xl px-2 py-2 text-sm text-slate-700 transition hover:bg-neutral-50"
@@ -330,36 +341,36 @@ export function ComputersPage() {
                   type="button"
                   className="inline-flex items-center gap-1 hover:text-slate-600"
                   onClick={() => toggleSort('host')}
-                  title="Сортировка по хосту"
+                  title={t('computers.sortByHost')}
                 >
-                  Хост {sortArrow('host')}
+                  {t('computers.columns.host')} {sortArrow('host')}
                 </button>
               </th>
-              {columns.location ? <th className="px-4 py-3">Локация</th> : null}
-              {columns.tags ? <th className="px-4 py-3">Теги</th> : null}
-              {columns.os ? <th className="px-4 py-3">ОС</th> : null}
+              {columns.location ? <th className="px-4 py-3">{t('computers.columns.location')}</th> : null}
+              {columns.tags ? <th className="px-4 py-3">{t('computers.columns.tags')}</th> : null}
+              {columns.os ? <th className="px-4 py-3">{t('computers.columns.os')}</th> : null}
               {columns.ram ? (
                 <th className="px-4 py-3">
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 hover:text-slate-600"
                     onClick={() => toggleSort('ram')}
-                    title="Сортировка по RAM"
+                    title={t('computers.sortByRam')}
                   >
-                    RAM {sortArrow('ram')}
+                    {t('computers.columns.ram')} {sortArrow('ram')}
                   </button>
                 </th>
               ) : null}
-              {columns.software ? <th className="px-4 py-3">ПО</th> : null}
+              {columns.software ? <th className="px-4 py-3">{t('computers.columns.software')}</th> : null}
               {columns.peripheral ? (
-                <th className="px-4 py-3" title="Периферия (PnP)">
+                <th className="px-4 py-3" title={t('computers.peripheralTitle')}>
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 hover:text-slate-600"
                     onClick={() => toggleSort('periph')}
-                    title="Сортировка по периферии (кол-во)"
+                    title={t('computers.sortByPeripheral')}
                   >
-                    Периф. {sortArrow('periph')}
+                    {t('computers.columns.peripheralShort')} {sortArrow('periph')}
                   </button>
                 </th>
               ) : null}
@@ -369,9 +380,9 @@ export function ComputersPage() {
                     type="button"
                     className="inline-flex items-center gap-1 hover:text-slate-600"
                     onClick={() => toggleSort('last')}
-                    title="Сортировка по последнему отчёту"
+                    title={t('computers.sortByLastReport')}
                   >
-                    Последний отчёт {sortArrow('last')}
+                    {t('computers.columns.last')} {sortArrow('last')}
                   </button>
                 </th>
               ) : null}
@@ -381,20 +392,20 @@ export function ComputersPage() {
             {loading ? (
               <tr>
                 <td colSpan={visibleColumnCount} className="px-4 py-8 text-center text-slate-500">
-                  Загрузка…
+                  {t('common.loading')}
                 </td>
               </tr>
             ) : total === 0 ? (
               <tr>
                 <td colSpan={visibleColumnCount} className="px-4 py-12 text-center text-slate-500">
-                  Пока нет ПК. Запустите{' '}
+                  {t('computers.noComputersBeforeCommand')}{' '}
                   <code className="rounded bg-slate-100 px-1 text-slate-700">inventory_send.bat</code>.
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={visibleColumnCount} className="px-4 py-12 text-center text-slate-500">
-                  Нет ПК по текущим фильтрам. Измените поиск или снимите теги.
+                  {t('computers.noMatches')}
                 </td>
               </tr>
             ) : (
@@ -433,7 +444,7 @@ export function ComputersPage() {
                   ) : null}
                   {columns.ram ? (
                     <td className="px-4 py-3 text-slate-600">
-                      {r.ram_gb != null ? `${Math.round(r.ram_gb)} ГБ` : '—'}
+                      {r.ram_gb != null ? t('computers.ramValue', { value: Math.round(r.ram_gb) }) : '—'}
                     </td>
                   ) : null}
                   {columns.software ? (
@@ -447,7 +458,7 @@ export function ComputersPage() {
                     </td>
                   ) : null}
                   {columns.last ? (
-                    <td className="px-4 py-3 text-slate-500">{fmtDate(r.last_report_at)}</td>
+                    <td className="px-4 py-3 text-slate-500">{fmtDate(r.last_report_at, 'ru')}</td>
                   ) : null}
                 </tr>
               ))
@@ -460,7 +471,7 @@ export function ComputersPage() {
       {!loading && sortedRows.length > PAGE_SIZE ? (
         <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-600">
           <span>
-            Показано {pagedRows.length} из {sortedRows.length}
+            {t('computers.shownOf', { shown: pagedRows.length, total: sortedRows.length })}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -469,10 +480,10 @@ export function ComputersPage() {
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
-              Назад
+              {t('common.back')}
             </button>
             <span className="text-xs font-medium">
-              Страница {Math.min(page, pageCount)} / {pageCount}
+              {t('computers.pageOf', { page: Math.min(page, pageCount), count: pageCount })}
             </span>
             <button
               type="button"
@@ -480,7 +491,7 @@ export function ComputersPage() {
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               disabled={page >= pageCount}
             >
-              Далее
+              {t('computers.next')}
             </button>
           </div>
         </div>

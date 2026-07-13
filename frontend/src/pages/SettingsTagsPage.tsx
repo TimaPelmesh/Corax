@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type TagBrief } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconTag, IconTrash } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
 const NEW_TAG_DEFAULT_COLOR = '#059669'
 
@@ -21,6 +22,7 @@ function TagRow({
   onRemove: (id: number, label: string) => void
   canManage: boolean
 }) {
+  const t = useT()
   const [nameDraft, setNameDraft] = useState(tag.name)
   const [colorDraft, setColorDraft] = useState(pickerValue(tag.color))
   const [rowErr, setRowErr] = useState<string | null>(null)
@@ -34,16 +36,16 @@ function TagRow({
   )
 
   const saveName = useCallback(async () => {
-    const t = nameDraft.trim()
+    const nextName = nameDraft.trim()
     setRowErr(null)
-    if (!t || t === tag.name) return
+    if (!nextName || nextName === tag.name) return
     try {
-      await api.updateTag(tag.id, { name: t })
+      await api.updateTag(tag.id, { name: nextName })
       onReload()
     } catch (e) {
-      setRowErr(e instanceof Error ? e.message : 'Ошибка')
+      setRowErr(e instanceof Error ? e.message : t('common.error'))
     }
-  }, [nameDraft, tag.id, tag.name, onReload])
+  }, [nameDraft, tag.id, tag.name, onReload, t])
 
   const onColorPick = useCallback(
     (hex: string) => {
@@ -59,11 +61,11 @@ function TagRow({
           await api.updateTag(tag.id, { color: h })
           onReload()
         } catch (e) {
-          setRowErr(e instanceof Error ? e.message : 'Ошибка')
+          setRowErr(e instanceof Error ? e.message : t('common.error'))
         }
       }, 400)
     },
-    [tag.color, tag.id, onReload],
+    [tag.color, tag.id, onReload, t],
   )
 
   const clearColor = useCallback(async () => {
@@ -73,9 +75,9 @@ function TagRow({
       setColorDraft('#64748b')
       onReload()
     } catch (e) {
-      setRowErr(e instanceof Error ? e.message : 'Ошибка')
+      setRowErr(e instanceof Error ? e.message : t('common.error'))
     }
-  }, [tag.id, onReload])
+  }, [tag.id, onReload, t])
 
   if (!canManage) {
     const swatch = pickerValue(tag.color)
@@ -101,18 +103,18 @@ function TagRow({
         <div className="flex items-center gap-2">
           <input
             type="color"
-            aria-label={`Цвет: ${tag.name}`}
+            aria-label={t('settingsTags.colorAria', { name: tag.name })}
             className="h-9 w-11 cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5 shadow-sm"
             value={colorDraft}
             onChange={(e) => void onColorPick(e.target.value)}
           />
           <button
             type="button"
-            title="Сбросить цвет (стиль по умолчанию в списке ПК)"
+            title={t('settingsTags.resetColorTitle')}
             className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
             onClick={() => void clearColor()}
           >
-            сброс
+            {t('settingsTags.resetColor')}
           </button>
         </div>
       </td>
@@ -131,12 +133,12 @@ function TagRow({
       <td className="px-3 py-2 text-right align-middle">
         <button
           type="button"
-          aria-label={`Удалить тег «${tag.name}»`}
+          aria-label={t('settingsTags.deleteTagAria', { name: tag.name })}
           className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-fg)] shadow-sm transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
           onClick={() => onRemove(tag.id, tag.name)}
         >
           <IconTrash className="h-4 w-4 shrink-0" />
-          <span>Удалить</span>
+          <span>{t('settingsTags.deleteAction')}</span>
         </button>
       </td>
     </tr>
@@ -144,6 +146,7 @@ function TagRow({
 }
 
 export function SettingsTagsPage() {
+  const t = useT()
   const { user } = useAuth()
   const [rows, setRows] = useState<TagBrief[]>([])
   const [name, setName] = useState('')
@@ -156,11 +159,11 @@ export function SettingsTagsPage() {
     try {
       setRows(await api.tags())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setErr(e instanceof Error ? e.message : t('settingsTags.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void load()
@@ -178,12 +181,12 @@ export function SettingsTagsPage() {
       setNewColor(NEW_TAG_DEFAULT_COLOR)
       void load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось создать')
+      setErr(e instanceof Error ? e.message : t('settingsTags.createFailed'))
     }
   }
 
   async function removeTag(id: number, label: string) {
-    if (!confirm(`Удалить тег «${label}»? С ПК он только снимется (связь), данные инвентаризации не пропадут.`)) {
+    if (!confirm(t('settingsTags.deleteConfirm', { label }))) {
       return
     }
     setErr(null)
@@ -191,7 +194,7 @@ export function SettingsTagsPage() {
       await api.deleteTag(id)
       void load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось удалить')
+      setErr(e instanceof Error ? e.message : t('settingsTags.deleteFailed'))
     }
   }
 
@@ -202,7 +205,7 @@ export function SettingsTagsPage() {
           <IconTag className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="page-title">Теги ПК</h1>
+          <h1 className="page-title">{t('titles.tags')}</h1>
         </div>
       </div>
 
@@ -212,20 +215,20 @@ export function SettingsTagsPage() {
         <div className="mb-6 flex max-w-2xl flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
             <label htmlFor="new-tag" className="app-label">
-              Новый тег
+              {t('settingsTags.newTagLabel')}
             </label>
             <input
               id="new-tag"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void addTag()}
-              placeholder="Например: Менеджер"
+              placeholder={t('settingsTags.newTagPlaceholder')}
               className="app-input"
             />
           </div>
           <div>
             <label htmlFor="new-tag-color" className="app-label">
-              Цвет
+              {t('settingsTags.colorLabel')}
             </label>
             <input
               id="new-tag-color"
@@ -240,7 +243,7 @@ export function SettingsTagsPage() {
             onClick={() => void addTag()}
             className="app-btn app-btn-primary"
           >
-            Добавить
+            {t('settingsTags.addButton')}
           </button>
         </div>
       ) : null}
@@ -250,22 +253,24 @@ export function SettingsTagsPage() {
         <table className="min-w-[min(100%,18rem)] w-full text-left text-sm">
           <thead className="app-table-head">
             <tr>
-              <th className="px-3 py-3">Цвет</th>
-              <th className="px-3 py-3">Название</th>
-              <th className="min-w-[7.5rem] px-3 py-3 text-right">{canManage ? 'Действие' : ''}</th>
+              <th className="px-3 py-3">{t('settingsTags.tableColor')}</th>
+              <th className="px-3 py-3">{t('settingsTags.tableName')}</th>
+              <th className="min-w-[7.5rem] px-3 py-3 text-right">
+                {canManage ? t('settingsTags.tableAction') : ''}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-100">
             {loading ? (
               <tr>
                 <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
-                  Загрузка…
+                  {t('common.loading')}
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={3} className="px-4 py-10 text-center text-slate-500">
-                  Пока нет тегов. Добавьте первый выше.
+                  {t('settingsTags.emptyState')}
                 </td>
               </tr>
             ) : (

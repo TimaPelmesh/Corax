@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Bitrix24Config } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey, IconTicket } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
 function base64Url(bytes: Uint8Array) {
   let s = ''
@@ -17,6 +18,7 @@ function genSecret() {
 }
 
 export function SettingsBitrix24Page() {
+  const t = useT()
   const { user } = useAuth()
   const [cfg, setCfg] = useState<Bitrix24Config | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -29,9 +31,9 @@ export function SettingsBitrix24Page() {
     try {
       setCfg(await api.bitrix24Config())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setErr(e instanceof Error ? e.message : t('settingsBitrix.loadFailed'))
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void load()
@@ -63,10 +65,10 @@ export function SettingsBitrix24Page() {
     try {
       const next = await api.updateBitrix24Config(patch)
       setCfg(next)
-      setToast('Настройки Bitrix24 сохранены.')
+      setToast(t('settingsBitrix.saveSuccess'))
       window.setTimeout(() => setToast(null), 3500)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось сохранить')
+      setErr(e instanceof Error ? e.message : t('settingsBitrix.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -76,10 +78,10 @@ export function SettingsBitrix24Page() {
     if (!webhookUrl) return
     try {
       await navigator.clipboard.writeText(webhookUrl)
-      setToast('Webhook URL скопирован.')
+      setToast(t('settingsBitrix.copyWebhookSuccess'))
       window.setTimeout(() => setToast(null), 2500)
     } catch {
-      setToast('Не удалось скопировать (попробуйте вручную).')
+      setToast(t('settingsBitrix.copyWebhookFailed'))
       window.setTimeout(() => setToast(null), 2500)
     }
   }
@@ -89,16 +91,16 @@ export function SettingsBitrix24Page() {
     setErr(null)
     try {
       const r = await api.bitrix24IncomingTest({
-        title: 'Заявка из Bitrix24 (тест)',
-        text: 'Тестовая заявка: сообщение пришло через интеграцию Bitrix24.',
+        title: t('settingsBitrix.testTitle'),
+        text: t('settingsBitrix.testText'),
         requester_name: user?.username ?? 'admin',
         category: cfg?.default_category ?? 'bitrix24',
         priority: cfg?.default_priority ?? 'normal',
       })
-      setToast(`Тест OK. Создана заявка #${r.request_id}.`)
+      setToast(t('settingsBitrix.testSuccess', { id: r.request_id }))
       window.setTimeout(() => setToast(null), 5000)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Тест не прошёл')
+      setErr(e instanceof Error ? e.message : t('settingsBitrix.testFailed'))
     } finally {
       setTesting(false)
     }
@@ -111,10 +113,9 @@ export function SettingsBitrix24Page() {
           <IconTicket className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="page-title">Bitrix24</h1>
+          <h1 className="page-title">{t('titles.bitrix24')}</h1>
           <p className="mt-1 max-w-3xl text-slate-600">
-            Входящий webhook для бота/робота: Bitrix24 → наша база заявок. Сценарий: пользователь пишет боту, бот шлёт
-            HTTP POST на сервер, заявка появляется в разделе «База заявок».
+            {t('pages.bitrixSubtitle')}
           </p>
         </div>
       </div>
@@ -130,26 +131,28 @@ export function SettingsBitrix24Page() {
       ) : null}
 
       {!cfg ? (
-        <div className="app-card p-6 text-sm text-slate-600">Загрузка…</div>
+        <div className="app-card p-6 text-sm text-slate-600">{t('common.loading')}</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="app-card space-y-3 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Чат-бот (handler URL)</h2>
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              {t('settingsBitrix.handlerTitle')}
+            </h2>
             <p className="text-sm text-slate-600">
-              Если ты используешь встроенный механизм чат-ботов Bitrix24 (URL обработчика бота), то в Bitrix указывается
-              путь <span className="font-mono">/handler</span>. Это <strong>не</strong> тот же URL, что ниже (incoming webhook с секретом).
+              {t('settingsBitrix.handlerDescription')}
             </p>
             <div className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-3 font-mono text-[12px] text-slate-800">
               {handlerUrlHint}
             </div>
             <p className="text-xs text-slate-500">
-              Токен для handler задаётся на сервере в <span className="font-mono">backend/.env</span> как{' '}
-              <span className="font-mono">BITRIX24_BOT_HANDLER_TOKEN</span>.
+              {t('settingsBitrix.handlerTokenHint')}
             </p>
           </section>
 
           <section className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Настройки</h2>
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              {t('settingsBitrix.settingsTitle')}
+            </h2>
 
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -158,20 +161,20 @@ export function SettingsBitrix24Page() {
                 disabled={saving}
                 onChange={(e) => void save({ enabled: e.target.checked })}
               />
-              Включить входящие заявки из Bitrix24
+              {t('settingsBitrix.enableIncoming')}
             </label>
 
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-slate-600">Секрет (shared secret)</label>
+                <label className="text-xs font-medium text-slate-600">{t('settingsBitrix.secretLabel')}</label>
                 <button
                   type="button"
                   className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
                   onClick={() => void save({ incoming_secret: genSecret() })}
                   disabled={saving}
-                  title="Сгенерировать новый секрет"
+                  title={t('settingsBitrix.generateSecretTitle')}
                 >
-                  Сгенерировать
+                  {t('settingsBitrix.generateSecret')}
                 </button>
               </div>
               <div className="flex gap-2">
@@ -179,7 +182,7 @@ export function SettingsBitrix24Page() {
                   className="app-input font-mono text-[13px]"
                   value={cfg.incoming_secret}
                   onChange={(e) => setCfg({ ...cfg, incoming_secret: e.target.value })}
-                  placeholder="секрет"
+                  placeholder={t('settingsBitrix.secretPlaceholder')}
                 />
                 <button
                   type="button"
@@ -188,17 +191,19 @@ export function SettingsBitrix24Page() {
                   onClick={() => void save({ incoming_secret: cfg.incoming_secret })}
                 >
                   <IconKey className="h-4 w-4 text-neutral-400" />
-                  Сохранить
+                  {t('settingsBitrix.saveSecret')}
                 </button>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Нужен, чтобы в локальной сети никто не мог создать заявки простым POST.
+                {t('settingsBitrix.secretHelp')}
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Категория по умолчанию</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  {t('settingsBitrix.defaultCategoryLabel')}
+                </label>
                 <input
                   className="app-input"
                   value={cfg.default_category}
@@ -207,7 +212,9 @@ export function SettingsBitrix24Page() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">Приоритет по умолчанию</label>
+                <label className="mb-1 block text-xs font-medium text-slate-600">
+                  {t('settingsBitrix.defaultPriorityLabel')}
+                </label>
                 <select
                   className="app-input"
                   value={cfg.default_priority}
@@ -227,17 +234,18 @@ export function SettingsBitrix24Page() {
                 onClick={() => void runTest()}
                 disabled={testing || saving}
               >
-                {testing ? 'Тест…' : 'Отправить тестовую заявку'}
+                {testing ? t('settingsBitrix.testing') : t('settingsBitrix.sendTest')}
               </button>
-              <span className="text-xs text-slate-500">Создаст запись в «База заявок».</span>
+              <span className="text-xs text-slate-500">{t('settingsBitrix.sendTestHint')}</span>
             </div>
           </section>
 
           <section className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Webhook URL</h2>
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              {t('settingsBitrix.webhookTitle')}
+            </h2>
             <p className="text-sm text-slate-600">
-              Этот URL указываешь в Bitrix24 (бот/робот/исходящий webhook). Формат: POST JSON (или form-data) → заявка
-              создаётся в нашей системе.
+              {t('settingsBitrix.webhookDescription')}
             </p>
 
             <div className="space-y-2">
@@ -246,22 +254,24 @@ export function SettingsBitrix24Page() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <button type="button" className="app-btn app-btn-secondary" onClick={() => void copyWebhook()}>
-                  Скопировать URL
+                  {t('settingsBitrix.copyUrl')}
                 </button>
                 <button type="button" className="app-btn app-btn-secondary" onClick={() => void load()}>
-                  Обновить
+                  {t('common.refresh')}
                 </button>
               </div>
             </div>
 
             <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-800">
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-neutral-500">Пример JSON</div>
+              <div className="text-xs font-bold uppercase tracking-[0.12em] text-neutral-500">
+                {t('settingsBitrix.sampleJsonTitle')}
+              </div>
               <pre className="mt-2 overflow-auto rounded-lg bg-neutral-950 p-3 text-[12px] text-white">
 {`{
-  "title": "Не печатает принтер",
-  "text": "Принтер HP Color 500 в кабинете 101. Ошибка бумаги.",
-  "requester_name": "Иван",
-  "location": "Каб. 101",
+  "title": "${t('settingsBitrix.sampleRequestTitle')}",
+  "text": "${t('settingsBitrix.sampleRequestText')}",
+  "requester_name": "${t('settingsBitrix.sampleRequesterName')}",
+  "location": "${t('settingsBitrix.sampleLocation')}",
   "priority": "normal",
   "category": "printer",
   "external_id": "b24:message:12345",

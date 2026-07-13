@@ -115,6 +115,11 @@ async def update_my_profile(
         current.full_name = body.full_name.strip() or None
     if body.email is not None:
         current.email = body.email.strip() or None
+    if "avatar_data" in body.model_fields_set:
+        current.avatar_data = body.avatar_data
+        if body.avatar_data:
+            current.avatar_emoji = None
+            current.avatar_bg = None
     await db.commit()
     await db.refresh(current)
     return current

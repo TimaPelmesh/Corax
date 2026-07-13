@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { api, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconUsers } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
 function isDirectoryUser(u: User) {
   return u.is_ldap || u.role === 'directory'
@@ -13,6 +14,7 @@ function isServiceAccount(u: User) {
 }
 
 export function UsersPage() {
+  const t = useT()
   const { user, refresh, logout } = useAuth()
   const nav = useNavigate()
   const [rows, setRows] = useState<User[]>([])
@@ -45,11 +47,11 @@ export function UsersPage() {
       const data = await api.users()
       setRows(data)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void load()
@@ -100,10 +102,10 @@ export function UsersPage() {
       setFullName('')
       setIsSuper(false)
       setRole('observer')
-      setOk('Учётная запись CORAX создана')
+      setOk(t('users.createdOk'))
       void load()
     } catch (err) {
-      setErr(err instanceof Error ? err.message : 'Ошибка')
+      setErr(err instanceof Error ? err.message : t('common.error'))
     }
   }
 
@@ -118,15 +120,15 @@ export function UsersPage() {
         email: myEmail.trim() || null,
       })
       if (updated.username !== user?.username) {
-        setOk('Логин изменён — войдите снова')
+        setOk(t('users.loginChanged'))
         await logout()
         nav('/login', { replace: true })
         return
       }
       await refresh()
-      setOk('Профиль сохранён')
+      setOk(t('users.profileSaved'))
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Ошибка')
+      setErr(error instanceof Error ? error.message : t('common.error'))
     }
   }
 
@@ -138,9 +140,9 @@ export function UsersPage() {
       await api.changeMyPassword({ current_password: currentPassword, new_password: newPassword })
       setCurrentPassword('')
       setNewPassword('')
-      setOk('Пароль изменён')
+      setOk(t('users.passwordChanged'))
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Ошибка смены пароля')
+      setErr(error instanceof Error ? error.message : t('users.passwordChangeFailed'))
     }
   }
 
@@ -157,10 +159,10 @@ export function UsersPage() {
         password: editPassword.trim() || undefined,
       })
       setEditId(null)
-      setOk('Учётная запись обновлена')
+      setOk(t('users.accountUpdated'))
       void load()
     } catch (error) {
-      setErr(error instanceof Error ? error.message : 'Ошибка')
+      setErr(error instanceof Error ? error.message : t('common.error'))
     }
   }
 
@@ -171,11 +173,8 @@ export function UsersPage() {
           <IconUsers className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="page-title">Пользователи</h1>
-          <p className="mt-1 text-slate-600">
-            Учётные записи CORAX создаёт администратор — они входят в панель. Импорт LDAP и Bitrix24 добавляет людей
-            только в справочник заявок (без доступа к сервису).
-          </p>
+          <h1 className="page-title">{t('titles.users')}</h1>
+          <p className="mt-1 text-slate-600">{t('pages.usersSubtitle')}</p>
         </div>
       </div>
 
@@ -190,14 +189,14 @@ export function UsersPage() {
 
       <div className="mt-2 grid gap-4 xl:grid-cols-2">
         <form onSubmit={onUpdateMyProfile} className="app-card space-y-4 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Мой профиль</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('users.myProfile')}</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Логин</label>
+              <label className="mb-1 block text-xs text-slate-600">{t('users.username')}</label>
               <input className="app-input" value={myUsername} onChange={(e) => setMyUsername(e.target.value)} required />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">E-mail</label>
+              <label className="mb-1 block text-xs text-slate-600">{t('users.email')}</label>
               <input
                 type="email"
                 className="app-input"
@@ -207,18 +206,18 @@ export function UsersPage() {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">ФИО</label>
+            <label className="mb-1 block text-xs text-slate-600">{t('users.fullName')}</label>
             <input className="app-input" value={myFullName} onChange={(e) => setMyFullName(e.target.value)} />
           </div>
           <button type="submit" className="app-btn app-btn-secondary">
-            Сохранить профиль
+            {t('users.saveProfile')}
           </button>
         </form>
 
         <form onSubmit={onChangeMyPassword} className="app-card space-y-4 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Смена моего пароля</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('users.changeMyPassword')}</h2>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">Текущий пароль</label>
+            <label className="mb-1 block text-xs text-slate-600">{t('users.currentPassword')}</label>
             <input
               type="password"
               className="app-input"
@@ -228,7 +227,7 @@ export function UsersPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">Новый пароль</label>
+            <label className="mb-1 block text-xs text-slate-600">{t('users.newPassword')}</label>
             <input
               type="password"
               className="app-input"
@@ -239,21 +238,21 @@ export function UsersPage() {
             />
           </div>
           <button type="submit" className="app-btn app-btn-secondary">
-            Сменить пароль
+            {t('users.changePassword')}
           </button>
         </form>
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
         <form onSubmit={onCreate} className="app-card space-y-4 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Новая учётка CORAX</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('users.newAccount')}</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Логин</label>
+              <label className="mb-1 block text-xs text-slate-600">{t('users.username')}</label>
               <input className="app-input" value={username} onChange={(e) => setUsername(e.target.value)} required />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">Пароль</label>
+              <label className="mb-1 block text-xs text-slate-600">{t('users.password')}</label>
               <input
                 type="password"
                 className="app-input"
@@ -265,36 +264,36 @@ export function UsersPage() {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">ФИО (необязательно)</label>
+            <label className="mb-1 block text-xs text-slate-600">{t('users.fullNameOptional')}</label>
             <input className="app-input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input type="checkbox" checked={isSuper} onChange={(e) => setIsSuper(e.target.checked)} />
-            Администратор
+            {t('users.administrator')}
           </label>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">Роль (для не-админа)</label>
+            <label className="mb-1 block text-xs text-slate-600">{t('users.roleForNonAdmin')}</label>
             <select
               className="app-input"
               value={role}
               onChange={(e) => setRole(e.target.value as 'observer' | 'editor')}
               disabled={isSuper}
             >
-              <option value="observer">Наблюдатель</option>
-              <option value="editor">Редактор</option>
+              <option value="observer">{t('roles.viewer')}</option>
+              <option value="editor">{t('roles.editor')}</option>
             </select>
           </div>
           <button type="submit" className="app-btn app-btn-primary">
-            Создать
+            {t('users.create')}
           </button>
         </form>
 
         {editId != null ? (
           <form onSubmit={onSaveEdit} className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Редактирование учётки</h2>
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('users.editAccount')}</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs text-slate-600">Логин</label>
+                <label className="mb-1 block text-xs text-slate-600">{t('users.username')}</label>
                 <input
                   className="app-input"
                   value={editUsername}
@@ -303,7 +302,7 @@ export function UsersPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-slate-600">Новый пароль (необязательно)</label>
+                <label className="mb-1 block text-xs text-slate-600">{t('users.newPasswordOptional')}</label>
                 <input
                   type="password"
                   className="app-input"
@@ -314,11 +313,11 @@ export function UsersPage() {
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">ФИО</label>
+              <label className="mb-1 block text-xs text-slate-600">{t('users.fullName')}</label>
               <input className="app-input" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-600">E-mail</label>
+              <label className="mb-1 block text-xs text-slate-600">{t('users.email')}</label>
               <input
                 type="email"
                 className="app-input"
@@ -328,46 +327,46 @@ export function UsersPage() {
             </div>
             <div className="flex gap-2">
               <button type="submit" className="app-btn app-btn-primary">
-                Сохранить
+                {t('common.save')}
               </button>
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setEditId(null)}>
-                Отмена
+                {t('common.cancel')}
               </button>
             </div>
           </form>
         ) : (
           <div className="app-card flex items-center justify-center p-6 text-sm text-slate-500">
-            Выберите «Изменить» у учётки CORAX в таблице ниже
+            {t('users.pickEditHint')}
           </div>
         )}
       </div>
 
       <div className="app-card mt-6 overflow-hidden p-0">
         <div className="border-b border-neutral-200 px-4 py-3">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Учётные записи CORAX</h2>
-          <p className="mt-1 text-xs text-slate-500">Вход в панель, роли observer/editor/admin. Логин и пароль меняются здесь.</p>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('users.coraxAccounts')}</h2>
+          <p className="mt-1 text-xs text-slate-500">{t('users.coraxAccountsHint')}</p>
         </div>
         <div className="overflow-x-auto overscroll-x-contain">
           <table className="min-w-[760px] w-full text-left text-sm">
             <thead className="app-table-head">
               <tr>
-                <th className="px-4 py-3">Логин</th>
-                <th className="px-4 py-3">ФИО</th>
-                <th className="px-4 py-3">Роль</th>
-                <th className="px-4 py-3">Действия</th>
+                <th className="px-4 py-3">{t('users.username')}</th>
+                <th className="px-4 py-3">{t('users.fullName')}</th>
+                <th className="px-4 py-3">{t('users.role')}</th>
+                <th className="px-4 py-3">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loading ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                    Загрузка…
+                    {t('common.loading')}
                   </td>
                 </tr>
               ) : serviceRows.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                    Нет локальных учёток
+                    {t('users.noLocalAccounts')}
                   </td>
                 </tr>
               ) : (
@@ -389,7 +388,7 @@ export function UsersPage() {
                             void (async () => {
                               await api.setUserRole(u.id, nextRole)
                               void load()
-                            })().catch((error) => setErr(error instanceof Error ? error.message : 'Ошибка'))
+                            })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
                           }}
                         >
                           <option value="observer">observer</option>
@@ -404,7 +403,7 @@ export function UsersPage() {
                           className="rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
                           onClick={() => openEdit(u)}
                         >
-                          Изменить
+                          {t('common.edit')}
                         </button>
                         {!u.is_superuser ? (
                           <button
@@ -414,10 +413,10 @@ export function UsersPage() {
                               void (async () => {
                                 await api.setUserAdmin(u.id, true)
                                 void load()
-                              })().catch((error) => setErr(error instanceof Error ? error.message : 'Ошибка'))
+                              })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
                             }}
                           >
-                            Сделать admin
+                            {t('users.makeAdmin')}
                           </button>
                         ) : null}
                         {u.is_superuser && u.id !== user.id ? (
@@ -428,10 +427,10 @@ export function UsersPage() {
                               void (async () => {
                                 await api.setUserAdmin(u.id, false)
                                 void load()
-                              })().catch((error) => setErr(error instanceof Error ? error.message : 'Ошибка'))
+                              })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
                             }}
                           >
-                            Снять admin
+                            {t('users.revokeAdmin')}
                           </button>
                         ) : null}
                         {u.id !== user.id ? (
@@ -442,10 +441,10 @@ export function UsersPage() {
                               void (async () => {
                                 await api.deleteUser(u.id)
                                 void load()
-                              })().catch((error) => setErr(error instanceof Error ? error.message : 'Ошибка'))
+                              })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
                             }}
                           >
-                            Удалить
+                            {t('common.delete')}
                           </button>
                         ) : null}
                       </div>
@@ -460,31 +459,29 @@ export function UsersPage() {
 
       <div className="app-card mt-6 overflow-hidden p-0">
         <div className="border-b border-neutral-200 px-4 py-3">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Справочник заявок</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            LDAP / Bitrix24 — только для инициаторов и исполнителей в заявках. Вход в CORAX недоступен.
-          </p>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('users.directoryTitle')}</h2>
+          <p className="mt-1 text-xs text-slate-500">{t('users.directoryHint')}</p>
         </div>
         <div className="overflow-x-auto overscroll-x-contain">
           <table className="min-w-[640px] w-full text-left text-sm">
             <thead className="app-table-head">
               <tr>
-                <th className="px-4 py-3">Логин</th>
-                <th className="px-4 py-3">Источник</th>
-                <th className="px-4 py-3">ФИО</th>
+                <th className="px-4 py-3">{t('users.username')}</th>
+                <th className="px-4 py-3">{t('users.source')}</th>
+                <th className="px-4 py-3">{t('users.fullName')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loading ? (
                 <tr>
                   <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
-                    Загрузка…
+                    {t('common.loading')}
                   </td>
                 </tr>
               ) : directoryRows.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
-                    Пока пусто — импортируйте из LDAP или Bitrix24
+                    {t('users.directoryEmpty')}
                   </td>
                 </tr>
               ) : (
@@ -496,7 +493,7 @@ export function UsersPage() {
                         <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900">LDAP</span>
                       ) : (
                         <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-900">
-                          импорт
+                          {t('users.importBadge')}
                         </span>
                       )}
                     </td>

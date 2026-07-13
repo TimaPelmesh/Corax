@@ -20,23 +20,11 @@ import {
   type UserDirectoryItem,
 } from '../api'
 import { useAuth } from '../AuthContext'
-import { IconTicket } from '../components/icons'
+import { IconPencil, IconTicket, IconTrash } from '../components/icons'
 import { collectCategoryPaths, filterCategoryTree, flattenCategoryNodes } from '../requestCategories'
+import { useLocale, useT, translateStatic } from '../i18n/LocaleContext'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
-
-const STATUS_RU: Record<string, string> = {
-  open: 'Открыта',
-  in_progress: 'В работе',
-  done: 'Закрыта',
-  cancelled: 'Отменена',
-}
-
-const PRIORITY_RU: Record<string, string> = {
-  low: 'Низкий',
-  normal: 'Обычный',
-  high: 'Высокий',
-}
 
 const REQUEST_STATUSES = ['open', 'in_progress', 'done', 'cancelled'] as const
 const REQUEST_PRIORITIES = ['low', 'normal', 'high'] as const
@@ -209,23 +197,23 @@ function fromDatetimeLocalValue(s: string): string | null {
   return d.toISOString()
 }
 
-function fmtRuDateTime(iso: string | null | undefined): string {
+function fmtRuDateTime(iso: string | null | undefined, locale: 'ru' | 'en'): string {
   if (!iso) return '—'
   try {
     const d = parseIsoToDate(iso)
     if (!d) return '—'
-    return d.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+    return d.toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU', { dateStyle: 'short', timeStyle: 'short' })
   } catch {
     return '—'
   }
 }
 
-function fmtRuShortDateTime(iso: string | null | undefined): string {
+function fmtRuShortDateTime(iso: string | null | undefined, locale: 'ru' | 'en'): string {
   if (!iso) return '—'
   try {
     const d = parseIsoToDate(iso)
     if (!d) return '—'
-    return d.toLocaleString('ru-RU', {
+    return d.toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU', {
       day: '2-digit',
       month: '2-digit',
       year: '2-digit',
@@ -235,6 +223,55 @@ function fmtRuShortDateTime(iso: string | null | undefined): string {
   } catch {
     return '—'
   }
+}
+
+function requestStatusLabel(value: string): string {
+  switch (value) {
+    case 'open':
+      return translateStatic('requests.status.open')
+    case 'in_progress':
+      return translateStatic('requests.status.inProgress')
+    case 'done':
+      return translateStatic('requests.status.done')
+    case 'cancelled':
+      return translateStatic('requests.status.cancelled')
+    default:
+      return value
+  }
+}
+
+function requestPriorityLabel(value: string): string {
+  switch (value) {
+    case 'low':
+      return translateStatic('requests.priority.low')
+    case 'normal':
+      return translateStatic('requests.priority.normal')
+    case 'high':
+      return translateStatic('requests.priority.high')
+    default:
+      return value
+  }
+}
+
+function durationPresetLabel(minutes: number): string {
+  switch (minutes) {
+    case 15:
+      return translateStatic('requests.durations.min15')
+    case 30:
+      return translateStatic('requests.durations.min30')
+    case 60:
+      return translateStatic('requests.durations.min60')
+    case 90:
+      return translateStatic('requests.durations.min90')
+    default:
+      return `${minutes} min`
+  }
+}
+
+function requestPluralLabel(count: number): string {
+  if (count === 1) return translateStatic('requests.stats.requestOne')
+  if (count >= 2 && count <= 4) return translateStatic('requests.stats.requestFew')
+  return translateStatic('requests.stats.requestMany')
 }
 
 /** Стабильный ID заявки в CORAX (не меняется при редактировании). */
@@ -254,8 +291,8 @@ function CategoryPicker({
   value,
   onChange,
   tree = [],
-  label = 'Категория',
-  placeholder = 'Выберите категорию…',
+  label,
+  placeholder,
 }: {
   value: string
   onChange: (v: string) => void
@@ -263,6 +300,7 @@ function CategoryPicker({
   label?: string
   placeholder?: string
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState(value)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -287,14 +325,16 @@ function CategoryPicker({
 
   return (
     <div ref={boxRef} className="relative">
-      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</label>
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {label ?? t('requests.categoryPicker.label')}
+      </label>
       <div className="relative">
         <input
           type="text"
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('requests.categoryPicker.placeholder')}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
@@ -327,9 +367,9 @@ function CategoryPicker({
               setQuery('')
               setOpen(false)
             }}
-            title="Сбросить категорию"
+            title={t('requests.categoryPicker.resetTitle')}
           >
-            Сброс
+            {t('requests.categoryPicker.reset')}
           </button>
         ) : null}
       </div>
@@ -348,7 +388,7 @@ function CategoryPicker({
                 setOpen(false)
               }}
             >
-              — не указано —
+              {t('requests.categoryPicker.unspecified')}
             </button>
           </li>
           {flatFiltered.map(({ node, depth }) => {
@@ -382,7 +422,7 @@ function CategoryPicker({
             )
           })}
           {flatFiltered.length === 0 && allPaths.length > 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">Ничего не найдено</li>
+            <li className="px-3 py-2 text-sm text-slate-400">{t('requests.categoryPicker.nothingFound')}</li>
           ) : null}
         </ul>
       ) : null}
@@ -415,7 +455,7 @@ function addMinutesToLocalDatetimeValue(localValue: string, minutes: number): st
 function topNWithOther(
   items: { name: string; count: number }[],
   n: number,
-  otherLabel = 'Остальные',
+  otherLabel = 'Other',
 ): { name: string; count: number }[] {
   const normalized = items
     .map((x) => ({ name: x.name.trim() ? x.name : '—', count: x.count }))
@@ -464,6 +504,7 @@ function DonutDistribution({
   compact?: boolean
   center?: boolean
 }) {
+  const t = useT()
   const [hovered, setHovered] = useState<number | null>(null)
   const normalizedItems = useMemo(() => items.filter((i) => i.count > 0), [items])
   const total = useMemo(() => normalizedItems.reduce((s, i) => s + i.count, 0), [normalizedItems])
@@ -492,7 +533,7 @@ function DonutDistribution({
   if (!normalizedItems.length || total <= 0) {
     return (
       <p className="rounded-xl border border-dashed border-neutral-200/90 bg-neutral-50/60 px-4 py-8 text-center text-sm text-neutral-500">
-        {emptyText ?? 'Нет данных'}
+        {emptyText ?? t('requests.charts.noData')}
       </p>
     )
   }
@@ -510,7 +551,7 @@ function DonutDistribution({
           viewBox="0 0 160 160"
           className="drop-shadow-[0_8px_28px_rgb(0_0_0_/_0.08)]"
           role="img"
-          aria-label="Круговая диаграмма распределения"
+          aria-label={t('requests.charts.donutAria')}
         >
           {segments.length === 1 ? (
             <circle cx="80" cy="80" r="60" fill="none" stroke={segments[0].color} strokeWidth="28" />
@@ -541,7 +582,7 @@ function DonutDistribution({
             <span className={`admin-stat-value leading-none tracking-tight text-neutral-950 ${compact ? 'text-[1.35rem]' : 'text-[1.65rem]'}`}>
               {total}
             </span>
-            <span className="text-[11px] font-medium text-neutral-500">всего</span>
+            <span className="text-[11px] font-medium text-neutral-500">{t('requests.charts.total')}</span>
           </div>
         </div>
       </div>
@@ -579,10 +620,11 @@ function HorizontalBars({
   items: { name: string; count: number }[]
   total: number
 }) {
+  const t = useT()
   if (!items.length || total <= 0) {
     return (
       <div className="rounded-xl border border-dashed border-neutral-200/90 bg-neutral-50/60 px-4 py-6 text-center text-sm text-neutral-500">
-        Нет данных
+        {t('requests.charts.noData')}
       </div>
     )
   }
@@ -610,19 +652,11 @@ function HorizontalBars({
 }
 
 const DURATION_PRESETS_MIN = [
-  { label: '15 мин', minutes: 15, hotkey: 'Alt+1' },
-  { label: '30 мин', minutes: 30, hotkey: 'Alt+2' },
-  { label: '60 мин', minutes: 60, hotkey: 'Alt+3' },
-  { label: '90 мин', minutes: 90, hotkey: 'Alt+4' },
+  { minutes: 15, hotkey: 'Alt+1' },
+  { minutes: 30, hotkey: 'Alt+2' },
+  { minutes: 60, hotkey: 'Alt+3' },
+  { minutes: 90, hotkey: 'Alt+4' },
 ] as const
-
-const FILTER_TABS: { id: string | null; label: string }[] = [
-  { id: null, label: 'Все' },
-  { id: 'open', label: 'Открытые' },
-  { id: 'in_progress', label: 'В работе' },
-  { id: 'done', label: 'Закрытые' },
-  { id: 'cancelled', label: 'Отменены' },
-]
 
 function MiniStatCard({
   label,
@@ -669,6 +703,7 @@ function MiniStatCard({
 }
 
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const t = useT()
   return (
     <div
       role="status"
@@ -680,7 +715,7 @@ function Toast({ message, onDismiss }: { message: string; onDismiss: () => void 
         type="button"
         onClick={onDismiss}
         className="ml-2 rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
-        aria-label="Закрыть"
+        aria-label={t('requests.toastClose')}
       >
         ×
       </button>
@@ -703,6 +738,7 @@ function ComputerPicker({
   labelClassName?: string
   inputClassName?: string
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const boxRef = useRef<HTMLDivElement>(null)
@@ -733,7 +769,7 @@ function ComputerPicker({
           labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500'
         }
       >
-        ПК (необязательно)
+        {t('requests.computerPicker.label')}
       </label>
       <div className="relative">
         <input
@@ -741,7 +777,7 @@ function ComputerPicker({
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
-          placeholder="Поиск по имени хоста…"
+          placeholder={t('requests.computerPicker.placeholder')}
           value={open ? query : selected?.hostname ?? ''}
           onChange={(e) => {
             const v = e.target.value
@@ -768,7 +804,7 @@ function ComputerPicker({
               setOpen(false)
             }}
           >
-            Сброс
+            {t('requests.computerPicker.reset')}
           </button>
         )}
       </div>
@@ -787,7 +823,7 @@ function ComputerPicker({
                 setOpen(false)
               }}
             >
-              — не привязано —
+              {t('requests.computerPicker.unlinked')}
             </button>
           </li>
           {filtered.map((c) => (
@@ -806,7 +842,7 @@ function ComputerPicker({
             </li>
           ))}
           {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">Ничего не найдено</li>
+            <li className="px-3 py-2 text-sm text-slate-400">{t('requests.computerPicker.nothingFound')}</li>
           ) : null}
         </ul>
       )}
@@ -840,6 +876,7 @@ function DirectoryRequesterPicker({
   hint?: string | null
   allowFreeText?: boolean
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState(value)
   useEffect(() => setQuery(value), [value])
@@ -941,7 +978,7 @@ function DirectoryRequesterPicker({
                   setOpen(false)
                 }}
               >
-                — очистить —
+                {t('requests.requesterPicker.clear')}
               </button>
             </li>
             {filtered.map((u) => (
@@ -962,7 +999,7 @@ function DirectoryRequesterPicker({
               </li>
             ))}
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-slate-400">Нет совпадений в справочнике</li>
+              <li className="px-3 py-2 text-sm text-slate-400">{t('requests.requesterPicker.noMatches')}</li>
             ) : null}
           </ul>
         ) : null}
@@ -977,7 +1014,7 @@ function DirectoryAssigneesPicker({
   users,
   selectedIds,
   onChange,
-  label = 'Ответственные за исполнение',
+  label,
   labelClassName,
   inputClassName,
   hint,
@@ -994,6 +1031,7 @@ function DirectoryAssigneesPicker({
   className?: string
   showSelectedChips?: boolean
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -1032,7 +1070,7 @@ function DirectoryAssigneesPicker({
           labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500'
         }
       >
-        {label}
+        {label ?? t('requests.assigneesPicker.label')}
       </span>
       {showSelectedChips && selectedUsers.length > 0 ? (
         <div className="mb-2 flex flex-wrap gap-1.5">
@@ -1046,7 +1084,7 @@ function DirectoryAssigneesPicker({
                 type="button"
                 className="shrink-0 rounded-full px-1 leading-none text-slate-500 hover:bg-slate-200 hover:text-slate-900"
                 onClick={() => toggle(u.id)}
-                aria-label={`Убрать ${userDirectoryLabel(u)}`}
+                aria-label={t('requests.assigneesPicker.remove', { name: userDirectoryLabel(u) })}
               >
                 ×
               </button>
@@ -1063,7 +1101,7 @@ function DirectoryAssigneesPicker({
           }}
           onFocus={() => setOpen(true)}
           onBlur={() => window.setTimeout(() => setOpen(false), 150)}
-          placeholder="Начните вводить и выберите из списка"
+          placeholder={t('requests.assigneesPicker.placeholder')}
           autoComplete="off"
           className={inputCls}
         />
@@ -1083,7 +1121,7 @@ function DirectoryAssigneesPicker({
                     setOpen(false)
                   }}
                 >
-                  — сбросить всех —
+                  {t('requests.assigneesPicker.clearAll')}
                 </button>
               </li>
             ) : null}
@@ -1104,9 +1142,9 @@ function DirectoryAssigneesPicker({
               )
             })}
             {users.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-slate-400">Нет пользователей в справочнике</li>
+              <li className="px-3 py-2 text-sm text-slate-400">{t('requests.assigneesPicker.noUsers')}</li>
             ) : filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-slate-400">Нет совпадений в справочнике</li>
+              <li className="px-3 py-2 text-sm text-slate-400">{t('requests.assigneesPicker.noMatches')}</li>
             ) : null}
           </ul>
         ) : null}
@@ -1117,6 +1155,8 @@ function DirectoryAssigneesPicker({
 }
 
 export function ServiceRequestsPage() {
+  const t = useT()
+  const { locale } = useLocale()
   const DB_PAGE_SIZE = 100
   const location = useLocation()
   const navigate = useNavigate()
@@ -1211,9 +1251,20 @@ export function ServiceRequestsPage() {
   const [statsTopN, setStatsTopN] = useState(8)
   const [statsOnlyWithPlanned, setStatsOnlyWithPlanned] = useState(false)
   const [statsOnlyOverdue, setStatsOnlyOverdue] = useState(false)
-  const [execReportTitle, setExecReportTitle] = useState('Отчет по заявкам')
-  const [execReportAudience, setExecReportAudience] = useState('Для руководства')
+  const [execReportTitle, setExecReportTitle] = useState(t('requests.reportDefaults.title'))
+  const [execReportAudience, setExecReportAudience] = useState(t('requests.reportDefaults.audience'))
   const [execReportAuthor, setExecReportAuthor] = useState('')
+  const filterTabs = useMemo(
+    () => [
+      { id: null, label: t('requests.tabs.all') },
+      { id: 'open', label: t('requests.status.openPlural') },
+      { id: 'in_progress', label: t('requests.status.inProgress') },
+      { id: 'done', label: t('requests.status.donePlural') },
+      { id: 'cancelled', label: t('requests.status.cancelledPlural') },
+    ],
+    [t],
+  )
+
   const [execIncludeNarrative, setExecIncludeNarrative] = useState(true)
   const [execIncludeChart, setExecIncludeChart] = useState(true)
   const [execIncludeDistributions, setExecIncludeDistributions] = useState(true)
@@ -1341,33 +1392,33 @@ export function ServiceRequestsPage() {
   const statsAssigneeItems = useMemo(
     () =>
       [...(statsRows.reduce((acc, r) => {
-        const arr = r.assignee_usernames?.length ? r.assignee_usernames : ['Без исполнителя']
+        const arr = r.assignee_usernames?.length ? r.assignee_usernames : [t('requests.statsData.noAssignee')]
         for (const n of arr) acc.set(n, (acc.get(n) ?? 0) + 1)
         return acc
       }, new Map<string, number>())).entries()]
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count),
-    [statsRows],
+    [statsRows, t],
   )
 
   const statsPriorityItems = useMemo(
     () =>
       [...(statsRows.reduce((acc, r) => {
-        const p = PRIORITY_RU[r.priority] ?? r.priority
+        const p = requestPriorityLabel(r.priority)
         acc.set(p, (acc.get(p) ?? 0) + 1)
         return acc
       }, new Map<string, number>())).entries()].map(([name, count]) => ({ name, count })),
-    [statsRows],
+    [statsRows, t],
   )
 
   const statsStatusItems = useMemo(
     () =>
       [...(statsRows.reduce((acc, r) => {
-        const s = STATUS_RU[r.status] ?? r.status
+        const s = requestStatusLabel(r.status)
         acc.set(s, (acc.get(s) ?? 0) + 1)
         return acc
       }, new Map<string, number>())).entries()].map(([name, count]) => ({ name, count })),
-    [statsRows],
+    [statsRows, t],
   )
 
   const statsKpi = useMemo(() => {
@@ -1405,19 +1456,19 @@ export function ServiceRequestsPage() {
   }, [statsRows])
 
   const statsPeriodLabel = useMemo(() => {
-    const from = statsFrom.trim() || 'начала данных'
-    const to = statsTo.trim() || 'сегодня'
+    const from = statsFrom.trim() || t('requests.statsData.noDataStart')
+    const to = statsTo.trim() || t('requests.statsData.today')
     return `${from} - ${to}`
-  }, [statsFrom, statsTo])
+  }, [statsFrom, statsTo, t])
 
   const statsLineChart = useMemo(() => {
     const labels = statsSeries.items.map((x) => x.key)
     const data = statsSeries.items.map((x) => x.total)
     const statusDatasetDefs = [
-      { key: 'open', label: 'Открыты', color: '#2563eb', bg: 'rgb(37 99 235 / 0.1)' },
-      { key: 'in_progress', label: 'В работе', color: '#0f172a', bg: 'rgb(15 23 42 / 0.1)' },
-      { key: 'done', label: 'Закрыты', color: '#334155', bg: 'rgb(51 65 85 / 0.1)' },
-      { key: 'cancelled', label: 'Отменены', color: '#64748b', bg: 'rgb(100 116 139 / 0.1)' },
+      { key: 'open', label: t('requests.statsData.openSeries'), color: '#2563eb', bg: 'rgb(37 99 235 / 0.1)' },
+      { key: 'in_progress', label: t('requests.statsData.inProgressSeries'), color: '#0f172a', bg: 'rgb(15 23 42 / 0.1)' },
+      { key: 'done', label: t('requests.statsData.doneSeries'), color: '#334155', bg: 'rgb(51 65 85 / 0.1)' },
+      { key: 'cancelled', label: t('requests.statsData.cancelledSeries'), color: '#64748b', bg: 'rgb(100 116 139 / 0.1)' },
     ] as const
     const statusDatasets =
       statsChartMode === 'status'
@@ -1441,7 +1492,7 @@ export function ServiceRequestsPage() {
             ? statusDatasets
             : [
                 {
-                  label: 'Заявки',
+                  label: t('requests.statsData.requestsSeries'),
                   data,
                   borderColor: 'rgb(37 99 235)',
                   backgroundColor: 'rgb(37 99 235 / 0.12)',
@@ -1465,7 +1516,7 @@ export function ServiceRequestsPage() {
         },
       } as const,
     }
-  }, [statsChartMode, statsSeries.items])
+  }, [statsChartMode, statsSeries.items, t])
 
   const visibleRows = useMemo(() => {
     const qRaw = query.trim()
@@ -1561,11 +1612,11 @@ export function ServiceRequestsPage() {
       setRows(r.items)
       setTotal(r.total)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setLoading(false)
     }
-  }, [dbShowAll, filterStatus, tab])
+  }, [dbShowAll, filterStatus, tab, t])
 
   const loadTemplates = useCallback(async () => {
     setErr(null)
@@ -1575,13 +1626,13 @@ export function ServiceRequestsPage() {
       setTplRows(r.items)
       setTplTotal(r.total)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
       setTplRows([])
       setTplTotal(0)
     } finally {
       setTplLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void refreshSummary()
@@ -1796,7 +1847,7 @@ export function ServiceRequestsPage() {
         setTitle('')
         setDescription('')
         resetCreateFormAfterSubmit()
-        setToast('Сохранено')
+        setToast(t('requests.messages.saved'))
         void refreshSummary()
         if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath)
       } else {
@@ -1806,12 +1857,12 @@ export function ServiceRequestsPage() {
         setTitle('')
         setDescription('')
         resetCreateFormAfterSubmit()
-        setToast('Заявка создана')
+        setToast(t('requests.messages.created'))
         await load()
         void refreshSummary()
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setSaving(false)
     }
@@ -1822,9 +1873,9 @@ export function ServiceRequestsPage() {
     setPdfBusy(true)
     try {
       await api.exportServiceRequestsPdf({ status: filterStatus, limit: dbShowAll ? 2000 : 400 })
-      setToast('PDF сохранён')
+      setToast(t('requests.messages.pdfSaved'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setPdfBusy(false)
     }
@@ -1957,7 +2008,7 @@ export function ServiceRequestsPage() {
 
       const w = window.open('about:blank', '_blank', 'width=1100,height=900')
       if (!w) {
-        setErr('Браузер заблокировал окно печати. Разрешите pop-up и попробуйте снова.')
+        setErr(t('requests.errors.popupBlocked'))
         return
       }
       try {
@@ -1973,7 +2024,7 @@ export function ServiceRequestsPage() {
         const url = URL.createObjectURL(blob)
         const wb = window.open(url, '_blank')
         if (!wb) {
-          setErr('Не удалось открыть окно отчета. Разрешите pop-up и повторите.')
+          setErr(t('requests.errors.reportWindow'))
           URL.revokeObjectURL(url)
           return
         }
@@ -1984,7 +2035,7 @@ export function ServiceRequestsPage() {
         }, 450)
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось сформировать Executive PDF')
+      setErr(e instanceof Error ? e.message : t('requests.errors.execPdf'))
     }
   }
 
@@ -2000,35 +2051,39 @@ export function ServiceRequestsPage() {
       setTitle('')
       setDescription('')
       resetCreateFormAfterSubmit()
-      setToast('Заявка удалена')
+      setToast(t('requests.messages.deleted'))
       await load()
       void refreshSummary()
       if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка удаления')
+      setErr(e instanceof Error ? e.message : t('requests.errors.delete'))
     } finally {
       setEditDeleting(false)
     }
   }
 
-  function applyTemplateToForm(t: ServiceRequestTemplateRow) {
-    setTitle(t.title)
-    setDescription(t.description ?? '')
-    setShowDescription(Boolean(t.description))
-    setCreateStatus(isRequestStatus(t.status) ? t.status : 'open')
-    setPriority(isRequestPriority(t.priority) ? t.priority : 'normal')
-    setAssigneeIds(Array.isArray(t.assignee_ids) ? t.assignee_ids : [])
-    setComputerId(t.computer_id ? String(t.computer_id) : '')
-    setRequesterName((t.requester_name ?? '').trim())
-    setCategory((t.category ?? '').trim())
-    setOpenedAtLocal(t.opened_at ? toDatetimeLocalValue(t.opened_at) : defaultOpenedLocal())
-    const planned = t.planned_close_at ? toDatetimeLocalValue(t.planned_close_at) : defaultPlannedCloseLocal()
-    const closed = t.closed_at ? toDatetimeLocalValue(t.closed_at) : ''
+  function applyTemplateToForm(template: ServiceRequestTemplateRow) {
+    setTitle(template.title)
+    setDescription(template.description ?? '')
+    setShowDescription(Boolean(template.description))
+    setCreateStatus(isRequestStatus(template.status) ? template.status : 'open')
+    setPriority(isRequestPriority(template.priority) ? template.priority : 'normal')
+    setAssigneeIds(Array.isArray(template.assignee_ids) ? template.assignee_ids : [])
+    setComputerId(template.computer_id ? String(template.computer_id) : '')
+    setRequesterName((template.requester_name ?? '').trim())
+    setCategory((template.category ?? '').trim())
+    setOpenedAtLocal(
+      template.opened_at ? toDatetimeLocalValue(template.opened_at) : defaultOpenedLocal(),
+    )
+    const planned = template.planned_close_at
+      ? toDatetimeLocalValue(template.planned_close_at)
+      : defaultPlannedCloseLocal()
+    const closed = template.closed_at ? toDatetimeLocalValue(template.closed_at) : ''
     setPlannedCloseLocal(planned)
     setClosedAtLocal(closed)
     setClosedSameAsPlanned(Boolean(closed && planned && closed === planned))
     navigate('/requests')
-    setToast(`Шаблон применён: ${t.title}`)
+    setToast(t('requests.messages.templateApplied', { title: template.title }))
   }
 
   function resetTemplateForm() {
@@ -2087,15 +2142,15 @@ export function ServiceRequestsPage() {
       }
       if (tplEditingId != null) {
         await api.updateServiceRequestTemplate(tplEditingId, body)
-        setToast('Шаблон обновлён')
+        setToast(t('requests.messages.templateUpdated'))
       } else {
         await api.createServiceRequestTemplate(body)
-        setToast('Шаблон сохранён')
+        setToast(t('requests.messages.templateSaved'))
       }
       resetTemplateForm()
       await loadTemplates()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setTplBusy(false)
     }
@@ -2111,7 +2166,7 @@ export function ServiceRequestsPage() {
       setToast('Шаблон удалён')
       await loadTemplates()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setTplBusy(false)
     }
@@ -2129,9 +2184,9 @@ export function ServiceRequestsPage() {
             <IconTicket className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="page-title">Заявки</h1>
+            <h1 className="page-title">{t('nav.requests')}</h1>
             <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-neutral-600">
-              Создание заявок и работа со списком. Все данные хранятся в базе.
+              {t('pages.requestsSubtitle')}
             </p>
           </div>
         </div>
@@ -2145,16 +2200,16 @@ export function ServiceRequestsPage() {
               {!summaryLoading && summary ? (
                 <aside className="flex w-full shrink-0 flex-row gap-2 sm:w-44 sm:flex-col sm:gap-2.5 lg:w-48">
                   <MiniStatCard
-                    label="Всего"
+                    label={t('requests.create.total')}
                     value={summary.service_requests_total}
                     variant="neutral"
                     icon={<IconTicket className="h-4 w-4" />}
                     compact
                   />
                   <MiniStatCard
-                    label="Активных"
+                    label={t('requests.create.active')}
                     value={summary.service_requests_active}
-                    sub="открыта / в работе"
+                    sub={t('requests.create.activeSub')}
                     variant="danger"
                     icon={<IconTicket className="h-4 w-4" />}
                     compact
@@ -2168,12 +2223,14 @@ export function ServiceRequestsPage() {
               >
                 <div className="border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-center">
                   <h2 className="font-[family-name:var(--font-display)] text-[13px] font-semibold tracking-tight text-[var(--color-fg)]">
-                    {editingRequestId != null ? `Редактирование заявки #${editingRequestId}` : 'Новая заявка'}
+                    {editingRequestId != null
+                      ? t('requests.create.editTitle', { id: editingRequestId })
+                      : t('requests.create.newTitle')}
                   </h2>
                   <p className="mt-0.5 text-[10px] text-[var(--color-fg-muted)]">
                     {editingRequestId != null
-                      ? 'Те же поля и списки, что при создании. После сохранения вернётесь к списку.'
-                      : 'Шаблон подставит даты, статус и исполнителей.'}
+                      ? t('requests.create.editSubtitle')
+                      : t('requests.create.newSubtitle')}
                   </p>
                 </div>
 
@@ -2181,7 +2238,7 @@ export function ServiceRequestsPage() {
               {editingRequestId == null ? (
               <label className="block">
                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Шаблон
+                  {t('requests.create.template')}
                 </span>
                 <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
                   <select
@@ -2191,28 +2248,28 @@ export function ServiceRequestsPage() {
                       const v = e.target.value
                       setCreateTemplateSelect(v)
                       if (!v) return
-                      const t = tplRows.find((r) => String(r.id) === v)
-                      if (t) applyTemplateToForm(t)
+                      const tpl = tplRows.find((r) => String(r.id) === v)
+                      if (tpl) applyTemplateToForm(tpl)
                       setCreateTemplateSelect('')
                     }}
                     className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[13px] font-medium text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60"
                   >
-                    <option value="">— Выберите шаблон —</option>
-                    {tplRows.map((t) => (
-                      <option key={t.id} value={String(t.id)}>
-                        {t.title}
+                    <option value="">{t('requests.create.chooseTemplate')}</option>
+                    {tplRows.map((tpl) => (
+                      <option key={tpl.id} value={String(tpl.id)}>
+                        {tpl.title}
                       </option>
                     ))}
                   </select>
                   {tplLoading ? (
-                    <span className="text-xs text-slate-500">Загрузка шаблонов…</span>
+                    <span className="text-xs text-slate-500">{t('requests.create.loadingTemplates')}</span>
                   ) : tplRows.length === 0 ? (
                     <button
                       type="button"
                       onClick={() => navigate('/requests/templates')}
                       className="whitespace-nowrap text-left text-xs font-semibold text-blue-700 hover:underline"
                     >
-                      Нет шаблонов — создать на вкладке «Шаблоны»
+                      {t('requests.create.noTemplates')}
                     </button>
                   ) : (
                     <button
@@ -2220,7 +2277,7 @@ export function ServiceRequestsPage() {
                       onClick={() => navigate('/requests/templates')}
                       className="whitespace-nowrap text-left text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline"
                     >
-                      Управление шаблонами
+                      {t('requests.create.manageTemplates')}
                     </button>
                   )}
                 </div>
@@ -2229,7 +2286,7 @@ export function ServiceRequestsPage() {
 
               <label className="block">
                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Заголовок
+                  {t('requests.create.title')}
                 </span>
                 {recentTitles.length > 0 ? (
                   <div className="mb-2 flex flex-wrap gap-2">
@@ -2249,7 +2306,7 @@ export function ServiceRequestsPage() {
                         <button
                           type="button"
                           className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200/90 hover:text-slate-700"
-                          aria-label={`Удалить «${rt}» из подсказок`}
+                          aria-label={t('requests.create.removeRecent', { title: rt })}
                           onClick={() => {
                             removeRecentTitle(rt)
                             setRecentTitles(readRecentTitles())
@@ -2262,7 +2319,7 @@ export function ServiceRequestsPage() {
                   </div>
                 ) : null}
                 <input
-                  placeholder="Кратко, по сути"
+                  placeholder={t('requests.create.titlePlaceholder')}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   required
@@ -2271,12 +2328,12 @@ export function ServiceRequestsPage() {
               </label>
 
               <label className="block">
-                <span className={CREATE_FORM_LABEL_CLS}>Местоположение</span>
+                <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.location')}</span>
                 <input
                   value={requestLocation}
                   onChange={(e) => setRequestLocation(e.target.value)}
                   className={CREATE_FORM_INPUT_CLS}
-                  placeholder="OPM"
+                  placeholder={t('requests.create.locationPlaceholder')}
                 />
               </label>
 
@@ -2286,13 +2343,13 @@ export function ServiceRequestsPage() {
                   className="text-xs font-medium text-blue-700 hover:text-neutral-800 hover:underline"
                   onClick={() => setShowDescription(true)}
                 >
-                  + Описание
+                  {t('requests.create.addDescription')}
                 </button>
               ) : (
                 <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>Описание</span>
+                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.description')}</span>
                   <textarea
-                    placeholder="Необязательно"
+                    placeholder={t('requests.create.optional')}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={2}
@@ -2306,18 +2363,18 @@ export function ServiceRequestsPage() {
                   users={userDir}
                   value={requesterName}
                   onChange={setRequesterName}
-                  label="Инициатор"
-                  placeholder="Выберите из списка"
+                  label={t('requests.create.requester')}
+                  placeholder={t('requests.create.pickFromList')}
                   hint={null}
                   labelClassName={CREATE_FORM_LABEL_CLS}
                   inputClassName={CREATE_FORM_INPUT_CLS}
                 />
-                <CategoryPicker value={category} onChange={setCategory} tree={categoryTree} label="Категория" />
+                <CategoryPicker value={category} onChange={setCategory} tree={categoryTree} label={t('requests.categoryPicker.label')} />
               </div>
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>Статус</span>
+                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.status')}</span>
                   <select
                     value={createStatus}
                     onChange={(e) => {
@@ -2326,15 +2383,15 @@ export function ServiceRequestsPage() {
                     }}
                     className={CREATE_FORM_INPUT_CLS}
                   >
-                    {Object.entries(STATUS_RU).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
+                    {REQUEST_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {requestStatusLabel(status)}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>Приоритет</span>
+                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.priority')}</span>
                   <select
                     value={priority}
                     onChange={(e) => {
@@ -2345,7 +2402,7 @@ export function ServiceRequestsPage() {
                   >
                     {REQUEST_PRIORITIES.map((p) => (
                       <option key={p} value={p}>
-                        {PRIORITY_RU[p]}
+                        {requestPriorityLabel(p)}
                       </option>
                     ))}
                   </select>
@@ -2354,7 +2411,7 @@ export function ServiceRequestsPage() {
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>Дата открытия</span>
+                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.openedAt')}</span>
                   <input
                     type="datetime-local"
                     value={openedAtLocal}
@@ -2363,7 +2420,7 @@ export function ServiceRequestsPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>Дата закрытия</span>
+                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.plannedCloseAt')}</span>
                   <input
                     type="datetime-local"
                     value={plannedCloseLocal}
@@ -2376,22 +2433,24 @@ export function ServiceRequestsPage() {
                         key={`plan-${p.minutes}`}
                         type="button"
                         className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
-                        title={`Через ${p.label} от даты открытия (Alt+1…4)`}
+                        title={t('requests.durations.fromOpenedTitle', {
+                          label: durationPresetLabel(p.minutes),
+                        })}
                         onClick={() => {
                           const v = addMinutesToLocalDatetimeValue(openedAtLocal, p.minutes)
                           if (v) setPlannedCloseLocal(v)
                         }}
                       >
-                        +{p.label}
+                        +{durationPresetLabel(p.minutes)}
                       </button>
                     ))}
                     <button
                       type="button"
                       className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-zinc-50"
                       onClick={() => setPlannedCloseLocal('')}
-                      title="Очистить назначенную дату закрытия"
+                      title={t('requests.durations.clearPlanned')}
                     >
-                      Очистить
+                      {t('requests.categoryPicker.reset')}
                     </button>
                   </div>
                 </label>
@@ -2414,13 +2473,13 @@ export function ServiceRequestsPage() {
                   }}
                 />
                 <span className="text-[11px] leading-snug text-slate-700">
-                  Фактическая дата закрытия = дата закрытия
+                  {t('requests.create.closedSameAsPlanned')}
                 </span>
               </label>
 
               {!closedSameAsPlanned ? (
                 <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>Фактическая дата закрытия</span>
+                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.closedAt')}</span>
                   <input
                     type="datetime-local"
                     value={closedAtLocal}
@@ -2437,23 +2496,25 @@ export function ServiceRequestsPage() {
                         key={`close-${p.minutes}`}
                         type="button"
                         className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
-                        title={`Через ${p.label} от даты открытия`}
+                        title={t('requests.durations.fromOpenedTitle', {
+                          label: durationPresetLabel(p.minutes),
+                        })}
                         onClick={() => {
                           const v = addMinutesToLocalDatetimeValue(openedAtLocal, p.minutes)
                           setClosedAtLocal(v)
                           if (v.trim()) setCreateStatus('done')
                         }}
                       >
-                        +{p.label}
+                        +{durationPresetLabel(p.minutes)}
                       </button>
                     ))}
                     <button
                       type="button"
                       className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-zinc-50"
-                      title="Очистить фактическую дату закрытия"
+                      title={t('requests.durations.clearClosed')}
                       onClick={() => setClosedAtLocal('')}
                     >
-                      Очистить
+                      {t('requests.categoryPicker.reset')}
                     </button>
                   </div>
                 </label>
@@ -2473,7 +2534,7 @@ export function ServiceRequestsPage() {
                         onClick={() =>
                           setAssigneeIds((ids) => ids.filter((id) => id !== u.id))
                         }
-                        aria-label={`Убрать ${userDirectoryLabel(u)}`}
+                        aria-label={t('requests.assigneesPicker.remove', { name: userDirectoryLabel(u) })}
                       >
                         ×
                       </button>
@@ -2504,12 +2565,11 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-3">
-                <span className={CREATE_FORM_LABEL_CLS}>Действие со складом</span>
+                <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.warehouseAction')}</span>
                 <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  Здесь появится выдача и установка комплектующих (ОЗУ, SSD, сетевое и др.) с привязкой к этой
-                  заявке. Пока учёт свободного оборудования — в разделе{' '}
+                  {t('requests.create.warehouseActionHint')}{' '}
                   <a href="/knowledge-base/warehouse" className="font-medium text-blue-700 underline decoration-blue-200">
-                    Склад
+                    {t('requests.create.warehouseLink')}
                   </a>
                   .
                 </p>
@@ -2529,11 +2589,11 @@ export function ServiceRequestsPage() {
                 >
                   {saving
                     ? editingRequestId != null
-                      ? 'Сохранение…'
-                      : 'Создание…'
+                      ? t('requests.create.saving')
+                      : t('requests.create.creating')
                     : editingRequestId != null
-                      ? 'Сохранить изменения'
-                      : 'Создать заявку'}
+                      ? t('requests.create.saveChanges')
+                      : t('requests.create.createRequest')}
                 </button>
 
                 {editingRequestId != null ? (
@@ -2544,13 +2604,13 @@ export function ServiceRequestsPage() {
                       onClick={cancelEditing}
                       className="w-full rounded-md border border-slate-200 bg-white py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
                     >
-                      Отмена
+                      {t('requests.create.cancel')}
                     </button>
                     {canManageRequests ? (
                       editDeleteConfirm ? (
                         <div className="rounded-xl border border-red-200 bg-blue-50/90 p-3">
                           <p className="text-sm font-medium text-red-950">
-                            Удалить заявку «{title}»? Действие необратимо.
+                            {t('requests.create.deleteConfirm', { title })}
                           </p>
                           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                             <button
@@ -2559,7 +2619,7 @@ export function ServiceRequestsPage() {
                               onClick={() => void removeEditingRequest()}
                               className="app-btn app-btn-danger flex-1 !min-h-10"
                             >
-                              {editDeleting ? 'Удаление…' : 'Да, удалить'}
+                              {editDeleting ? t('requests.create.deleting') : t('requests.create.deleteYes')}
                             </button>
                             <button
                               type="button"
@@ -2567,7 +2627,7 @@ export function ServiceRequestsPage() {
                               onClick={() => setEditDeleteConfirm(false)}
                               className="app-btn app-btn-secondary flex-1 !min-h-10"
                             >
-                              Отмена
+                              {t('requests.create.cancel')}
                             </button>
                           </div>
                         </div>
@@ -2581,7 +2641,7 @@ export function ServiceRequestsPage() {
                           }}
                           className="w-full rounded-md border border-blue-200 bg-blue-50 py-2 text-[13px] font-semibold text-blue-800 transition hover:bg-blue-100 disabled:opacity-50"
                         >
-                          Удалить заявку
+                          {t('requests.create.deleteRequest')}
                         </button>
                       )
                     ) : null}
@@ -2603,7 +2663,7 @@ export function ServiceRequestsPage() {
           ) : null}
 
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            {FILTER_TABS.map((tab) => {
+            {filterTabs.map((tab) => {
               const active = filterStatus === tab.id
               return (
                 <button
@@ -2624,26 +2684,26 @@ export function ServiceRequestsPage() {
               type="button"
               onClick={() => setDbShowAll((v) => !v)}
               className="rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-900"
-              title={dbShowAll ? 'Показывать только последние 200' : 'Показать до 1000 заявок'}
+              title={dbShowAll ? t('requests.database.showLatest200Title') : t('requests.database.showAllTitle')}
             >
-              {dbShowAll ? 'Последние 200' : 'Показать все'}
+              {dbShowAll ? t('requests.database.showLatest200') : t('requests.database.showAll')}
             </button>
           </div>
 
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div className="sm:max-w-[34rem] sm:flex-1">
               <label className="sr-only" htmlFor="requests-search">
-                Поиск по заявкам
+                {t('requests.database.searchLabel')}
               </label>
               <input
                 id="requests-search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Поиск слева (можно #ID): заголовок, инициатор, категория, ПК…"
+                placeholder={t('requests.database.searchPlaceholder')}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400"
               />
               <div className="mt-1 text-[11px] font-medium text-slate-500">
-                Подсказка: введи <span className="font-mono">#118</span> или <span className="font-mono">118</span> — найдёт по ID/GLPI ID.
+                {t('requests.database.searchHint')}
               </div>
             </div>
 
@@ -2652,10 +2712,10 @@ export function ServiceRequestsPage() {
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm"
-                aria-label="Фильтр по категории"
-                title="Фильтр по категории (включает подкатегории)"
+                aria-label={t('requests.database.categoryFilterAria')}
+                title={t('requests.database.categoryFilterTitle')}
               >
-                <option value="">Категория: все</option>
+                <option value="">{t('requests.database.categoryAll')}</option>
                 {categoryPaths.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -2668,13 +2728,13 @@ export function ServiceRequestsPage() {
                   value={sortKey}
                   onChange={(e) => setSortKey(e.target.value as SortKey)}
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm"
-                  aria-label="Сортировка списка заявок"
+                  aria-label={t('requests.database.sortAria')}
                 >
-                  <option value="id_desc">ID ↓ (новые сверху)</option>
-                  <option value="id_asc">ID ↑</option>
-                  <option value="opened_desc">Дата открытия ↓</option>
-                  <option value="closed_desc">Дата закрытия ↓</option>
-                  <option value="priority_desc">Приоритет (high→low)</option>
+                  <option value="id_desc">{t('requests.database.sort.idDesc')}</option>
+                  <option value="id_asc">{t('requests.database.sort.idAsc')}</option>
+                  <option value="opened_desc">{t('requests.database.sort.openedDesc')}</option>
+                  <option value="closed_desc">{t('requests.database.sort.closedDesc')}</option>
+                  <option value="priority_desc">{t('requests.database.sort.priorityDesc')}</option>
                 </select>
                 <button
                   type="button"
@@ -2691,15 +2751,15 @@ export function ServiceRequestsPage() {
                 type="button"
                 onClick={() => setReportOpen(true)}
                 className="rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
-                title="Отчетность по текущему списку (с учетом фильтров/поиска)"
+                title={t('requests.database.reportTitle')}
               >
-                Отчёт →
+                {t('requests.database.reportButton')}
               </button>
             </div>
           </div>
 
           <h2 className="mb-3 text-sm font-semibold text-slate-800">
-            Список
+            {t('requests.database.list')}
             {!loading ? (
               <span className="ml-2 font-normal text-slate-500">· {visibleRows.length}{visibleRows.length !== total ? ` из ${total}` : ''}</span>
             ) : null}
@@ -2711,7 +2771,7 @@ export function ServiceRequestsPage() {
                 className="fixed inset-0 z-[90] flex items-end justify-center bg-neutral-950/35 p-3 backdrop-blur-[2px] sm:items-center"
                 role="dialog"
                 aria-modal="true"
-                aria-label="Отчетность по заявкам"
+                aria-label={t('requests.database.reportModalAria')}
                 onMouseDown={(e) => {
                   if (e.target === e.currentTarget) setReportOpen(false)
                 }}
@@ -2719,9 +2779,12 @@ export function ServiceRequestsPage() {
                 <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
                   <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 bg-slate-50/70 px-4 py-3">
                     <div>
-                      <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Отчетность</div>
+                      <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{t('requests.database.reportHeader')}</div>
                       <div className="text-sm font-semibold text-slate-900">
-                        По текущему списку ({visibleRows.length}{visibleRows.length !== total ? ` из ${total}` : ''})
+                        {t('requests.database.reportForCurrentList', {
+                          visible: visibleRows.length,
+                          suffix: visibleRows.length !== total ? ` / ${total}` : '',
+                        })}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -2729,16 +2792,16 @@ export function ServiceRequestsPage() {
                         type="button"
                         className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         onClick={() => window.print()}
-                        title="Печать/Сохранение в PDF средствами браузера"
+                        title={t('requests.database.printPdfTitle')}
                       >
-                        Печать / PDF
+                        {t('requests.database.printPdf')}
                       </button>
                       <button
                         type="button"
                         className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-900"
                         onClick={() => setReportOpen(false)}
                       >
-                        Закрыть
+                        {t('common.close')}
                       </button>
                     </div>
                   </div>
@@ -2746,31 +2809,31 @@ export function ServiceRequestsPage() {
                   <div className="p-4 sm:p-5">
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Всего</div>
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.total')}</div>
                         <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-slate-900">
                           {visibleRows.length}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">с учетом поиска/фильтров</div>
+                        <div className="mt-1 text-xs text-slate-500">{t('requests.database.totalSub')}</div>
                       </div>
                       <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Закрыто</div>
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.closed')}</div>
                         <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-slate-900">
                           {visibleRows.filter((r) => r.status === 'done').length}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">статус “Закрыта”</div>
+                        <div className="mt-1 text-xs text-slate-500">{t('requests.database.closedSub')}</div>
                       </div>
                       <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Со сроком</div>
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.withDeadline')}</div>
                         <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-slate-900">
                           {visibleRows.filter((r) => Boolean(r.planned_close_at)).length}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">указана дата закрытия (ожидаемая)</div>
+                        <div className="mt-1 text-xs text-slate-500">{t('requests.database.withDeadlineSub')}</div>
                       </div>
                     </div>
 
                     <div className="mt-4 grid gap-3 lg:grid-cols-2">
                       <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Распределение по статусам</div>
+                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.byStatus')}</div>
                         <div className="space-y-2">
                           {(() => {
                             const m = new Map<string, number>()
@@ -2782,7 +2845,7 @@ export function ServiceRequestsPage() {
                               return (
                                 <div key={x.k}>
                                   <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                                    <span className="font-medium text-slate-700">{STATUS_RU[x.k] ?? x.k}</span>
+                                    <span className="font-medium text-slate-700">{requestStatusLabel(x.k)}</span>
                                     <span className="font-mono text-xs font-semibold text-slate-800">
                                       {x.v} ({pct}%)
                                     </span>
@@ -2801,7 +2864,7 @@ export function ServiceRequestsPage() {
                       </div>
 
                       <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Распределение по приоритетам</div>
+                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.byPriority')}</div>
                         <div className="space-y-2">
                           {(() => {
                             const m = new Map<string, number>()
@@ -2813,7 +2876,7 @@ export function ServiceRequestsPage() {
                               return (
                                 <div key={x.k}>
                                   <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                                    <span className="font-medium text-slate-700">{PRIORITY_RU[x.k] ?? x.k}</span>
+                                    <span className="font-medium text-slate-700">{requestPriorityLabel(x.k)}</span>
                                     <span className="font-mono text-xs font-semibold text-slate-800">
                                       {x.v} ({pct}%)
                                     </span>
@@ -2833,7 +2896,7 @@ export function ServiceRequestsPage() {
                     </div>
 
                     <p className="mt-3 text-xs text-slate-500">
-                      Примечание: “Печать / PDF” использует стандартную печать браузера (можно сохранить как PDF).
+                      {t('requests.database.browserPrintNote')}
                     </p>
                   </div>
                 </div>
@@ -2842,15 +2905,15 @@ export function ServiceRequestsPage() {
 
             {loading ? (
               <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
-                Загрузка…
+                {t('requests.database.loading')}
               </p>
             ) : visibleRows.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
                 {query.trim()
-                  ? 'Ничего не найдено по поиску'
+                  ? t('requests.database.noSearchResults')
                   : filterStatus
-                    ? 'В этом фильтре пока нет заявок'
-                    : 'Пока нет заявок'}
+                    ? t('requests.database.noItemsInFilter')
+                    : t('requests.database.empty')}
               </p>
             ) : (
               <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/95 shadow-sm ring-1 ring-slate-200/25">
@@ -2861,96 +2924,96 @@ export function ServiceRequestsPage() {
                         <th
                           className="cursor-pointer px-3 py-2.5"
                           onClick={() => setSortKey((prev) => (prev === 'id_asc' ? 'id_desc' : 'id_asc'))}
-                          title="Сортировать по ID"
+                          title={t('requests.database.table.sortById')}
                         >
                           ID{sortHint('id_asc', 'id_desc')}
                         </th>
-                        <th className="px-3 py-2.5">Заголовок</th>
-                        <th className="px-3 py-2.5">Инициатор</th>
-                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('opened_desc')} title="Сортировать по дате открытия">
-                          Дата открытия{sortHint('opened_desc')}
+                        <th className="px-3 py-2.5">{t('requests.database.table.title')}</th>
+                        <th className="px-3 py-2.5">{t('requests.database.table.requester')}</th>
+                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('opened_desc')} title={t('requests.database.table.sortByOpened')}>
+                          {t('requests.database.table.openedAt')}{sortHint('opened_desc')}
                         </th>
-                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('closed_desc')} title="Сортировать по дате закрытия">
-                          Дата закрытия{sortHint('closed_desc')}
+                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('closed_desc')} title={t('requests.database.table.sortByClosed')}>
+                          {t('requests.database.table.closedAt')}{sortHint('closed_desc')}
                         </th>
-                        <th className="px-3 py-2.5">Статус</th>
-                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('priority_desc')} title="Сортировать по приоритету">
-                          Приоритет{sortHint('priority_desc')}
+                        <th className="px-3 py-2.5">{t('requests.database.table.status')}</th>
+                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('priority_desc')} title={t('requests.database.table.sortByPriority')}>
+                          {t('requests.database.table.priority')}{sortHint('priority_desc')}
                         </th>
-                        <th className="px-3 py-2.5">Категория</th>
+                        <th className="px-3 py-2.5">{t('requests.database.table.category')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dbRowsToRender.map((t) => (
+                      {dbRowsToRender.map((row) => (
                         <tr
-                          key={t.id}
-                          data-request-id={t.id}
+                          key={row.id}
+                          data-request-id={row.id}
                           className="border-b border-slate-100/80 bg-white align-top transition hover:bg-zinc-50/60"
-                          onClick={() => openRequestForEdit(t)}
+                          onClick={() => openRequestForEdit(row)}
                           role="button"
-                          title="Редактировать заявку"
+                          title={t('requests.database.table.editTitle')}
                         >
                               <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-700">
                                 <button
                                   type="button"
                                   className="rounded-md px-1.5 py-1 text-left hover:bg-slate-100"
-                                  title="Найти по этому ID"
+                                  title={t('requests.database.table.findById')}
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    const q = t.id
+                                    const q = row.id
                                     setQuery(String(q))
                                   }}
                                 >
-                                  {requestDisplayNo(t)}
+                                  {requestDisplayNo(row)}
                                 </button>
                               </td>
                               <td className="px-3 py-3">
                                 <div className="flex min-w-0 items-start gap-2">
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate font-semibold text-slate-900" title={t.title}>
-                                      <span className="mr-2">{t.title}</span>
-                                      {t.external_source === 'bitrix24' ? (
+                                    <div className="truncate font-semibold text-slate-900" title={row.title}>
+                                      <span className="mr-2">{row.title}</span>
+                                      {row.external_source === 'bitrix24' ? (
                                         <span
                                           className="inline-flex translate-y-[-1px] items-center rounded-md bg-neutral-950 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.12em] text-white"
-                                          title={t.external_id ? `Bitrix24: ${t.external_id}` : 'Bitrix24'}
+                                          title={row.external_id ? `Bitrix24: ${row.external_id}` : 'Bitrix24'}
                                         >
                                           B24
                                         </span>
                                       ) : null}
                                     </div>
-                                    {t.computer_hostname ? (
-                                      <div className="mt-0.5 truncate text-xs text-slate-500" title={t.computer_hostname}>
-                                        ПК: {t.computer_hostname}
+                                    {row.computer_hostname ? (
+                                      <div className="mt-0.5 truncate text-xs text-slate-500" title={row.computer_hostname}>
+                                        {t('requests.database.table.pc', { name: row.computer_hostname })}
                                       </div>
                                     ) : null}
                                   </div>
                                 </div>
                               </td>
                               <td className="px-3 py-3 text-xs text-slate-700">
-                                <span className="line-clamp-2">{t.requester_name || '—'}</span>
+                                <span className="line-clamp-2">{row.requester_name || '—'}</span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800">{fmtRuShortDateTime(t.opened_at ?? t.created_at)}</span>
+                                <span className="font-medium text-slate-800">{fmtRuShortDateTime(row.opened_at ?? row.created_at, locale)}</span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
                                 <span className="font-medium text-slate-800">
-                                  {fmtRuShortDateTime(t.closed_at ?? t.planned_close_at)}
+                                  {fmtRuShortDateTime(row.closed_at ?? row.planned_close_at, locale)}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs">
                                 <span
                                   className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                                    STATUS_PILL[t.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                                    STATUS_PILL[row.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
                                   }`}
                                 >
-                                  {STATUS_RU[t.status] ?? t.status}
+                                  {requestStatusLabel(row.status)}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">
-                                {PRIORITY_RU[t.priority] ?? t.priority}
+                                {requestPriorityLabel(row.priority)}
                               </td>
                               <td className="px-3 py-3 text-xs text-slate-700">
-                                <span className="line-clamp-2">{t.category || '—'}</span>
+                                <span className="line-clamp-2">{row.category || '—'}</span>
                               </td>
                         </tr>
                       ))}
@@ -2962,7 +3025,10 @@ export function ServiceRequestsPage() {
             {!loading && visibleRows.length > DB_PAGE_SIZE ? (
               <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-600">
                 <span>
-                  Показано {dbRowsToRender.length} из {visibleRows.length}
+                  {t('requests.database.pagination.shown', {
+                    shown: dbRowsToRender.length,
+                    total: visibleRows.length,
+                  })}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -2971,10 +3037,13 @@ export function ServiceRequestsPage() {
                     onClick={() => setDbPage((p) => Math.max(1, p - 1))}
                     disabled={dbPage <= 1}
                   >
-                    Назад
+                    {t('requests.database.pagination.back')}
                   </button>
                   <span className="text-xs font-medium">
-                    Страница {Math.min(dbPage, dbPageCount)} / {dbPageCount}
+                    {t('requests.database.pagination.page', {
+                      current: Math.min(dbPage, dbPageCount),
+                      total: dbPageCount,
+                    })}
                   </span>
                   <button
                     type="button"
@@ -2982,7 +3051,7 @@ export function ServiceRequestsPage() {
                     onClick={() => setDbPage((p) => Math.min(dbPageCount, p + 1))}
                     disabled={dbPage >= dbPageCount}
                   >
-                    Далее
+                    {t('requests.database.pagination.next')}
                   </button>
                 </div>
               </div>
@@ -2997,16 +3066,18 @@ export function ServiceRequestsPage() {
             <div className="mb-4 rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:mb-3 print:rounded-xl print:border-slate-300 print:bg-white print:p-4 print:shadow-none print:ring-0">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Аналитика</div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.stats.analytics')}</div>
                   <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight text-slate-900">
-                    Статистика заявок за период
+                    {t('requests.stats.title')}
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Фильтры и графики строятся по данным в памяти (сейчас загружено: <span className="font-semibold">{rows.length}</span>).
+                    {t('requests.stats.loadedHint', { count: rows.length })}
                   </p>
                   <p className="mt-1 text-xs text-slate-500 print:text-[11px] print:text-slate-700">
-                    Период: <span className="font-semibold">{statsPeriodLabel}</span> · Сформировано:{' '}
-                    <span className="font-semibold">{new Date().toLocaleString('ru-RU')}</span>
+                    {t('requests.stats.periodGenerated', {
+                      period: statsPeriodLabel,
+                      date: new Date().toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU'),
+                    })}
                   </p>
                 </div>
                 <div className="stats-report-actions flex flex-wrap gap-2 print:hidden">
@@ -3014,32 +3085,32 @@ export function ServiceRequestsPage() {
                     type="button"
                     onClick={() => void downloadExecutivePdf()}
                     className="rounded-xl border border-zinc-300 bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-black"
-                    title="Профессиональный презентационный PDF-отчет (KPI, графики, выводы)"
+                    title={t('requests.stats.presentationPdfTitle')}
                   >
-                    PDF отчёт (презентация)
+                    {t('requests.stats.presentationPdf')}
                   </button>
                   <button
                     type="button"
                     onClick={() => window.print()}
                     className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                    title="Печать/сохранение аналитики в PDF средствами браузера"
+                    title={t('requests.stats.printTitle')}
                   >
-                    Печать / PDF
+                    {t('requests.database.printPdf')}
                   </button>
                   <button
                     type="button"
                     onClick={() => void downloadPdf()}
                     className="app-btn app-btn-primary !min-h-[36px] !px-3.5 !py-2 !text-xs"
-                    title="Скачать табличный PDF из сервера"
+                    title={t('requests.stats.tablePdfTitle')}
                   >
-                    PDF (таблица)
+                    {t('requests.stats.tablePdf')}
                   </button>
                 </div>
               </div>
 
               <div className="mb-3 grid gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 print:hidden lg:grid-cols-12">
                 <label className="block lg:col-span-4">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Название отчета</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.reportName')}</span>
                   <input
                     type="text"
                     value={execReportTitle}
@@ -3048,7 +3119,7 @@ export function ServiceRequestsPage() {
                   />
                 </label>
                 <label className="block lg:col-span-4">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Кому / контекст</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.audience')}</span>
                   <input
                     type="text"
                     value={execReportAudience}
@@ -3057,38 +3128,38 @@ export function ServiceRequestsPage() {
                   />
                 </label>
                 <label className="block lg:col-span-4">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Подготовил</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.author')}</span>
                   <input
                     type="text"
                     value={execReportAuthor}
                     onChange={(e) => setExecReportAuthor(e.target.value)}
-                    placeholder={user?.full_name || user?.username || 'ФИО'}
+                    placeholder={user?.full_name || user?.username || t('requests.stats.authorPlaceholder')}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
                   />
                 </label>
                 <div className="flex flex-wrap items-center gap-2 lg:col-span-12">
                   <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
                     <input type="checkbox" checked={execIncludeNarrative} onChange={(e) => setExecIncludeNarrative(e.target.checked)} />
-                    Выводы
+                    {t('requests.stats.includeNarrative')}
                   </label>
                   <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
                     <input type="checkbox" checked={execIncludeChart} onChange={(e) => setExecIncludeChart(e.target.checked)} />
-                    График динамики
+                    {t('requests.stats.includeChart')}
                   </label>
                   <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
                     <input type="checkbox" checked={execIncludeDistributions} onChange={(e) => setExecIncludeDistributions(e.target.checked)} />
-                    Категории/инициаторы/статусы/приоритеты
+                    {t('requests.stats.includeDistributions')}
                   </label>
                   <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
                     <input type="checkbox" checked={execIncludeAssigneeLoad} onChange={(e) => setExecIncludeAssigneeLoad(e.target.checked)} />
-                    Нагрузка по исполнителям
+                    {t('requests.stats.includeAssigneeLoad')}
                   </label>
                 </div>
               </div>
 
               <div className="stats-report-controls grid gap-3 sm:grid-cols-2 lg:grid-cols-12 print:hidden">
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">С</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.from')}</span>
                   <input
                     type="date"
                     value={statsFrom}
@@ -3097,7 +3168,7 @@ export function ServiceRequestsPage() {
                   />
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">По</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.to')}</span>
                   <input
                     type="date"
                     value={statsTo}
@@ -3106,7 +3177,7 @@ export function ServiceRequestsPage() {
                   />
                 </label>
                 <label className="block lg:col-span-3">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Основание даты</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.basis')}</span>
                   <select
                     value={statsBasis}
                     onChange={(e) => {
@@ -3115,13 +3186,13 @@ export function ServiceRequestsPage() {
                     }}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
                   >
-                    <option value="opened">Дата открытия</option>
-                    <option value="last_change">Последнее изменение</option>
-                    <option value="closed">Фактическая дата закрытия</option>
+                    <option value="opened">{t('requests.stats.basisOpened')}</option>
+                    <option value="last_change">{t('requests.stats.basisLastChange')}</option>
+                    <option value="closed">{t('requests.stats.basisClosed')}</option>
                   </select>
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Группировка</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.grouping')}</span>
                   <select
                     value={statsGroup}
                     onChange={(e) => {
@@ -3130,12 +3201,12 @@ export function ServiceRequestsPage() {
                     }}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
                   >
-                    <option value="day">По дням</option>
-                    <option value="week">По неделям</option>
+                    <option value="day">{t('requests.stats.groupDay')}</option>
+                    <option value="week">{t('requests.stats.groupWeek')}</option>
                   </select>
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">График</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.chart')}</span>
                   <select
                     value={statsChartMode}
                     onChange={(e) => {
@@ -3144,12 +3215,12 @@ export function ServiceRequestsPage() {
                     }}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
                   >
-                    <option value="total">Общий объем</option>
-                    <option value="status">По статусам</option>
+                    <option value="total">{t('requests.stats.chartTotal')}</option>
+                    <option value="status">{t('requests.stats.chartStatus')}</option>
                   </select>
                 </label>
                 <label className="block lg:col-span-1">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Топ N</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.topN')}</span>
                   <select
                     value={String(statsTopN)}
                     onChange={(e) => setStatsTopN(Math.max(5, Math.min(15, Number(e.target.value) || 8)))}
@@ -3162,19 +3233,17 @@ export function ServiceRequestsPage() {
                   </select>
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Сортировка таблицы</span>
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.tableSort')}</span>
                   <select
                     value={sortKey}
                     onChange={(e) => setSortKey(e.target.value as SortKey)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
                   >
-                    <option value="id_desc">ID (по убыванию)</option>
-                    <option value="id_asc">ID (по возрастанию)</option>
-                    <option value="opened_desc">Дата открытия (новые сверху)</option>
-                    <option value="closed_desc">Дата закрытия (новые сверху)</option>
-                    <option value="priority_desc">Приоритет (высокий сверху)</option>
-                    <option value="id_desc">ID (по убыванию)</option>
-                    <option value="id_asc">ID (по возрастанию)</option>
+                    <option value="id_desc">{t('requests.stats.sortIdDesc')}</option>
+                    <option value="id_asc">{t('requests.stats.sortIdAsc')}</option>
+                    <option value="opened_desc">{t('requests.stats.sortOpenedDesc')}</option>
+                    <option value="closed_desc">{t('requests.stats.sortClosedDesc')}</option>
+                    <option value="priority_desc">{t('requests.stats.sortPriorityDesc')}</option>
                   </select>
                 </label>
                 <div className="flex flex-wrap items-end gap-3 lg:col-span-2">
@@ -3185,7 +3254,7 @@ export function ServiceRequestsPage() {
                       checked={statsOnlyWithPlanned}
                       onChange={(e) => setStatsOnlyWithPlanned(e.target.checked)}
                     />
-                    <span className="text-sm font-medium text-slate-700">Только со сроком закрытия</span>
+                    <span className="text-sm font-medium text-slate-700">{t('requests.stats.onlyWithDeadline')}</span>
                   </label>
                   <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm">
                     <input
@@ -3194,7 +3263,7 @@ export function ServiceRequestsPage() {
                       checked={statsOnlyOverdue}
                       onChange={(e) => setStatsOnlyOverdue(e.target.checked)}
                     />
-                    <span className="text-sm font-medium text-slate-700">Просроченные</span>
+                    <span className="text-sm font-medium text-slate-700">{t('requests.stats.overdueOnly')}</span>
                   </label>
                 </div>
               </div>
@@ -3206,37 +3275,37 @@ export function ServiceRequestsPage() {
                   <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
                     <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
                     <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
-                      KPI периода
+                      {t('requests.stats.periodKpi')}
                     </h3>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
-                    <MiniStatCard label="В периоде" value={statsRows.length} variant="neutral" icon={<IconTicket className="h-5 w-5" />} />
+                    <MiniStatCard label={t('requests.stats.inPeriod')} value={statsRows.length} variant="neutral" icon={<IconTicket className="h-5 w-5" />} />
                     <MiniStatCard
-                      label="Закрыто"
+                      label={t('requests.stats.done')}
                       value={statsKpi.done}
                       sub={`${statsKpi.completionRate}% от всех`}
                       variant="neutral"
                       icon={<IconTicket className="h-5 w-5" />}
                     />
                     <MiniStatCard
-                      label="Просроченных"
+                      label={t('requests.stats.overdue')}
                       value={statsKpi.overdue}
                       sub={`${statsKpi.overdueRate}% от всех`}
                       variant="neutral"
                       icon={<IconTicket className="h-5 w-5" />}
                     />
                     <MiniStatCard
-                      label="Среднее закрытие"
+                      label={t('requests.stats.avgClose')}
                       value={statsKpi.avgCloseHours != null ? `${statsKpi.avgCloseHours} ч` : '—'}
-                      sub="От даты открытия до фактического закрытия"
+                      sub={t('requests.stats.avgCloseSub')}
                       variant="neutral"
                       compact
                       icon={<IconTicket className="h-5 w-5" />}
                     />
                     <MiniStatCard
-                      label="SLA в срок"
+                      label={t('requests.stats.slaHit')}
                       value={`${statsKpi.slaHitRate}%`}
-                      sub="Закрытые в плановую дату или раньше"
+                      sub={t('requests.stats.slaHitSub')}
                       variant="neutral"
                       compact
                       icon={<IconTicket className="h-5 w-5" />}
@@ -3250,13 +3319,13 @@ export function ServiceRequestsPage() {
                   <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
                     <span className="h-8 w-1 rounded-full bg-zinc-500/80" aria-hidden />
                     <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
-                      Динамика (объём заявок)
+                      {t('requests.stats.dynamics')}
                     </h3>
                   </div>
 
                   {statsSeries.items.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center text-sm text-slate-500">
-                      Нет данных за выбранный период
+                      {t('requests.stats.noDataForPeriod')}
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -3267,12 +3336,12 @@ export function ServiceRequestsPage() {
                         Основание:{' '}
                         <span className="font-medium">
                           {statsBasis === 'opened'
-                            ? 'дата открытия'
+                            ? t('requests.stats.basisOpenedLower')
                             : statsBasis === 'closed'
-                              ? 'фактическая дата закрытия'
-                              : 'последнее изменение'}
+                              ? t('requests.stats.basisClosedLower')
+                              : t('requests.stats.basisLastChangeLower')}
                         </span>
-                        , группировка: <span className="font-medium">{statsGroup === 'day' ? 'дни' : 'недели'}</span>.
+                        , группировка: <span className="font-medium">{statsGroup === 'day' ? t('requests.stats.groupDays') : t('requests.stats.groupWeeks')}</span>.
                       </p>
                     </div>
                   )}
@@ -3281,14 +3350,14 @@ export function ServiceRequestsPage() {
 
               <div className="lg:col-span-6">
                 <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
-                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">По категориям (топ)</div>
+                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">{t('requests.stats.byCategoryTop')}</div>
                   <DonutDistribution
                     items={topNWithOther(
                       statsCategoryItems,
                       statsTopN,
-                      'Остальные категории',
+                      t('requests.statsData.otherCategories'),
                     )}
-                    emptyText="Нет категорий"
+                    emptyText={t('requests.stats.noCategories')}
                     compact
                   />
                 </div>
@@ -3296,14 +3365,14 @@ export function ServiceRequestsPage() {
 
               <div className="lg:col-span-6">
                 <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
-                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">По инициаторам (топ)</div>
+                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">{t('requests.stats.byRequesterTop')}</div>
                   <DonutDistribution
                     items={topNWithOther(
                       statsRequesterItems,
                       statsTopN,
-                      'Остальные пользователи',
+                      t('requests.statsData.otherUsers'),
                     )}
-                    emptyText="Нет инициаторов"
+                    emptyText={t('requests.stats.noRequesters')}
                     compact
                   />
                 </div>
@@ -3312,8 +3381,8 @@ export function ServiceRequestsPage() {
               <div className="lg:col-span-6">
                 <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
                   <HorizontalBars
-                    title="По статусам"
-                    items={topNWithOther(statsStatusItems, 6, 'Другие статусы')}
+                    title={t('requests.stats.byStatuses')}
+                    items={topNWithOther(statsStatusItems, 6, t('requests.statsData.otherStatuses'))}
                     total={statsRows.length}
                   />
                 </div>
@@ -3322,8 +3391,8 @@ export function ServiceRequestsPage() {
               <div className="lg:col-span-6">
                 <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
                   <HorizontalBars
-                    title="По приоритетам"
-                    items={topNWithOther(statsPriorityItems, 6, 'Другие')}
+                    title={t('requests.stats.byPriorities')}
+                    items={topNWithOther(statsPriorityItems, 6, t('requests.statsData.otherPriorities'))}
                     total={statsRows.length}
                   />
                 </div>
@@ -3332,8 +3401,8 @@ export function ServiceRequestsPage() {
               <div className="lg:col-span-12">
                 <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
                   <HorizontalBars
-                    title="Нагрузка по исполнителям (топ)"
-                    items={topNWithOther(statsAssigneeItems, statsTopN, 'Остальные исполнители')}
+                    title={t('requests.stats.assigneeLoadTop')}
+                    items={topNWithOther(statsAssigneeItems, statsTopN, t('requests.statsData.otherAssignees'))}
                     total={Math.max(1, statsRows.reduce((acc, r) => acc + (r.assignee_usernames?.length || 1), 0))}
                   />
                 </div>
@@ -3345,18 +3414,18 @@ export function ServiceRequestsPage() {
                     <div className="flex items-center gap-2">
                       <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
                       <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
-                        Заявки за период
+                        {t('requests.stats.requestsForPeriod')}
                       </h3>
                     </div>
                     <span className="text-xs font-medium text-slate-500">
                       {statsRows.length}{' '}
-                      {statsRows.length === 1 ? 'заявка' : statsRows.length >= 2 && statsRows.length <= 4 ? 'заявки' : 'заявок'}
+                      {requestPluralLabel(statsRows.length)}
                     </span>
                   </div>
 
                   {statsRows.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-10 text-center text-sm text-slate-500">
-                      Нет заявок за выбранный период
+                      {t('requests.stats.noRequestsForPeriod')}
                     </p>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-slate-200/70 print:rounded-md print:border-slate-300">
@@ -3364,59 +3433,59 @@ export function ServiceRequestsPage() {
                         <thead className="bg-slate-50/95 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
                           <tr className="border-b border-slate-200/70">
                             <th className="px-3 py-2.5">ID</th>
-                            <th className="px-3 py-2.5">Заголовок</th>
-                            <th className="px-3 py-2.5">Статус</th>
-                            <th className="px-3 py-2.5">Инициатор</th>
-                            <th className="px-3 py-2.5">Дата открытия</th>
-                            <th className="px-3 py-2.5">Дата закрытия</th>
-                            <th className="px-3 py-2.5">Приоритет</th>
-                            <th className="px-3 py-2.5">Категория</th>
+                            <th className="px-3 py-2.5">{t('requests.database.table.title')}</th>
+                            <th className="px-3 py-2.5">{t('requests.database.table.status')}</th>
+                            <th className="px-3 py-2.5">{t('requests.database.table.requester')}</th>
+                            <th className="px-3 py-2.5">{t('requests.database.table.openedAt')}</th>
+                            <th className="px-3 py-2.5">{t('requests.database.table.closedAt')}</th>
+                            <th className="px-3 py-2.5">{t('requests.database.table.priority')}</th>
+                            <th className="px-3 py-2.5">{t('requests.database.table.category')}</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {statsRows.map((t) => (
+                          {statsRows.map((row) => (
                             <tr
-                              key={t.id}
-                              data-request-id={t.id}
+                              key={row.id}
+                              data-request-id={row.id}
                               className="cursor-pointer border-b border-slate-100/80 bg-white align-top transition hover:bg-zinc-50/60"
-                              onClick={() => openRequestForEdit(t)}
-                              title="Редактировать заявку"
+                              onClick={() => openRequestForEdit(row)}
+                              title={t('requests.database.table.editTitle')}
                             >
                               <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-700">
-                                {requestDisplayNo(t)}
+                                {requestDisplayNo(row)}
                               </td>
                               <td className="max-w-[240px] px-3 py-3">
-                                <div className="truncate font-semibold text-slate-900" title={t.title}>
-                                  {t.title}
+                                <div className="truncate font-semibold text-slate-900" title={row.title}>
+                                  {row.title}
                                 </div>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs">
                                 <span
                                   className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                                    STATUS_PILL[t.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                                    STATUS_PILL[row.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
                                   }`}
                                 >
-                                  {STATUS_RU[t.status] ?? t.status}
+                                  {requestStatusLabel(row.status)}
                                 </span>
                               </td>
                               <td className="max-w-[140px] px-3 py-3 text-xs text-slate-700">
-                                <span className="line-clamp-2">{t.requester_name || '—'}</span>
+                                <span className="line-clamp-2">{row.requester_name || '—'}</span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
                                 <span className="font-medium text-slate-800">
-                                  {fmtRuShortDateTime(t.opened_at ?? t.created_at)}
+                                  {fmtRuShortDateTime(row.opened_at ?? row.created_at, locale)}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
                                 <span className="font-medium text-slate-800">
-                                  {fmtRuShortDateTime(t.closed_at ?? t.planned_close_at)}
+                                  {fmtRuShortDateTime(row.closed_at ?? row.planned_close_at, locale)}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">
-                                {PRIORITY_RU[t.priority] ?? t.priority}
+                                {requestPriorityLabel(row.priority)}
                               </td>
                               <td className="max-w-[180px] px-3 py-3 text-xs text-slate-700">
-                                <span className="line-clamp-2">{t.category || '—'}</span>
+                                <span className="line-clamp-2">{row.category || '—'}</span>
                               </td>
                             </tr>
                           ))}
@@ -3445,7 +3514,7 @@ export function ServiceRequestsPage() {
                   <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">
                     <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
                     <h2 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
-                      {tplEditingId != null ? 'Редактирование шаблона' : 'Новый шаблон'}
+                      {tplEditingId != null ? t('requests.templates.editTitle') : t('requests.templates.newTitle')}
                     </h2>
                     {tplEditingId != null ? (
                       <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200/80">
@@ -3456,19 +3525,19 @@ export function ServiceRequestsPage() {
 
                   <label className="mb-3 block">
                     <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Название шаблона
+                      {t('requests.templates.templateTitle')}
                     </span>
                     <input
                       value={tplTitle}
                       onChange={(e) => setTplTitle(e.target.value)}
                       className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400"
-                      placeholder="Например: Замена монитора / Установка ПО"
+                      placeholder={t('requests.templates.templateTitlePlaceholder')}
                     />
                   </label>
 
                   <label className="mb-3 block">
                     <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Описание (необязательно)
+                      {t('requests.templates.description')}
                     </span>
                     <textarea
                       value={tplDescription}
@@ -3483,22 +3552,22 @@ export function ServiceRequestsPage() {
                       users={userDir}
                       value={tplRequesterName}
                       onChange={setTplRequesterName}
-                      label="Инициатор (по умолчанию)"
-                      placeholder="Начните вводить и выберите из списка"
-                      hint="Тот же список, что у ответственных по шаблону."
+                      label={t('requests.templates.requesterDefault')}
+                      placeholder={t('requests.templates.requesterPlaceholder')}
+                      hint={t('requests.templates.requesterHint')}
                     />
                     <CategoryPicker
                       value={tplCategory}
                       onChange={setTplCategory}
                       tree={categoryTree}
-                      label="Категория (по умолчанию)"
+                      label={t('requests.templates.categoryDefault')}
                     />
                   </div>
 
                   <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Статус по умолчанию
+                        {t('requests.templates.statusDefault')}
                       </span>
                       <select
                         value={tplStatus}
@@ -3508,16 +3577,16 @@ export function ServiceRequestsPage() {
                         }}
                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900"
                       >
-                        {Object.entries(STATUS_RU).map(([k, v]) => (
-                          <option key={k} value={k}>
-                            {v}
+                        {REQUEST_STATUSES.map((status) => (
+                          <option key={status} value={status}>
+                            {requestStatusLabel(status)}
                           </option>
                         ))}
                       </select>
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Приоритет по умолчанию
+                        {t('requests.templates.priorityDefault')}
                       </span>
                       <select
                         value={tplPriority}
@@ -3529,7 +3598,7 @@ export function ServiceRequestsPage() {
                       >
                         {REQUEST_PRIORITIES.map((p) => (
                           <option key={p} value={p}>
-                            {PRIORITY_RU[p]}
+                            {requestPriorityLabel(p)}
                           </option>
                         ))}
                       </select>
@@ -3539,7 +3608,7 @@ export function ServiceRequestsPage() {
                   <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="block">
                       <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Дата открытия
+                        {t('requests.templates.openedAt')}
                       </span>
                       <input
                         type="datetime-local"
@@ -3550,7 +3619,7 @@ export function ServiceRequestsPage() {
                     </label>
                     <label className="block">
                       <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Дата закрытия
+                        {t('requests.templates.plannedCloseAt')}
                       </span>
                       <input
                         type="datetime-local"
@@ -3564,10 +3633,13 @@ export function ServiceRequestsPage() {
                         key={`tpl-${p.minutes}`}
                         type="button"
                         className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-                        title={`Через ${p.label} от даты открытия шаблона (горячая клавиша ${p.hotkey})`}
+                        title={t('requests.durations.fromTemplateOpenedTitle', {
+                          label: durationPresetLabel(p.minutes),
+                          hotkey: p.hotkey,
+                        })}
                         onClick={() => setTplPlannedCloseLocal(addMinutesToLocalDatetimeValue(tplOpenedAtLocal, p.minutes))}
                       >
-                        +{p.label}
+                        +{durationPresetLabel(p.minutes)}
                       </button>
                     ))}
                   </div>
@@ -3576,7 +3648,7 @@ export function ServiceRequestsPage() {
 
                   <label className="mb-3 block">
                     <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Фактическая дата закрытия
+                      {t('requests.templates.closedAt')}
                     </span>
                     <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-slate-100 bg-slate-50/80 px-2 py-1.5">
                       <input
@@ -3595,7 +3667,7 @@ export function ServiceRequestsPage() {
                         }}
                       />
                       <span className="text-[11px] leading-snug text-slate-700">
-                        Фактическая дата закрытия = дата закрытия
+                        {t('requests.templates.closedSameAsPlanned')}
                       </span>
                     </label>
                     {!tplClosedSameAsPlanned ? (
@@ -3617,7 +3689,7 @@ export function ServiceRequestsPage() {
                     selectedIds={tplAssigneeIds}
                     onChange={setTplAssigneeIds}
                     inputClassName="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/15"
-                    hint="Клик по строке в списке добавляет или убирает исполнителя. Справочник тот же, что у инициатора."
+                    hint={t('requests.templates.assigneesHint')}
                   />
                   <div className="mb-4">
                     <ComputerPicker computers={pcList} valueId={tplComputerId} onChange={setTplComputerId} />
@@ -3631,7 +3703,7 @@ export function ServiceRequestsPage() {
                         onClick={() => resetTemplateForm()}
                         className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 sm:w-auto sm:min-w-[8rem]"
                       >
-                        Отмена
+                        {t('requests.templates.cancel')}
                       </button>
                     ) : null}
                     <button
@@ -3640,7 +3712,11 @@ export function ServiceRequestsPage() {
                       onClick={() => void saveTemplateFromForm()}
                       className="app-btn app-btn-primary w-full flex-1 !min-h-[48px]"
                     >
-                      {tplBusy ? 'Сохранение…' : tplEditingId != null ? 'Сохранить изменения' : 'Сохранить шаблон'}
+                      {tplBusy
+                        ? t('requests.templates.saving')
+                        : tplEditingId != null
+                          ? t('requests.templates.saveChanges')
+                          : t('requests.templates.saveTemplate')}
                     </button>
                   </div>
                 </div>
@@ -3649,7 +3725,7 @@ export function ServiceRequestsPage() {
               <div className="lg:col-span-8">
                 <div className="mb-3 flex items-end justify-between gap-3">
                   <h2 className="text-sm font-semibold text-slate-800">
-                    Шаблоны
+                    {t('requests.templates.title')}
                     {!tplLoading ? <span className="ml-2 font-normal text-slate-500">· {tplTotal}</span> : null}
                   </h2>
                   <button
@@ -3658,99 +3734,98 @@ export function ServiceRequestsPage() {
                     onClick={() => void loadTemplates()}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
-                    Обновить
+                    {t('requests.templates.refresh')}
                   </button>
                 </div>
 
                 <div className="space-y-3">
                   {tplLoading ? (
                     <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
-                      Загрузка…
+                      {t('requests.templates.loading')}
                     </p>
                   ) : tplRows.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
-                      Пока нет шаблонов
+                      {t('requests.templates.empty')}
                     </p>
                   ) : (
-                    tplRows.map((t) => (
+                    tplRows.map((tpl) => (
                       <article
-                        key={t.id}
+                        key={tpl.id}
                         className="rounded-2xl border border-slate-200/70 bg-white/95 px-4 py-4 shadow-sm ring-1 ring-slate-200/25"
                       >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="font-semibold text-slate-900">{t.title}</h3>
+                              <h3 className="font-semibold text-slate-900">{tpl.title}</h3>
                               <span
-                                className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS_PILL[t.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'}`}
+                                className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS_PILL[tpl.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'}`}
                               >
-                                {STATUS_RU[t.status] ?? t.status}
+                                {requestStatusLabel(tpl.status)}
                               </span>
                             </div>
-                            {t.description ? (
-                              <p className="mt-2 text-sm leading-relaxed text-slate-600">{t.description}</p>
+                            {tpl.description ? (
+                              <p className="mt-2 text-sm leading-relaxed text-slate-600">{tpl.description}</p>
                             ) : null}
-                            {t.requester_name || t.category ? (
+                            {tpl.requester_name || tpl.category ? (
                               <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-slate-600">
-                                {t.requester_name ? (
+                                {tpl.requester_name ? (
                                   <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200/80">
-                                    Инициатор: <span className="font-semibold text-slate-800">{t.requester_name}</span>
+                                    {t('requests.templates.requester', { name: tpl.requester_name })}
                                   </span>
                                 ) : null}
-                                {t.category ? (
+                                {tpl.category ? (
                                   <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200/80">
-                                    Категория: <span className="font-semibold text-slate-800">{t.category}</span>
+                                    {t('requests.templates.category', { name: tpl.category })}
                                   </span>
                                 ) : null}
                               </div>
                             ) : null}
                             <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-slate-500">
-                              <span>{t.created_by_username}</span>
-                              {t.assignee_usernames && t.assignee_usernames.length > 0 ? (
-                                <span className="font-medium text-slate-700" title={t.assignee_usernames.join(', ')}>
-                                  → {t.assignee_usernames.join(', ')}
+                              <span>{tpl.created_by_username}</span>
+                              {tpl.assignee_usernames && tpl.assignee_usernames.length > 0 ? (
+                                <span className="font-medium text-slate-700" title={tpl.assignee_usernames.join(', ')}>
+                                  {t('requests.templates.assignees', { names: tpl.assignee_usernames.join(', ') })}
                                 </span>
                               ) : null}
-                              {t.computer_id ? <span className="text-slate-500">· ПК: {t.computer_id}</span> : null}
-                              <span>· {PRIORITY_RU[t.priority] ?? t.priority}</span>
+                              {tpl.computer_id ? <span className="text-slate-500">{t('requests.templates.pc', { id: tpl.computer_id })}</span> : null}
+                              <span>· {requestPriorityLabel(tpl.priority)}</span>
                             </div>
                             <div className="mt-2 grid grid-cols-1 gap-1 rounded-lg bg-slate-50/90 px-2 py-2 text-[11px] text-slate-600 ring-1 ring-slate-100 sm:grid-cols-3">
                               <span>
-                                Дата открытия:{' '}
-                                <span className="font-medium text-slate-800">{fmtRuDateTime(t.opened_at)}</span>
+                                {t('requests.templates.openedDate', { date: fmtRuDateTime(tpl.opened_at, locale) })}
                               </span>
                               <span>
-                                Дата закрытия:{' '}
-                                <span className="font-medium text-slate-800">{fmtRuDateTime(t.planned_close_at)}</span>
+                                {t('requests.templates.plannedDate', { date: fmtRuDateTime(tpl.planned_close_at, locale) })}
                               </span>
                               <span>
-                                Фактическая дата закрытия:{' '}
-                                <span className="font-medium text-slate-800">{fmtRuDateTime(t.closed_at)}</span>
+                                {t('requests.templates.closedDate', { date: fmtRuDateTime(tpl.closed_at, locale) })}
                               </span>
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-col gap-2 sm:items-end">
                             <button
                               type="button"
-                              onClick={() => beginEditTemplate(t)}
-                              className="min-h-[40px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
+                              onClick={() => beginEditTemplate(tpl)}
+                              className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
                             >
-                              Редактировать
+                              <IconPencil className="h-4 w-4 shrink-0 text-slate-600" />
+                              {t('requests.templates.edit')}
                             </button>
                             <button
                               type="button"
-                              onClick={() => applyTemplateToForm(t)}
+                              onClick={() => applyTemplateToForm(tpl)}
                               className="app-btn app-btn-primary !min-h-[40px] !px-3 !py-2 !text-xs"
                             >
-                              Применить
+                              {t('requests.templates.apply')}
                             </button>
                             <button
                               type="button"
                               disabled={tplBusy}
-                              onClick={() => void deleteTemplate(t.id, t.title)}
-                              className="min-h-[40px] rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-50"
+                              onClick={() => void deleteTemplate(tpl.id, tpl.title)}
+                              className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
                             >
-                              Удалить
+                              <IconTrash className="h-4 w-4 shrink-0" />
+                              {t('requests.templates.delete')}
                             </button>
                           </div>
                         </div>

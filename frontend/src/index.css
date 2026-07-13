@@ -757,14 +757,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 3.25rem;
-  width: 3.25rem;
+  height: 3.5rem;
+  width: 3.5rem;
   flex-shrink: 0;
   border-radius: var(--radius-lg);
   background: var(--color-surface-muted);
   color: var(--color-primary);
   border: 1px solid var(--color-border);
   box-shadow: none;
+
+  & svg {
+    height: 1.75rem;
+    width: 1.75rem;
+  }
 }
 
 .app-card:hover {

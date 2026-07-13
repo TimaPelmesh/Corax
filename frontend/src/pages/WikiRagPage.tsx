@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext'
 import { WikiRagChat } from '../components/wikirag/WikiRagChat'
 import { WikiRagDocViewer } from '../components/wikirag/WikiRagDocViewer'
 import { IconBook, IconClose, IconTrash } from '../components/icons'
+import { useLocale, useT } from '../i18n/LocaleContext'
 
 const ACCEPT =
   '.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.webp,application/pdf,text/plain'
@@ -21,15 +22,15 @@ function isAllowedFile(file: File) {
   return ALLOWED_EXT.has(fileExtension(file.name))
 }
 
-function formatBytes(n: number) {
-  if (n < 1024) return `${n} Б`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`
-  return `${(n / (1024 * 1024)).toFixed(1)} МБ`
+function formatBytes(n: number, t: ReturnType<typeof useT>) {
+  if (n < 1024) return t('wikirag.common.bytes', { n })
+  if (n < 1024 * 1024) return t('wikirag.common.kb', { n: (n / 1024).toFixed(1) })
+  return t('wikirag.common.mb', { n: (n / (1024 * 1024)).toFixed(1) })
 }
 
-function formatWhen(iso: string) {
+function formatWhen(iso: string, locale: 'ru' | 'en') {
   try {
-    return new Date(iso).toLocaleString('ru-RU', {
+    return new Date(iso).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -54,6 +55,8 @@ function DocRow({
   onOpen: () => void
   onReload: () => void
 }) {
+  const t = useT()
+  const { locale } = useLocale()
   const [commentDraft, setCommentDraft] = useState(row.comment ?? '')
   const [saving, setSaving] = useState(false)
   const [rowErr, setRowErr] = useState<string | null>(null)
@@ -72,19 +75,19 @@ function DocRow({
       await api.updateWikiRagDocument(row.id, { comment: next })
       onReload()
     } catch (e) {
-      setRowErr(e instanceof Error ? e.message : 'Ошибка')
+      setRowErr(e instanceof Error ? e.message : t('wikirag.common.genericError'))
     } finally {
       setSaving(false)
     }
   }
 
   async function onDelete() {
-    if (!confirm(`Удалить «${row.original_filename}»?`)) return
+    if (!confirm(t('wikirag.documents.deleteConfirm', { name: row.original_filename }))) return
     try {
       await api.deleteWikiRagDocument(row.id)
       onReload()
     } catch (e) {
-      setRowErr(e instanceof Error ? e.message : 'Ошибка')
+      setRowErr(e instanceof Error ? e.message : t('wikirag.common.genericError'))
     }
   }
 
@@ -99,7 +102,7 @@ function DocRow({
           {row.original_filename}
         </button>
         <div className="mt-0.5 text-[11px] text-slate-500">
-          {formatBytes(row.size_bytes)} · {formatWhen(row.created_at)} · @{row.uploaded_by_username}
+          {formatBytes(row.size_bytes, t)} · {formatWhen(row.created_at, locale)} · @{row.uploaded_by_username}
         </div>
       </td>
       <td className="hidden px-3 py-2.5 align-top md:table-cell">
@@ -114,7 +117,7 @@ function DocRow({
         ) : (
           <span className="text-xs text-slate-600">{row.comment?.trim() || '—'}</span>
         )}
-        {saving ? <span className="text-[10px] text-slate-400">…</span> : null}
+        {saving ? <span className="text-[10px] text-slate-400">{t('wikirag.documents.savePending')}</span> : null}
         {rowErr ? <p className="text-[10px] text-red-700">{rowErr}</p> : null}
       </td>
       {canManage ? (
@@ -123,7 +126,7 @@ function DocRow({
             type="button"
             onClick={() => void onDelete()}
             className="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1.5 hover:bg-zinc-50"
-            aria-label="Удалить"
+            aria-label={t('wikirag.documents.deleteAria')}
           >
             <IconTrash className="h-4 w-4" />
           </button>
@@ -134,6 +137,7 @@ function DocRow({
 }
 
 export function WikiRagPage() {
+  const t = useT()
   const { user } = useAuth()
   const [rows, setRows] = useState<WikiRagDocumentRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -155,7 +159,7 @@ export function WikiRagPage() {
   const pickFile = useCallback((file: File | null | undefined) => {
     if (!file) return
     if (!isAllowedFile(file)) {
-      setErr('Недопустимый тип файла.')
+      setErr(t('wikirag.common.invalidFileType'))
       return
     }
     setErr(null)
@@ -165,7 +169,7 @@ export function WikiRagPage() {
       dt.items.add(file)
       fileRef.current.files = dt.files
     }
-  }, [])
+  }, [t])
 
   const clearSelectedFile = useCallback(() => {
     setSelectedFile(null)
@@ -179,7 +183,7 @@ export function WikiRagPage() {
       setRows(list)
       if (modalDocId && !list.some((r) => r.id === modalDocId)) setModalDocId(null)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setErr(e instanceof Error ? e.message : t('wikirag.common.loadingError'))
     } finally {
       setLoading(false)
     }
@@ -224,7 +228,7 @@ export function WikiRagPage() {
     e.preventDefault()
     const file = selectedFile ?? fileRef.current?.files?.[0]
     if (!file) {
-      setErr('Выберите файл')
+      setErr(t('wikirag.common.selectFile'))
       return
     }
     setUploading(true)
@@ -236,7 +240,7 @@ export function WikiRagPage() {
       await load()
       setModalDocId(created.id)
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Не удалось загрузить')
+      setErr(ex instanceof Error ? ex.message : t('wikirag.common.uploadFailed'))
     } finally {
       setUploading(false)
     }
@@ -249,9 +253,9 @@ export function WikiRagPage() {
           <IconBook className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="page-title">WikiRAG</h1>
+          <h1 className="page-title">{t('titles.wikirag')}</h1>
           <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">
-            Документы базы знаний и чат с локальной моделью (контекст до ~20 000 токенов).
+            {t('pages.wikiragSubtitle')}
           </p>
         </div>
       </div>
@@ -268,9 +272,9 @@ export function WikiRagPage() {
 
       {canManage ? (
         <section className="app-card mb-6 p-5 sm:p-6">
-          <h2 className="text-sm font-semibold text-neutral-950">Импорт из CORAX</h2>
+          <h2 className="text-sm font-semibold text-neutral-950">{t('wikirag.import.title')}</h2>
           <p className="mt-1 text-xs text-slate-500">
-            Снимок в CSV: компьютеры, ПО, теги, периферия, принтеры, заявки — с привязкой computer_id к каждому ПК.
+            {t('wikirag.import.description')}
           </p>
           <button
             type="button"
@@ -282,15 +286,21 @@ export function WikiRagPage() {
               try {
                 const res = await api.importWikiRagCorax()
                 setImportMsg(
-                  `${res.created ? 'Создано' : 'Обновлено'} ${res.files ?? res.documents?.length ?? 1} файлов CORAX (CSV + README): ${res.computers} ПК, ${res.requests} заявок, ${res.tags} тегов.`,
+                  t('wikirag.import.summary', {
+                    action: res.created ? t('wikirag.common.created') : t('wikirag.common.updated'),
+                    files: res.files ?? res.documents?.length ?? 1,
+                    computers: res.computers,
+                    requests: res.requests,
+                    tags: res.tags,
+                  }),
                 )
                 await load()
                 setModalDocId(res.document.id)
               } catch (ex) {
-                const msg = ex instanceof Error ? ex.message : 'Не удалось импортировать'
+                const msg = ex instanceof Error ? ex.message : t('wikirag.common.importFailed')
                 setErr(
                   msg === 'Method Not Allowed'
-                    ? 'Сервер не знает этот API (перезапустите start_all.bat / python run.py после обновления кода).'
+                    ? t('wikirag.common.importMethodNotAllowed')
                     : msg,
                 )
               } finally {
@@ -299,17 +309,17 @@ export function WikiRagPage() {
             })()}
             className="mt-4 rounded-xl bg-neutral-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800 disabled:opacity-50"
           >
-            {importingCorax ? 'Импорт…' : 'Импортировать базу CORAX'}
+            {importingCorax ? t('wikirag.import.busy') : t('wikirag.import.button')}
           </button>
         </section>
       ) : null}
 
       {/* Загрузка — крупная карточка */}
       <section className="app-card mb-6 p-5 sm:p-6">
-        <h2 className="text-sm font-semibold text-neutral-950">Загрузка файла</h2>
-        <p className="mt-1 text-xs text-slate-500">PDF, Office, текст, CSV, изображения — до 25 МБ</p>
+        <h2 className="text-sm font-semibold text-neutral-950">{t('wikirag.upload.title')}</h2>
+        <p className="mt-1 text-xs text-slate-500">{t('wikirag.upload.subtitle')}</p>
         {!canManage ? (
-          <p className="mt-4 text-sm text-slate-600">Загрузка доступна редакторам и администраторам.</p>
+          <p className="mt-4 text-sm text-slate-600">{t('wikirag.upload.restricted')}</p>
         ) : (
           <form className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]" onSubmit={(e) => void onUpload(e)}>
             <div>
@@ -344,11 +354,11 @@ export function WikiRagPage() {
                 } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
               >
                 {dragOver ? (
-                  <p className="text-base font-semibold text-blue-700">Отпустите файл</p>
+                  <p className="text-base font-semibold text-blue-700">{t('wikirag.upload.dropFile')}</p>
                 ) : selectedFile ? (
                   <>
                     <p className="text-base font-semibold text-neutral-950">{selectedFile.name}</p>
-                    <p className="mt-2 text-sm text-slate-500">{formatBytes(selectedFile.size)}</p>
+                    <p className="mt-2 text-sm text-slate-500">{formatBytes(selectedFile.size, t)}</p>
                     <button
                       type="button"
                       className="relative z-10 mt-4 text-sm font-medium text-blue-700 underline"
@@ -357,13 +367,13 @@ export function WikiRagPage() {
                         clearSelectedFile()
                       }}
                     >
-                      Выбрать другой
+                      {t('wikirag.upload.chooseAnother')}
                     </button>
                   </>
                 ) : (
                   <>
-                    <p className="text-base font-semibold text-neutral-900">Перетащите файл сюда</p>
-                    <p className="mt-2 text-sm text-slate-500">или нажмите для выбора с диска</p>
+                    <p className="text-base font-semibold text-neutral-900">{t('wikirag.upload.dragHere')}</p>
+                    <p className="mt-2 text-sm text-slate-500">{t('wikirag.upload.clickToChoose')}</p>
                   </>
                 )}
               </div>
@@ -371,13 +381,13 @@ export function WikiRagPage() {
             <div className="flex flex-col gap-3">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Комментарий
+                  {t('wikirag.upload.comment')}
                 </label>
                 <textarea
                   value={uploadComment}
                   onChange={(e) => setUploadComment(e.target.value)}
                   rows={5}
-                  placeholder="О чём документ, для кого, ключевые темы…"
+                  placeholder={t('wikirag.upload.commentPlaceholder')}
                   className="w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
@@ -386,7 +396,7 @@ export function WikiRagPage() {
                 disabled={uploading || !selectedFile}
                 className="app-btn app-btn-primary mt-auto !w-full"
               >
-                {uploading ? 'Загрузка…' : 'Загрузить в базу'}
+                {uploading ? t('wikirag.upload.busy') : t('wikirag.upload.button')}
               </button>
             </div>
           </form>
@@ -396,20 +406,22 @@ export function WikiRagPage() {
       {/* Список документов */}
       <section className="app-card overflow-hidden">
         <div className="border-b border-neutral-100 px-4 py-3 sm:px-5">
-          <h2 className="text-sm font-semibold text-neutral-950">Документы ({rows.length})</h2>
-          <p className="mt-0.5 text-xs text-slate-500">Нажмите на имя файла для просмотра и редактирования</p>
+          <h2 className="text-sm font-semibold text-neutral-950">
+            {t('wikirag.documents.title', { count: rows.length })}
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-500">{t('wikirag.documents.subtitle')}</p>
         </div>
         {loading ? (
-          <p className="p-6 text-sm text-slate-500">Загрузка…</p>
+          <p className="p-6 text-sm text-slate-500">{t('common.loading')}</p>
         ) : rows.length === 0 ? (
-          <p className="p-10 text-center text-sm text-slate-500">Пока нет файлов. Загрузите первый документ выше.</p>
+          <p className="p-10 text-center text-sm text-slate-500">{t('wikirag.documents.empty')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[28rem] text-left text-sm">
               <thead className="bg-neutral-50/90 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-3 py-2.5">Файл</th>
-                  <th className="hidden px-3 py-2.5 md:table-cell">Комментарий</th>
+                  <th className="px-3 py-2.5">{t('wikirag.documents.file')}</th>
+                  <th className="hidden px-3 py-2.5 md:table-cell">{t('wikirag.documents.comment')}</th>
                   {canManage ? <th className="w-12 px-3 py-2.5" /> : null}
                 </tr>
               </thead>
@@ -434,7 +446,7 @@ export function WikiRagPage() {
       {chatOpen ? (
         <aside
           className="fixed bottom-4 right-4 top-[max(5.5rem,env(safe-area-inset-top))] z-30 flex w-[min(21rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-neutral-200/90 bg-white/95 p-3 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-4"
-          aria-label="Чат LM Studio"
+          aria-label={t('wikirag.page.chatAria')}
         >
           <WikiRagChat
             onClose={() => setChatOpen(false)}
@@ -447,7 +459,7 @@ export function WikiRagPage() {
           onClick={() => setChatOpen(true)}
           className="fixed bottom-6 right-4 z-30 app-btn app-btn-primary !rounded-full !px-4"
         >
-          Чат AI
+          {t('wikirag.page.chatButton')}
         </button>
       )}
 
@@ -469,7 +481,7 @@ export function WikiRagPage() {
                 type="button"
                 onClick={() => setModalDocId(null)}
                 className="shrink-0 rounded-xl border border-neutral-200 bg-white p-2 text-neutral-600 hover:bg-blue-50 hover:text-blue-700"
-                aria-label="Закрыть"
+                aria-label={t('wikirag.page.closeViewer')}
               >
                 <IconClose className="h-5 w-5" />
               </button>

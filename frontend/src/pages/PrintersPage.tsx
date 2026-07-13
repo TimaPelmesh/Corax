@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   api,
   type NetworkPrinter,
@@ -8,13 +8,16 @@ import {
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconClose, IconPrinter } from '../components/icons'
+import { PrinterDetailModal } from '../components/PrinterDetailModal'
+import { useLocale } from '../i18n/LocaleContext'
+import type { MessageKey } from '../i18n/LocaleContext'
 
 type FilterChip = 'all' | 'offline' | 'low_toner' | 'snmp_error'
 
-function fmtWhen(iso: string | null | undefined) {
+function fmtWhen(iso: string | null | undefined, locale: string) {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('ru-RU', {
+    return new Date(iso).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU', {
       day: '2-digit',
       month: 'short',
       hour: '2-digit',
@@ -29,34 +32,53 @@ function displayTitle(row: NetworkPrinter) {
   const model = row.snmp_model?.trim()
   const name = row.name?.trim() || ''
   if (model) return model
-  return name || row.ip_address || 'Принтер'
+  return name || row.ip_address || 'Printer'
 }
 
-function formatSchedulerLine(sched: PrinterSchedulerStatus | null): string | null {
-  if (!sched?.poll_enabled) return null
-  const parts = [`Планировщик SNMP: каждые ${sched.poll_interval_minutes} мин`]
-  if (sched.running_now) parts.push('идёт опрос…')
-  if (sched.last_run_at) parts.push(`последний: ${fmtWhen(sched.last_run_at)}`)
-  const summary = sched.last_run_summary?.message?.trim()
-  if (summary) parts.push(summary)
-  return parts.join(' · ')
+function formatSchedulerShort(
+  sched: PrinterSchedulerStatus | null,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+  locale: string,
+): string {
+  if (!sched) return t('printers.autoPoll')
+  if (!sched.poll_enabled) return t('printers.autoOff')
+  if (sched.running_now) return t('printers.autoRunning')
+  const mins = sched.poll_interval_minutes
+  const last = sched.last_run_at ? fmtWhen(sched.last_run_at, locale) : null
+  return last
+    ? t('printers.autoLast', { mins, last })
+    : t('printers.autoEvery', { mins })
 }
 
-function PrinterToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+type InfoTone = 'info' | 'warn' | 'ok' | 'busy'
+
+function PrinterToast({
+  message,
+  tone = 'info',
+  onDismiss,
+  closeLabel,
+}: {
+  message: string
+  tone?: InfoTone
+  onDismiss: () => void
+  closeLabel: string
+}) {
+  const accent =
+    tone === 'warn' ? 'bg-sky-100' : tone === 'busy' ? 'bg-sky-200 animate-pulse' : 'bg-white/80'
   return (
     <div
       role="status"
-      className="toast-enter-left fixed bottom-6 left-6 z-[100] flex max-w-[min(24rem,calc(100vw-3rem))] items-start gap-3 rounded-xl border border-neutral-200/90 bg-white px-4 py-3 text-sm font-medium leading-snug text-neutral-950 shadow-[0_18px_40px_-16px_rgb(15_23_42/0.45)]"
+      className="toast-enter-right fixed bottom-6 right-6 z-[100] flex max-w-[min(28rem,calc(100vw-3rem))] items-start gap-3 rounded-xl border border-white/15 bg-[var(--color-primary)] px-4 py-3 text-sm font-medium leading-snug text-white shadow-[0_18px_40px_-14px_rgb(37_99_235/0.55)] dark:border-white/20 dark:shadow-[0_18px_44px_-12px_rgb(0_0_0/0.55)]"
     >
-      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
-      <span className="min-w-0 flex-1 whitespace-pre-line">{message}</span>
+      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${accent}`} aria-hidden />
+      <span className="min-w-0 flex-1 whitespace-pre-line text-white">{message}</span>
       <button
         type="button"
         onClick={onDismiss}
-        className="shrink-0 rounded-lg p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900"
-        aria-label="Закрыть"
+        className="shrink-0 rounded-lg p-1.5 text-white transition hover:bg-white/25"
+        aria-label={closeLabel}
       >
-        <IconClose className="h-4 w-4" />
+        <IconClose className="h-7 w-7" />
       </button>
     </div>
   )
@@ -148,14 +170,14 @@ function SupplyChip({
   return (
     <div
       key={s.name}
-      className={colored ? 'min-w-[4.5rem] max-w-[8.5rem]' : 'min-w-[5rem] max-w-[9rem]'}
+      className={colored ? 'min-w-[5.5rem] max-w-[14rem]' : 'min-w-[5.5rem] max-w-[14rem]'}
       title={s.name}
     >
       <div
-        className={`flex items-center gap-1 text-[10px] ${low && colored ? 'font-semibold text-blue-700' : 'font-medium text-slate-600'}`}
+        className={`flex items-start gap-1 text-[10px] leading-snug ${low && colored ? 'font-semibold text-blue-700' : 'font-medium text-slate-600'}`}
       >
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-black/10 ${tone.dot}`} />
-        <span className={`min-w-0 truncate ${tone.text}`}>{s.name}</span>
+        <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-black/10 ${tone.dot}`} />
+        <span className={`min-w-0 break-words ${tone.text}`}>{s.name}</span>
         <span className="shrink-0 font-mono tabular-nums">
           {s.level_percent != null ? `${s.level_percent}%` : '?'}
         </span>
@@ -170,13 +192,13 @@ function SupplyChip({
   )
 }
 
-function SuppliesCell({ supplies }: { supplies: PrinterSupply[] }) {
+function SuppliesCell({ supplies, serviceLabel }: { supplies: PrinterSupply[]; serviceLabel: string }) {
   if (!supplies.length) {
     return <span className="text-xs text-slate-400">—</span>
   }
   const { toners, service } = partitionSupplies(supplies)
   return (
-    <div className="min-w-[10rem] space-y-1.5" title="SNMP: отдельные счётчики тонера, барабана, печки и фильтров — не дубли">
+    <div className="min-w-[10rem] space-y-1.5">
       {toners.length > 0 ? (
         <div className="flex flex-wrap gap-x-3 gap-y-1.5">
           {toners.map((s) => (
@@ -186,7 +208,7 @@ function SuppliesCell({ supplies }: { supplies: PrinterSupply[] }) {
       ) : null}
       {service.length > 0 ? (
         <div className="border-t border-dashed border-slate-200/90 pt-1.5">
-          <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">Сервис</div>
+          <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">{serviceLabel}</div>
           <div className="flex flex-wrap gap-x-2 gap-y-1">
             {service.map((s) => (
               <SupplyChip key={s.name} s={s} colored={false} />
@@ -198,11 +220,48 @@ function SuppliesCell({ supplies }: { supplies: PrinterSupply[] }) {
   )
 }
 
-const FILTER_LABELS: Record<FilterChip, string> = {
-  all: 'Все',
-  offline: 'Offline',
-  low_toner: 'Мало тонера',
-  snmp_error: 'SNMP ошибка',
+const FILTER_KEYS: Record<FilterChip, MessageKey> = {
+  all: 'printers.filterAll',
+  offline: 'printers.filterOffline',
+  low_toner: 'printers.filterLowToner',
+  snmp_error: 'printers.filterSnmpErr',
+}
+
+type ColKey = 'model' | 'ip' | 'location' | 'status' | 'pages' | 'supplies' | 'lastPoll' | 'actions'
+
+const COL_KEYS: Record<ColKey, MessageKey> = {
+  model: 'printers.colModel',
+  ip: 'printers.colIp',
+  location: 'printers.colLocation',
+  status: 'printers.colStatus',
+  pages: 'printers.colPages',
+  supplies: 'printers.colSupplies',
+  lastPoll: 'printers.colLastPoll',
+  actions: 'printers.colActions',
+}
+
+const DEFAULT_COLS: Record<ColKey, boolean> = {
+  model: true,
+  ip: true,
+  location: true,
+  status: true,
+  pages: true,
+  supplies: true,
+  lastPoll: true,
+  actions: true,
+}
+
+const COLS_STORAGE_KEY = 'corax-printers-cols-v1'
+
+function loadVisibleCols(): Record<ColKey, boolean> {
+  try {
+    const raw = localStorage.getItem(COLS_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_COLS }
+    const parsed = JSON.parse(raw) as Partial<Record<ColKey, boolean>>
+    return { ...DEFAULT_COLS, ...parsed, model: true }
+  } catch {
+    return { ...DEFAULT_COLS }
+  }
 }
 
 type DeleteTarget = {
@@ -212,12 +271,13 @@ type DeleteTarget = {
 
 export function PrintersPage() {
   const { user } = useAuth()
+  const { t, locale } = useLocale()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
 
   const [rows, setRows] = useState<NetworkPrinter[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ message: string; tone: InfoTone } | null>(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterChip>('all')
   const [pollBusy, setPollBusy] = useState(false)
@@ -225,6 +285,12 @@ export function PrintersPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [colsOpen, setColsOpen] = useState(false)
+  const [colsQuery, setColsQuery] = useState('')
+  const [visibleCols, setVisibleCols] = useState<Record<ColKey, boolean>>(() => loadVisibleCols())
+  const lastSchedRunRef = useRef<string | null>(null)
+  const hourSyncedRef = useRef(false)
+  const colsMenuRef = useRef<HTMLDivElement>(null)
 
   const [addOpen, setAddOpen] = useState(false)
   const [addName, setAddName] = useState('')
@@ -236,23 +302,100 @@ export function PrintersPage() {
   const [cfg, setCfg] = useState<PrinterPollConfig | null>(null)
   const [sched, setSched] = useState<PrinterSchedulerStatus | null>(null)
   const [cfgBusy, setCfgBusy] = useState(false)
+  const [detailPrinter, setDetailPrinter] = useState<NetworkPrinter | null>(null)
 
   const reload = useCallback(async (q: string) => {
     setErr(null)
     const data = await api.printers({ q: q.trim() || undefined, limit: 3000 })
     setRows(data)
     setSelected(new Set())
+    return data
   }, [])
 
   const reloadMeta = useCallback(async () => {
     try {
       const [c, s] = await Promise.all([api.printerPollConfig(), api.printerSchedulerStatus()])
       setCfg(c)
-      setSched(s)
+      setSched((prev) => {
+        const prevRun = lastSchedRunRef.current
+        const nextRun = s.last_run_at ?? null
+        if (prev && prevRun && nextRun && nextRun !== prevRun && s.last_run_summary?.message) {
+          setToast({ message: s.last_run_summary.message, tone: 'info' })
+        }
+        if (nextRun) lastSchedRunRef.current = nextRun
+        else if (!lastSchedRunRef.current && s.last_run_at) {
+          lastSchedRunRef.current = s.last_run_at
+        }
+        return s
+      })
+      // Разовый перевод на почасовой автоопрос (если ещё старые 30 мин)
+      if (
+        canEdit &&
+        !hourSyncedRef.current &&
+        c.poll_enabled &&
+        c.poll_interval_minutes === 30
+      ) {
+        hourSyncedRef.current = true
+        try {
+          const saved = await api.updatePrinterPollConfig({
+            poll_enabled: true,
+            poll_interval_minutes: 60,
+            snmp_enabled: c.snmp_enabled,
+            snmp_community: c.snmp_community,
+            snmp_timeout_seconds: c.snmp_timeout_seconds,
+            ping_timeout_ms: c.ping_timeout_ms,
+            poll_concurrency: c.poll_concurrency,
+          })
+          setCfg(saved)
+          setToast({
+            message: t('printers.hourBump'),
+            tone: 'ok',
+          })
+        } catch {
+          /* ignore */
+        }
+      } else {
+        hourSyncedRef.current = true
+      }
     } catch {
       /* optional */
     }
-  }, [])
+  }, [canEdit, t])
+
+  useEffect(() => {
+    localStorage.setItem(COLS_STORAGE_KEY, JSON.stringify(visibleCols))
+  }, [visibleCols])
+
+  useEffect(() => {
+    if (!colsOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!colsMenuRef.current?.contains(e.target as Node)) {
+        setColsOpen(false)
+        setColsQuery('')
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setColsOpen(false)
+        setColsQuery('')
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [colsOpen])
+
+  const filteredColKeys = useMemo(() => {
+    const q = colsQuery.trim().toLowerCase()
+    return (Object.keys(COL_KEYS) as ColKey[]).filter((key) => {
+      if (key === 'actions' && !canEdit) return false
+      if (!q) return true
+      return t(COL_KEYS[key]).toLowerCase().includes(q)
+    })
+  }, [colsQuery, canEdit, t])
 
   useEffect(() => {
     void (async () => {
@@ -260,7 +403,7 @@ export function PrintersPage() {
       try {
         await Promise.all([reload(search), reloadMeta()])
       } catch (e) {
-        setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+        setErr(e instanceof Error ? e.message : t('printers.loadFailed'))
       } finally {
         setLoading(false)
       }
@@ -274,8 +417,9 @@ export function PrintersPage() {
   }, [canEdit, reloadMeta])
 
   useEffect(() => {
-    if (!toast) return
-    const t = window.setTimeout(() => setToast(null), 10_000)
+    if (!toast || toast.tone === 'busy') return
+    const ms = toast.tone === 'warn' ? 7000 : 5000
+    const t = window.setTimeout(() => setToast(null), ms)
     return () => window.clearTimeout(t)
   }, [toast])
 
@@ -289,15 +433,26 @@ export function PrintersPage() {
   }, [rows, filter])
 
   const stats = useMemo(() => {
-    const lowToner = rows.filter((r) => hasLowToner(r.supplies))
+    const lowTonerRows = rows.filter((r) => hasLowToner(r.supplies))
     return {
       total: rows.length,
       online: rows.filter((r) => r.poll_status === 'online').length,
-      offline: rows.filter((r) => r.poll_status === 'offline').length,
       snmpOk: rows.filter((r) => r.snmp_status === 'ok').length,
-      lowToner: lowToner.length,
+      snmpError: rows.filter((r) => r.snmp_status === 'error').length,
+      lowToner: lowTonerRows.length,
+      lowTonerRows,
     }
   }, [rows])
+
+  const colCount = useMemo(() => {
+    let n = 0
+    if (canEdit) n += 1
+    for (const k of Object.keys(visibleCols) as ColKey[]) {
+      if (k === 'actions' && !canEdit) continue
+      if (visibleCols[k]) n += 1
+    }
+    return Math.max(n, 1)
+  }, [visibleCols, canEdit])
 
   const allVisibleSelected =
     filteredRows.length > 0 && filteredRows.every((r) => selected.has(r.id))
@@ -323,28 +478,40 @@ export function PrintersPage() {
     if (!canEdit) return
     setPollBusy(true)
     setErr(null)
+    setToast({ message: t('printers.polling'), tone: 'busy' })
     try {
       const r = await api.pollAllPrinters()
-      await Promise.all([reload(search), reloadMeta()])
-      setToast(r.message?.trim() || 'Поиск и опрос завершены')
+      const [data] = await Promise.all([reload(search), reloadMeta()])
+      const low = data.filter((row) => hasLowToner(row.supplies)).length
+      const snmpErr = data.filter((row) => row.snmp_status === 'error').length
+      const alerts: string[] = []
+      if (low > 0) alerts.push(t('printers.alertLow', { n: low }))
+      if (snmpErr > 0) alerts.push(t('printers.alertSnmp', { n: snmpErr }))
+      const base = r.message?.trim() || t('printers.pollDone')
+      setToast({
+        message: alerts.length
+          ? `${base}\n${t('printers.alertsAfterPoll', { alerts: alerts.join(' · ') })}`
+          : base,
+        tone: alerts.length ? 'warn' : 'info',
+      })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка опроса')
+      setErr(e instanceof Error ? e.message : t('printers.pollFailed'))
+      setToast(null)
     } finally {
       setPollBusy(false)
     }
   }
 
-  const pollBusyLabel =
-    pollBusy || sched?.running_now ? 'Поиск и опрос…' : 'Найти и опросить'
+  const pollBusyLabel = pollBusy || sched?.running_now ? t('printers.pollBusy') : t('printers.pollAll')
 
   const pollOne = async (row: NetworkPrinter) => {
     if (!canEdit || !row.ip_address) return
     try {
       await api.pollPrinter(row.id)
       await reload(search)
-      setToast(`SNMP обновлён: ${displayTitle(row)}`)
+      setToast({ message: t('printers.snmpUpdated', { name: displayTitle(row) }), tone: 'ok' })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка опроса')
+      setErr(e instanceof Error ? e.message : t('printers.pollFailed'))
     }
   }
 
@@ -355,11 +522,17 @@ export function PrintersPage() {
     try {
       const r = await api.cleanupPrinters()
       await reload(search)
-      setToast(
-        `Очистка: удалено дубликатов ${r.deleted_duplicates}, мусора ${r.deleted_noise}, без IP ${r.deleted_no_ip}. Осталось ${r.remaining}.`,
-      )
+      setToast({
+        message: t('printers.cleanupResult', {
+          dup: r.deleted_duplicates,
+          noise: r.deleted_noise,
+          noIp: r.deleted_no_ip,
+          remaining: r.remaining,
+        }),
+        tone: 'info',
+      })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка очистки')
+      setErr(e instanceof Error ? e.message : t('printers.cleanupFailed'))
     } finally {
       setCleanupBusy(false)
     }
@@ -376,9 +549,9 @@ export function PrintersPage() {
       }
       setDeleteTarget(null)
       await reload(search)
-      setToast(`Удалено: ${deleteTarget.ids.length}`)
+      setToast({ message: t('printers.deletedN', { n: deleteTarget.ids.length }), tone: 'ok' })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка удаления')
+      setErr(e instanceof Error ? e.message : t('printers.deleteFailed'))
     } finally {
       setDeleteBusy(false)
     }
@@ -399,9 +572,9 @@ export function PrintersPage() {
       })
       setCfg(saved)
       await reloadMeta()
-      setToast('Настройки опроса сохранены')
+      setToast({ message: t('printers.settingsSaved'), tone: 'ok' })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка сохранения')
+      setErr(e instanceof Error ? e.message : t('printers.saveFailed'))
     } finally {
       setCfgBusy(false)
     }
@@ -424,9 +597,9 @@ export function PrintersPage() {
       setAddIp('')
       setAddLocation('')
       await reload(search)
-      setToast('Принтер добавлен — запустите SNMP-опрос')
+      setToast({ message: t('printers.addedHint'), tone: 'info' })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось добавить')
+      setErr(e instanceof Error ? e.message : t('printers.addFailed'))
     } finally {
       setAddBusy(false)
     }
@@ -440,26 +613,90 @@ export function PrintersPage() {
             <IconPrinter className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="page-title">Принтеры</h1>
+            <h1 className="page-title">{t('titles.printers')}</h1>
             <p className="mt-0.5 text-sm text-slate-500">
-              Поиск по SNMP в локальных подсетях и опрос: модель, счётчик, расходники (в т.ч. Toshiba TEC, HP, Konica).
+              {t('pages.printersSubtitle')}
             </p>
           </div>
         </div>
-        <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-          <div className="inline-flex flex-wrap items-center gap-1.5 rounded-full border border-slate-200/75 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 shadow-[0_1px_3px_rgb(15_23_42_/_0.06)] backdrop-blur-sm">
-            Всего:{' '}
-            <span className="rounded-md bg-zinc-100 px-2 py-0.5 font-mono text-sm font-semibold text-neutral-900">
-              {stats.total}
-            </span>
+        <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
+          <div
+            className="inline-flex max-w-[min(100%,18rem)] items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm"
+            title={sched?.last_run_summary?.message || undefined}
+          >
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                sched?.running_now || pollBusy
+                  ? 'bg-sky-500'
+                  : sched?.poll_enabled
+                    ? 'bg-slate-400'
+                    : 'bg-amber-500'
+              }`}
+              aria-hidden
+            />
+            <span className="truncate">{formatSchedulerShort(sched, t, locale)}</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/75 bg-white/70 px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm">
+            <span className="text-slate-400">{t('common.total')}</span>
+            <span className="font-mono text-sm font-semibold text-neutral-900">{stats.total}</span>
+          </div>
+          <div className="relative" ref={colsMenuRef}>
+            <button
+              type="button"
+              onClick={() => setColsOpen((v) => !v)}
+              className="app-btn app-btn-secondary"
+              aria-expanded={colsOpen}
+            >
+              {t('printers.columns')}
+            </button>
+            {colsOpen ? (
+              <div className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-black/5">
+                <input
+                  type="search"
+                  value={colsQuery}
+                  onChange={(e) => setColsQuery(e.target.value)}
+                  placeholder={t('printers.colSearch')}
+                  className="app-input !min-h-0 mb-2 !rounded-lg !px-2.5 !py-1.5 !text-xs"
+                  autoFocus
+                />
+                <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                  {filteredColKeys.length === 0 ? (
+                    <p className="px-2 py-2 text-xs text-slate-400">{t('common.nothingFound')}</p>
+                  ) : (
+                    filteredColKeys.map((key) => {
+                      const locked = key === 'model'
+                      return (
+                        <label
+                          key={key}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={visibleCols[key]}
+                            disabled={locked}
+                            onChange={() =>
+                              setVisibleCols((prev) => ({
+                                ...prev,
+                                [key]: locked ? true : !prev[key],
+                              }))
+                            }
+                          />
+                          <span className={locked ? 'text-slate-400' : ''}>{t(COL_KEYS[key])}</span>
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            ) : null}
           </div>
           {canEdit ? (
             <>
               <button type="button" onClick={() => void runCleanup()} disabled={cleanupBusy} className="app-btn app-btn-secondary">
-                {cleanupBusy ? 'Очистка…' : 'Очистить дубликаты'}
+                {cleanupBusy ? t('printers.cleanupBusy') : t('printers.cleanup')}
               </button>
               <button type="button" onClick={() => setCfgOpen(true)} className="app-btn app-btn-secondary">
-                Настройки SNMP
+                {t('printers.snmpSettings')}
               </button>
               <button
                 type="button"
@@ -470,7 +707,7 @@ export function PrintersPage() {
                 {pollBusyLabel}
               </button>
               <button type="button" onClick={() => setAddOpen(true)} className="app-btn app-btn-secondary">
-                + Добавить вручную
+                {t('printers.addManual')}
               </button>
               {selected.size > 0 ? (
                 <button
@@ -483,7 +720,7 @@ export function PrintersPage() {
                     })
                   }
                 >
-                  Удалить ({selected.size})
+                  {t('printers.deleteN', { n: selected.size })}
                 </button>
               ) : null}
             </>
@@ -491,33 +728,22 @@ export function PrintersPage() {
         </div>
       </div>
 
-      {toast ? <PrinterToast message={toast} onDismiss={() => setToast(null)} /> : null}
+      {toast ? (
+        <PrinterToast message={toast.message} tone={toast.tone} onDismiss={() => setToast(null)} closeLabel={t('common.close')} />
+      ) : null}
 
       {err ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div> : null}
 
-      {formatSchedulerLine(sched) ? (
-        <div className="mb-4 rounded-xl border border-slate-200/90 bg-slate-50/80 px-3 py-2 text-xs leading-relaxed text-slate-600">
-          {formatSchedulerLine(sched)}
-        </div>
-      ) : null}
-
-      {pollBusy ? (
-        <div className="mb-4 rounded-xl border border-sky-200/90 bg-sky-50/90 px-3 py-2 text-sm text-sky-900">
-          Поиск принтеров в локальных подсетях и SNMP-опрос (обычно 40–120 с). Не закрывайте вкладку.
-        </div>
-      ) : null}
-
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
-          ['Всего', stats.total, ''],
-          ['Доступно', stats.online, 'text-emerald-700'],
-          ['Offline', stats.offline, 'text-amber-700'],
-          ['SNMP OK', stats.snmpOk, 'text-blue-700'],
-          ['Мало тонера', stats.lowToner, 'text-amber-700'],
+          [t('common.total'), stats.total, ''],
+          [t('printers.available'), stats.online, 'text-slate-800'],
+          [t('printers.snmpOk'), stats.snmpOk, 'text-slate-800'],
+          [t('printers.lowToner'), stats.lowToner, stats.lowToner ? 'text-amber-800' : 'text-slate-800'],
         ].map(([label, val, cls]) => (
           <div key={String(label)} className="rounded-2xl border border-slate-200/90 bg-white/90 px-3 py-2.5 shadow-sm">
             <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</div>
-            <div className={`text-xl font-bold text-slate-900 ${cls}`}>{val}</div>
+            <div className={`text-xl font-bold tabular-nums text-slate-900 ${cls}`}>{val}</div>
           </div>
         ))}
       </div>
@@ -525,14 +751,14 @@ export function PrintersPage() {
       <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200/90 bg-white/90 p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
         <div className="min-w-[min(100%,18rem)] flex-1">
           <label htmlFor="printer-search" className="app-label">
-            Поиск
+            {t('common.search')}
           </label>
-          <input id="printer-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="IP, модель SNMP, имя…" className="app-input" />
+          <input id="printer-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="IP, SNMP…" className="app-input" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Фильтр</div>
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">{t('common.filter')}</div>
           <div className="flex flex-wrap gap-1.5">
-            {(Object.keys(FILTER_LABELS) as FilterChip[]).map((key) => (
+            {(Object.keys(FILTER_KEYS) as FilterChip[]).map((key) => (
               <button
                 key={key}
                 type="button"
@@ -543,7 +769,7 @@ export function PrintersPage() {
                     : 'rounded-full bg-zinc-50 px-2 py-0.5 text-neutral-900 ring-1 ring-zinc-200/80 opacity-90 hover:opacity-100'
                 }`}
               >
-                {FILTER_LABELS[key]}
+                {t(FILTER_KEYS[key])}
               </button>
             ))}
           </div>
@@ -561,41 +787,38 @@ export function PrintersPage() {
                       type="checkbox"
                       checked={allVisibleSelected}
                       onChange={toggleAllVisible}
-                      aria-label="Выбрать все"
+                      aria-label={t('printers.selectAll')}
                     />
                   </th>
                 ) : null}
-                <th className="px-4 py-3">Модель</th>
-                <th className="px-4 py-3">IP</th>
-                <th className="px-4 py-3">Локация</th>
-                <th className="px-4 py-3">Страницы</th>
-                <th className="min-w-[12rem] px-4 py-3">Расходники</th>
-                <th className="px-4 py-3">Последний опрос</th>
-                {canEdit ? <th className="px-4 py-3 text-right">Действия</th> : null}
+                {visibleCols.model ? <th className="min-w-[16rem] px-4 py-3">{t('printers.colModel')}</th> : null}
+                {visibleCols.ip ? <th className="px-4 py-3">{t('printers.colIp')}</th> : null}
+                {visibleCols.location ? <th className="min-w-[8rem] px-4 py-3">{t('printers.colLocation')}</th> : null}
+                {visibleCols.status ? <th className="px-4 py-3">{t('printers.colStatus')}</th> : null}
+                {visibleCols.pages ? <th className="px-4 py-3">{t('printers.colPages')}</th> : null}
+                {visibleCols.supplies ? <th className="min-w-[14rem] px-4 py-3">{t('printers.colSupplies')}</th> : null}
+                {visibleCols.lastPoll ? <th className="px-4 py-3">{t('printers.colLastPoll')}</th> : null}
+                {canEdit && visibleCols.actions ? <th className="px-4 py-3 text-right">{t('printers.colActions')}</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loading ? (
                 <tr>
-                  <td colSpan={canEdit ? 7 : 6} className="px-4 py-8 text-center text-slate-500">
-                    Загрузка…
+                  <td colSpan={colCount} className="px-4 py-8 text-center text-slate-500">
+                    {t('common.loading')}
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 7 : 6} className="px-4 py-12 text-center">
-                    <p className="text-sm font-medium text-slate-700">{rows.length === 0 ? 'Нет принтеров' : 'Нет по фильтру'}</p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Нажмите «Найти и опросить»: сервер просканирует локальные подсети по SNMP UDP/161 и добавит
-                      найденные принтеры.
-                    </p>
+                  <td colSpan={colCount} className="px-4 py-12 text-center">
+                    <p className="text-sm font-medium text-slate-700">{t('common.nothingFound')}</p>
                     {canEdit && rows.length === 0 ? (
                       <div className="mt-4 flex justify-center gap-2">
                         <button type="button" className="app-btn app-btn-primary" onClick={() => void pollAll()} disabled={pollBusy}>
                           {pollBusyLabel}
                         </button>
                         <button type="button" className="app-btn app-btn-secondary" onClick={() => setAddOpen(true)}>
-                          + Добавить вручную
+                          {t('printers.addManual')}
                         </button>
                       </div>
                     ) : null}
@@ -605,39 +828,97 @@ export function PrintersPage() {
                 filteredRows.map((r) => {
                   const low = hasLowToner(r.supplies)
                   const title = displayTitle(r)
+                  const problem = r.snmp_status === 'error' || r.poll_status === 'offline' || low
+                  const snmpBadge =
+                    r.snmp_status === 'ok'
+                      ? { text: 'SNMP OK', cls: 'bg-slate-100 text-slate-700 ring-slate-200' }
+                      : r.snmp_status === 'error'
+                        ? { text: 'SNMP err', cls: 'bg-rose-50 text-rose-800 ring-rose-200' }
+                        : r.snmp_status === 'skipped'
+                          ? { text: 'SNMP —', cls: 'bg-slate-50 text-slate-500 ring-slate-200' }
+                          : { text: 'SNMP ?', cls: 'bg-slate-50 text-slate-500 ring-slate-200' }
+                  const pollBadge =
+                    r.poll_status === 'online'
+                      ? { text: t('printers.statusOnline'), cls: 'bg-slate-100 text-slate-700 ring-slate-200' }
+                      : r.poll_status === 'offline'
+                        ? { text: t('printers.statusOffline'), cls: 'bg-amber-50 text-amber-900 ring-amber-200' }
+                        : { text: t('printers.statusUnknown'), cls: 'bg-slate-50 text-slate-500 ring-slate-200' }
                   return (
-                    <tr key={r.id} className={`app-table-row ${low ? 'bg-amber-50/40' : ''}`}>
+                    <tr
+                      key={r.id}
+                      className={`app-table-row cursor-pointer ${problem ? 'bg-amber-50/35' : ''}`}
+                      onClick={() => setDetailPrinter(r)}
+                    >
                       {canEdit ? (
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-4 py-3 align-top" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={selected.has(r.id)}
                             onChange={() => toggleOne(r.id)}
-                            aria-label={`Выбрать ${title}`}
+                            aria-label={t('printers.selectOne', { name: title })}
                           />
                         </td>
                       ) : null}
-                      <td className="max-w-[14rem] px-4 py-3">
-                        <div className="truncate font-medium text-slate-900" title={title}>
-                          {title}
-                        </div>
-                        {r.snmp_model && r.name !== r.snmp_model ? (
-                          <div className="truncate text-xs text-slate-400" title={r.name}>
-                            {r.name}
+                      {visibleCols.model ? (
+                        <td className="min-w-[16rem] max-w-[22rem] px-4 py-3 align-top">
+                          <div className="whitespace-normal break-words font-medium leading-snug text-slate-900" title={title}>
+                            {title}
                           </div>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-600">{r.ip_address ?? '—'}</td>
-                      <td className="max-w-[10rem] truncate px-4 py-3 text-slate-600">{r.location ?? '—'}</td>
-                      <td className="px-4 py-3 font-mono tabular-nums font-semibold text-neutral-900">
-                        {r.page_count != null ? r.page_count.toLocaleString('ru-RU') : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <SuppliesCell supplies={r.supplies ?? []} />
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">{fmtWhen(r.last_poll_at ?? r.last_snmp_at)}</td>
-                      {canEdit ? (
-                        <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                          {r.snmp_model && r.name?.trim() && r.name.trim() !== r.snmp_model.trim() ? (
+                            <div className="mt-0.5 whitespace-normal break-words text-xs leading-snug text-slate-500" title={r.name}>
+                              {r.name}
+                            </div>
+                          ) : null}
+                        </td>
+                      ) : null}
+                      {visibleCols.ip ? (
+                        <td className="px-4 py-3 align-top font-mono text-slate-600">{r.ip_address ?? '—'}</td>
+                      ) : null}
+                      {visibleCols.location ? (
+                        <td className="min-w-[8rem] max-w-[12rem] px-4 py-3 align-top">
+                          <span className="whitespace-normal break-words text-slate-600">{r.location ?? '—'}</span>
+                        </td>
+                      ) : null}
+                      {visibleCols.status ? (
+                        <td className="px-4 py-3 align-top">
+                          <div className="flex flex-col gap-1">
+                            <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ${pollBadge.cls}`}>
+                              {pollBadge.text}
+                            </span>
+                            <span
+                              className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ${snmpBadge.cls}`}
+                              title={r.snmp_error || undefined}
+                            >
+                              {snmpBadge.text}
+                            </span>
+                            {r.snmp_error ? (
+                              <span className="max-w-[11rem] whitespace-normal break-words text-[10px] leading-snug text-rose-700/90" title={r.snmp_error}>
+                                {r.snmp_error}
+                              </span>
+                            ) : null}
+                            {low ? (
+                              <span className="inline-flex w-fit rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200">
+                                {t('printers.lowTonerBadge')}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                      ) : null}
+                      {visibleCols.pages ? (
+                        <td className="px-4 py-3 align-top font-mono tabular-nums font-semibold text-neutral-900">
+                          {r.page_count != null ? r.page_count.toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU') : '—'}
+                        </td>
+                      ) : null}
+                      {visibleCols.supplies ? (
+                        <td className="px-4 py-3 align-top">
+                          <SuppliesCell supplies={r.supplies ?? []} serviceLabel={t('printers.service')} />
+                        </td>
+                      ) : null}
+                      {visibleCols.lastPoll ? (
+                        <td className="px-4 py-3 align-top text-slate-500">{fmtWhen(r.last_poll_at ?? r.last_snmp_at, locale)}</td>
+                      ) : null}
+                      {canEdit && visibleCols.actions ? (
+                        <td className="px-4 py-3 text-right align-top" onClick={(e) => e.stopPropagation()}>
                           <div className="inline-flex flex-col items-end gap-0.5">
                             <button
                               type="button"
@@ -651,7 +932,7 @@ export function PrintersPage() {
                               className="rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
                               onClick={() => setDeleteTarget({ ids: [r.id], labels: [title] })}
                             >
-                              Удалить
+                              {t('common.delete')}
                             </button>
                           </div>
                         </td>
@@ -670,14 +951,14 @@ export function PrintersPage() {
           <div className="app-card w-full max-w-2xl p-0 shadow-2xl ring-1 ring-white/40">
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-950">Настройки SNMP</h2>
-                <p className="mt-1 text-sm text-slate-500">Опрос принтеров, расписание, community и таймауты.</p>
+                <h2 className="text-lg font-bold text-slate-950">{t('printers.snmpCfgTitle')}</h2>
+                <p className="mt-1 text-sm text-slate-500">{t('printers.snmpCfgSub')}</p>
               </div>
               <button
                 type="button"
                 className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
                 onClick={() => setCfgOpen(false)}
-                aria-label="Закрыть настройки SNMP"
+                aria-label={t('common.close')}
               >
                 <IconClose className="h-5 w-5" />
               </button>
@@ -686,29 +967,29 @@ export function PrintersPage() {
             <div className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
               <label className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm">
                 <input type="checkbox" checked={cfg.poll_enabled} onChange={(e) => setCfg({ ...cfg, poll_enabled: e.target.checked })} />
-                Автоопрос каждые {cfg.poll_interval_minutes} мин
+                {t('printers.pollEnabled')}
               </label>
               <label className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm">
                 <input type="checkbox" checked={cfg.snmp_enabled} onChange={(e) => setCfg({ ...cfg, snmp_enabled: e.target.checked })} />
-                SNMP (тонер, страницы)
+                {t('printers.snmpEnabled')}
               </label>
               <label className="block text-sm">
-                <span className="app-label">Интервал (мин)</span>
+                <span className="app-label">{t('printers.intervalMin')}</span>
                 <input
                   type="number"
                   min={1}
                   max={1440}
                   value={cfg.poll_interval_minutes}
-                  onChange={(e) => setCfg({ ...cfg, poll_interval_minutes: Number(e.target.value) || 30 })}
+                  onChange={(e) => setCfg({ ...cfg, poll_interval_minutes: Number(e.target.value) || 60 })}
                   className="app-input"
                 />
               </label>
               <label className="block text-sm">
-                <span className="app-label">Community</span>
+                <span className="app-label">{t('printers.community')}</span>
                 <input value={cfg.snmp_community} onChange={(e) => setCfg({ ...cfg, snmp_community: e.target.value })} className="app-input font-mono" />
               </label>
               <label className="block text-sm">
-                <span className="app-label">Timeout (сек)</span>
+                <span className="app-label">{t('printers.timeoutSec')}</span>
                 <input
                   type="number"
                   min={1}
@@ -720,7 +1001,7 @@ export function PrintersPage() {
                 />
               </label>
               <label className="block text-sm">
-                <span className="app-label">Параллельность</span>
+                <span className="app-label">{t('printers.concurrency')}</span>
                 <input
                   type="number"
                   min={1}
@@ -734,10 +1015,10 @@ export function PrintersPage() {
 
             <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setCfgOpen(false)} disabled={cfgBusy}>
-                Скрыть
+                {t('common.cancel')}
               </button>
               <button type="button" disabled={cfgBusy} onClick={() => void saveConfig()} className="app-btn app-btn-primary">
-                {cfgBusy ? 'Сохранение…' : 'Сохранить'}
+                {cfgBusy ? t('common.loading') : t('common.save')}
               </button>
             </div>
           </div>
@@ -748,31 +1029,31 @@ export function PrintersPage() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
           <div className="app-card w-full max-w-md p-4 shadow-2xl">
             <div className="mb-3 flex items-start justify-between">
-              <h2 className="text-lg font-bold">Добавить вручную</h2>
+              <h2 className="text-lg font-bold">{t('printers.addTitle')}</h2>
               <button type="button" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" onClick={() => setAddOpen(false)}>
                 <IconClose className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-3">
               <label className="block">
-                <span className="app-label">Название (для себя)</span>
-                <input value={addName} onChange={(e) => setAddName(e.target.value)} className="app-input" placeholder="HP 3 этаж" />
+                <span className="app-label">{t('printers.addName')}</span>
+                <input value={addName} onChange={(e) => setAddName(e.target.value)} className="app-input" placeholder="HP" />
               </label>
               <label className="block">
-                <span className="app-label">IP (обязательно)</span>
+                <span className="app-label">{t('printers.addIp')}</span>
                 <input value={addIp} onChange={(e) => setAddIp(e.target.value)} placeholder="192.168.1.50" className="app-input font-mono" required />
               </label>
               <label className="block">
-                <span className="app-label">Локация</span>
+                <span className="app-label">{t('printers.addLocation')}</span>
                 <input value={addLocation} onChange={(e) => setAddLocation(e.target.value)} className="app-input" />
               </label>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setAddOpen(false)}>
-                Отмена
+                {t('common.cancel')}
               </button>
               <button type="button" disabled={addBusy || !addName.trim() || !addIp.trim()} className="app-btn app-btn-primary" onClick={() => void submitAdd()}>
-                {addBusy ? 'Сохранение…' : 'Добавить'}
+                {addBusy ? t('common.loading') : t('common.add')}
               </button>
             </div>
           </div>
@@ -784,11 +1065,11 @@ export function PrintersPage() {
           <div className="app-card w-full max-w-md border-blue-200 p-4 shadow-2xl ring-1 ring-blue-100">
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-blue-800">Удаление принтеров</h2>
+                <h2 className="text-lg font-bold text-blue-800">{t('printers.deleteTitle')}</h2>
                 <p className="mt-1 text-sm text-slate-600">
                   {deleteTarget.ids.length === 1
-                    ? 'Принтер будет удалён из базы. SNMP-данные тоже пропадут.'
-                    : `Будет удалено принтеров: ${deleteTarget.ids.length}.`}
+                    ? t('printers.deleteOne')
+                    : t('printers.deleteMany', { n: deleteTarget.ids.length })}
                 </p>
               </div>
               <button type="button" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" onClick={() => setDeleteTarget(null)}>
@@ -802,20 +1083,29 @@ export function PrintersPage() {
                 </li>
               ))}
               {deleteTarget.labels.length > 12 ? (
-                <li className="py-0.5 text-slate-500">…и ещё {deleteTarget.labels.length - 12}</li>
+                <li className="py-0.5 text-slate-500">{t('printers.andMore', { n: deleteTarget.labels.length - 12 })}</li>
               ) : null}
             </ul>
             <div className="flex justify-end gap-2">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>
-                Отмена
+                {t('common.cancel')}
               </button>
               <button type="button" className="app-btn app-btn-danger" onClick={() => void confirmDelete()} disabled={deleteBusy}>
-                {deleteBusy ? 'Удаление…' : 'Удалить'}
+                {deleteBusy ? t('common.loading') : t('common.delete')}
               </button>
             </div>
           </div>
         </div>
       ) : null}
+
+      <PrinterDetailModal
+        printer={detailPrinter}
+        onClose={() => setDetailPrinter(null)}
+        onChanged={(updated) => {
+          setDetailPrinter(updated)
+          setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+        }}
+      />
     </div>
   )
 }

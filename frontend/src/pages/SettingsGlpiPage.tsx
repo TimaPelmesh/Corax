@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { api, type ServiceRequestRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconPcs, IconTicket } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -78,6 +79,7 @@ function exportRequestsCsvFile(items: ServiceRequestRow[]) {
 }
 
 export function SettingsGlpiPage() {
+  const t = useT()
   const { user, loading: authLoading } = useAuth()
   const glpiPcsImportRef = useRef<HTMLInputElement | null>(null)
   const glpiRequestsImportRef = useRef<HTMLInputElement | null>(null)
@@ -94,7 +96,7 @@ export function SettingsGlpiPage() {
   const [reqExportGlpiBusy, setReqExportGlpiBusy] = useState(false)
 
   if (authLoading) {
-    return <p className="text-sm text-slate-500">Загрузка…</p>
+    return <p className="text-sm text-slate-500">{t('common.loading')}</p>
   }
 
   if (!user?.is_superuser) {
@@ -111,9 +113,9 @@ export function SettingsGlpiPage() {
     setPcsExportBusy(true)
     try {
       await api.exportComputersCsv()
-      showToast('Экспорт парка готов (UTF-8, разделитель «;» для Excel)')
+      showToast(t('settingsGlpi.exportCsvReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка экспорта CSV')
+      setErr(e instanceof Error ? e.message : t('settingsGlpi.exportCsvFailed'))
     } finally {
       setPcsExportBusy(false)
     }
@@ -124,9 +126,9 @@ export function SettingsGlpiPage() {
     setPcsExportGlpiBusy(true)
     try {
       await api.exportGlpiPcsCsv()
-      showToast('Экспорт парка для GLPI готов (glpi_pcs_export.csv)')
+      showToast(t('settingsGlpi.exportGlpiReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка экспорта GLPI CSV')
+      setErr(e instanceof Error ? e.message : t('settingsGlpi.exportGlpiFailed'))
     } finally {
       setPcsExportGlpiBusy(false)
     }
@@ -138,9 +140,9 @@ export function SettingsGlpiPage() {
     try {
       const r = await api.serviceRequests({ limit: 1000 })
       exportRequestsJsonFile(r.items, r.total)
-      showToast('Экспорт заявок (JSON) готов')
+      showToast(t('settingsGlpi.requestsExportJsonReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка экспорта JSON')
+      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsExportJsonFailed'))
     } finally {
       setReqExportJsonBusy(false)
     }
@@ -152,9 +154,9 @@ export function SettingsGlpiPage() {
     try {
       const r = await api.serviceRequests({ limit: 1000 })
       exportRequestsCsvFile(r.items)
-      showToast('Экспорт заявок (CSV) готов (UTF-8, «;» для Excel)')
+      showToast(t('settingsGlpi.requestsExportCsvReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка экспорта CSV')
+      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsExportCsvFailed'))
     } finally {
       setReqExportCsvBusy(false)
     }
@@ -165,9 +167,9 @@ export function SettingsGlpiPage() {
     setReqExportGlpiBusy(true)
     try {
       await api.exportServiceRequestsGlpiCsv()
-      showToast('Экспорт заявок для GLPI готов (glpi.csv)')
+      showToast(t('settingsGlpi.requestsExportGlpiReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка экспорта GLPI CSV')
+      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsExportGlpiFailed'))
     } finally {
       setReqExportGlpiBusy(false)
     }
@@ -181,7 +183,7 @@ export function SettingsGlpiPage() {
       const parsed: unknown = JSON.parse(raw)
       const items = Array.isArray(parsed) ? parsed : isRecord(parsed) && Array.isArray(parsed.items) ? parsed.items : []
       if (!Array.isArray(items) || items.length === 0) {
-        throw new Error('Файл не похож на экспорт заявок (нет items[])')
+        throw new Error(t('settingsGlpi.invalidJsonFile'))
       }
 
       let ok = 0
@@ -216,9 +218,9 @@ export function SettingsGlpiPage() {
           fail += 1
         }
       }
-      showToast(`Импорт заявок (JSON): создано ${ok}, пропущено/ошибки ${fail}`, 7000)
+      showToast(t('settingsGlpi.requestsImportJsonResult', { ok, fail }), 7000)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка импорта JSON')
+      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsImportJsonFailed'))
     } finally {
       setReqImportJsonBusy(false)
     }
@@ -231,10 +233,9 @@ export function SettingsGlpiPage() {
           <IconPcs className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="page-title">GLPI</h1>
+          <h1 className="page-title">{t('titles.glpi')}</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Импорт и экспорт данных CORAX в форматах GLPI и резервных копий (JSON, CSV). Операции редкие — вынесены из
-            рабочих вкладок в настройки.
+            {t('pages.glpiSubtitle')}
           </p>
         </div>
       </div>
@@ -256,14 +257,13 @@ export function SettingsGlpiPage() {
         <div>
           <div className="mb-4 flex items-center gap-2">
             <IconPcs className="h-5 w-5 text-blue-600" />
-            <h2 className="text-sm font-semibold text-slate-900">Парк ПК</h2>
+            <h2 className="text-sm font-semibold text-slate-900">{t('settingsGlpi.parkTitle')}</h2>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Импорт</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.importTitle')}</h3>
               <p className="text-sm leading-relaxed text-slate-600">
-                CSV-экспорт компьютеров из GLPI. Записи создаются и обновляются по имени хоста; дубликаты и пустые строки
-                пропускаются.
+                {t('settingsGlpi.pcsImportDescription')}
               </p>
               <input
                 ref={glpiPcsImportRef}
@@ -279,11 +279,16 @@ export function SettingsGlpiPage() {
                     .importGlpiPcsCsv(f)
                     .then((r) => {
                       showToast(
-                        `Парк ПК: создано ${r.created}, обновлено ${r.updated}, пропущено ${r.skipped}. (${r.rows_total} строк)`,
+                        t('settingsGlpi.pcsImportSummary', {
+                          created: r.created,
+                          updated: r.updated,
+                          skipped: r.skipped,
+                          rows: r.rows_total,
+                        }),
                         7000,
                       )
                     })
-                    .catch((ex) => setErr(ex instanceof Error ? ex.message : 'Ошибка импорта'))
+                    .catch((ex) => setErr(ex instanceof Error ? ex.message : t('settingsGlpi.importFailed')))
                     .finally(() => {
                       setPcsImportBusy(false)
                       e.target.value = ''
@@ -296,14 +301,14 @@ export function SettingsGlpiPage() {
                 disabled={pcsImportBusy}
                 onClick={() => glpiPcsImportRef.current?.click()}
               >
-                {pcsImportBusy ? 'Импорт…' : 'Импорт из GLPI'}
+                {pcsImportBusy ? t('settingsGlpi.importBusy') : t('settingsGlpi.importFromGlpi')}
               </button>
             </section>
 
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Экспорт</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.exportTitle')}</h3>
               <p className="text-sm leading-relaxed text-slate-600">
-                Выгрузка парка из CORAX: универсальный CSV для Excel или формат GLPI для сверки и обратной загрузки.
+                {t('settingsGlpi.pcsExportDescription')}
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -312,7 +317,7 @@ export function SettingsGlpiPage() {
                   disabled={pcsExportBusy}
                   onClick={() => void exportParkCsv()}
                 >
-                  {pcsExportBusy ? 'Экспорт…' : 'CSV для Excel'}
+                  {pcsExportBusy ? t('settingsGlpi.exportBusy') : t('settingsGlpi.exportExcelCsv')}
                 </button>
                 <button
                   type="button"
@@ -320,7 +325,7 @@ export function SettingsGlpiPage() {
                   disabled={pcsExportGlpiBusy}
                   onClick={() => void exportParkGlpiCsv()}
                 >
-                  {pcsExportGlpiBusy ? 'Экспорт…' : 'CSV для GLPI'}
+                  {pcsExportGlpiBusy ? t('settingsGlpi.exportBusy') : t('settingsGlpi.exportForGlpi')}
                 </button>
               </div>
             </section>
@@ -330,13 +335,13 @@ export function SettingsGlpiPage() {
         <div>
           <div className="mb-4 flex items-center gap-2">
             <IconTicket className="h-5 w-5 text-blue-600" />
-            <h2 className="text-sm font-semibold text-slate-900">Заявки</h2>
+            <h2 className="text-sm font-semibold text-slate-900">{t('settingsGlpi.requestsTitle')}</h2>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Импорт</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.importTitle')}</h3>
               <p className="text-sm leading-relaxed text-slate-600">
-                Загрузка тикетов из GLPI (glpi.csv) или восстановление из JSON-резервной копии CORAX.
+                {t('settingsGlpi.requestsImportDescription')}
               </p>
               <input
                 ref={glpiRequestsImportRef}
@@ -353,11 +358,20 @@ export function SettingsGlpiPage() {
                     .then((r) => {
                       const errCount = Array.isArray(r.errors) ? r.errors.length : 0
                       showToast(
-                        `GLPI: создано ${r.created}, обновлено ${r.updated}, пропущено ${r.skipped}${errCount ? `, ошибки ${errCount}` : ''}`,
+                        t('settingsGlpi.requestsImportGlpiSummary', {
+                          created: r.created,
+                          updated: r.updated,
+                          skipped: r.skipped,
+                          errors: errCount
+                            ? t('settingsGlpi.requestsImportGlpiErrors', { count: errCount })
+                            : '',
+                        }),
                         7000,
                       )
                     })
-                    .catch((ex) => setErr(ex instanceof Error ? ex.message : 'Ошибка импорта GLPI'))
+                    .catch((ex) =>
+                      setErr(ex instanceof Error ? ex.message : t('settingsGlpi.requestsImportGlpiFailed')),
+                    )
                     .finally(() => {
                       setReqImportGlpiBusy(false)
                       e.target.value = ''
@@ -383,7 +397,7 @@ export function SettingsGlpiPage() {
                   disabled={reqImportGlpiBusy}
                   onClick={() => glpiRequestsImportRef.current?.click()}
                 >
-                  {reqImportGlpiBusy ? 'Импорт…' : 'Импорт из GLPI'}
+                  {reqImportGlpiBusy ? t('settingsGlpi.importBusy') : t('settingsGlpi.importFromGlpi')}
                 </button>
                 <button
                   type="button"
@@ -391,16 +405,15 @@ export function SettingsGlpiPage() {
                   disabled={reqImportJsonBusy}
                   onClick={() => requestsJsonImportRef.current?.click()}
                 >
-                  {reqImportJsonBusy ? 'Импорт…' : 'Импорт из JSON'}
+                  {reqImportJsonBusy ? t('settingsGlpi.importBusy') : t('settingsGlpi.importFromJson')}
                 </button>
               </div>
             </section>
 
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Экспорт</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.exportTitle')}</h3>
               <p className="text-sm leading-relaxed text-slate-600">
-                До 1000 последних заявок. JSON — полная копия для переноса; CSV — для Excel; GLPI CSV — для миграции в
-                GLPI.
+                {t('settingsGlpi.requestsExportDescription')}
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -409,7 +422,7 @@ export function SettingsGlpiPage() {
                   disabled={reqExportJsonBusy}
                   onClick={() => void exportRequestsJson()}
                 >
-                  {reqExportJsonBusy ? 'Экспорт…' : 'JSON'}
+                  {reqExportJsonBusy ? t('settingsGlpi.exportBusy') : 'JSON'}
                 </button>
                 <button
                   type="button"
@@ -417,7 +430,7 @@ export function SettingsGlpiPage() {
                   disabled={reqExportCsvBusy}
                   onClick={() => void exportRequestsCsv()}
                 >
-                  {reqExportCsvBusy ? 'Экспорт…' : 'CSV для Excel'}
+                  {reqExportCsvBusy ? t('settingsGlpi.exportBusy') : t('settingsGlpi.exportExcelCsv')}
                 </button>
                 <button
                   type="button"
@@ -425,7 +438,7 @@ export function SettingsGlpiPage() {
                   disabled={reqExportGlpiBusy}
                   onClick={() => void exportRequestsGlpiCsv()}
                 >
-                  {reqExportGlpiBusy ? 'Экспорт…' : 'CSV для GLPI'}
+                  {reqExportGlpiBusy ? t('settingsGlpi.exportBusy') : t('settingsGlpi.exportForGlpi')}
                 </button>
               </div>
             </section>

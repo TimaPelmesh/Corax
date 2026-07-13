@@ -7,23 +7,12 @@ import {
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconClose, IconTrash, IconWarehouse } from '../components/icons'
+import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
 
-const GROUP_LABELS: Record<string, string> = {
-  components: 'Компоненты',
-  network: 'Сетевое оборудование',
-  other: 'Прочее',
-}
-
-const CONDITION_LABELS: Record<string, string> = {
-  new: 'Новое',
-  used: 'Б/у',
-  defective: 'Брак',
-}
-
-function fmtWhen(iso: string | null | undefined) {
+function fmtWhen(iso: string | null | undefined, locale: 'ru' | 'en') {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('ru-RU', {
+    return new Date(iso).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU', {
       day: '2-digit',
       month: 'short',
       hour: '2-digit',
@@ -34,7 +23,34 @@ function fmtWhen(iso: string | null | undefined) {
   }
 }
 
+const PRESET_LABEL_KEYS: Record<string, MessageKey> = {
+  ram: 'warehouse.presets.ram',
+  ssd: 'warehouse.presets.ssd',
+  hdd: 'warehouse.presets.hdd',
+  cpu: 'warehouse.presets.cpu',
+  gpu: 'warehouse.presets.gpu',
+  motherboard: 'warehouse.presets.motherboard',
+  psu: 'warehouse.presets.psu',
+  case: 'warehouse.presets.case',
+  switch: 'warehouse.presets.switch',
+  ap: 'warehouse.presets.ap',
+  router: 'warehouse.presets.router',
+  patch_cord: 'warehouse.presets.patch_cord',
+  monitor: 'warehouse.presets.monitor',
+  peripheral: 'warehouse.presets.peripheral',
+  other: 'warehouse.presets.other',
+  custom: 'warehouse.presets.custom',
+}
+
+function presetLabel(t: (key: MessageKey) => string, key: string, fallback?: string | null) {
+  const msgKey = PRESET_LABEL_KEYS[key]
+  if (msgKey) return t(msgKey)
+  return fallback?.trim() || key
+}
+
 export function WarehousePage() {
+  const t = useT()
+  const { locale } = useLocale()
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
 
@@ -121,7 +137,7 @@ export function WarehousePage() {
       try {
         await reload()
       } catch (e) {
-        setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+        setErr(e instanceof Error ? e.message : t('common.error'))
       } finally {
         setLoading(false)
       }
@@ -134,7 +150,7 @@ export function WarehousePage() {
       try {
         await reloadItems(activeRoomId, search)
       } catch (e) {
-        setErr(e instanceof Error ? e.message : 'Ошибка загрузки позиций')
+        setErr(e instanceof Error ? e.message : t('common.error'))
       }
     })()
   }, [activeRoomId, search, reloadItems])
@@ -156,15 +172,15 @@ export function WarehousePage() {
         const created = await api.createWarehouseRoom({ title })
         await reload()
         setActiveRoomId(created.id)
-        setToast('Помещение создано')
+        setToast(t('warehouse.roomCreated'))
       } else if (activeRoom) {
         await api.patchWarehouseRoom(activeRoom.id, { title })
         await reload()
-        setToast('Название обновлено')
+        setToast(t('warehouse.roomRenamed'))
       }
       setRoomDialog(null)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось сохранить помещение')
+      setErr(e instanceof Error ? e.message : t('warehouse.roomSaveFailed'))
     } finally {
       setRoomBusy(false)
     }
@@ -174,16 +190,16 @@ export function WarehousePage() {
     if (!canEdit || !activeRoom) return
     setRoomMenuOpen(false)
     if (rooms.length <= 1) {
-      setErr('Нельзя удалить единственное помещение')
+      setErr(t('warehouse.roomDeleteOnlyOne'))
       return
     }
-    if (!window.confirm(`Удалить помещение «${activeRoom.title}»?`)) return
+    if (!window.confirm(t('warehouse.roomDeleteConfirm', { title: activeRoom.title }))) return
     try {
       await api.deleteWarehouseRoom(activeRoom.id)
       await reload()
-      setToast('Помещение удалено')
+      setToast(t('warehouse.roomDeleted'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось удалить помещение')
+      setErr(e instanceof Error ? e.message : t('warehouse.roomDeleteFailed'))
     }
   }
 
@@ -191,7 +207,7 @@ export function WarehousePage() {
     if (!canEdit || !activeRoomId) return
     setAddMenuOpen(false)
     setAddPreset(preset)
-    setAddName(preset.name)
+    setAddName(presetLabel(t, preset.key, preset.name))
     setAddTracking(preset.default_tracking === 'unit' ? 'unit' : 'lot')
     setAddQty(1)
     setAddCondition('new')
@@ -222,9 +238,9 @@ export function WarehousePage() {
       setAddOpen(false)
       await reload()
       await reloadItems(activeRoomId, search)
-      setToast('Позиция добавлена на склад')
+      setToast(t('warehouse.itemAdded'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось добавить позицию')
+      setErr(e instanceof Error ? e.message : t('warehouse.itemAddFailed'))
     } finally {
       setAddBusy(false)
     }
@@ -232,14 +248,14 @@ export function WarehousePage() {
 
   const writeOff = async (item: WarehouseStockItem) => {
     if (!canEdit) return
-    if (!window.confirm(`Списать «${item.name}»?`)) return
+    if (!window.confirm(t('warehouse.writeOffConfirm', { name: item.name }))) return
     try {
       await api.writeOffWarehouseItem(item.id)
       if (activeRoomId) await reloadItems(activeRoomId, search)
       await reload()
-      setToast('Позиция списана')
+      setToast(t('warehouse.itemWrittenOff'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка списания')
+      setErr(e instanceof Error ? e.message : t('warehouse.writeOffFailed'))
     }
   }
 
@@ -247,7 +263,7 @@ export function WarehousePage() {
     if (!canEdit) return
     const others = rooms.filter((r) => r.id !== item.room_id)
     if (!others.length) {
-      setErr('Нет другого помещения для перемещения')
+      setErr(t('warehouse.noOtherRoom'))
       return
     }
     setTransferItemId(item.id)
@@ -263,9 +279,9 @@ export function WarehousePage() {
       setTransferItemId(null)
       if (activeRoomId) await reloadItems(activeRoomId, search)
       await reload()
-      setToast('Позиция перемещена')
+      setToast(t('warehouse.itemMoved'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка перемещения')
+      setErr(e instanceof Error ? e.message : t('warehouse.transferFailed'))
     } finally {
       setTransferBusy(false)
     }
@@ -273,14 +289,14 @@ export function WarehousePage() {
 
   const deleteItem = async (item: WarehouseStockItem) => {
     if (!canEdit) return
-    if (!window.confirm(`Удалить запись «${item.name}» безвозвратно?`)) return
+    if (!window.confirm(t('warehouse.deleteConfirm', { name: item.name }))) return
     try {
       await api.deleteWarehouseItem(item.id)
       if (activeRoomId) await reloadItems(activeRoomId, search)
       await reload()
-      setToast('Запись удалена')
+      setToast(t('warehouse.itemDeleted'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка удаления')
+      setErr(e instanceof Error ? e.message : t('warehouse.deleteFailed'))
     }
   }
 
@@ -292,15 +308,15 @@ export function WarehousePage() {
             <IconWarehouse className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="page-title">Склад</h1>
+            <h1 className="page-title">{t('titles.warehouse')}</h1>
             <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">
-              Учёт свободного оборудования и комплектующих по помещениям.
+              {t('pages.warehouseSubtitle')}
             </p>
           </div>
         </div>
         {!canEdit ? (
           <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs font-medium text-[var(--color-fg-muted)]">
-            Только просмотр
+            {t('warehouse.viewOnly')}
           </span>
         ) : null}
       </div>
@@ -313,7 +329,7 @@ export function WarehousePage() {
           <div className="app-panel-sm">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
-                Помещения
+                {t('warehouse.rooms')}
               </span>
               {canEdit ? (
                 <div className="relative">
@@ -332,10 +348,13 @@ export function WarehousePage() {
                         className="block w-full px-3 py-2 text-left text-sm text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
                         onClick={() => {
                           setRoomMenuOpen(false)
-                          setRoomDialog({ mode: 'create', title: `Склад ${rooms.length + 1}` })
+                          setRoomDialog({
+                            mode: 'create',
+                            title: t('warehouse.roomDefaultName', { n: rooms.length + 1 }),
+                          })
                         }}
                       >
-                        + Создать
+                        + {t('warehouse.create')}
                       </button>
                       <button
                         type="button"
@@ -347,7 +366,7 @@ export function WarehousePage() {
                         }}
                         disabled={!activeRoom}
                       >
-                        Переименовать
+                        {t('warehouse.rename')}
                       </button>
                       <button
                         type="button"
@@ -355,7 +374,7 @@ export function WarehousePage() {
                         onClick={() => void deleteRoom()}
                         disabled={!activeRoom}
                       >
-                        Удалить
+                        {t('common.delete')}
                       </button>
                     </div>
                   ) : null}
@@ -392,10 +411,15 @@ export function WarehousePage() {
             {canEdit ? (
               <button
                 type="button"
-                onClick={() => setRoomDialog({ mode: 'create', title: `Склад ${rooms.length + 1}` })}
+                onClick={() =>
+                  setRoomDialog({
+                    mode: 'create',
+                    title: t('warehouse.roomDefaultName', { n: rooms.length + 1 }),
+                  })
+                }
                 className="mt-2 w-full rounded-xl border border-dashed border-[var(--color-border)] px-3 py-2 text-sm font-medium text-[var(--color-fg-muted)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
               >
-                + Помещение
+                {t('warehouse.addRoom')}
               </button>
             ) : null}
           </div>
@@ -406,9 +430,9 @@ export function WarehousePage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск: название, код СК-, партия…"
+              placeholder={t('warehouse.searchPlaceholder')}
               className="app-input min-w-[12rem] flex-1"
-              aria-label="Поиск по складу"
+              aria-label={t('warehouse.searchAria')}
             />
             {canEdit && activeRoomId ? (
               <div className="relative">
@@ -418,14 +442,14 @@ export function WarehousePage() {
                   onClick={() => setAddMenuOpen((v) => !v)}
                   aria-expanded={addMenuOpen}
                 >
-                  + Добавить
+                  {t('warehouse.addButton')}
                 </button>
                 {addMenuOpen ? (
                   <div className="absolute right-0 z-30 mt-1 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-xl">
                     {[...presetsByGroup.entries()].map(([group, list]) => (
                       <div key={group} className="mb-2 last:mb-0">
                         <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
-                          {GROUP_LABELS[group] ?? group}
+                          {t(`warehouse.groups.${group as 'components' | 'network' | 'other'}`)}
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {list.map((p) => (
@@ -435,7 +459,7 @@ export function WarehousePage() {
                               onClick={() => openAdd(p)}
                               className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
                             >
-                              {p.name}
+                              {presetLabel(t, p.key, p.name)}
                             </button>
                           ))}
                         </div>
@@ -455,22 +479,24 @@ export function WarehousePage() {
 
           <div className="app-card overflow-hidden !p-0">
             {loading ? (
-              <div className="px-4 py-10 text-center text-sm text-[var(--color-fg-subtle)]">Загрузка…</div>
+              <div className="px-4 py-10 text-center text-sm text-[var(--color-fg-subtle)]">
+                {t('warehouse.loadingItems')}
+              </div>
             ) : items.length === 0 ? (
               <div className="app-empty-state !rounded-none border-0">
-                {activeRoom ? 'На складе пока нет позиций' : 'Выберите помещение'}
+                {activeRoom ? t('warehouse.emptyRoom') : t('warehouse.selectRoom')}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="app-table min-w-[640px]">
                   <thead className="app-table-head">
                     <tr>
-                      <th className="px-3 py-2.5">Тип / название</th>
-                      <th className="px-3 py-2.5">Код</th>
-                      <th className="px-3 py-2.5">Кол-во</th>
-                      <th className="px-3 py-2.5">Состояние</th>
-                      <th className="px-3 py-2.5">Обновлено</th>
-                      {canEdit ? <th className="px-3 py-2.5 text-right">Действия</th> : null}
+                      <th className="px-3 py-2.5">{t('warehouse.columns.typeName')}</th>
+                      <th className="px-3 py-2.5">{t('warehouse.columns.code')}</th>
+                      <th className="px-3 py-2.5">{t('warehouse.columns.quantity')}</th>
+                      <th className="px-3 py-2.5">{t('warehouse.columns.condition')}</th>
+                      <th className="px-3 py-2.5">{t('warehouse.columns.updated')}</th>
+                      {canEdit ? <th className="px-3 py-2.5 text-right">{t('warehouse.columns.actions')}</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -479,11 +505,11 @@ export function WarehousePage() {
                         <td className="app-table-cell align-top">
                           <div className="font-medium">{item.name}</div>
                           <div className="text-xs text-[var(--color-fg-subtle)]">
-                            {item.preset_name ?? item.preset_key}
+                            {presetLabel(t, item.preset_key, item.preset_name)}
                           </div>
                           {item.batch_label ? (
                             <div className="mt-0.5 text-xs text-[var(--color-fg-subtle)]">
-                              Партия: {item.batch_label}
+                              {t('warehouse.batch', { label: item.batch_label })}
                             </div>
                           ) : null}
                           {item.notes ? (
@@ -494,13 +520,15 @@ export function WarehousePage() {
                           {item.internal_code ?? '—'}
                         </td>
                         <td className="app-table-cell align-top">
-                          {item.tracking_mode === 'lot' ? `${item.quantity_available} шт` : '1 шт'}
+                          {item.tracking_mode === 'lot'
+                            ? t('warehouse.quantityMany', { n: item.quantity_available })
+                            : t('warehouse.quantityOne')}
                         </td>
                         <td className="app-table-cell align-top text-xs">
-                          {CONDITION_LABELS[item.condition] ?? item.condition}
+                          {t(`warehouse.conditions.${item.condition as 'new' | 'used' | 'defective'}`)}
                         </td>
                         <td className="app-table-cell align-top text-xs text-[var(--color-fg-subtle)]">
-                          {fmtWhen(item.updated_at)}
+                          {fmtWhen(item.updated_at, locale)}
                         </td>
                         {canEdit ? (
                           <td className="app-table-cell align-top text-right">
@@ -508,7 +536,7 @@ export function WarehousePage() {
                               {rooms.length > 1 ? (
                                 <button
                                   type="button"
-                                  title="Переместить"
+                                  title={t('warehouse.moveTitle')}
                                   className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
                                   onClick={() => openTransfer(item)}
                                 >
@@ -517,15 +545,15 @@ export function WarehousePage() {
                               ) : null}
                               <button
                                 type="button"
-                                title="Списать"
+                                title={t('warehouse.writeOff')}
                                 className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-warning-fg)] hover:bg-[var(--color-warning-bg)]"
                                 onClick={() => void writeOff(item)}
                               >
-                                Списать
+                                {t('warehouse.writeOff')}
                               </button>
                               <button
                                 type="button"
-                                title="Удалить запись"
+                                title={t('warehouse.deleteRecord')}
                                 className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-primary-muted)] hover:text-[var(--color-primary)]"
                                 onClick={() => void deleteItem(item)}
                               >
@@ -549,7 +577,9 @@ export function WarehousePage() {
           <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
             <div className="mb-3 flex items-start justify-between gap-2">
               <h2 className="text-lg font-semibold text-[var(--color-fg)]">
-                {roomDialog.mode === 'create' ? 'Новое помещение' : 'Переименовать помещение'}
+                {roomDialog.mode === 'create'
+                  ? t('warehouse.roomDialogCreate')
+                  : t('warehouse.roomDialogRename')}
               </h2>
               <button
                 type="button"
@@ -560,7 +590,7 @@ export function WarehousePage() {
               </button>
             </div>
             <label className="block">
-              <span className="app-label">Название</span>
+              <span className="app-label">{t('warehouse.roomName')}</span>
               <input
                 value={roomDialog.title}
                 onChange={(e) => setRoomDialog((d) => (d ? { ...d, title: e.target.value } : d))}
@@ -576,7 +606,7 @@ export function WarehousePage() {
             </label>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setRoomDialog(null)}>
-                Отмена
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -584,7 +614,7 @@ export function WarehousePage() {
                 className="app-btn app-btn-primary"
                 onClick={() => void submitRoomDialog()}
               >
-                {roomBusy ? 'Сохранение…' : 'Сохранить'}
+                {roomBusy ? t('warehouse.saving') : t('common.save')}
               </button>
             </div>
           </div>
@@ -596,7 +626,7 @@ export function WarehousePage() {
           <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <h2 className="text-lg font-semibold text-[var(--color-fg)]">Переместить</h2>
+                <h2 className="text-lg font-semibold text-[var(--color-fg)]">{t('warehouse.moveTitle')}</h2>
                 <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">{transferTarget.name}</p>
               </div>
               <button
@@ -608,7 +638,7 @@ export function WarehousePage() {
               </button>
             </div>
             <label className="block">
-              <span className="app-label">Куда</span>
+              <span className="app-label">{t('warehouse.transferTo')}</span>
               <select
                 value={transferToId ?? ''}
                 onChange={(e) => setTransferToId(Number(e.target.value))}
@@ -623,7 +653,7 @@ export function WarehousePage() {
             </label>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setTransferItemId(null)}>
-                Отмена
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -631,7 +661,7 @@ export function WarehousePage() {
                 className="app-btn app-btn-primary"
                 onClick={() => void submitTransfer()}
               >
-                {transferBusy ? 'Перемещение…' : 'Переместить'}
+                {transferBusy ? t('warehouse.moving') : t('warehouse.moveTitle')}
               </button>
             </div>
           </div>
@@ -643,7 +673,9 @@ export function WarehousePage() {
           <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <h2 className="text-lg font-semibold text-[var(--color-fg)]">Добавить: {addPreset.name}</h2>
+                <h2 className="text-lg font-semibold text-[var(--color-fg)]">
+                  {t('warehouse.addDialogTitle', { name: presetLabel(t, addPreset.key, addPreset.name) })}
+                </h2>
                 <p className="text-xs text-[var(--color-fg-subtle)]">{activeRoom?.title}</p>
               </div>
               <button
@@ -656,29 +688,29 @@ export function WarehousePage() {
             </div>
             <div className="space-y-3">
               <label className="block">
-                <span className="app-label">Название / модель</span>
+                <span className="app-label">{t('warehouse.addName')}</span>
                 <input
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
                   className="app-input"
-                  placeholder="Например: DDR4 16GB Kingston"
+                  placeholder={t('warehouse.addNamePlaceholder')}
                 />
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="block">
-                  <span className="app-label">Учёт</span>
+                  <span className="app-label">{t('warehouse.tracking')}</span>
                   <select
                     value={addTracking}
                     onChange={(e) => setAddTracking(e.target.value as 'unit' | 'lot')}
                     className="app-input"
                   >
-                    <option value="lot">Партия (кол-во)</option>
-                    <option value="unit">Поштучно (СК-код)</option>
+                    <option value="lot">{t('warehouse.trackingLot')}</option>
+                    <option value="unit">{t('warehouse.trackingUnit')}</option>
                   </select>
                 </label>
                 {addTracking === 'lot' ? (
                   <label className="block">
-                    <span className="app-label">Количество</span>
+                    <span className="app-label">{t('warehouse.quantityLabel')}</span>
                     <input
                       type="number"
                       min={1}
@@ -696,25 +728,25 @@ export function WarehousePage() {
                       onChange={(e) => setAddAutoCode(e.target.checked)}
                       className="rounded border-[var(--color-border)]"
                     />
-                    <span className="text-xs text-[var(--color-fg-muted)]">Авто-код СК-0001</span>
+                    <span className="text-xs text-[var(--color-fg-muted)]">{t('warehouse.autoCode')}</span>
                   </label>
                 )}
               </div>
               <label className="block">
-                <span className="app-label">Состояние</span>
+                <span className="app-label">{t('warehouse.conditionLabel')}</span>
                 <select
                   value={addCondition}
                   onChange={(e) => setAddCondition(e.target.value as 'new' | 'used' | 'defective')}
                   className="app-input"
                 >
-                  <option value="new">Новое</option>
-                  <option value="used">Б/у</option>
-                  <option value="defective">Брак</option>
+                  <option value="new">{t('warehouse.conditions.new')}</option>
+                  <option value="used">{t('warehouse.conditions.used')}</option>
+                  <option value="defective">{t('warehouse.conditions.defective')}</option>
                 </select>
               </label>
               {addTracking === 'lot' ? (
                 <label className="block">
-                  <span className="app-label">Партия (необяз.)</span>
+                  <span className="app-label">{t('warehouse.batchOptional')}</span>
                   <input
                     value={addBatch}
                     onChange={(e) => setAddBatch(e.target.value)}
@@ -724,7 +756,7 @@ export function WarehousePage() {
                 </label>
               ) : null}
               <label className="block">
-                <span className="app-label">Примечание</span>
+                <span className="app-label">{t('warehouse.note')}</span>
                 <textarea
                   value={addNotes}
                   onChange={(e) => setAddNotes(e.target.value)}
@@ -735,7 +767,7 @@ export function WarehousePage() {
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setAddOpen(false)}>
-                Отмена
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -743,7 +775,7 @@ export function WarehousePage() {
                 className="app-btn app-btn-primary"
                 onClick={() => void submitAdd()}
               >
-                {addBusy ? 'Сохранение…' : 'Добавить на склад'}
+                {addBusy ? t('warehouse.saving') : t('warehouse.addToWarehouse')}
               </button>
             </div>
           </div>

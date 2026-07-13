@@ -11,12 +11,12 @@ from app.models import PrinterPollConfig
 @dataclass
 class EffectivePrinterPollConfig:
     poll_enabled: bool = True
-    poll_interval_minutes: int = 30
+    poll_interval_minutes: int = 60
     snmp_enabled: bool = True
     snmp_community: str = "public"
-    snmp_timeout_seconds: float = 5.0
+    snmp_timeout_seconds: float = 3.5
     ping_timeout_ms: int = 1200
-    poll_concurrency: int = 6
+    poll_concurrency: int = 10
     last_run_at: object | None = None
     last_run_summary_json: str | None = None
 
@@ -42,9 +42,9 @@ async def get_effective_printer_poll_config(db: AsyncSession) -> EffectivePrinte
         poll_interval_minutes=_clamp_int(row.poll_interval_minutes, 1, 24 * 60),
         snmp_enabled=bool(row.snmp_enabled),
         snmp_community=(row.snmp_community or "public").strip() or "public",
-        snmp_timeout_seconds=max(1.0, min(float(row.snmp_timeout_seconds or 5.0), 60.0)),
+        snmp_timeout_seconds=max(1.0, min(float(row.snmp_timeout_seconds or 3.5), 60.0)),
         ping_timeout_ms=_clamp_int(row.ping_timeout_ms, 300, 10000),
-        poll_concurrency=_clamp_int(row.poll_concurrency, 1, 32),
+        poll_concurrency=_clamp_int(row.poll_concurrency or 10, 1, 32),
         last_run_at=row.last_run_at,
         last_run_summary_json=row.last_run_summary_json,
     )

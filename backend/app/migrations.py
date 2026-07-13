@@ -158,6 +158,24 @@ def _migrate_users_columns(sync_conn) -> None:
     )
 
 
+def _migrate_users_avatar_columns(sync_conn) -> None:
+    cols = _column_names(sync_conn, "users")
+    patch_sql = {
+        "avatar_emoji": "ALTER TABLE users ADD COLUMN avatar_emoji VARCHAR(32)",
+        "avatar_bg": "ALTER TABLE users ADD COLUMN avatar_bg VARCHAR(16)",
+        "avatar_data": "ALTER TABLE users ADD COLUMN avatar_data TEXT",
+    }
+    for key, sql in patch_sql.items():
+        if key not in cols:
+            sync_conn.execute(text(sql))
+
+
+def _migrate_users_avatar_data(sync_conn) -> None:
+    cols = _column_names(sync_conn, "users")
+    if "avatar_data" not in cols:
+        sync_conn.execute(text("ALTER TABLE users ADD COLUMN avatar_data TEXT"))
+
+
 def _migrate_monitors_table(sync_conn) -> None:
     if "monitors" in _table_names(sync_conn):
         return
@@ -472,6 +490,8 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-05-26_service_request_categories_tree", _migrate_service_request_categories_tree),
     ("2026-05-27_service_request_ticket_no", _migrate_service_request_ticket_no),
     ("2026-06-15_purge_orphan_computer_children", _migrate_purge_orphan_computer_children),
+    ("2026-07-13_users_avatar", _migrate_users_avatar_columns),
+    ("2026-07-13_users_avatar_data", _migrate_users_avatar_data),
 ]
 
 

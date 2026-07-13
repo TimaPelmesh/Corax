@@ -14,16 +14,40 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+_AVATAR_DATA_RE = re.compile(
+    r"^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$",
+    re.IGNORECASE,
+)
+_AVATAR_DATA_MAX_LEN = 350_000
+
+
 class UserBase(BaseModel):
     username: str = Field(min_length=2, max_length=64)
     email: str | None = None
     full_name: str | None = None
+    avatar_data: str | None = None
 
 
 class UserProfilePatch(BaseModel):
     username: str | None = Field(default=None, min_length=2, max_length=64)
     full_name: str | None = None
     email: str | None = None
+    avatar_data: str | None = None
+
+    @field_validator("avatar_data")
+    @classmethod
+    def _avatar_data(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = v.strip()
+        if not s:
+            return None
+        if len(s) > _AVATAR_DATA_MAX_LEN:
+            raise ValueError("avatar_data too large")
+        compact = re.sub(r"\s+", "", s)
+        if not _AVATAR_DATA_RE.match(compact):
+            raise ValueError("avatar_data must be a JPEG/PNG/WebP data URL")
+        return compact
 
 
 class UserServiceAccountPatch(UserProfilePatch):

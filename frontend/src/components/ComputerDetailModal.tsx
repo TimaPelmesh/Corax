@@ -4,21 +4,9 @@ import { Link } from 'react-router-dom'
 import { api, type AssetChangeLog, type ComputerDetail, type TagBrief } from '../api'
 import { useAuth } from '../AuthContext'
 import { parseAgentExtras } from '../computerAgentExtras'
+import { useLocale, useT } from '../i18n/LocaleContext'
 import { groupPeripheralsForDisplay } from '../peripheralDisplay'
 import { IconClose } from './icons'
-
-const KIND_RU: Record<string, string> = {
-  keyboard: 'Клавиатура',
-  mouse: 'Мышь',
-  monitor: 'Монитор',
-  camera: 'Камера',
-  audio: 'Аудио',
-  printer: 'Принтер',
-  biometric: 'Биометрия',
-  bluetooth: 'Bluetooth',
-  touchpad: 'Тачпад',
-  net: 'Сеть',
-}
 
 export function tagPillProps(t: TagBrief): { className: string; style?: CSSProperties } {
   const c = t.color
@@ -34,19 +22,24 @@ export function tagPillProps(t: TagBrief): { className: string; style?: CSSPrope
   }
 }
 
-export function fmtDate(iso: string | null) {
+export function fmtDate(iso: string | null, locale: 'ru' | 'en') {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('ru-RU')
+    return new Date(iso).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU')
   } catch {
     return iso
   }
 }
 
-function describeChange(h: AssetChangeLog): string {
-  const src = h.source === 'agent' ? 'агент' : 'панель'
+function describeChange(h: AssetChangeLog, t: ReturnType<typeof useT>): string {
+  const src = h.source === 'agent' ? t('computerDetail.agentSource') : t('computerDetail.panelSource')
   if (h.kind === 'field' && h.field_key) {
-    return `${h.field_key}: ${h.old_value ?? '—'} → ${h.new_value ?? '—'} (${src})`
+    return t('computerDetail.fieldChange', {
+      field: h.field_key,
+      old: h.old_value ?? '—',
+      new: h.new_value ?? '—',
+      source: src,
+    })
   }
   if (h.kind === 'software_list' && h.payload_json) {
     try {
@@ -56,9 +49,15 @@ function describeChange(h: AssetChangeLog): string {
         previous_count?: number
         new_count?: number
       }
-      return `ПО: +${p.added_total ?? 0} / −${p.removed_total ?? 0} (всего ${p.previous_count ?? '?'} → ${p.new_count ?? '?'}) (${src})`
+      return t('computerDetail.softwareChange', {
+        added: p.added_total ?? 0,
+        removed: p.removed_total ?? 0,
+        prev: p.previous_count ?? '?',
+        next: p.new_count ?? '?',
+        source: src,
+      })
     } catch {
-      return `ПО: изменения (${src})`
+      return t('computerDetail.softwareChanged', { source: src })
     }
   }
   if (h.kind === 'peripheral_list' && h.payload_json) {
@@ -67,13 +66,17 @@ function describeChange(h: AssetChangeLog): string {
         added_total?: number
         removed_total?: number
       }
-      return `Периферия: +${p.added_total ?? 0} / −${p.removed_total ?? 0} (${src})`
+      return t('computerDetail.peripheralsChange', {
+        added: p.added_total ?? 0,
+        removed: p.removed_total ?? 0,
+        source: src,
+      })
     } catch {
-      return `Периферия: изменения (${src})`
+      return t('computerDetail.peripheralsChanged', { source: src })
     }
   }
   if (h.kind === 'meta' && h.field_key === 'tags' && h.payload_json) {
-    return `Теги обновлены (${src})`
+    return t('computerDetail.tagsUpdated', { source: src })
   }
   return `${h.kind} (${src})`
 }
@@ -91,6 +94,8 @@ export function ComputerDetailModal({
   onChanged,
   overlayZClass = 'z-50',
 }: Props) {
+  const t = useT()
+  const { locale } = useLocale()
   const { user } = useAuth()
   const [detail, setDetail] = useState<ComputerDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -126,7 +131,7 @@ export function ComputerDetailModal({
         setHistoryRows(hist)
       })
       .catch((e: unknown) => {
-        if (!cancelled) setErr(e instanceof Error ? e.message : 'Ошибка')
+        if (!cancelled) setErr(e instanceof Error ? e.message : t('common.error'))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -134,7 +139,7 @@ export function ComputerDetailModal({
     return () => {
       cancelled = true
     }
-  }, [computerId])
+  }, [computerId, t])
 
   useEffect(() => {
     void api
@@ -185,11 +190,11 @@ export function ComputerDetailModal({
   const saveMeta = useCallback(async () => {
     if (!detail || !user?.is_superuser) return
     setErr(null)
-    const t = assignUserId.trim()
+    const userIdText = assignUserId.trim()
     let assigned: number | undefined
-    if (t === '') assigned = 0
+    if (userIdText === '') assigned = 0
     else {
-      const n = Number.parseInt(t, 10)
+      const n = Number.parseInt(userIdText, 10)
       assigned = Number.isFinite(n) ? n : 0
     }
     try {
@@ -202,7 +207,7 @@ export function ComputerDetailModal({
       onChanged?.()
       onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось сохранить')
+      setErr(e instanceof Error ? e.message : t('computerDetail.saveFailed'))
     }
   }, [
     detail,
@@ -213,13 +218,14 @@ export function ComputerDetailModal({
     selectedTagIds,
     onChanged,
     onClose,
+    t,
   ])
 
   const deletePc = useCallback(async () => {
     if (!detail || !user?.is_superuser) return
     if (
       !confirm(
-        `Удалить «${detail.hostname}» из базы вместе с ПО и периферией? Действие необратимо.`,
+        t('computerDetail.deleteConfirm', { hostname: detail.hostname }),
       )
     ) {
       return
@@ -230,9 +236,9 @@ export function ComputerDetailModal({
       onChanged?.()
       onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось удалить')
+      setErr(e instanceof Error ? e.message : t('computerDetail.deleteFailed'))
     }
-  }, [detail, user?.is_superuser, onChanged, onClose])
+  }, [detail, user?.is_superuser, onChanged, onClose, t])
 
   if (!computerId) return null
 
@@ -248,12 +254,12 @@ export function ComputerDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         {loading && !detail ? (
-          <div className="py-12 text-center text-slate-500">Загрузка…</div>
+          <div className="py-12 text-center text-slate-500">{t('computerDetail.loading')}</div>
         ) : err && !detail ? (
           <div className="py-8">
             <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</p>
             <button type="button" className="app-btn app-btn-secondary mt-4" onClick={onClose}>
-              Закрыть
+              {t('computerDetail.close')}
             </button>
           </div>
         ) : detail ? (
@@ -262,7 +268,7 @@ export function ComputerDetailModal({
               <div className="min-w-0 pr-2">
                 <h2 className="text-xl font-semibold text-slate-900">{detail.hostname}</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {detail.manufacturer} {detail.model} · {detail.serial_number ?? 'нет серийника'}
+                  {detail.manufacturer} {detail.model} · {detail.serial_number ?? t('computerDetail.noSerial')}
                   {detail.location ? ` · ${detail.location}` : ''}
                 </p>
               </div>
@@ -270,7 +276,7 @@ export function ComputerDetailModal({
                 type="button"
                 className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 onClick={onClose}
-                aria-label="Закрыть"
+                aria-label={t('computerDetail.close')}
               >
                 <IconClose className="h-6 w-6" />
               </button>
@@ -285,11 +291,11 @@ export function ComputerDetailModal({
             <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-8">
               <section className="flex min-w-0 flex-col">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  Система и железо
+                  {t('computerDetail.systemAndHardware')}
                 </h3>
                 <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">ОС</dt>
+                    <dt className="text-slate-500">{t('computerDetail.os')}</dt>
                     <dd className="break-words text-slate-900">
                       {detail.os_name ?? '—'}{' '}
                       {detail.os_version ? (
@@ -298,25 +304,25 @@ export function ComputerDetailModal({
                     </dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">Процессор (CPU)</dt>
+                    <dt className="text-slate-500">{t('computerDetail.cpu')}</dt>
                     <dd className="break-words text-slate-900">{detail.cpu ?? '—'}</dd>
                   </div>
                   <div className="min-w-0">
-                    <dt className="text-slate-500">ОЗУ</dt>
+                    <dt className="text-slate-500">{t('computerDetail.ram')}</dt>
                     <dd className="text-slate-900">
                       {detail.ram_gb != null ? (
-                        <span className="font-medium">{Math.round(detail.ram_gb)} ГБ</span>
+                        <span className="font-medium">{t('computerDetail.gb', { n: Math.round(detail.ram_gb) })}</span>
                       ) : (
                         '—'
                       )}
                     </dd>
                   </div>
                   <div className="min-w-0">
-                    <dt className="text-slate-500">Видеокарта (GPU)</dt>
+                    <dt className="text-slate-500">{t('computerDetail.gpu')}</dt>
                     <dd className="break-words text-slate-900">{detail.gpu_name ?? '—'}</dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">Материнская плата</dt>
+                    <dt className="text-slate-500">{t('computerDetail.motherboard')}</dt>
                     <dd className="break-words text-slate-900">
                       {detail.motherboard_product || detail.motherboard_manufacturer ? (
                         <>
@@ -329,36 +335,36 @@ export function ComputerDetailModal({
                     </dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">MAC</dt>
+                    <dt className="text-slate-500">{t('computerDetail.mac')}</dt>
                     <dd className="font-mono text-slate-700">{detail.mac_primary ?? '—'}</dd>
                   </div>
                   {agentExtras?.primaryUser ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">Пользователь</dt>
+                      <dt className="text-slate-500">{t('computerDetail.user')}</dt>
                       <dd className="break-words text-slate-900">{agentExtras.primaryUser}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.gateways.length ? (
                     <div className="min-w-0">
-                      <dt className="text-slate-500">Шлюз</dt>
+                      <dt className="text-slate-500">{t('computerDetail.gateway')}</dt>
                       <dd className="font-mono text-sm text-slate-800">{agentExtras.gateways.join(', ')}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.dnsV4.length ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">DNS</dt>
+                      <dt className="text-slate-500">{t('computerDetail.dns')}</dt>
                       <dd className="font-mono text-sm text-slate-800">{agentExtras.dnsV4.join(' · ')}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.wifiSsid ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">Wi‑Fi</dt>
+                      <dt className="text-slate-500">{t('computerDetail.wifi')}</dt>
                       <dd className="text-slate-900">{agentExtras.wifiSsid}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.securityHint ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">Безопасность</dt>
+                      <dt className="text-slate-500">{t('computerDetail.security')}</dt>
                       <dd className="text-slate-900">{agentExtras.securityHint}</dd>
                     </div>
                   ) : null}
@@ -366,7 +372,7 @@ export function ComputerDetailModal({
                 {agentExtras && agentExtras.patchIds.length > 0 ? (
                   <div className="mt-4 border-t border-slate-100 pt-3">
                     <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                      Патчи Windows
+                      {t('computerDetail.windowsPatches')}
                       {agentExtras.patchTotal > agentExtras.patchIds.length
                         ? ` · ${agentExtras.patchTotal}`
                         : ''}
@@ -386,7 +392,7 @@ export function ComputerDetailModal({
               </section>
 
               <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-l lg:border-t-0 lg:border-slate-200/80 lg:pl-8 lg:pt-0">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Диски</h3>
+                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('computerDetail.disks')}</h3>
                 {(detail.disks?.length ?? 0) > 0 ? (
                   <div className="mt-2 flex flex-wrap content-start gap-2">
                     {(detail.disks ?? []).map((d, i) => (
@@ -404,11 +410,11 @@ export function ComputerDetailModal({
                         )}
                         <span className="hidden h-3 w-px shrink-0 bg-slate-200 sm:inline" aria-hidden />
                         <span className="text-slate-700">
-                          {d.total_gb != null ? `${d.total_gb.toFixed(1)} ГБ` : '—'}
+                          {d.total_gb != null ? t('computerDetail.gb', { n: d.total_gb.toFixed(1) }) : '—'}
                         </span>
-                        <span className="text-slate-500">своб.</span>
+                        <span className="text-slate-500">{t('computerDetail.free')}</span>
                         <span className="font-mono text-slate-800">
-                          {d.free_gb != null ? `${d.free_gb.toFixed(1)} ГБ` : '—'}
+                          {d.free_gb != null ? t('computerDetail.gb', { n: d.free_gb.toFixed(1) }) : '—'}
                         </span>
                         {d.used_percent != null ? (
                           <span
@@ -430,13 +436,13 @@ export function ComputerDetailModal({
                   </div>
                 ) : (
                   <p className="mt-2 text-sm text-slate-500">
-                    Нет данных по дискам — запустите <code className="text-xs">corax_send.bat</code>.
+                    {t('computerDetail.noDiskData')}
                   </p>
                 )}
                 {agentExtras && agentExtras.physicalDisks.length > 0 ? (
                   <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
                     <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                      Носители
+                      {t('computerDetail.media')}
                     </div>
                     {agentExtras.physicalDisks.map((pd, i) => (
                       <div
@@ -449,12 +455,12 @@ export function ComputerDetailModal({
                             <span className="rounded bg-white px-1.5 py-0.5 ring-1 ring-slate-200">{pd.media}</span>
                           ) : null}
                           {pd.health ? <span>{pd.health}</span> : null}
-                          {pd.sizeGb != null ? <span>{pd.sizeGb} ГБ</span> : null}
+                          {pd.sizeGb != null ? <span>{t('computerDetail.gb', { n: pd.sizeGb })}</span> : null}
                         </div>
                       </div>
                     ))}
                     {agentExtras.batteryPercent != null ? (
-                      <div className="text-xs text-slate-600">Батарея: {agentExtras.batteryPercent}%</div>
+                      <div className="text-xs text-slate-600">{t('computerDetail.battery', { n: agentExtras.batteryPercent })}</div>
                     ) : null}
                   </div>
                 ) : null}
@@ -462,14 +468,14 @@ export function ComputerDetailModal({
             </div>
 
             <div className="mt-6 shrink-0">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Теги</h3>
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('computerDetail.tags')}</h3>
               {user?.is_superuser ? (
                 <div className="mt-2">
                   {allTags.length === 0 ? (
                     <p className="text-sm text-slate-500">
-                      Справочник пуст. Добавьте теги в разделе{' '}
+                      {t('computerDetail.tagsDirectoryEmpty')}{' '}
                       <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2 hover:text-neutral-800">
-                        Теги ПК
+                        {t('computerDetail.tagsPage')}
                       </Link>
                       .
                     </p>
@@ -517,7 +523,7 @@ export function ComputerDetailModal({
             <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:mt-6 lg:grid-cols-2 lg:items-start lg:gap-8">
               <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-t-0 lg:pt-0">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  Версии Office
+                  {t('computerDetail.officeVersions')}
                 </h3>
                 {agentExtras && agentExtras.office.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -532,26 +538,26 @@ export function ComputerDetailModal({
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-500">Нет данных</p>
+                  <p className="mt-2 text-sm text-slate-500">{t('computerDetail.noData')}</p>
                 )}
                 <h3 className="mt-5 shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  Установленное ПО
+                  {t('computerDetail.installedSoftware')}
                 </h3>
                 <input
                   type="search"
-                  placeholder="Поиск в списке ПО…"
+                  placeholder={t('computerDetail.softwareSearch')}
                   value={swFilter}
                   onChange={(e) => setSwFilter(e.target.value)}
                   className="mt-2 w-full shrink-0 rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <p className="mt-1 shrink-0 text-xs text-slate-500">
-                  Показано: {filteredSoftware.length} из {detail.software.length}
+                  {t('computerDetail.shownCount', { shown: filteredSoftware.length, total: detail.software.length })}
                 </p>
                 <ul className="mt-2 max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-slate-200/90 bg-slate-50/80 text-sm ring-1 ring-slate-100/80 sm:min-h-[min(45vh,20rem)]">
                   {detail.software.length === 0 ? (
-                    <li className="px-3 py-4 text-slate-500">Нет записей</li>
+                    <li className="px-3 py-4 text-slate-500">{t('computerDetail.noRecords')}</li>
                   ) : filteredSoftware.length === 0 ? (
-                    <li className="px-3 py-4 text-slate-500">Нет совпадений по поиску</li>
+                    <li className="px-3 py-4 text-slate-500">{t('computerDetail.noSearchMatches')}</li>
                   ) : (
                     filteredSoftware.map((s, i) => (
                       <li
@@ -570,12 +576,12 @@ export function ComputerDetailModal({
 
               <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-t-0 lg:border-l lg:border-slate-200/80 lg:pl-8 lg:pt-0">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  Периферия (PnP)
+                  {t('computerDetail.peripherals')}
                 </h3>
                 <ul className="mt-2 grid max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] grid-cols-2 gap-1.5 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200/70 bg-zinc-50/40 p-2 text-sm sm:min-h-[min(45vh,20rem)]">
                   {!peripheralGroups.length ? (
                     <li className="col-span-2 px-2 py-4 text-slate-500">
-                      Нет данных — запустите <code className="text-xs">corax_send.bat</code>.
+                      {t('computerDetail.noPeripheralData')}
                     </li>
                   ) : (
                     peripheralGroups.flatMap((g) =>
@@ -586,7 +592,7 @@ export function ComputerDetailModal({
                           title={p.name}
                         >
                           <span className="w-1/2 shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
-                            {KIND_RU[g.kind] ?? g.kind}
+                            {t(`computerDetail.kinds.${g.kind as 'keyboard' | 'mouse' | 'monitor' | 'camera' | 'audio' | 'printer' | 'biometric' | 'bluetooth' | 'touchpad' | 'net'}`)}
                           </span>
                           <span className="min-w-0 flex-1 truncate text-xs text-slate-900">{p.name}</span>
                         </li>
@@ -599,22 +605,22 @@ export function ComputerDetailModal({
 
             <div className="mt-6 shrink-0 border-t border-slate-200/80 pt-6">
               <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                История изменений
+                {t('computerDetail.history')}
               </h3>
               {historyRows && historyRows.length > 0 ? (
                 <ul className="mt-2 max-h-48 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200/90 bg-slate-50/80 text-xs text-slate-700">
                   {historyRows.map((h) => (
                     <li key={h.id} className="border-b border-slate-100 px-3 py-2 last:border-0">
-                      <span className="whitespace-nowrap text-slate-500">{fmtDate(h.created_at)}</span>
+                      <span className="whitespace-nowrap text-slate-500">{fmtDate(h.created_at, locale)}</span>
                       <span className="mt-1 block break-words text-slate-800 [overflow-wrap:anywhere] sm:ml-2 sm:mt-0 sm:inline">
-                        {describeChange(h)}
+                        {describeChange(h, t)}
                       </span>
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p className="mt-2 text-sm text-slate-500">
-                  Пока нет записей (появятся после повторной отправки агента или правок в панели).
+                  {t('computerDetail.noHistory')}
                 </p>
               )}
             </div>
@@ -622,20 +628,20 @@ export function ComputerDetailModal({
             {user?.is_superuser && (
               <div className="mt-6 border-t border-slate-200 pt-4">
                 <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  Локация и закрепление
+                  {t('computerDetail.locationAssignment')}
                 </h3>
                 <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-12 lg:gap-x-3 lg:gap-y-2">
                   <div className="sm:col-span-1 lg:col-span-5">
-                    <label className="text-xs font-medium text-slate-500">Локация / помещение</label>
+                    <label className="text-xs font-medium text-slate-500">{t('computerDetail.locationRoom')}</label>
                     <input
                       className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                       value={locationDraft}
                       onChange={(e) => setLocationDraft(e.target.value)}
-                      placeholder="офис 3, этаж 2"
+                      placeholder={t('computerDetail.locationPlaceholder')}
                     />
                   </div>
                   <div className="sm:col-span-1 lg:col-span-3">
-                    <label className="text-xs font-medium text-slate-500">ID пользователя (0 — снять)</label>
+                    <label className="text-xs font-medium text-slate-500">{t('computerDetail.userId')}</label>
                     <input
                       className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 font-mono text-sm transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                       value={assignUserId}
@@ -644,7 +650,7 @@ export function ComputerDetailModal({
                     />
                   </div>
                   <div className="sm:col-span-2 lg:col-span-4">
-                    <label className="text-xs font-medium text-slate-500">Заметка</label>
+                    <label className="text-xs font-medium text-slate-500">{t('computerDetail.note')}</label>
                     <textarea
                       className="mt-1 w-full resize-y rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                       rows={2}
@@ -658,7 +664,7 @@ export function ComputerDetailModal({
                   onClick={() => void saveMeta()}
                   className="app-btn app-btn-primary mt-3"
                 >
-                  Сохранить
+                  {t('computerDetail.save')}
                 </button>
               </div>
             )}
@@ -670,9 +676,9 @@ export function ComputerDetailModal({
                   onClick={() => void deletePc()}
                   className="app-btn app-btn-danger w-full sm:w-auto"
                 >
-                  Удалить ПК из базы
+                  {t('computerDetail.deletePc')}
                 </button>
-                <p className="mt-2 text-xs text-slate-500">Удаляет машину вместе с ПО, периферией и историей. Необратимо.</p>
+                <p className="mt-2 text-xs text-slate-500">{t('computerDetail.deletePcHint')}</p>
               </div>
             )}
           </>

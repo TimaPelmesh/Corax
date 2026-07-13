@@ -1,16 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CatalogKind, type SoftwareCatalogRow } from '../api'
 import { IconSoftware } from '../components/icons'
-
-const CATALOG_SECTIONS: Array<{ kind: CatalogKind; label: string }> = [
-  { kind: 'software', label: 'ПО' },
-  { kind: 'peripheral', label: 'Устройства' },
-  { kind: 'cpu', label: 'Процессоры' },
-  { kind: 'os', label: 'ОС' },
-  { kind: 'manufacturer', label: 'Производители' },
-]
+import { useT } from '../i18n/LocaleContext'
 
 export function SoftwarePage() {
+  const t = useT()
   const [kind, setKind] = useState<CatalogKind>('software')
   const [query, setQuery] = useState('')
   const [rows, setRows] = useState<SoftwareCatalogRow[]>([])
@@ -22,17 +16,28 @@ export function SoftwarePage() {
   const hostsPanelRef = useRef<HTMLDivElement>(null)
   const hostsListRef = useRef<HTMLUListElement>(null)
 
+  const catalogSections = useMemo<Array<{ kind: CatalogKind; label: string }>>(
+    () => [
+      { kind: 'software', label: t('software.kinds.software') },
+      { kind: 'peripheral', label: t('software.kinds.peripheral') },
+      { kind: 'cpu', label: t('software.kinds.cpu') },
+      { kind: 'os', label: t('software.kinds.os') },
+      { kind: 'manufacturer', label: t('software.kinds.manufacturer') },
+    ],
+    [t],
+  )
+
   const load = useCallback(async (nextKind: CatalogKind, q: string) => {
     setErr(null)
     setLoading(true)
     try {
       setRows(await api.catalog(nextKind, q.trim() || undefined))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -55,7 +60,7 @@ export function SoftwarePage() {
       const r = await api.catalogHosts(kind, name)
       setHosts(r.hostnames)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('common.error'))
       setHosts([])
     } finally {
       setHostsLoading(false)
@@ -76,7 +81,7 @@ export function SoftwarePage() {
         <div className="page-hero-icon shrink-0">
           <IconSoftware className="h-6 w-6" />
         </div>
-        <h1 className="page-title">Каталог</h1>
+        <h1 className="page-title">{t('titles.software')}</h1>
       </div>
 
       {err && (
@@ -87,7 +92,7 @@ export function SoftwarePage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-2">
-          {CATALOG_SECTIONS.map((s) => (
+          {catalogSections.map((s) => (
             <button
               key={s.kind}
               type="button"
@@ -99,17 +104,17 @@ export function SoftwarePage() {
           ))}
         </div>
         <label className="sr-only" htmlFor="sw-search">
-          Поиск
+          {t('common.search')}
         </label>
         <input
           id="sw-search"
           type="search"
-          placeholder="Начните вводить для фильтра…"
+          placeholder={t('software.searchPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="app-input app-input--lg min-w-[min(100%,24rem)] flex-1"
         />
-        {loading ? <span className="text-sm text-[var(--color-fg-subtle)]">Обновление…</span> : null}
+        {loading ? <span className="text-sm text-[var(--color-fg-subtle)]">{t('software.refreshing')}</span> : null}
       </div>
 
       <div className="grid items-start gap-6 lg:grid-cols-5">
@@ -118,15 +123,15 @@ export function SoftwarePage() {
             <table className="app-table min-w-[min(100%,20rem)]">
               <thead className="app-table-head !text-[10px]">
                 <tr>
-                  <th className="px-4 py-2.5">Название</th>
-                  <th className="px-4 py-2.5 text-right">ПК</th>
+                  <th className="px-4 py-2.5">{t('software.columns.name')}</th>
+                  <th className="px-4 py-2.5 text-right">{t('software.columns.pcs')}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 && !loading ? (
                   <tr>
                     <td colSpan={2} className="app-table-cell py-12 text-center app-table-cell-muted">
-                      Ничего не найдено. Уточните запрос или отправьте отчёты агента.
+                      {t('software.empty')}
                     </td>
                   </tr>
                 ) : (
@@ -155,25 +160,27 @@ export function SoftwarePage() {
           ref={hostsPanelRef}
           className="app-panel lg:col-span-2 lg:sticky lg:top-4 lg:z-10 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain"
         >
-          <h2 className="app-side-panel-title">У кого установлено</h2>
+          <h2 className="app-side-panel-title">{t('software.installedOnTitle')}</h2>
           {!selected ? (
-            <p className="app-side-panel-muted mt-4">Выберите строку в таблице слева.</p>
+            <p className="app-side-panel-muted mt-4">{t('software.selectRowHint')}</p>
           ) : hostsLoading ? (
-            <p className="app-side-panel-muted mt-4">Загрузка списка ПК…</p>
+            <p className="app-side-panel-muted mt-4">{t('software.loadingHosts')}</p>
           ) : hosts && hosts.length ? (
             <>
               <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
-                Точное имя пакета: <span className="font-medium text-[var(--color-fg)]">{selected}</span>
+                {t('software.exactPackageName')} <span className="font-medium text-[var(--color-fg)]">{selected}</span>
               </p>
               <ul ref={hostsListRef} className="app-host-list space-y-1">
                 {hosts.map((h) => (
                   <li key={h}>{h}</li>
                 ))}
               </ul>
-              <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">Всего: {hosts.length}</p>
+              <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
+                {t('common.total')}: {hosts.length}
+              </p>
             </>
           ) : (
-            <p className="app-side-panel-muted mt-4">Нет данных по выбранному названию.</p>
+            <p className="app-side-panel-muted mt-4">{t('software.noDataForSelection')}</p>
           )}
         </div>
       </div>

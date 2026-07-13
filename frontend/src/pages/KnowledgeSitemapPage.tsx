@@ -20,6 +20,7 @@ import {
   serializePlacePhotos,
 } from '../floorPlacePhotos'
 import { IconClose, IconGraph } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
 type ViewBox = { x: number; y: number; w: number; h: number }
 
@@ -581,6 +582,7 @@ function EquipmentMenuIcon({ kind }: { kind: FloorIconKind }) {
 }
 
 export function KnowledgeSitemapPage() {
+  const t = useT()
   const { user } = useAuth()
   const canEdit = !!user && (user.is_superuser || user.role === 'editor')
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -1598,9 +1600,9 @@ export function KnowledgeSitemapPage() {
           <IconGraph className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="page-title">Карта здания</h1>
+          <h1 className="page-title">{t('titles.sitemap')}</h1>
           <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">
-            Схема этажа: загрузите PNG-фон → разместите оборудование → настройте свойства справа → экспортируйте карту.
+            {t('pages.sitemapSubtitle')}
           </p>
         </div>
       </div>

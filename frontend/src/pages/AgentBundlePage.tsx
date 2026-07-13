@@ -4,23 +4,24 @@ import { Link } from 'react-router-dom'
 import { api, type AgentBundleProfile, type AgentBundleTarget } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
-const MODULE_LABELS: Record<string, string> = {
-  patches: 'Патчи Windows (KB)',
-  network: 'Сеть: IP, DNS, шлюзы, Wi‑Fi',
-  domain_sessions: 'Пользователь и сессии',
-  bitlocker: 'BitLocker',
-  tpm_secureboot: 'TPM и Secure Boot',
-  antivirus: 'Антивирус / фаервол (WMI)',
-  startup: 'Автозагрузка',
-  services: 'Службы Windows',
-  storage_health: 'Физические диски / health',
-  battery: 'Батарея ноутбука',
-  windows_features: 'Компоненты Windows (optional features)',
-  office: 'Microsoft Office',
-  usb_history: 'История USB (реестр)',
-  docker_wsl: 'Docker, WSL, Hyper-V',
-}
+const MODULE_KEYS = [
+  'patches',
+  'network',
+  'domain_sessions',
+  'bitlocker',
+  'tpm_secureboot',
+  'antivirus',
+  'startup',
+  'services',
+  'storage_health',
+  'battery',
+  'windows_features',
+  'office',
+  'usb_history',
+  'docker_wsl',
+] as const
 
 const DEFAULT_PORT = '3001'
 
@@ -32,6 +33,7 @@ function buildServerUrl(host: string, port: string): string {
 }
 
 export function AgentBundlePage() {
+  const t = useT()
   const { user, loading: authLoading } = useAuth()
   const [serverHost, setServerHost] = useState('')
   const [lanCandidates, setLanCandidates] = useState<string[]>([])
@@ -44,7 +46,7 @@ export function AgentBundlePage() {
   const [scheduleMode, setScheduleMode] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('WEEKLY')
   const [scheduleTime, setScheduleTime] = useState('09:00')
   const [modules, setModules] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(Object.keys(MODULE_LABELS).map((k) => [k, true])),
+    Object.fromEntries(MODULE_KEYS.map((k) => [k, true])),
   )
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -67,7 +69,7 @@ export function AgentBundlePage() {
       })
       .catch((ex) => {
         if (cancelled) return
-        setErr(ex instanceof Error ? ex.message : 'Не удалось определить LAN IP сервера')
+        setErr(ex instanceof Error ? ex.message : t('agentBundle.lanDetectFailed'))
       })
       .finally(() => {
         if (!cancelled) setLanLoading(false)
@@ -75,17 +77,17 @@ export function AgentBundlePage() {
     return () => {
       cancelled = true
     }
-  }, [authLoading, user?.is_superuser])
+  }, [authLoading, t, user?.is_superuser])
 
   const showModules = platform === 'win10' && level === 'custom'
-  const moduleList = useMemo(() => Object.keys(MODULE_LABELS), [])
+  const moduleList = useMemo(() => [...MODULE_KEYS], [])
   const enabledModuleCount = useMemo(
     () => Object.values(modules).filter(Boolean).length,
     [modules],
   )
 
   if (authLoading) {
-    return <p className="text-sm text-slate-500">Загрузка…</p>
+    return <p className="text-sm text-slate-500">{t('common.loading')}</p>
   }
 
   if (!user?.is_superuser) {
@@ -99,7 +101,7 @@ export function AgentBundlePage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (!serverHost.trim()) {
-      setErr('Укажите IP-адрес сервера CORAX в локальной сети')
+      setErr(t('agentBundle.serverHostRequired'))
       return
     }
     setErr(null)
@@ -108,7 +110,9 @@ export function AgentBundlePage() {
     try {
       const label =
         tokenLabel.trim() ||
-        (platform === 'win7' ? 'CORAX deploy win7' : 'CORAX deploy win10')
+        (platform === 'win7'
+          ? t('agentBundle.defaultTokenLabelWin7')
+          : t('agentBundle.defaultTokenLabelWin10'))
       const server = buildServerUrl(serverHost, serverPort)
       const filename = await api.downloadAgentBundle({
             server_url: server,
@@ -128,12 +132,11 @@ export function AgentBundlePage() {
                   }
                 : { enabled: false },
           })
-      setOkMsg(`Архив скачан: ${filename}`)
+      setOkMsg(t('agentBundle.downloadSuccess', { filename }))
     } catch (ex) {
-      let msg = ex instanceof Error ? ex.message : 'Ошибка сборки'
+      let msg = ex instanceof Error ? ex.message : t('agentBundle.buildError')
       if (msg.includes('Method Not Allowed') || msg.includes('405')) {
-        msg +=
-          '. На порту 3001, вероятно, не запущен CORAX API — перезапустите start_all.bat или python run.py из корня репозитория.'
+        msg += t('agentBundle.apiNotRespondingSuffix')
       }
       setErr(msg)
     } finally {
@@ -148,12 +151,9 @@ export function AgentBundlePage() {
           <IconKey className="h-7 w-7 text-blue-600" />
         </div>
         <div>
-          <h1 className="page-title">Сборка агента</h1>
+          <h1 className="page-title">{t('titles.agentBundle')}</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            {platform === 'win7'
-              ? 'Агент для Windows 7: базовый сбор (железо, ОС, ПО, периферия). PowerShell 2.0, без расширенных модулей.'
-              : 'ZIP с PowerShell-агентом v3: максимальный сбор (патчи, BitLocker, Office и др.). Распакуйте на шару и запускайте corax_send.bat.'}{' '}
-            API на порту <code className="text-xs">3001</code>.
+            {t('pages.agentBundleSubtitle')}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button
@@ -165,7 +165,7 @@ export function AgentBundlePage() {
               }`}
               onClick={() => setPlatform('win10')}
             >
-              Windows 10 / 11
+              {t('agentBundle.platformWin10')}
             </button>
             <button
               type="button"
@@ -176,7 +176,7 @@ export function AgentBundlePage() {
               }`}
               onClick={() => setPlatform('win7')}
             >
-              Windows 7
+              {t('agentBundle.platformWin7')}
             </button>
           </div>
         </div>
@@ -196,11 +196,13 @@ export function AgentBundlePage() {
         className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,22rem)] xl:grid-cols-[minmax(0,1fr)_24rem]"
       >
         <div className="app-card min-w-0 space-y-5 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Параметры</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            {t('agentBundle.parametersTitle')}
+          </h2>
 
           <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
             <div>
-              <label className="app-label">IP-адрес сервера CORAX</label>
+              <label className="app-label">{t('agentBundle.serverIpLabel')}</label>
               {lanCandidates.length > 1 ? (
                 <select
                   className="app-input font-mono text-sm"
@@ -208,7 +210,7 @@ export function AgentBundlePage() {
                   onChange={(e) => setServerHost(e.target.value)}
                   required
                 >
-                  {!serverHost ? <option value="">Выберите интерфейс…</option> : null}
+                  {!serverHost ? <option value="">{t('agentBundle.chooseInterface')}</option> : null}
                   {lanCandidates.map((ip) => (
                     <option key={ip} value={ip}>
                       {ip}
@@ -220,18 +222,18 @@ export function AgentBundlePage() {
                   className="app-input font-mono text-sm"
                   value={serverHost}
                   onChange={(e) => setServerHost(e.target.value)}
-                  placeholder={lanLoading ? 'Определяем LAN IP…' : '192.168.1.10'}
+                  placeholder={lanLoading ? t('agentBundle.detectingLanIp') : '192.168.1.10'}
                   required
                 />
               )}
               <p className="mt-1 text-xs text-slate-500">
                 {lanLoading
-                  ? 'Определяем локальный IP этой машины…'
-                  : 'LAN-IP сервера CORAX (не 127.0.0.1). С рабочих ПК этот адрес должен открываться.'}
+                  ? t('agentBundle.detectingLanIpHint')
+                  : t('agentBundle.serverIpHint')}
               </p>
             </div>
             <div>
-              <label className="app-label">Порт</label>
+              <label className="app-label">{t('agentBundle.portLabel')}</label>
               <input
                 className="app-input font-mono text-sm"
                 value={serverPort}
@@ -242,20 +244,19 @@ export function AgentBundlePage() {
             </div>
           </div>
           <p className="-mt-2 text-xs text-slate-500">
-            URL для агента: <code className="font-mono">{serverUrl}</code>
+            {t('agentBundle.agentUrl')} <code className="font-mono">{serverUrl}</code>
           </p>
 
           {platform === 'win7' ? (
             <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3 text-sm text-amber-950">
-              Базовый профиль: WMI, реестр ПО, PnP-периферия. Расширенные модули (патчи, BitLocker, Docker и т.д.)
-              доступны только в сборке для Windows 10/11.
+              {t('agentBundle.win7Notice')}
             </div>
           ) : null}
 
           {platform === 'win10' ? (
             <>
               <div>
-                <label className="app-label">Уровень сбора</label>
+                <label className="app-label">{t('agentBundle.collectionLevel')}</label>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <label
                     className={`flex cursor-pointer flex-col rounded-xl border px-4 py-3 transition ${
@@ -271,10 +272,10 @@ export function AgentBundlePage() {
                         checked={level === 'full'}
                         onChange={() => setLevel('full')}
                       />
-                      Полный
+                      {t('agentBundle.levelFull')}
                     </span>
                     <span className="mt-1 pl-6 text-xs leading-relaxed text-slate-500">
-                      Все модули: сеть, патчи, безопасность, Office, Docker/WSL и т.д.
+                      {t('agentBundle.levelFullHint')}
                     </span>
                   </label>
                   <label
@@ -291,10 +292,10 @@ export function AgentBundlePage() {
                         checked={level === 'custom'}
                         onChange={() => setLevel('custom')}
                       />
-                      Свой набор
+                      {t('agentBundle.levelCustom')}
                     </span>
                     <span className="mt-1 pl-6 text-xs leading-relaxed text-slate-500">
-                      Включите только нужные модули вручную.
+                      {t('agentBundle.levelCustomHint')}
                     </span>
                   </label>
                 </div>
@@ -302,7 +303,9 @@ export function AgentBundlePage() {
 
               {showModules ? (
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50/80 p-4">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Модули</div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {t('agentBundle.modulesTitle')}
+                  </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {moduleList.map((key) => (
                       <label key={key} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
@@ -312,7 +315,7 @@ export function AgentBundlePage() {
                           checked={Boolean(modules[key])}
                           onChange={() => toggleModule(key)}
                         />
-                        <span>{MODULE_LABELS[key]}</span>
+                        <span>{t(`agentBundle.modules.${key}` as const)}</span>
                       </label>
                     ))}
                   </div>
@@ -322,24 +325,23 @@ export function AgentBundlePage() {
           ) : null}
 
           <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
-            <div className="text-sm font-semibold text-slate-900">Токен агента</div>
+            <div className="text-sm font-semibold text-slate-900">{t('agentBundle.tokenTitle')}</div>
             <div className="mt-2 space-y-2 text-xs leading-relaxed text-slate-600">
               <p>
-                <strong>Каждая сборка создаёт новый токен.</strong> При скачивании ZIP сервер генерирует пару{' '}
-                <code className="text-[11px]">public_id.secret</code>, сохраняет хеш в базе (раздел{' '}
+                <strong>{t('agentBundle.tokenNewEachBuild')}</strong> {t('agentBundle.tokenIntroBefore')}{' '}
+                <code className="text-[11px]">public_id.secret</code> {t('agentBundle.tokenIntroMiddle')}{' '}
                 <Link to="/settings/agent-tokens" className="text-blue-700 underline-offset-2 hover:underline">
-                  Токены агентов
+                  {t('agentBundle.tokenIntroLink')}
                 </Link>
-                ) и записывает полный токен в agent_env.bat внутри архива.
+                ) {t('agentBundle.tokenIntroAfter')}
               </p>
               <p>
-                Повторная сборка — <em>другой</em> токен; старый остаётся в базе, пока не отзовёте. Один ZIP можно
-                раскатать на много ПК.
+                {t('agentBundle.tokenParagraph2')}
               </p>
-              <p>Без токена API отклонит отчёт. Не публикуйте ZIP и не коммитьте токены.</p>
+              <p>{t('agentBundle.tokenParagraph3')}</p>
             </div>
             <div className="mt-3">
-              <label className="app-label">Подпись токена в админке (необязательно)</label>
+              <label className="app-label">{t('agentBundle.tokenLabelAdmin')}</label>
               <input className="app-input" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} />
             </div>
           </div>
@@ -352,29 +354,27 @@ export function AgentBundlePage() {
                 checked={scheduleEnabled}
                 onChange={(e) => setScheduleEnabled(e.target.checked)}
               />
-              Добавить автозапуск по расписанию
+              {t('agentBundle.scheduleEnable')}
             </label>
             <p className="text-xs leading-relaxed text-slate-500">
-              В архив попадёт <code className="text-[11px]">install_schedule.bat</code>. Запустите его{' '}
-              <strong>от имени администратора</strong> на каждом ПК один раз — создастся задача в Планировщике
-              Windows. Само по себе в систему не встраивается, пока bat не выполнен.
+              {t('agentBundle.scheduleHint')}
             </p>
             {scheduleEnabled ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="app-label">Режим</label>
+                  <label className="app-label">{t('agentBundle.scheduleModeLabel')}</label>
                   <select
                     className="app-input"
                     value={scheduleMode}
                     onChange={(e) => setScheduleMode(e.target.value as typeof scheduleMode)}
                   >
-                    <option value="DAILY">Ежедневно</option>
-                    <option value="WEEKLY">Еженедельно (пн)</option>
-                    <option value="MONTHLY">Ежемесячно</option>
+                    <option value="DAILY">{t('agentBundle.scheduleDaily')}</option>
+                    <option value="WEEKLY">{t('agentBundle.scheduleWeekly')}</option>
+                    <option value="MONTHLY">{t('agentBundle.scheduleMonthly')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="app-label">Время</label>
+                  <label className="app-label">{t('agentBundle.scheduleTimeLabel')}</label>
                   <input
                     className="app-input"
                     type="time"
@@ -390,61 +390,60 @@ export function AgentBundlePage() {
 
         <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6">
           <div className="app-card space-y-4 p-5 sm:p-6">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Сборка</h2>
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              {t('agentBundle.buildTitle')}
+            </h2>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">Сервер</dt>
+                <dt className="text-slate-500">{t('agentBundle.summaryServer')}</dt>
                 <dd className="max-w-[58%] truncate text-right font-mono text-xs text-slate-800" title={serverUrl}>
                   {serverUrl}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">Платформа</dt>
+                <dt className="text-slate-500">{t('agentBundle.summaryPlatform')}</dt>
                 <dd className="text-right font-medium text-slate-800">
-                  {platform === 'win10' ? 'Windows 10/11' : 'Windows 7'}
+                  {platform === 'win10' ? t('agentBundle.platformWin10') : t('agentBundle.platformWin7')}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">Формат</dt>
+                <dt className="text-slate-500">{t('agentBundle.summaryFormat')}</dt>
                 <dd className="text-right font-medium text-slate-800">ZIP</dd>
               </div>
               {platform === 'win10' ? (
                 <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                  <dt className="text-slate-500">Уровень</dt>
+                  <dt className="text-slate-500">{t('agentBundle.summaryLevel')}</dt>
                   <dd className="text-right font-medium text-slate-800">
-                    {level === 'full' ? 'Полный' : 'Свой набор'}
+                    {level === 'full' ? t('agentBundle.levelFull') : t('agentBundle.levelCustom')}
                   </dd>
                 </div>
               ) : null}
               <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">Токен</dt>
-                <dd className="text-right text-slate-800">Новый при каждой сборке</dd>
+                <dt className="text-slate-500">{t('agentBundle.summaryToken')}</dt>
+                <dd className="text-right text-slate-800">{t('agentBundle.summaryTokenValue')}</dd>
               </div>
               {platform === 'win10' && showModules ? (
                 <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                  <dt className="text-slate-500">Модулей</dt>
+                  <dt className="text-slate-500">{t('agentBundle.summaryModules')}</dt>
                   <dd className="text-right text-slate-800">{enabledModuleCount}</dd>
                 </div>
               ) : null}
               {platform === 'win10' ? (
                 <div className="flex justify-between gap-3">
-                  <dt className="text-slate-500">Расписание</dt>
-                  <dd className="text-right text-slate-800">{scheduleEnabled ? 'install_schedule.bat' : 'Нет'}</dd>
+                  <dt className="text-slate-500">{t('agentBundle.summarySchedule')}</dt>
+                  <dd className="text-right text-slate-800">
+                    {scheduleEnabled
+                      ? t('agentBundle.summaryScheduleEnabled')
+                      : t('agentBundle.summaryScheduleDisabled')}
+                  </dd>
                 </div>
               ) : null}
             </dl>
             <p className="text-xs leading-relaxed text-slate-500">
               {platform === 'win10' ? (
-                <>
-                  В архиве: <code className="text-[11px]">corax_send.bat</code>,{' '}
-                  <code className="text-[11px]">agent_env.bat</code>,{' '}
-                  <code className="text-[11px]">agent_config.json</code>, <code className="text-[11px]">lib/</code>.
-                </>
+                <>{t('agentBundle.summaryArchiveWin10')}</>
               ) : (
-                <>
-                  В архиве: <code className="text-[11px]">inventory_send_win7.bat</code>,{' '}
-                  <code className="text-[11px]">agent_env.bat</code>, PowerShell-скрипты.
-                </>
+                <>{t('agentBundle.summaryArchiveWin7')}</>
               )}
             </p>
             <button
@@ -452,30 +451,31 @@ export function AgentBundlePage() {
               className="app-btn app-btn-primary w-full"
               disabled={busy || lanLoading || !serverHost.trim()}
             >
-              {busy ? 'Сборка…' : 'Скачать ZIP'}
+              {busy ? t('agentBundle.building') : t('agentBundle.downloadZip')}
             </button>
           </div>
 
           <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/70 p-5 text-sm text-slate-600">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Развёртывание</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              {t('agentBundle.deploymentTitle')}
+            </p>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">
-              <li>Распакуйте ZIP в сетевую папку (например <code className="text-xs">\\server\corax\agent</code>).</li>
+              <li>{t('agentBundle.deployStep1')}</li>
               <li>
-                На ПК запустите{' '}
+                {t('agentBundle.deployStep2Before')}{' '}
                 <code className="text-xs">
                   {platform === 'win10' ? 'corax_send.bat' : 'inventory_send_win7.bat'}
                 </code>{' '}
-                — отчёт уйдёт на <code className="text-xs">{serverUrl}</code>.
+                {t('agentBundle.deployStep2After', { serverUrl })}
               </li>
               {platform === 'win10' ? (
                 <li>
-                  Для регулярного сбора: от администратора — <code className="text-xs">install_schedule.bat</code>{' '}
-                  (если включали расписание) или GPO.
+                  {t('agentBundle.deployStep3Win10')}
                 </li>
               ) : (
-                <li>Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.</li>
+                <li>{t('agentBundle.deployStep3Win7')}</li>
               )}
-              <li>Данные появятся в разделе «Компьютеры» — сводка по ПК.</li>
+              <li>{t('agentBundle.deployStep4')}</li>
             </ol>
           </div>
         </div>

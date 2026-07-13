@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type WikiRagChatParsed, type WikiRagChatResponse } from '../../api'
+import { useT } from '../../i18n/LocaleContext'
 import { IconClose } from '../icons'
 
 const STORAGE_KEY = 'inventory-wikirag-chats-v1'
@@ -43,6 +44,7 @@ type ChatTurn = {
 }
 
 function ThinkingBubble() {
+  const t = useT()
   return (
     <div className="wikirag-msg-enter wikirag-thinking mr-1 flex items-center gap-2.5 rounded-lg border border-[color-mix(in_srgb,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-muted)] px-3 py-2.5 shadow-sm">
       <div className="flex gap-1" aria-hidden>
@@ -55,7 +57,7 @@ function ThinkingBubble() {
         ))}
       </div>
       <span className="text-[11px] font-medium text-[var(--color-fg-muted)]">
-        Модель думает… (до 5 мин на слабом ПК)
+        {t('wikirag.chat.thinking')}
       </span>
     </div>
   )
@@ -134,15 +136,15 @@ function newSessionId(): string {
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
-function newSession(): ChatSession {
-  return { id: newSessionId(), title: 'Новый чат', turns: [], updatedAt: Date.now() }
+function newSession(title: string): ChatSession {
+  return { id: newSessionId(), title, turns: [], updatedAt: Date.now() }
 }
 
-function sessionTitle(turns: ChatTurn[]): string {
+function sessionTitle(turns: ChatTurn[], fallbackTitle: string): string {
   const first = turns.find((t) => t.role === 'user' && !t.error)
-  if (!first) return 'Новый чат'
+  if (!first) return fallbackTitle
   const t = first.content.trim()
-  return t.length > 22 ? `${t.slice(0, 22)}…` : t || 'Новый чат'
+  return t.length > 22 ? `${t.slice(0, 22)}…` : t || fallbackTitle
 }
 
 /** Убирает JSON-обёртку от модели (в т.ч. битый JSON с кавычками внутри answer). */
@@ -173,7 +175,6 @@ function extractAnswerText(raw: string): string {
 
 const EMPTY_ANSWER_MARKERS = new Set([
   '(пустой ответ)',
-  'Модель не вернула текст. Попробуйте короче вопрос или отключите «Подмешивать CORAX» в настройках чата.',
 ])
 
 function assistantDisplayText(t: ChatTurn): string {
@@ -203,7 +204,7 @@ function answerFromResponse(res: WikiRagChatResponse): string {
     const fromRaw = extractAnswerText(raw)
     return fromRaw || raw
   }
-  return parsedAns || 'Модель не вернула текст.'
+  return parsedAns || ''
 }
 
 function historyForLm(turns: ChatTurn[]): { role: 'user' | 'assistant'; content: string }[] {
@@ -223,11 +224,11 @@ function historyForLm(turns: ChatTurn[]): { role: 'user' | 'assistant'; content:
   return out.slice(-6)
 }
 
-function loadSessions(): { sessions: ChatSession[]; activeId: string } {
+function loadSessions(fallbackTitle: string): { sessions: ChatSession[]; activeId: string } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) {
-      const s = newSession()
+      const s = newSession(fallbackTitle)
       return { sessions: [s], activeId: s.id }
     }
     const data = JSON.parse(raw) as { sessions?: ChatSession[]; activeId?: string }
@@ -238,13 +239,13 @@ function loadSessions(): { sessions: ChatSession[]; activeId: string } {
         turns: (s.turns ?? []).map((t) => ({ ...t, reveal: false })),
       }))
     if (!sessions.length) {
-      const s = newSession()
+      const s = newSession(fallbackTitle)
       return { sessions: [s], activeId: s.id }
     }
     const activeId = sessions.some((s) => s.id === data.activeId) ? data.activeId! : sessions[0].id
     return { sessions, activeId }
   } catch {
-    const s = newSession()
+    const s = newSession(fallbackTitle)
     return { sessions: [s], activeId: s.id }
   }
 }
@@ -283,7 +284,10 @@ export function WikiRagChat({
   onClose?: () => void
   onOpenDocument?: (id: number) => void
 }) {
-  const initial = loadSessions()
+  const t = useT()
+  const fallbackTitle = t('wikirag.chat.newSessionTitle')
+  const emptyModelResponse = t('wikirag.chat.emptyModelResponse')
+  const initial = loadSessions(fallbackTitle)
   const [sessions, setSessions] = useState<ChatSession[]>(initial.sessions)
   const [activeId, setActiveId] = useState(initial.activeId)
   const [input, setInput] = useState('')
@@ -329,12 +333,12 @@ export function WikiRagChat({
       const next = list.map((s) => {
         if (s.id !== activeIdRef.current) return s
         const patched = patch(s)
-        return { ...patched, title: sessionTitle(patched.turns), updatedAt: Date.now() }
+        return { ...patched, title: sessionTitle(patched.turns, fallbackTitle), updatedAt: Date.now() }
       })
       saveSessions(next, activeIdRef.current)
       return next
     })
-  }, [])
+  }, [fallbackTitle])
 
   useEffect(() => {
     saveLmSettings(lmSettings)
@@ -357,16 +361,15 @@ export function WikiRagChat({
         )
         if (alt) setLmSettings((s) => ({ ...s, model: alt }))
       }
-      setLmDetail(
-        st.ok
-          ? [picked, st.base_url].filter(Boolean).join(' · ')
-          : (st.detail ?? 'Нет связи'),
-      )
+      const detail = st.ok
+        ? [picked, st.base_url].filter(Boolean).join(' · ')
+        : (st.detail ?? t('wikirag.chat.noConnection'))
+      setLmDetail(detail)
     } catch {
       setLmOk(false)
-      setLmDetail('Не удалось проверить LM Studio')
+      setLmDetail(t('wikirag.chat.checkFailed'))
     }
-  }, [lmSettings.baseUrl, lmSettings.model])
+  }, [lmSettings.baseUrl, lmSettings.model, t])
 
   useEffect(() => {
     void checkLm()
@@ -377,7 +380,7 @@ export function WikiRagChat({
   }, [turns, sending, activeId, revealingTurn])
 
   function addSession() {
-    const s = newSession()
+    const s = newSession(fallbackTitle)
     setSessions((list) => {
       const next = [...list, s]
       saveSessions(next, s.id)
@@ -388,14 +391,14 @@ export function WikiRagChat({
   }
 
   function clearActive() {
-    updateActive((s) => ({ ...s, turns: [], title: 'Новый чат' }))
+    updateActive((s) => ({ ...s, turns: [], title: fallbackTitle }))
     setInput('')
   }
 
   function closeSession(id: string) {
     setSessions((list) => {
       if (list.length <= 1) {
-        const s = newSession()
+        const s = newSession(fallbackTitle)
         setActiveId(s.id)
         saveSessions([s], s.id)
         return [s]
@@ -425,7 +428,7 @@ export function WikiRagChat({
         include_corax: lmSettings.includeCorax,
       })
       if (!res.ok) {
-        const msg = res.error ?? 'Ошибка LM Studio'
+        const msg = res.error ?? t('wikirag.chat.lmError')
         updateActive((s) => ({
           ...s,
           turns: [...s.turns, { role: 'assistant', content: msg, error: true, meta: res.meta }],
@@ -433,7 +436,7 @@ export function WikiRagChat({
         return
       }
       const parsed = res.parsed
-      const text = answerFromResponse(res)
+      const text = answerFromResponse(res) || emptyModelResponse
       // Сразу полный текст в storage; reveal только для анимации на экране
       updateActive((s) => {
         const nextTurns: ChatTurn[] = [
@@ -444,7 +447,7 @@ export function WikiRagChat({
         return { ...s, turns: nextTurns }
       })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Ошибка'
+      const msg = e instanceof Error ? e.message : t('wikirag.chat.error')
       updateActive((s) => ({
         ...s,
         turns: [...s.turns, { role: 'assistant', content: msg, error: true }],
@@ -458,15 +461,15 @@ export function WikiRagChat({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-start justify-between gap-2 border-b border-[var(--color-border)] pb-2">
         <div>
-          <h2 className="text-sm font-semibold text-[var(--color-fg)]">WikiRAG чат</h2>
-          <p className="mt-0.5 text-[10px] text-[var(--color-fg-subtle)]">Контекст до ~20 000 токенов</p>
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('wikirag.chat.title')}</h2>
+          <p className="mt-0.5 text-[10px] text-[var(--color-fg-subtle)]">{t('wikirag.chat.contextHint')}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => setSettingsOpen((v) => !v)}
             className="rounded-lg border border-[var(--color-border)] px-2 py-0.5 text-[9px] font-semibold text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
-            title="Настройки LM Studio"
+            title={t('wikirag.chat.settingsTitle')}
           >
             ⚙
           </button>
@@ -489,7 +492,7 @@ export function WikiRagChat({
               type="button"
               onClick={onClose}
               className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
-              aria-label="Свернуть"
+              aria-label={t('wikirag.chat.collapse')}
             >
               <IconClose className="h-4 w-4" />
             </button>
@@ -509,7 +512,7 @@ export function WikiRagChat({
       {settingsOpen ? (
         <div className="mt-2 space-y-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[10px]">
           <label className="block">
-            <span className="mb-0.5 block font-semibold text-[var(--color-fg-muted)]">Адрес LM Studio</span>
+            <span className="mb-0.5 block font-semibold text-[var(--color-fg-muted)]">{t('wikirag.chat.lmBaseUrl')}</span>
             <input
               type="text"
               value={lmSettings.baseUrl}
@@ -520,11 +523,10 @@ export function WikiRagChat({
             />
           </label>
           <p className="text-[var(--color-fg-subtle)]">
-            С точки зрения сервера CORAX. Если LM Studio на другом ПК — укажите его IP. В LM Studio
-            выставьте Context Length ≥ 20480.
+            {t('wikirag.chat.lmHelp')}
           </p>
           <label className="block">
-            <span className="mb-0.5 block font-semibold text-[var(--color-fg-muted)]">Модель</span>
+            <span className="mb-0.5 block font-semibold text-[var(--color-fg-muted)]">{t('wikirag.chat.model')}</span>
             <select
               value={lmSettings.model}
               onChange={(e) => setLmSettings((s) => ({ ...s, model: e.target.value }))}
@@ -532,11 +534,11 @@ export function WikiRagChat({
               disabled={!lmModels.length}
             >
               {!lmModels.length ? (
-                <option value="">— загрузите модель в LM Studio —</option>
+                <option value="">{t('wikirag.chat.loadModelHint')}</option>
               ) : (
                 <>
                   {lmModels.length > 1 && !lmSettings.model ? (
-                    <option value="">Авто (первая загруженная)</option>
+                    <option value="">{t('wikirag.chat.autoModel')}</option>
                   ) : null}
                   {lmModels.map((m) => (
                     <option key={m} value={m}>
@@ -553,14 +555,14 @@ export function WikiRagChat({
               checked={lmSettings.includeCorax}
               onChange={(e) => setLmSettings((s) => ({ ...s, includeCorax: e.target.checked }))}
             />
-            <span>Подмешивать данные CORAX (ПК, теги, заявки)</span>
+            <span>{t('wikirag.chat.includeCorax')}</span>
           </label>
           <button
             type="button"
             onClick={() => void checkLm()}
             className="rounded border border-[var(--color-border)] px-2 py-1 text-[10px] text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
           >
-            Проверить связь
+            {t('wikirag.chat.checkConnection')}
           </button>
         </div>
       ) : null}
@@ -598,7 +600,7 @@ export function WikiRagChat({
                       closeSession(s.id)
                     }
                   }}
-                  aria-label="Закрыть чат"
+                  aria-label={t('wikirag.chat.closeChat')}
                 >
                   ×
                 </span>
@@ -610,7 +612,7 @@ export function WikiRagChat({
           type="button"
           onClick={addSession}
           className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs font-bold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
-          title="Новый чат"
+          title={t('wikirag.chat.newChat')}
         >
           +
         </button>
@@ -623,7 +625,7 @@ export function WikiRagChat({
           disabled={!turns.length}
           className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] disabled:opacity-40"
         >
-          Очистить
+          {t('wikirag.chat.clear')}
         </button>
       </div>
 
@@ -634,13 +636,13 @@ export function WikiRagChat({
         {turns.length === 0 ? (
           <div className="wikirag-msg-enter space-y-2 px-1 py-2">
             <p className="text-xs text-[var(--color-fg-muted)]">
-              Задайте вопрос по документам и данным CORAX (ПК, теги, заявки).
+              {t('wikirag.chat.emptyHint')}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {[
-                'Какие ПК на Windows 7?',
-                'Кому лучше поставить Windows 10?',
-                'Топ ПО по числу установок',
+                t('wikirag.chat.sample1'),
+                t('wikirag.chat.sample2'),
+                t('wikirag.chat.sample3'),
               ].map((hint) => (
                 <button
                   key={hint}
@@ -654,25 +656,25 @@ export function WikiRagChat({
             </div>
           </div>
         ) : (
-          turns.map((t, i) => {
-            const display = t.role === 'assistant' ? assistantDisplayText(t) : t.content
-            const isRevealing = t.role === 'assistant' && !t.error && revealingTurn === i && Boolean(t.reveal)
+          turns.map((turn, i) => {
+            const display = turn.role === 'assistant' ? assistantDisplayText(turn) : turn.content
+            const isRevealing = turn.role === 'assistant' && !turn.error && revealingTurn === i && Boolean(turn.reveal)
             return (
             <div
-              key={`${activeId}-${i}-${t.role}`}
+              key={`${activeId}-${i}-${turn.role}`}
               className={`wikirag-msg-enter rounded-lg px-2.5 py-2 text-xs ${
-                t.role === 'user'
+                turn.role === 'user'
                   ? 'ml-3 border border-[color-mix(in_srgb,var(--color-primary)_35%,var(--color-border))] bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
-                  : t.error
+                  : turn.error
                     ? 'mr-1 border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-fg)]'
                     : 'mr-1 border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm'
               }`}
               style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
             >
               <p className="mb-0.5 text-[9px] font-bold uppercase text-[var(--color-fg-subtle)]">
-                {t.role === 'user' ? 'Вы' : t.error ? 'Ошибка' : 'AI'}
-                {t.meta?.mode ? ` · ${t.meta.mode}` : ''}
-                {t.meta?.corax?.computers ? ` · ${t.meta.corax.computers} ПК` : ''}
+                {turn.role === 'user' ? t('wikirag.chat.you') : turn.error ? t('wikirag.chat.error') : t('wikirag.chat.ai')}
+                {turn.meta?.mode ? ` · ${turn.meta.mode}` : ''}
+                {turn.meta?.corax?.computers ? ` · ${turn.meta.corax.computers} PC` : ''}
               </p>
               {isRevealing ? (
                 <TypewriterText
@@ -682,8 +684,8 @@ export function WikiRagChat({
                     setRevealingTurn(null)
                     updateActive((s) => ({
                       ...s,
-                      turns: s.turns.map((turn, j) =>
-                        j === i ? { ...turn, reveal: false } : turn,
+                      turns: s.turns.map((tr, j) =>
+                        j === i ? { ...tr, reveal: false } : tr,
                       ),
                     }))
                   }}
@@ -691,9 +693,9 @@ export function WikiRagChat({
               ) : (
                 <p className="whitespace-pre-wrap leading-relaxed">{display}</p>
               )}
-              {t.parsed?.sources?.length ? (
+              {turn.parsed?.sources?.length ? (
                 <ul className="mt-1.5 space-y-0.5 border-t border-[var(--color-border)] pt-1.5">
-                  {t.parsed.sources.map((s, j) => (
+                  {turn.parsed.sources.map((s, j) => (
                     <li key={j}>
                       <button
                         type="button"
@@ -717,7 +719,7 @@ export function WikiRagChat({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           rows={2}
-          placeholder="Вопрос…"
+          placeholder={t('wikirag.chat.promptPlaceholder')}
           className="app-input min-h-[2.5rem] flex-1 !rounded-lg !px-2 !py-1.5 !text-xs"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

@@ -3,12 +3,14 @@ import { Navigate } from 'react-router-dom'
 import { api, type LdapConfig, type LdapSyncResult, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
+import { useT } from '../i18n/LocaleContext'
 
 function fieldTrim(v: string) {
   return v.replace(/\s+/g, ' ').trim()
 }
 
 export function SettingsLdapPage() {
+  const t = useT()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -66,11 +68,11 @@ export function SettingsLdapPage() {
       setEmailAttr(cfg.email_attr ?? 'mail')
       setSyncLimit(cfg.sync_limit ?? 500)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void load()
@@ -104,12 +106,17 @@ export function SettingsLdapPage() {
       setLoaded(cfg)
       setBindPassword('')
       setOkMsg(
-        `Сохранено: URI ${cfg.uri || '—'} · baseDN ${cfg.user_search_base || '—'} · bind ${cfg.bind_dn || '—'} · пароль ${
-          cfg.bind_password_set ? 'сохранён' : 'не задан'
-        }`,
+        t('settingsLdap.saveSummary', {
+          uri: cfg.uri || '—',
+          baseDn: cfg.user_search_base || '—',
+          bindDn: cfg.bind_dn || '—',
+          passwordStatus: cfg.bind_password_set
+            ? t('settingsLdap.passwordSaved')
+            : t('settingsLdap.passwordMissing'),
+        }),
       )
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setSaving(false)
     }
@@ -117,7 +124,7 @@ export function SettingsLdapPage() {
 
   async function onTestBind() {
     if (!allowAnonymous && !bindPassword.trim() && !bindPasswordSet) {
-      setErr('Пароль Bind не задан: введите его и сохраните, либо введите для теста.')
+      setErr(t('settingsLdap.bindPasswordMissing'))
       return
     }
     setTesting(true)
@@ -138,9 +145,9 @@ export function SettingsLdapPage() {
         email_attr: emailAttr.trim() || undefined,
         probe_username: null,
       })
-      setTestMsg(r.ok ? r.message : 'Тест не прошёл')
+      setTestMsg(r.ok ? r.message : t('settingsLdap.testFailed'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setTesting(false)
     }
@@ -150,7 +157,7 @@ export function SettingsLdapPage() {
     const probe = fieldTrim(probeUsername)
     if (!probe) return
     if (!allowAnonymous && !bindPassword.trim() && !bindPasswordSet) {
-      setErr('Пароль Bind не задан: введите его и сохраните, либо введите для теста.')
+      setErr(t('settingsLdap.bindPasswordMissing'))
       return
     }
     setTesting(true)
@@ -172,10 +179,14 @@ export function SettingsLdapPage() {
         probe_username: probe,
       })
       setTestMsg(
-        `${r.message} Найдено: ${r.found}${r.sample_dn ? ` · DN: ${r.sample_dn}` : ''}`,
+        t('settingsLdap.testSearchResult', {
+          message: r.message,
+          found: r.found,
+          sampleDn: r.sample_dn ? t('settingsLdap.sampleDn', { dn: r.sample_dn }) : '',
+        }),
       )
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка')
+      setErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setTesting(false)
     }
@@ -188,9 +199,9 @@ export function SettingsLdapPage() {
           <IconKey className="h-7 w-7 text-blue-600" />
         </div>
         <div className="min-w-0">
-          <h1 className="page-title">Настройки LDAP</h1>
+          <h1 className="page-title">{t('titles.ldap')}</h1>
           <p className="mt-1 max-w-2xl text-slate-600">
-            Подключение к Active Directory/LDAP для входа пользователей и импорта.
+            {t('pages.ldapSubtitle')}
           </p>
         </div>
       </div>
@@ -211,14 +222,23 @@ export function SettingsLdapPage() {
       {syncResult ? (
         <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
           <div className="font-medium">
-            Импорт из LDAP: создано {syncResult.created_count}, пропущено {syncResult.skipped_count}. Новые учётки —
-            Синхронизация добавляет людей в справочник заявок (без входа в CORAX). Учётки панели создаёт администратор в «Пользователи».
+            {t('settingsLdap.syncSummary', {
+              created: syncResult.created_count,
+              skipped: syncResult.skipped_count,
+            })}
           </div>
           {typeof syncResult.scanned_count === 'number' || typeof syncResult.missing_username_attr === 'number' ? (
             <div className="mt-1 text-xs text-slate-600">
-              {typeof syncResult.scanned_count === 'number' ? <>Получено из LDAP: {syncResult.scanned_count}. </> : null}
+              {typeof syncResult.scanned_count === 'number' ? (
+                <>{t('settingsLdap.syncScanned', { count: syncResult.scanned_count })} </>
+              ) : null}
               {typeof syncResult.missing_username_attr === 'number' ? (
-                <>Без атрибута логина ({usernameAttr || 'username'}): {syncResult.missing_username_attr}.</>
+                <>
+                  {t('settingsLdap.syncMissingUsernameAttr', {
+                    attr: usernameAttr || 'username',
+                    count: syncResult.missing_username_attr,
+                  })}
+                </>
               ) : null}
             </div>
           ) : null}
@@ -229,11 +249,11 @@ export function SettingsLdapPage() {
                   {e.username}
                   {e.created && e.one_time_password ? (
                     <span className="text-neutral-900">
-                      {' '}
-                      — пароль: <strong>{e.one_time_password}</strong>
+                      {t('settingsLdap.entryPassword')}
+                      <strong>{e.one_time_password}</strong>
                     </span>
                   ) : (
-                    <span className="text-slate-500"> — уже есть</span>
+                    <span className="text-slate-500">{t('settingsLdap.entryExists')}</span>
                   )}
                 </div>
               ))}
@@ -246,7 +266,7 @@ export function SettingsLdapPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-            Включить LDAP
+            {t('settingsLdap.enable')}
           </label>
           <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
             <input
@@ -254,64 +274,75 @@ export function SettingsLdapPage() {
               checked={allowAnonymous}
               onChange={(e) => setAllowAnonymous(e.target.checked)}
             />
-            Anonymous bind
+            {t('settingsLdap.anonymousBind')}
           </label>
           <div className="text-xs font-medium text-slate-500">
-            Статус: {configured ? <span className="text-emerald-700">параметры заданы</span> : <span>не настроено</span>}
+            {t('settingsLdap.statusLabel')}{' '}
+            {configured ? (
+              <span className="text-emerald-700">{t('settingsLdap.configured')}</span>
+            ) : (
+              <span>{t('settingsLdap.notConfigured')}</span>
+            )}
           </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-500">LDAP URI</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">{t('settingsLdap.ldapUriLabel')}</label>
             <input
               value={uri}
               onChange={(e) => setUri(e.target.value)}
-              placeholder="ldap://dc.example.local:389 или ldaps://dc.example.local:636"
+              placeholder={t('settingsLdap.ldapUriPlaceholder')}
               className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Bind DN</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">{t('settingsLdap.bindDnLabel')}</label>
             <input
               value={bindDn}
               onChange={(e) => setBindDn(e.target.value)}
-              placeholder="CN=svc_inventory,OU=Service,DC=example,DC=local"
+              placeholder={t('settingsLdap.bindDnPlaceholder')}
               disabled={allowAnonymous}
               className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Bind пароль</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">{t('settingsLdap.bindPasswordLabel')}</label>
             <input
               type="password"
               value={bindPassword}
               onChange={(e) => setBindPassword(e.target.value)}
-              placeholder={bindPasswordSet ? '•••••••• (уже задан, можно не менять)' : 'введите пароль'}
+              placeholder={
+                bindPasswordSet
+                  ? t('settingsLdap.bindPasswordPlaceholderSet')
+                  : t('settingsLdap.bindPasswordPlaceholderUnset')
+              }
               disabled={allowAnonymous}
               className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
             <p className="mt-1 text-xs text-slate-500">
               {allowAnonymous ? (
-                <>В этом режиме сервисная учётка не используется.</>
+                <>{t('settingsLdap.anonymousBindHint')}</>
               ) : (
-                <>
-                  Оставьте пустым, чтобы <span className="font-medium">не менять</span> сохранённый пароль.
-                </>
+                <>{t('settingsLdap.keepPasswordHint')}</>
               )}
             </p>
           </div>
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-500">Base DN для поиска пользователей</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t('settingsLdap.userSearchBaseLabel')}
+            </label>
             <input
               value={userSearchBase}
               onChange={(e) => setUserSearchBase(e.target.value)}
-              placeholder="DC=example,DC=local или OU=Users,DC=example,DC=local"
+              placeholder={t('settingsLdap.userSearchBasePlaceholder')}
               className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-500">Фильтр пользователей</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t('settingsLdap.userFilterLabel')}
+            </label>
             <input
               value={userFilter}
               onChange={(e) => setUserFilter(e.target.value)}
@@ -320,7 +351,9 @@ export function SettingsLdapPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Атрибут логина</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t('settingsLdap.usernameAttrLabel')}
+            </label>
             <input
               value={usernameAttr}
               onChange={(e) => setUsernameAttr(e.target.value)}
@@ -329,7 +362,9 @@ export function SettingsLdapPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Лимит импорта</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t('settingsLdap.syncLimitLabel')}
+            </label>
             <input
               type="number"
               value={syncLimit}
@@ -340,7 +375,9 @@ export function SettingsLdapPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">ФИО</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t('settingsLdap.displayNameAttrLabel')}
+            </label>
             <input
               value={displayNameAttr}
               onChange={(e) => setDisplayNameAttr(e.target.value)}
@@ -349,7 +386,9 @@ export function SettingsLdapPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Email</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              {t('settingsLdap.emailAttrLabel')}
+            </label>
             <input
               value={emailAttr}
               onChange={(e) => setEmailAttr(e.target.value)}
@@ -365,7 +404,7 @@ export function SettingsLdapPage() {
             disabled={saving || loading}
             className="app-btn app-btn-primary"
           >
-            {saving ? 'Сохранение…' : 'Сохранить'}
+            {saving ? t('settingsLdap.saveBusy') : t('common.save')}
           </button>
           <button
             type="button"
@@ -373,7 +412,7 @@ export function SettingsLdapPage() {
             onClick={() => void onTestBind()}
             className="app-btn app-btn-secondary"
           >
-            {testing ? 'Тест…' : 'Тест Bind'}
+            {testing ? t('settingsLdap.testBusy') : t('settingsLdap.testBind')}
           </button>
           <button
             type="button"
@@ -389,21 +428,23 @@ export function SettingsLdapPage() {
                   const r = await api.ldapSync()
                   setSyncResult(r)
                 } catch (e) {
-                  setErr(e instanceof Error ? e.message : 'Ошибка')
+                  setErr(e instanceof Error ? e.message : t('common.error'))
                 } finally {
                   setSyncing(false)
                 }
               })()
             }}
             className="app-btn app-btn-secondary"
-            title={!configured ? 'Сначала заполните параметры и сохраните пароль Bind' : 'Импорт пользователей из LDAP'}
+            title={!configured ? t('settingsLdap.syncDisabledTitle') : t('settingsLdap.syncEnabledTitle')}
           >
-            {syncing ? 'Импорт…' : 'Импорт пользователей'}
+            {syncing ? t('settingsLdap.syncBusy') : t('settingsLdap.syncUsers')}
           </button>
           <div className="min-w-[14rem] flex-1" />
           <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
             <div className="min-w-0 flex-1 sm:w-[16rem]">
-              <label className="mb-1 block text-xs font-medium text-slate-500">Пробный поиск (логин)</label>
+              <label className="mb-1 block text-xs font-medium text-slate-500">
+                {t('settingsLdap.probeSearchLabel')}
+              </label>
               <input
                 value={probeUsername}
                 onChange={(e) => setProbeUsername(e.target.value)}
@@ -417,27 +458,29 @@ export function SettingsLdapPage() {
               onClick={() => void onTestSearch()}
               className="app-btn app-btn-secondary"
             >
-              Поиск →
+              {t('settingsLdap.probeSearchButton')}
             </button>
           </div>
         </div>
 
-        {loading ? <p className="text-sm text-slate-500">Загрузка…</p> : null}
+        {loading ? <p className="text-sm text-slate-500">{t('common.loading')}</p> : null}
       </form>
 
       <div className="app-card mt-6 overflow-hidden p-0">
         <div className="border-b border-neutral-200 px-4 py-3">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">LDAP пользователи</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            {t('settingsLdap.ldapUsersTitle')}
+          </h2>
         </div>
         <div className="overflow-x-auto overscroll-x-contain">
           <table className="min-w-[560px] w-full text-left text-sm">
             <thead className="app-table-head">
               <tr>
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Логин</th>
-                <th className="px-4 py-3">ФИО</th>
-                <th className="px-4 py-3">Роль</th>
-                <th className="px-4 py-3">Статус</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableId')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableUsername')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableFullName')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableRole')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableStatus')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
@@ -449,7 +492,7 @@ export function SettingsLdapPage() {
                   <td className="px-4 py-3">
                     {u.is_superuser ? (
                       <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-neutral-900">
-                        admin
+                        {t('settingsLdap.adminRole')}
                       </span>
                     ) : (
                       <span className="text-slate-600">{u.role}</span>
@@ -458,11 +501,11 @@ export function SettingsLdapPage() {
                   <td className="px-4 py-3">
                     {u.is_active ? (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                        active
+                        {t('settingsLdap.statusActive')}
                       </span>
                     ) : (
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        inactive
+                        {t('settingsLdap.statusInactive')}
                       </span>
                     )}
                   </td>

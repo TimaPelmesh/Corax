@@ -3,6 +3,7 @@ import { api, type RequestCategoryTreeNode } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconTag, IconTicket, IconTrash } from '../components/icons'
 import { filterCategoryTree } from '../requestCategories'
+import { useT } from '../i18n/LocaleContext'
 
 function collectExpandableIds(nodes: RequestCategoryTreeNode[]): number[] {
   const ids: number[] = []
@@ -100,6 +101,7 @@ function TreeNodeRow({
   onAddChildDraftChange: (v: string) => void
   addChildBusy: boolean
 }) {
+  const t = useT()
   const [draft, setDraft] = useState(node.name)
   const [rowErr, setRowErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -123,7 +125,7 @@ function TreeNodeRow({
       await api.updateRequestCategory(node.id, { name: next })
       onReload()
     } catch (e) {
-      setRowErr(e instanceof Error ? e.message : 'Ошибка')
+      setRowErr(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setSaving(false)
     }
@@ -160,7 +162,7 @@ function TreeNodeRow({
               : 'border-transparent bg-transparent text-[var(--color-fg-subtle)]'
           }`}
           onClick={() => hasChildren && onToggleExpand(node.id)}
-          aria-label={expanded ? 'Свернуть' : 'Развернуть'}
+          aria-label={expanded ? t('settingsCategories.collapse') : t('settingsCategories.expand')}
           aria-expanded={hasChildren ? expanded : undefined}
           disabled={!hasChildren}
           tabIndex={hasChildren ? 0 : -1}
@@ -209,7 +211,7 @@ function TreeNodeRow({
                 disabled={saving}
                 className="w-full min-w-0 border-0 bg-transparent p-0 text-sm font-semibold text-[var(--color-fg)] outline-none ring-0 placeholder:text-[var(--color-fg-subtle)] focus:ring-0 disabled:opacity-60"
                 spellCheck={false}
-                aria-label={`Название: ${node.path}`}
+                aria-label={t('settingsCategories.nameAria', { path: node.path })}
               />
             ) : (
               <div className="text-sm font-semibold text-[var(--color-fg)]">{node.name}</div>
@@ -218,7 +220,7 @@ function TreeNodeRow({
               {node.path}
               {hasChildren ? (
                 <span className="ml-2 rounded-md bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-fg-muted)]">
-                  {node.children.length} подгр.
+                  {t('settingsCategories.childCount', { count: node.children.length })}
                 </span>
               ) : null}
             </div>
@@ -229,7 +231,7 @@ function TreeNodeRow({
               <button
                 type="button"
                 className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[11px] font-semibold text-[var(--color-fg-muted)] shadow-sm hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
-                title="Выше среди соседей"
+                title={t('settingsCategories.moveUpTitle')}
                 onClick={() => onMove(node.id, 'up')}
               >
                 ↑
@@ -237,7 +239,7 @@ function TreeNodeRow({
               <button
                 type="button"
                 className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[11px] font-semibold text-[var(--color-fg-muted)] shadow-sm hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
-                title="Ниже среди соседей"
+                title={t('settingsCategories.moveDownTitle')}
                 onClick={() => onMove(node.id, 'down')}
               >
                 ↓
@@ -247,7 +249,7 @@ function TreeNodeRow({
                 className="rounded-lg border border-[var(--color-primary)]/40 bg-[var(--color-surface)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-primary)] shadow-sm hover:bg-[var(--color-primary-muted)]"
                 onClick={() => onStartAddChild(node.id)}
               >
-                + Подгруппа
+                {t('settingsCategories.addChild')}
               </button>
               <button
                 type="button"
@@ -255,7 +257,7 @@ function TreeNodeRow({
                 onClick={() => onRemove(node.id, node.path, hasChildren)}
               >
                 <IconTrash className="h-3.5 w-3.5" />
-                Удалить
+                {t('settingsCategories.deleteAction')}
               </button>
             </div>
           ) : null}
@@ -281,7 +283,7 @@ function TreeNodeRow({
             autoFocus
             value={addChildDraft}
             onChange={(e) => onAddChildDraftChange(e.target.value)}
-            placeholder="Название подгруппы"
+            placeholder={t('settingsCategories.childPlaceholder')}
             className="app-input min-w-[10rem] flex-1 text-sm"
             disabled={addChildBusy}
             onKeyDown={(e) => {
@@ -289,10 +291,10 @@ function TreeNodeRow({
             }}
           />
           <button type="submit" className="app-btn app-btn-primary !min-h-9 px-3 py-1.5 text-xs" disabled={addChildBusy || !addChildDraft.trim()}>
-            {addChildBusy ? '…' : 'Добавить'}
+            {addChildBusy ? t('settingsCategories.addChildBusy') : t('settingsCategories.addChildButton')}
           </button>
           <button type="button" className="app-btn app-btn-secondary !min-h-9 px-3 py-1.5 text-xs" onClick={onCancelAddChild} disabled={addChildBusy}>
-            Отмена
+            {t('common.cancel')}
           </button>
         </form>
       ) : null}
@@ -327,6 +329,7 @@ function TreeNodeRow({
 }
 
 export function SettingsCategoriesPage() {
+  const t = useT()
   const { user } = useAuth()
   const [tree, setTree] = useState<RequestCategoryTreeNode[]>([])
   const [newRootName, setNewRootName] = useState('')
@@ -352,11 +355,11 @@ export function SettingsCategoriesPage() {
         setExpandedIds(new Set(collectExpandableIds(data)))
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      setErr(e instanceof Error ? e.message : t('settingsCategories.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void load()
@@ -404,7 +407,7 @@ export function SettingsCategoriesPage() {
       setNewRootName('')
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось добавить')
+      setErr(e instanceof Error ? e.message : t('settingsCategories.addFailed'))
     } finally {
       setRootBusy(false)
     }
@@ -431,7 +434,7 @@ export function SettingsCategoriesPage() {
       cancelAddChild()
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось добавить')
+      setErr(e instanceof Error ? e.message : t('settingsCategories.addFailed'))
     } finally {
       setAddChildBusy(false)
     }
@@ -439,8 +442,8 @@ export function SettingsCategoriesPage() {
 
   async function removeCategory(id: number, label: string, hasChildren: boolean) {
     const msg = hasChildren
-      ? `Удалить «${label}» и все подгруппы? Заявки сохранят старый текст категории.`
-      : `Удалить «${label}»? Заявки сохранят старый текст категории.`
+      ? t('settingsCategories.deleteConfirmWithChildren', { label })
+      : t('settingsCategories.deleteConfirmSingle', { label })
     if (!confirm(msg)) return
     setErr(null)
     try {
@@ -448,7 +451,7 @@ export function SettingsCategoriesPage() {
       if (addingUnderId === id) cancelAddChild()
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось удалить')
+      setErr(e instanceof Error ? e.message : t('settingsCategories.deleteFailed'))
     }
   }
 
@@ -468,7 +471,7 @@ export function SettingsCategoriesPage() {
       ])
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось переместить')
+      setErr(e instanceof Error ? e.message : t('settingsCategories.moveFailed'))
     }
   }
 
@@ -479,10 +482,9 @@ export function SettingsCategoriesPage() {
           <IconTicket className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="page-title">Категории заявок</h1>
+          <h1 className="page-title">{t('titles.categories')}</h1>
           <p className="mt-0.5 max-w-2xl text-sm text-[var(--color-fg-muted)]">
-            Дерево групп и подгрупп для поля «Категория» в заявках. Полный путь собирается автоматически
-            (например: Програмное обеспечение → Outlook).
+            {t('pages.categoriesSubtitle')}
           </p>
         </div>
       </div>
@@ -493,14 +495,14 @@ export function SettingsCategoriesPage() {
         <div className="mb-6 flex max-w-2xl flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
             <label htmlFor="new-root-category" className="app-label">
-              Новая группа (корень)
+              {t('settingsCategories.newRootLabel')}
             </label>
             <input
               id="new-root-category"
               value={newRootName}
               onChange={(e) => setNewRootName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void addRoot()}
-              placeholder="Например: Связь"
+              placeholder={t('settingsCategories.newRootPlaceholder')}
               className="app-input text-sm"
               disabled={rootBusy}
             />
@@ -511,7 +513,7 @@ export function SettingsCategoriesPage() {
             className="app-btn app-btn-primary"
             disabled={rootBusy || !newRootName.trim()}
           >
-            {rootBusy ? 'Добавление…' : 'Добавить группу'}
+            {rootBusy ? t('settingsCategories.addRootBusy') : t('settingsCategories.addRootButton')}
           </button>
         </div>
       ) : null}
@@ -520,15 +522,14 @@ export function SettingsCategoriesPage() {
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2.5">
           <div className="min-w-0 flex-1 text-xs text-[var(--color-fg-muted)]">
             {loading ? (
-              'Загрузка…'
+              t('common.loading')
             ) : search.trim() ? (
               <>
-                Показано <span className="font-semibold text-[var(--color-fg)]">{visibleCount}</span> из{' '}
-                <span className="font-semibold text-[var(--color-fg)]">{nodeCount}</span> узлов
+                {t('settingsCategories.statsShown', { visible: visibleCount, total: nodeCount })}
               </>
             ) : (
               <>
-                Узлов в дереве: <span className="font-semibold text-[var(--color-fg)]">{nodeCount}</span>
+                {t('settingsCategories.statsTotal', { total: nodeCount })}
               </>
             )}
           </div>
@@ -536,25 +537,25 @@ export function SettingsCategoriesPage() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск по названию или пути…"
+            placeholder={t('settingsCategories.searchPlaceholder')}
             className="app-input !min-h-9 max-w-xs flex-1 py-2 text-xs sm:max-w-sm"
-            aria-label="Поиск категорий"
+            aria-label={t('settingsCategories.searchAria')}
           />
           <button type="button" className="app-btn app-btn-secondary !min-h-9 px-3 py-1.5 text-xs" onClick={expandAll} disabled={loading || filteredTree.length === 0}>
-            Развернуть всё
+            {t('settingsCategories.expandAll')}
           </button>
           <button type="button" className="app-btn app-btn-secondary !min-h-9 px-3 py-1.5 text-xs" onClick={collapseAll} disabled={loading || filteredTree.length === 0}>
-            Свернуть всё
+            {t('settingsCategories.collapseAll')}
           </button>
         </div>
 
         {loading ? (
-          <div className="px-4 py-12 text-center text-[var(--color-fg-subtle)]">Загрузка дерева…</div>
+          <div className="px-4 py-12 text-center text-[var(--color-fg-subtle)]">{t('settingsCategories.treeLoading')}</div>
         ) : filteredTree.length === 0 ? (
           <div className="app-empty-state !rounded-none border-0">
             {tree.length === 0
-              ? 'Нет категорий. Добавьте первую группу выше.'
-              : 'Ничего не найдено по запросу.'}
+              ? t('settingsCategories.emptyNoCategories')
+              : t('settingsCategories.emptyNoResults')}
           </div>
         ) : (
           <div className="bg-[var(--color-surface)] px-2 py-3 sm:px-3">
@@ -585,7 +586,7 @@ export function SettingsCategoriesPage() {
 
       {!canManage ? (
         <p className="mt-3 max-w-2xl text-xs text-[var(--color-fg-subtle)]">
-          Редактирование доступно пользователям с ролью «редактор» или суперпользователям. Вы можете просматривать дерево.
+          {t('settingsCategories.readonlyHint')}
         </p>
       ) : null}
     </div>

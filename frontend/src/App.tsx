@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { titleForPath } from './documentTitle'
+import { useLocale } from './i18n/LocaleContext'
 import { ComputersPage } from './pages/ComputersPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { SoftwarePage } from './pages/SoftwarePage'
@@ -24,14 +25,16 @@ import { PrintersPage } from './pages/PrintersPage'
 
 function DocumentTitle() {
   const { pathname } = useLocation()
+  const { locale } = useLocale()
   useEffect(() => {
-    document.title = titleForPath(pathname)
-  }, [pathname])
+    document.title = titleForPath(pathname, locale)
+  }, [pathname, locale])
   return null
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
+  const { t } = useLocale()
   if (loading) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-5 bg-[var(--color-bg)]">
@@ -39,7 +42,7 @@ function Protected({ children }: { children: React.ReactNode }) {
           className="h-10 w-10 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-primary)]"
           aria-hidden
         />
-        <span className="text-sm font-medium text-[var(--color-fg-subtle)]">Загрузка…</span>
+        <span className="text-sm font-medium text-[var(--color-fg-subtle)]">{t('common.loading')}</span>
       </div>
     )
   }

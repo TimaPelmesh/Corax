@@ -5,6 +5,7 @@ import { api } from '../api'
 import { useAuth } from '../AuthContext'
 import { CoraxLogo } from '../components/CoraxLogo'
 import { IconLock } from '../components/icons'
+import { useLocale } from '../i18n/LocaleContext'
 import { markLoginGreeting } from '../loginGreeting'
 
 const LS_KEY_REMEMBER = 'inventory.remember_login'
@@ -17,6 +18,7 @@ type ErrorPhase = 'hidden' | 'in' | 'out'
 export function LoginPage() {
   const nav = useNavigate()
   const { user, loading, refresh } = useAuth()
+  const { t, locale, setLocale } = useLocale()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -87,7 +89,7 @@ export function LoginPage() {
       await refresh()
       nav('/', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка входа')
+      setError(err instanceof Error ? err.message : t('login.failed'))
     } finally {
       setPending(false)
     }
@@ -186,15 +188,33 @@ export function LoginPage() {
               <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/40 to-transparent" />
             </div>
 
-            <div className="relative mb-6">
-              <h1 className="text-lg font-semibold tracking-tight text-white">Вход в панель</h1>
-              <p className="mt-1.5 text-sm text-white/55">Учётная запись администратора или оператора</p>
+            <div className="relative mb-6 flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-lg font-semibold tracking-tight text-white">{t('login.title')}</h1>
+                <p className="mt-1.5 text-sm text-white/55">{t('login.subtitle')}</p>
+              </div>
+              <div className="flex shrink-0 rounded-lg border border-white/15 p-0.5 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setLocale('ru')}
+                  className={`rounded-md px-2 py-1 transition ${locale === 'ru' ? 'bg-white/15 text-white' : 'text-white/45 hover:text-white/80'}`}
+                >
+                  RU
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocale('en')}
+                  className={`rounded-md px-2 py-1 transition ${locale === 'en' ? 'bg-white/15 text-white' : 'text-white/45 hover:text-white/80'}`}
+                >
+                  EN
+                </button>
+              </div>
             </div>
 
             <form onSubmit={onSubmit} className="relative space-y-5">
               <div className="login-field-enter">
                 <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-white/50">
-                  Логин
+                  {t('login.username')}
                 </label>
                 <input
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/25"
@@ -202,13 +222,13 @@ export function LoginPage() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
-                  placeholder="Введите логин"
+                  placeholder={t('login.usernamePh')}
                   required
                 />
               </div>
               <div className="login-field-enter">
                 <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-white/50">
-                  Пароль
+                  {t('login.password')}
                 </label>
                 <div className="relative">
                   <input
@@ -217,15 +237,15 @@ export function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
-                    placeholder="Введите пароль"
+                    placeholder={t('login.passwordPh')}
                     required
                   />
                   <button
                     type="button"
                     className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-white/55 transition hover:text-white"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
-                    title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                    aria-label={showPassword ? t('common.hidePassword') : t('common.showPassword')}
+                    title={showPassword ? t('common.hidePassword') : t('common.showPassword')}
                   >
                     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                       {showPassword ? (
@@ -259,7 +279,7 @@ export function LoginPage() {
                       if (!next) savePasswordNow(false)
                     }}
                   />
-                  Запомнить логин
+                  {t('login.remember')}
                 </label>
               </div>
               <button
@@ -268,7 +288,7 @@ export function LoginPage() {
                 className="login-field-enter app-btn app-btn-primary !w-full !min-h-[48px]"
               >
                 <IconLock className="h-4 w-4 opacity-80" aria-hidden />
-                {pending ? 'Вход…' : 'Войти'}
+                {pending ? t('login.submitting') : t('login.submit')}
               </button>
             </form>
           </div>

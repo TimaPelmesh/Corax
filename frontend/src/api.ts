@@ -116,6 +116,7 @@ export type User = {
   username: string
   email: string | null
   full_name: string | null
+  avatar_data?: string | null
   is_active: boolean
   is_superuser: boolean
   is_ldap: boolean
@@ -1102,8 +1103,12 @@ export const api = {
   changeMyPassword: (body: { current_password: string; new_password: string }) =>
     request<{ ok: boolean }>(`${API_PREFIX}/users/me/change-password`, { method: 'POST', json: body }),
 
-  updateMyProfile: (body: { username?: string; full_name?: string | null; email?: string | null }) =>
-    request<User>(`${API_PREFIX}/users/me/profile`, { method: 'PATCH', json: body }),
+  updateMyProfile: (body: {
+    username?: string
+    full_name?: string | null
+    email?: string | null
+    avatar_data?: string | null
+  }) => request<User>(`${API_PREFIX}/users/me/profile`, { method: 'PATCH', json: body }),
 
   updateUser: (
     id: number,

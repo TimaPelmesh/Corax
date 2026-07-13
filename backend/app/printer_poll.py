@@ -21,14 +21,14 @@ from app.printer_snmp_discover import discover_snmp_printers
 _WIN32 = platform.system().lower() == "windows"
 
 
-def _discovery_concurrency(cfg: EffectivePrinterPollConfig) -> int:
-    cap = 8 if _WIN32 else 24
-    return max(4, min(cap, cfg.poll_concurrency * 2))
-
-
 def _poll_concurrency(cfg: EffectivePrinterPollConfig) -> int:
-    cap = 8 if _WIN32 else 32
+    cap = 12 if _WIN32 else 32
     return max(1, min(cap, cfg.poll_concurrency))
+
+
+def _discovery_concurrency(cfg: EffectivePrinterPollConfig) -> int:
+    cap = 12 if _WIN32 else 24
+    return max(4, min(cap, cfg.poll_concurrency * 2))
 
 
 @dataclass
@@ -107,37 +107,41 @@ async def poll_single_printer(
         row.snmp_error = "Нет IP"
         return
 
-    ping_ok = await ping_ip(ip, cfg.ping_timeout_ms)
-    row.poll_status = "online" if ping_ok else "offline"
-    row.last_poll_at = now
-
     if not cfg.snmp_enabled:
+        ping_ok = await ping_ip(ip, cfg.ping_timeout_ms)
+        row.poll_status = "online" if ping_ok else "offline"
+        row.last_poll_at = now
         row.snmp_status = "skipped"
         row.snmp_error = None if ping_ok else "Ping не прошёл; SNMP выключен"
         return
 
+    # SNMP first: быстрее на живых устройствах; многие принтеры режут ICMP.
     snap = await fetch_printer_snmp(
         ip,
         community=cfg.snmp_community,
         timeout=cfg.snmp_timeout_seconds,
     )
     row.last_snmp_at = now
-    if snap.error:
-        row.snmp_status = "error"
-        row.snmp_error = snap.error if ping_ok else f"{snap.error}; ping тоже не прошёл"
+    row.last_poll_at = now
+    if not snap.error:
+        row.poll_status = "online"
+        row.snmp_status = "ok"
+        row.snmp_error = None
+        if snap.model:
+            row.snmp_model = snap.model
+            if row.source == "snmp":
+                # snmp_model column is 512; keep full model for UI wrapping
+                row.name = snap.model.splitlines()[0].strip()[:512] or row.name
+        if snap.page_count is not None:
+            row.page_count = snap.page_count
+        row.supplies_json = json.dumps([s.to_dict() for s in snap.supplies], ensure_ascii=False)
         return
 
-    # SNMP response is a stronger online signal than ICMP ping: many printers/networks block ping.
-    row.poll_status = "online"
-    row.snmp_status = "ok"
-    row.snmp_error = None
-    if snap.model:
-        row.snmp_model = snap.model
-        if row.source == "snmp":
-            row.name = snap.model.splitlines()[0].strip()[:160] or row.name
-    if snap.page_count is not None:
-        row.page_count = snap.page_count
-    row.supplies_json = json.dumps([s.to_dict() for s in snap.supplies], ensure_ascii=False)
+    # SNMP failed — ping only to distinguish offline vs SNMP misconfig.
+    ping_ok = await ping_ip(ip, cfg.ping_timeout_ms)
+    row.poll_status = "online" if ping_ok else "offline"
+    row.snmp_status = "error"
+    row.snmp_error = snap.error if ping_ok else f"{snap.error}; ping тоже не прошёл"
 
 
 async def run_printer_poll_cycle(
