@@ -205,7 +205,7 @@ function DonutDistribution({
           width={svgSize}
           height={svgSize}
           viewBox="0 0 160 160"
-          className="drop-shadow-[0_12px_32px_-8px_rgb(15_23_42_/_0.12)]"
+          className="drop-shadow-[0_12px_32px_-8px_rgb(15_23_42_/_0.12)] dark:drop-shadow-[0_12px_40px_-6px_rgb(96_165_250_/_0.35)]"
           role="img"
           aria-label={t('dashboard.donutAriaLabel')}
         >
@@ -227,7 +227,7 @@ function DonutDistribution({
                 key={s.item.name + String(s.i)}
                 d={segments.length === 1 ? '' : s.d}
                 fill={s.color}
-                stroke="rgb(255 255 255 / 0.92)"
+                stroke="color-mix(in srgb, var(--color-surface) 88%, white)"
                 strokeWidth={active ? 1.75 : 1.25}
                 strokeLinejoin="round"
                 className={clickable ? 'cursor-pointer' : undefined}
@@ -390,7 +390,7 @@ function BarDistribution({
               onClick={clickable ? () => onItemClick?.(row.name) : undefined}
             >
               <div
-                className="absolute inset-x-0 bottom-0 rounded-t-xl bg-gradient-to-t from-blue-700 via-neutral-800 to-neutral-600 opacity-95 shadow-[0_-4px_16px_-4px_rgb(0_0_0/0.15)] transition-[height] duration-300 ease-out group-hover:opacity-100"
+                className="absolute inset-x-0 bottom-0 rounded-t-xl bg-gradient-to-t from-blue-700 via-neutral-800 to-neutral-600 opacity-95 shadow-[0_-4px_16px_-4px_rgb(0_0_0/0.15)] transition-[height] duration-300 ease-out group-hover:opacity-100 dark:from-[#2563eb] dark:via-[#60a5fa] dark:to-[#bae6fd] dark:opacity-100 dark:shadow-[0_-6px_20px_-4px_rgb(56_189_248/0.35)]"
                 style={{ height: `${Math.max(6, pct)}%` }}
               />
               <div className="absolute inset-x-0 top-2 px-1.5 text-center font-mono text-[11px] font-semibold tabular-nums text-[var(--color-fg)] drop-shadow-sm">

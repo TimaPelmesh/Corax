@@ -20,7 +20,7 @@ import {
   serializePlacePhotos,
 } from '../floorPlacePhotos'
 import { IconClose, IconGraph } from '../components/icons'
-import { useT } from '../i18n/LocaleContext'
+import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
 
 type ViewBox = { x: number; y: number; w: number; h: number }
 
@@ -28,30 +28,30 @@ const DEFAULT_VIEWBOX: ViewBox = { x: 0, y: 0, w: 1200, h: 800 }
 const DEFAULT_LAYOUT: FloorLayout = { version: 1, rooms: [], computers: [], icons: [], walls: [] }
 const LS_KEY_LAST_FLOOR_ID = 'inventory.knowledge_building_map.last_floor_id'
 
-const EQUIPMENT: Array<{ kind: FloorIconKind; label: string }> = [
-  { kind: 'pc', label: 'ПК' },
-  { kind: 'ethernet_outlet', label: 'Розетка Ethernet' },
-  { kind: 'phone_outlet', label: 'Тел. розетка' },
-  { kind: 'server', label: 'Сервер' },
-  { kind: 'ap', label: 'Точка доступа' },
-  { kind: 'switch', label: 'Коммутатор' },
-  { kind: 'printer', label: 'Принтер' },
-  { kind: 'text', label: 'Надпись' },
+const EQUIPMENT_KINDS: FloorIconKind[] = [
+  'pc',
+  'ethernet_outlet',
+  'phone_outlet',
+  'server',
+  'ap',
+  'switch',
+  'printer',
+  'text',
 ]
 
-const KIND_LABEL: Record<FloorIconKind, string> = {
-  pc: 'ПК',
-  server: 'Сервер',
-  printer: 'Принтер',
-  camera: 'Камера',
-  ap: 'Точка доступа',
-  switch: 'Коммутатор',
-  door: 'Дверь',
-  stairs: 'Лестница',
-  elevator: 'Лифт',
-  text: 'Надпись',
-  ethernet_outlet: 'Розетка Ethernet',
-  phone_outlet: 'Тел. розетка',
+const KIND_LABEL_KEY: Record<FloorIconKind, MessageKey> = {
+  pc: 'sitemap.kinds.pc',
+  server: 'sitemap.kinds.server',
+  printer: 'sitemap.kinds.printer',
+  camera: 'sitemap.kinds.camera',
+  ap: 'sitemap.kinds.ap',
+  switch: 'sitemap.kinds.switch',
+  door: 'sitemap.kinds.door',
+  stairs: 'sitemap.kinds.stairs',
+  elevator: 'sitemap.kinds.elevator',
+  text: 'sitemap.kinds.text',
+  ethernet_outlet: 'sitemap.kinds.ethernet_outlet',
+  phone_outlet: 'sitemap.kinds.phone_outlet',
 }
 
 const LS_VIS_OUTLETS = 'inventory.building_map.outlet_visibility'
@@ -393,13 +393,13 @@ function viewBoxesCloseEnough(a: ViewBox, b: ViewBox, eps = 1e-3): boolean {
   )
 }
 
-function markerTitle(marker: FloorIconMarker | null): string {
-  if (!marker) return 'Объект не выбран'
+function markerTitle(marker: FloorIconMarker | null, kindFallback = ''): string {
+  if (!marker) return kindFallback
   if (isOutletKind(marker.kind)) {
     const num = outletNumber(marker)
     if (num) return `№ ${num}`
   }
-  return (marker.label ?? marker.meta?.title ?? '').trim() || KIND_LABEL[marker.kind]
+  return (marker.label ?? marker.meta?.title ?? '').trim() || kindFallback || marker.kind
 }
 
 function splitLabelLines(input: string): string[] {
@@ -583,11 +583,13 @@ function EquipmentMenuIcon({ kind }: { kind: FloorIconKind }) {
 
 export function KnowledgeSitemapPage() {
   const t = useT()
+  const { locale } = useLocale()
   const { user } = useAuth()
   const canEdit = !!user && (user.is_superuser || user.role === 'editor')
   const svgRef = useRef<SVGSVGElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const floorMenuRef = useRef<HTMLDivElement | null>(null)
+  const displayMenuRef = useRef<HTMLDivElement | null>(null)
   const autosaveTimerRef = useRef<number | null>(null)
   const autosaveInFlightRef = useRef(false)
   const pendingIconsRef = useRef<FloorIconMarker[] | null>(null)
@@ -627,6 +629,7 @@ export function KnowledgeSitemapPage() {
   const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle')
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
   const [floorMenuOpen, setFloorMenuOpen] = useState(false)
+  const [displayMenuOpen, setDisplayMenuOpen] = useState(false)
   const [renamingFloor, setRenamingFloor] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [toolboxOpen, setToolboxOpen] = useState(false)
@@ -974,6 +977,24 @@ export function KnowledgeSitemapPage() {
   }, [floorMenuOpen])
 
   useEffect(() => {
+    if (!displayMenuOpen) return
+    const onDocClick = (e: MouseEvent) => {
+      const root = displayMenuRef.current
+      if (!root) return
+      if (!root.contains(e.target as Node)) setDisplayMenuOpen(false)
+    }
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDisplayMenuOpen(false)
+    }
+    window.addEventListener('mousedown', onDocClick)
+    window.addEventListener('keydown', onEsc)
+    return () => {
+      window.removeEventListener('mousedown', onDocClick)
+      window.removeEventListener('keydown', onEsc)
+    }
+  }, [displayMenuOpen])
+
+  useEffect(() => {
     setPcDetail(null)
     setPcDetailLoading(false)
     setPcInfoModalOpen(false)
@@ -1170,16 +1191,17 @@ export function KnowledgeSitemapPage() {
   const addMarker = (kind: FloorIconKind) => {
     if (!canEdit) return
     const id = `${kind}-${Date.now().toString(36)}`
+    const kindLabel = t(KIND_LABEL_KEY[kind])
     const marker: FloorIconMarker = {
       id,
       kind,
       x: cameraView.x + cameraView.w / 2,
       y: cameraView.y + cameraView.h / 2,
-      label: KIND_LABEL[kind],
+      label: kindLabel,
       scale: kind === 'text' ? 1 : isOutletKind(kind) ? 0.67 : 1.1,
       meta: isOutletKind(kind)
-        ? { title: KIND_LABEL[kind], outlet_number: '', connected_pc_id: '' }
-        : { title: KIND_LABEL[kind], ip: '', mac: '', notes: '' },
+        ? { title: kindLabel, outlet_number: '', connected_pc_id: '' }
+        : { title: kindLabel, ip: '', mac: '', notes: '' },
     }
     setLayout((current) => ({ ...current, icons: [...(current.icons ?? []), marker] }))
     setSelectedIds([id])
@@ -1609,15 +1631,15 @@ export function KnowledgeSitemapPage() {
 
       {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
       {!canEdit ? (
-        <div className="app-alert app-alert-warning mb-4">
-          Режим просмотра: перемещение и редактирование объектов доступны только редактору и администратору.
-        </div>
+        <div className="app-alert app-alert-warning mb-4">{t('sitemap.viewOnly')}</div>
       ) : null}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-sm">
-            <span className="pl-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Этажи</span>
+            <span className="pl-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+              {t('sitemap.floors')}
+            </span>
             <select
               value={activeId ?? ''}
               onChange={(e) => {
@@ -1658,7 +1680,7 @@ export function KnowledgeSitemapPage() {
                 <circle cx="12" cy="12" r="2.6" />
                 <path d="M19 12a7 7 0 0 0-.07-.99l2.02-1.57-1.9-3.3-2.45.76a7.3 7.3 0 0 0-1.71-.99l-.37-2.54h-3.8l-.37 2.54c-.6.23-1.17.56-1.7.99l-2.46-.76-1.9 3.3 2.02 1.57A7 7 0 0 0 5 12c0 .34.03.67.07.99l-2.02 1.57 1.9 3.3 2.45-.76c.53.43 1.1.76 1.71.99l.37 2.54h3.8l.37-2.54c.6-.23 1.17-.56 1.7-.99l2.46.76 1.9-3.3-2.02-1.57c.04-.32.06-.65.06-.99Z" />
               </svg>
-              Настройки этажа
+              {t('sitemap.floorSettings')}
             </button>
             {floorMenuOpen ? (
               <div className="popup-enter absolute left-0 top-11 z-20 min-w-64 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-xl">
@@ -1668,7 +1690,7 @@ export function KnowledgeSitemapPage() {
                   onClick={() => void createFloor()}
                   disabled={!canEdit || loading || saving}
                 >
-                  Добавить этаж
+                  {t('sitemap.addFloor')}
                 </button>
                 <button
                   type="button"
@@ -1680,7 +1702,7 @@ export function KnowledgeSitemapPage() {
                   }}
                   disabled={!canEdit || !activeDiagram || loading}
                 >
-                  Переименовать текущий
+                  {t('sitemap.renameFloor')}
                 </button>
                 {renamingFloor ? (
                   <form
@@ -1690,7 +1712,9 @@ export function KnowledgeSitemapPage() {
                       void renameFloor()
                     }}
                   >
-                    <label className="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]">Новое имя этажа</label>
+                    <label className="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]">
+                      {t('sitemap.newFloorName')}
+                    </label>
                     <input
                       className="app-input !min-h-0 !py-2"
                       value={renameValue}
@@ -1703,14 +1727,14 @@ export function KnowledgeSitemapPage() {
                         className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 !text-xs"
                         onClick={() => setRenamingFloor(false)}
                       >
-                        Отмена
+                        {t('common.cancel')}
                       </button>
                       <button
                         type="submit"
                         className="app-btn app-btn-primary !min-h-0 !px-2.5 !py-1.5 !text-xs"
                         disabled={!renameValue.trim()}
                       >
-                        Сохранить
+                        {t('common.save')}
                       </button>
                     </div>
                   </form>
@@ -1721,7 +1745,7 @@ export function KnowledgeSitemapPage() {
                   onClick={() => void deleteFloor()}
                   disabled={!canEdit || !activeDiagram || diagrams.length <= 1 || loading}
                 >
-                  Удалить текущий
+                  {t('sitemap.deleteFloor')}
                 </button>
               </div>
             ) : null}
@@ -1739,18 +1763,18 @@ export function KnowledgeSitemapPage() {
             className="app-btn app-btn-secondary !h-10"
             onClick={() => fileInputRef.current?.click()}
             disabled={!canEdit}
-            title="Шаг 1: загрузите план этажа (PNG)"
+            title={t('sitemap.importPngTitle')}
           >
-            1. Импорт PNG-фона
+            {t('sitemap.importPng')}
           </button>
           <button
             type="button"
             className="app-btn app-btn-secondary !h-10"
             onClick={() => void exportPng()}
             disabled={!activeId || saving}
-            title="Сохранить готовую карту как PNG"
+            title={t('sitemap.exportPngTitle')}
           >
-            Экспорт PNG
+            {t('sitemap.exportPng')}
           </button>
         </div>
       </div>
@@ -1769,91 +1793,118 @@ export function KnowledgeSitemapPage() {
               <button
                 type="button"
                 className="rounded-lg border border-[var(--color-border)] bg-[var(--color-primary-muted)] px-3 py-2 text-sm font-semibold text-[var(--color-primary)] transition hover:border-[var(--color-primary)]"
-                onClick={() => setToolboxOpen((v) => !v)}
+                onClick={() => {
+                  setToolboxOpen((v) => !v)
+                  setDisplayMenuOpen(false)
+                }}
                 disabled={!canEdit}
-                title="Шаг 2: добавить оборудование на карту"
+                title={t('sitemap.objectsTitle')}
               >
-                2. + Объекты
+                {t('sitemap.objects')}
               </button>
               {toolboxOpen ? (
                 <div className="popup-enter absolute left-0 top-11 z-20 grid min-w-64 grid-cols-2 gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-xl">
-                  {EQUIPMENT.map((item) => (
+                  {EQUIPMENT_KINDS.map((kind) => (
                     <button
-                      key={item.kind}
+                      key={kind}
                       type="button"
                       className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-left text-xs font-medium text-[var(--color-fg)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
                       onClick={() => {
-                        addMarker(item.kind)
+                        addMarker(kind)
                       }}
                       disabled={!canEdit}
                     >
-                      <EquipmentMenuIcon kind={item.kind} />
-                      {item.label}
+                      <EquipmentMenuIcon kind={kind} />
+                      {t(KIND_LABEL_KEY[kind])}
                     </button>
                   ))}
                 </div>
               ) : null}
             </div>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
-              <input type="checkbox" checked={!showLabels} onChange={(e) => setShowLabels(!e.target.checked)} />
-              Скрыть надписи
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
-              <input
-                type="checkbox"
-                checked={showHoverCard}
-                onChange={(e) => setShowHoverCard(e.target.checked)}
-              />
-              Карточка при наведении
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
-              <input
-                type="checkbox"
-                checked={outletVis.ethOutlets}
-                onChange={(e) => setOutletVisibility({ ethOutlets: e.target.checked })}
-              />
-              Ethernet-розетки
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
-              <input
-                type="checkbox"
-                checked={outletVis.phoneOutlets}
-                onChange={(e) => setOutletVisibility({ phoneOutlets: e.target.checked })}
-              />
-              Тел. розетки
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
-              <input
-                type="checkbox"
-                checked={outletVis.ethCables}
-                onChange={(e) => setOutletVisibility({ ethCables: e.target.checked })}
-              />
-              Кабели Ethernet
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
-              <input
-                type="checkbox"
-                checked={outletVis.phoneCables}
-                onChange={(e) => setOutletVisibility({ phoneCables: e.target.checked })}
-              />
-              Тел. кабели
-            </label>
-            <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg-muted)]">
-              <input
-                type="checkbox"
-                checked={exportWithLabels}
-                onChange={(e) => setExportWithLabels(e.target.checked)}
-              />
-              Экспорт с надписями
-            </label>
+            <div className="relative" ref={displayMenuRef}>
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg-muted)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
+                onClick={() => {
+                  setDisplayMenuOpen((v) => !v)
+                  setToolboxOpen(false)
+                }}
+                aria-expanded={displayMenuOpen}
+                aria-haspopup="menu"
+              >
+                {t('sitemap.display')}
+              </button>
+              {displayMenuOpen ? (
+                <div className="popup-enter absolute left-0 top-11 z-20 min-w-56 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-xl">
+                  {(
+                    [
+                      {
+                        key: 'hideLabels',
+                        checked: !showLabels,
+                        onChange: (checked: boolean) => setShowLabels(!checked),
+                        label: t('sitemap.hideLabels'),
+                      },
+                      {
+                        key: 'hoverCard',
+                        checked: showHoverCard,
+                        onChange: (checked: boolean) => setShowHoverCard(checked),
+                        label: t('sitemap.hoverCard'),
+                      },
+                      {
+                        key: 'ethOutlets',
+                        checked: outletVis.ethOutlets,
+                        onChange: (checked: boolean) => setOutletVisibility({ ethOutlets: checked }),
+                        label: t('sitemap.ethOutlets'),
+                      },
+                      {
+                        key: 'phoneOutlets',
+                        checked: outletVis.phoneOutlets,
+                        onChange: (checked: boolean) => setOutletVisibility({ phoneOutlets: checked }),
+                        label: t('sitemap.phoneOutlets'),
+                      },
+                      {
+                        key: 'ethCables',
+                        checked: outletVis.ethCables,
+                        onChange: (checked: boolean) => setOutletVisibility({ ethCables: checked }),
+                        label: t('sitemap.ethCables'),
+                      },
+                      {
+                        key: 'phoneCables',
+                        checked: outletVis.phoneCables,
+                        onChange: (checked: boolean) => setOutletVisibility({ phoneCables: checked }),
+                        label: t('sitemap.phoneCables'),
+                      },
+                      {
+                        key: 'exportWithLabels',
+                        checked: exportWithLabels,
+                        onChange: (checked: boolean) => setExportWithLabels(checked),
+                        label: t('sitemap.exportWithLabels'),
+                      },
+                    ] as const
+                  ).map((row) => (
+                    <label
+                      key={row.key}
+                      className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={row.checked}
+                        onChange={(e) => row.onChange(e.target.checked)}
+                      />
+                      {row.label}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             {user && activeId ? (
               <div
                 className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs text-[var(--color-fg-muted)] shadow-sm"
-                title="Одновременное редактирование: список учётных записей с открытой картой здания (live по любому этажу). Пока есть несохранённые правки, чужие изменения сами не подтягиваются."
+                title={t('sitemap.peersTitle')}
               >
                 <span
                   className="inline-flex shrink-0 items-center"
-                  title={liveConnected ? 'Канал live подключён' : 'Нет подключения к live'}
+                  title={liveConnected ? t('sitemap.liveConnected') : t('sitemap.liveDisconnected')}
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full motion-safe:transition-opacity motion-safe:duration-500 ${
@@ -1862,7 +1913,7 @@ export function KnowledgeSitemapPage() {
                     aria-hidden
                   />
                 </span>
-                <span className="font-medium text-[var(--color-fg)]">Онлайн</span>
+                <span className="font-medium text-[var(--color-fg)]">{t('sitemap.online')}</span>
                 <span className="flex min-w-0 flex-wrap items-center gap-1">
                   {peers.length ? (
                     peers.map((p) => (
@@ -1883,18 +1934,29 @@ export function KnowledgeSitemapPage() {
             </div>
             <div
               className="shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-right text-[11px] text-[var(--color-fg-muted)] transition-colors duration-500 ease-out"
-              title="Автосохранение позиций объектов на карте"
+              title={t('sitemap.autosaveTitle')}
             >
-              {`Автосохр.: ${lastSavedAt ? new Date(lastSavedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}`}
+              {t('sitemap.autosave', {
+                time: lastSavedAt
+                  ? new Date(lastSavedAt).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '—',
+              })}
             </div>
           </div>
 
           <div className="relative h-[min(72vh,820px)] min-h-[520px] bg-[var(--color-surface-muted)]">
             <div className="pointer-events-none absolute bottom-2 right-2 z-10 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[11px] text-[var(--color-fg-muted)] shadow-sm">
-              ЛКМ тащить — сдвиг · колёсико — масштаб · клик по объекту — свойства справа
+              {t('sitemap.mapHint')}
             </div>
             {loading || !activeDiagram ? (
-              <div className="flex h-full items-center justify-center text-sm text-[var(--color-fg-subtle)]">Загрузка карты…</div>
+              <div className="flex h-full items-center justify-center text-sm text-[var(--color-fg-subtle)]">
+                {t('sitemap.loadingMap')}
+              </div>
             ) : (
               <svg
                 ref={svgRef}
@@ -2061,7 +2123,7 @@ export function KnowledgeSitemapPage() {
                       <g transform={hoverTransform} pointerEvents="none">
                         <rect width="256" height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
                         <text x="14" y="24" fill="white" fontSize="14" fontWeight="700" fontFamily={textFamily}>
-                          {KIND_LABEL[hoveredMarker.kind]}
+                          {t(KIND_LABEL_KEY[hoveredMarker.kind])}
                         </text>
                         <text x="14" y="46" fill="rgba(255,255,255,0.78)" fontSize="12" fontFamily={textFamily}>
                           {`№ ${num}`}
@@ -2129,55 +2191,51 @@ export function KnowledgeSitemapPage() {
         <aside className="min-h-0 min-w-0 self-start rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm max-h-[min(88dvh,calc(100dvh-9.5rem))] overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-2">
             <div>
-              <div className="text-sm font-semibold text-[var(--color-fg)]">Свойства</div>
+              <div className="text-sm font-semibold text-[var(--color-fg)]">{t('sitemap.properties')}</div>
               <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
                 {selectedIds.length > 1
-                  ? `Выбрано объектов: ${selectedIds.length}`
+                  ? t('sitemap.selectedCount', { count: selectedIds.length })
                   : selectedMarker
-                    ? markerTitle(selectedMarker)
-                    : 'Объект не выбран'}
+                    ? markerTitle(selectedMarker, t(KIND_LABEL_KEY[selectedMarker.kind]))
+                    : t('sitemap.noneSelected')}
               </div>
             </div>
           </div>
           {!selectedMarker ? (
             <div className="mt-3 space-y-3">
               <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-fg-muted)]">
-                {selectedIds.length > 1
-                  ? 'Можно перетаскивать выбранные объекты группой. Для выбора нескольких используйте Ctrl/Shift + клик.'
-                  : 'Выберите объект на карте или добавьте новый элемент сверху.'}
+                {selectedIds.length > 1 ? t('sitemap.hintMulti') : t('sitemap.hintEmpty')}
               </div>
               <ol className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-xs leading-relaxed text-[var(--color-fg-muted)]">
                 <li>
-                  <span className="font-semibold text-[var(--color-fg)]">1.</span> Выберите этаж и при
-                  необходимости загрузите PNG-фон.
+                  <span className="font-semibold text-[var(--color-fg)]">1.</span> {t('sitemap.tip1')}
                 </li>
                 <li>
-                  <span className="font-semibold text-[var(--color-fg)]">2.</span> Нажмите «+ Объекты» и
-                  добавьте ПК, розетку или другое оборудование.
+                  <span className="font-semibold text-[var(--color-fg)]">2.</span> {t('sitemap.tip2')}
                 </li>
                 <li>
-                  <span className="font-semibold text-[var(--color-fg)]">3.</span> Кликните объект —
-                  справа появятся свойства; перетащите его на схему.
+                  <span className="font-semibold text-[var(--color-fg)]">3.</span> {t('sitemap.tip3')}
                 </li>
                 <li>
-                  <span className="font-semibold text-[var(--color-fg)]">4.</span> Экспортируйте готовую
-                  карту кнопкой «Экспорт PNG».
+                  <span className="font-semibold text-[var(--color-fg)]">4.</span> {t('sitemap.tip4')}
                 </li>
               </ol>
             </div>
           ) : (
             <div className="mt-3 space-y-2">
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Тип</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                  {t('sitemap.type')}
+                </span>
                 <select
                   value={selectedMarker.kind}
                   onChange={(e) => updateMarker(selectedMarker.id, { kind: e.target.value as FloorIconKind })}
                   className="app-input mt-0.5 !min-h-0 !py-2"
                   disabled={!canEdit}
                 >
-                  {EQUIPMENT.map((item) => (
-                    <option key={item.kind} value={item.kind}>
-                      {item.label}
+                  {EQUIPMENT_KINDS.map((kind) => (
+                    <option key={kind} value={kind}>
+                      {t(KIND_LABEL_KEY[kind])}
                     </option>
                   ))}
                 </select>

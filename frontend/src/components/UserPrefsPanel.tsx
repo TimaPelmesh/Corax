@@ -269,7 +269,7 @@ export function UserPrefsPanel({
                   <div className="inline-flex gap-1">
                     <button
                       type="button"
-                      onClick={() => setTheme('light')}
+                      onClick={(e) => setTheme('light', { x: e.clientX, y: e.clientY })}
                       className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
                         theme === 'light'
                           ? 'bg-[var(--color-primary)] text-white'
@@ -281,7 +281,7 @@ export function UserPrefsPanel({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setTheme('dark')}
+                      onClick={(e) => setTheme('dark', { x: e.clientX, y: e.clientY })}
                       className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
                         theme === 'dark'
                           ? 'bg-[var(--color-primary)] text-white'

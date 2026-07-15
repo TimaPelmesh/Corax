@@ -8,5 +8,8 @@ test('API health', async ({ request }) => {
 
 test('UI shell when production bundle is served', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /Вход в панель/i })).toBeVisible({ timeout: 30_000 })
+  // Locale may be ru or en (browser / localStorage) — accept both login titles.
+  await expect(page.getByRole('heading', { name: /Вход в панель|Sign in/i })).toBeVisible({
+    timeout: 30_000,
+  })
 })

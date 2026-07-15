@@ -1,6 +1,6 @@
 import type { ThemeMode } from './theme'
 
-/** Согласованная палитра для кольцевых диаграмм (нейтральная база + синий акцент) */
+/** Светлая тема: как раньше — синий акцент + чёрные/серые сегменты */
 export const DONUT_COLORS_LIGHT = [
   '#2563eb',
   '#18181b',
@@ -8,27 +8,28 @@ export const DONUT_COLORS_LIGHT = [
   '#71717a',
   '#1d4ed8',
   '#52525b',
+  '#0d9488',
   '#a1a1aa',
-  '#e4e4e7',
   '#1e40af',
   '#27272a',
-  '#d4d4d8',
+  '#14b8a6',
   '#78716c',
 ] as const
 
+/** Тёмная тема: синий / голубой */
 export const DONUT_COLORS_DARK = [
-  '#3b82f6',
-  '#e2e8f0',
-  '#94a3b8',
   '#60a5fa',
-  '#2563eb',
-  '#cbd5e1',
-  '#1d4ed8',
-  '#64748b',
+  '#38bdf8',
   '#93c5fd',
-  '#f1f5f9',
-  '#1e40af',
-  '#475569',
+  '#3b82f6',
+  '#7dd3fc',
+  '#2563eb',
+  '#0ea5e9',
+  '#bae6fd',
+  '#1d4ed8',
+  '#67e8f9',
+  '#818cf8',
+  '#a5b4fc',
 ] as const
 
 export function donutColorsForTheme(theme: ThemeMode): readonly string[] {

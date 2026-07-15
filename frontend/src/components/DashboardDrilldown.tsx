@@ -77,7 +77,7 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
     <>
       {createPortal(
         <div
-          className="fixed inset-0 z-[70] flex items-end justify-center bg-neutral-950/45 p-3 backdrop-blur-sm sm:items-center sm:p-6"
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-3 backdrop-blur-sm sm:items-center sm:p-6"
           role="dialog"
           aria-modal
           aria-labelledby="dashboard-drilldown-title"
@@ -90,13 +90,18 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
             className="dashboard-enter flex max-h-[min(92dvh,36rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4">
+            <div className="flex shrink-0 items-start justify-between gap-3 px-5 py-4">
               <div className="min-w-0 pr-2">
-                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-neutral-400">{selection.chartTitle}</div>
-                <h3 id="dashboard-drilldown-title" className="mt-1 text-lg font-semibold tracking-tight text-neutral-950">
+                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                  {selection.chartTitle}
+                </div>
+                <h3
+                  id="dashboard-drilldown-title"
+                  className="mt-1 text-lg font-semibold tracking-tight text-[var(--color-fg)]"
+                >
                   {selection.displayName ?? selection.name}
                 </h3>
-                <p className="mt-1 text-sm text-neutral-500">
+                <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
                   {loading ? 'Загрузка…' : total ? `${total} ПК` : 'Нет подходящих ПК'}
                   {!loading && total > shown ? ` · показано ${shown}` : null}
                 </p>
@@ -104,20 +109,21 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
               <button
                 type="button"
                 onClick={onClose}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+                className="app-btn app-btn-secondary !min-h-0 shrink-0 !px-3 !py-2 !text-xs"
                 aria-label="Закрыть"
               >
                 <IconClose className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2 sm:px-4" aria-live="polite">
+            <div
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-[var(--color-border)] px-2 py-1.5 sm:px-3"
+              aria-live="polite"
+            >
               {error ? (
-                <p className="mx-1 my-3 rounded-xl border border-red-200 bg-red-50 px-4 py-6 text-center text-sm text-red-800">
-                  {error}
-                </p>
+                <p className="app-alert app-alert-error mx-1 my-3 text-center">{error}</p>
               ) : loading ? (
-                <ul className="divide-y divide-neutral-100">
+                <ul className="space-y-0">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <li key={i} className="px-3 py-3">
                       <div className="dashboard-skeleton-shimmer h-4 w-2/3 rounded-md" />
@@ -125,20 +131,21 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
                   ))}
                 </ul>
               ) : !data?.items.length ? (
-                <p className="mx-1 my-6 rounded-xl border border-dashed border-neutral-200 px-4 py-8 text-center text-sm text-neutral-500">
-                  Нет ПК для выбранного сегмента.
-                </p>
+                <p className="app-empty-state mx-1 my-6">{'Нет ПК для выбранного сегмента.'}</p>
               ) : (
-                <ul className="divide-y divide-neutral-100">
-                  {data.items.map((row) => (
-                    <li key={row.id}>
+                <ul>
+                  {data.items.map((row, idx) => (
+                    <li
+                      key={row.id}
+                      className={idx > 0 ? 'border-t border-[var(--color-border)]' : undefined}
+                    >
                       <button
                         type="button"
                         onClick={() => setComputerId(row.id)}
-                        className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
+                        className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
                       >
                         <span className="min-w-0 truncate">{row.hostname}</span>
-                        <span className="shrink-0 text-xs font-semibold text-neutral-400">→</span>
+                        <span className="shrink-0 text-xs font-semibold text-[var(--color-fg-subtle)]">→</span>
                       </button>
                     </li>
                   ))}
@@ -150,11 +157,7 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
         document.body,
       )}
       {computerId != null ? (
-        <ComputerDetailModal
-          computerId={computerId}
-          onClose={() => setComputerId(null)}
-          overlayZClass="z-[80]"
-        />
+        <ComputerDetailModal computerId={computerId} onClose={() => setComputerId(null)} />
       ) : null}
     </>
   )

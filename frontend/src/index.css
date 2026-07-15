@@ -50,34 +50,34 @@
 }
 
 [data-theme="dark"] {
-  --color-fg: #eef2f7;
-  --color-fg-muted: #c8d2df;
-  --color-fg-subtle: #9eacbd;
-  --color-bg: #0b0d12;
+  --color-fg: #f4f4f5;
+  --color-fg-muted: #d4d4d8;
+  --color-fg-subtle: #a1a1aa;
+  --color-bg: #000000;
   --color-bg-gradient: none;
-  --color-surface: #161b26;
-  --color-surface-muted: #1d2433;
-  --color-surface-elevated: #222a3a;
-  --color-panel: #161b26;
-  --color-border: #343f52;
-  --color-border-strong: #4a566c;
-  --color-primary: #5b9aff;
-  --color-primary-hover: #7ab0ff;
-  --color-primary-muted: rgb(59 130 246 / 0.18);
-  --color-success-bg: rgb(6 78 59 / 0.22);
-  --color-success-border: rgb(52 211 153 / 0.35);
+  --color-surface: #0a0a0a;
+  --color-surface-muted: #111111;
+  --color-surface-elevated: #171717;
+  --color-panel: #0a0a0a;
+  --color-border: #1c1c1c;
+  --color-border-strong: #2a2a2a;
+  --color-primary: #60a5fa;
+  --color-primary-hover: #93c5fd;
+  --color-primary-muted: rgb(96 165 250 / 0.2);
+  --color-success-bg: rgb(6 78 59 / 0.28);
+  --color-success-border: rgb(52 211 153 / 0.4);
   --color-success-fg: #6ee7b7;
-  --color-warning-bg: rgb(120 53 15 / 0.22);
-  --color-warning-border: rgb(251 191 36 / 0.35);
+  --color-warning-bg: rgb(120 53 15 / 0.28);
+  --color-warning-border: rgb(251 191 36 / 0.4);
   --color-warning-fg: #fcd34d;
-  --color-error-bg: rgb(127 29 29 / 0.28);
-  --color-error-border: rgb(248 113 113 / 0.45);
+  --color-error-bg: rgb(127 29 29 / 0.32);
+  --color-error-border: rgb(248 113 113 / 0.5);
   --color-error-fg: #fecaca;
-  --color-info-bg: rgb(30 58 138 / 0.28);
-  --color-info-border: rgb(96 165 250 / 0.4);
+  --color-info-bg: rgb(30 58 138 / 0.32);
+  --color-info-border: rgb(96 165 250 / 0.45);
   --color-info-fg: #bfdbfe;
-  --shadow-card: 0 0 0 1px rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.4);
-  --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.06), 0 2px 10px rgb(0 0 0 / 0.45);
+  --shadow-card: 0 0 0 1px rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.55);
+  --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.08), 0 4px 16px rgb(0 0 0 / 0.55);
 }
 
 html,
@@ -600,8 +600,10 @@ body {
   [data-theme="dark"] .divide-y > :not([hidden]) ~ :not([hidden]),
   [data-theme="dark"] .divide-neutral-100 > :not([hidden]) ~ :not([hidden]),
   [data-theme="dark"] .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
-  [data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
-    border-color: var(--color-border) !important;
+  [data-theme="dark"] .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+  [data-theme="dark"] .divide-\[var\(--color-border\)\] > :not([hidden]) ~ :not([hidden]) {
+    border-color: color-mix(in srgb, var(--color-border) 85%, transparent) !important;
+    border-top-width: 1px !important;
   }
 
   [data-theme="dark"] .border-neutral-100,
@@ -617,7 +619,7 @@ body {
   [data-theme="dark"] .border-slate-300,
   [data-theme="dark"] .border-zinc-200,
   [data-theme="dark"] .border-zinc-300 {
-    border-color: var(--color-border) !important;
+    border-color: color-mix(in srgb, var(--color-border) 90%, transparent) !important;
   }
 
   [data-theme="dark"] .ring-neutral-100,
@@ -1393,5 +1395,71 @@ body {
 
   .login-brand-leaf-b {
     width: 5.5rem;
+  }
+}
+
+/* Theme switch: circular wipe (View Transitions) + fade fallback */
+html {
+  background-color: var(--color-bg);
+}
+
+html.theme-animating {
+  --theme-x: 50%;
+  --theme-y: 50%;
+}
+
+@supports (view-transition-name: root) {
+  /* Always expand the NEW theme over the old one — avoids black flash on dark→light */
+  html.theme-animating::view-transition-old(root),
+  html.theme-animating::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  html.theme-animating::view-transition-old(root) {
+    z-index: 1;
+  }
+
+  html.theme-animating::view-transition-new(root) {
+    z-index: 2;
+    animation: theme-circle-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  html.theme-animating::view-transition-group(root) {
+    animation-duration: 480ms;
+    background-color: var(--color-bg);
+  }
+}
+
+@keyframes theme-circle-in {
+  from {
+    clip-path: circle(0% at var(--theme-x) var(--theme-y));
+  }
+  to {
+    clip-path: circle(150% at var(--theme-x) var(--theme-y));
+  }
+}
+
+html.theme-fade body {
+  animation: theme-fade-pulse 280ms ease both;
+}
+
+@keyframes theme-fade-pulse {
+  0% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-animating::view-transition-old(root),
+  html.theme-animating::view-transition-new(root),
+  html.theme-fade body {
+    animation: none !important;
   }
 }

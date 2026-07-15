@@ -290,7 +290,7 @@ export function PrintersPage() {
   const [visibleCols, setVisibleCols] = useState<Record<ColKey, boolean>>(() => loadVisibleCols())
   const lastSchedRunRef = useRef<string | null>(null)
   const hourSyncedRef = useRef(false)
-  const colsMenuRef = useRef<HTMLDivElement>(null)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
 
   const [addOpen, setAddOpen] = useState(false)
   const [addName, setAddName] = useState('')
@@ -369,7 +369,7 @@ export function PrintersPage() {
   useEffect(() => {
     if (!colsOpen) return
     const onDoc = (e: MouseEvent) => {
-      if (!colsMenuRef.current?.contains(e.target as Node)) {
+      if (!moreMenuRef.current?.contains(e.target as Node)) {
         setColsOpen(false)
         setColsQuery('')
       }
@@ -614,90 +614,28 @@ export function PrintersPage() {
           </div>
           <div>
             <h1 className="page-title">{t('titles.printers')}</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
-              {t('pages.printersSubtitle')}
-            </p>
+            <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">{t('pages.printersSubtitle')}</p>
           </div>
         </div>
         <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
           <div
-            className="inline-flex max-w-[min(100%,18rem)] items-center gap-1.5 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-slate-600 shadow-sm"
+            className="inline-flex max-w-[min(100%,18rem)] items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-fg-muted)]"
             title={sched?.last_run_summary?.message || undefined}
           >
             <span
               className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                 sched?.running_now || pollBusy
-                  ? 'bg-sky-500'
+                  ? 'bg-[var(--color-primary)]'
                   : sched?.poll_enabled
-                    ? 'bg-slate-400'
+                    ? 'bg-[var(--color-fg-subtle)]'
                     : 'bg-amber-500'
               }`}
               aria-hidden
             />
             <span className="truncate">{formatSchedulerShort(sched, t, locale)}</span>
           </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/75 bg-white/70 px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm">
-            <span className="text-slate-400">{t('common.total')}</span>
-            <span className="font-mono text-sm font-semibold text-neutral-900">{stats.total}</span>
-          </div>
-          <div className="relative" ref={colsMenuRef}>
-            <button
-              type="button"
-              onClick={() => setColsOpen((v) => !v)}
-              className="app-btn app-btn-secondary"
-              aria-expanded={colsOpen}
-            >
-              {t('printers.columns')}
-            </button>
-            {colsOpen ? (
-              <div className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-black/5">
-                <input
-                  type="search"
-                  value={colsQuery}
-                  onChange={(e) => setColsQuery(e.target.value)}
-                  placeholder={t('printers.colSearch')}
-                  className="app-input !min-h-0 mb-2 !rounded-lg !px-2.5 !py-1.5 !text-xs"
-                  autoFocus
-                />
-                <div className="max-h-56 space-y-0.5 overflow-y-auto">
-                  {filteredColKeys.length === 0 ? (
-                    <p className="px-2 py-2 text-xs text-slate-400">{t('common.nothingFound')}</p>
-                  ) : (
-                    filteredColKeys.map((key) => {
-                      const locked = key === 'model'
-                      return (
-                        <label
-                          key={key}
-                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={visibleCols[key]}
-                            disabled={locked}
-                            onChange={() =>
-                              setVisibleCols((prev) => ({
-                                ...prev,
-                                [key]: locked ? true : !prev[key],
-                              }))
-                            }
-                          />
-                          <span className={locked ? 'text-slate-400' : ''}>{t(COL_KEYS[key])}</span>
-                        </label>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
           {canEdit ? (
             <>
-              <button type="button" onClick={() => void runCleanup()} disabled={cleanupBusy} className="app-btn app-btn-secondary">
-                {cleanupBusy ? t('printers.cleanupBusy') : t('printers.cleanup')}
-              </button>
-              <button type="button" onClick={() => setCfgOpen(true)} className="app-btn app-btn-secondary">
-                {t('printers.snmpSettings')}
-              </button>
               <button
                 type="button"
                 onClick={() => void pollAll()}
@@ -725,6 +663,84 @@ export function PrintersPage() {
               ) : null}
             </>
           ) : null}
+          <div className="relative" ref={moreMenuRef}>
+            <button
+              type="button"
+              onClick={() => setColsOpen((v) => !v)}
+              className="app-btn app-btn-secondary"
+              aria-expanded={colsOpen}
+            >
+              {t('printers.moreActions')}
+            </button>
+            {colsOpen ? (
+              <div className="absolute right-0 z-40 mt-1.5 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-xl">
+                {canEdit ? (
+                  <div className="mb-2 space-y-0.5 border-b border-[var(--color-border)] pb-2">
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
+                      onClick={() => {
+                        setColsOpen(false)
+                        setCfgOpen(true)
+                      }}
+                    >
+                      {t('printers.snmpSettings')}
+                    </button>
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] disabled:opacity-60"
+                      disabled={cleanupBusy}
+                      onClick={() => {
+                        setColsOpen(false)
+                        void runCleanup()
+                      }}
+                    >
+                      {cleanupBusy ? t('printers.cleanupBusy') : t('printers.cleanup')}
+                    </button>
+                  </div>
+                ) : null}
+                <div className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                  {t('printers.columns')}
+                </div>
+                <input
+                  type="search"
+                  value={colsQuery}
+                  onChange={(e) => setColsQuery(e.target.value)}
+                  placeholder={t('printers.colSearch')}
+                  className="app-input !min-h-0 mb-2 !rounded-lg !px-2.5 !py-1.5 !text-xs"
+                  autoFocus
+                />
+                <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                  {filteredColKeys.length === 0 ? (
+                    <p className="px-2 py-2 text-xs text-[var(--color-fg-subtle)]">{t('common.nothingFound')}</p>
+                  ) : (
+                    filteredColKeys.map((key) => {
+                      const locked = key === 'model'
+                      return (
+                        <label
+                          key={key}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={visibleCols[key]}
+                            disabled={locked}
+                            onChange={() =>
+                              setVisibleCols((prev) => ({
+                                ...prev,
+                                [key]: locked ? true : !prev[key],
+                              }))
+                            }
+                          />
+                          <span className={locked ? 'text-[var(--color-fg-subtle)]' : ''}>{t(COL_KEYS[key])}</span>
+                        </label>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -732,23 +748,23 @@ export function PrintersPage() {
         <PrinterToast message={toast.message} tone={toast.tone} onDismiss={() => setToast(null)} closeLabel={t('common.close')} />
       ) : null}
 
-      {err ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div> : null}
+      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
 
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           [t('common.total'), stats.total, ''],
-          [t('printers.available'), stats.online, 'text-slate-800'],
-          [t('printers.snmpOk'), stats.snmpOk, 'text-slate-800'],
-          [t('printers.lowToner'), stats.lowToner, stats.lowToner ? 'text-amber-800' : 'text-slate-800'],
+          [t('printers.available'), stats.online, ''],
+          [t('printers.snmpOk'), stats.snmpOk, ''],
+          [t('printers.lowToner'), stats.lowToner, stats.lowToner ? 'text-amber-500' : ''],
         ].map(([label, val, cls]) => (
-          <div key={String(label)} className="rounded-2xl border border-slate-200/90 bg-white/90 px-3 py-2.5 shadow-sm">
-            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{label}</div>
-            <div className={`text-xl font-bold tabular-nums text-slate-900 ${cls}`}>{val}</div>
+          <div key={String(label)} className="app-card px-3 py-2.5">
+            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{label}</div>
+            <div className={`text-xl font-bold tabular-nums text-[var(--color-fg)] ${cls}`}>{val}</div>
           </div>
         ))}
       </div>
 
-      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200/90 bg-white/90 p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+      <div className="app-card mb-4 flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
         <div className="min-w-[min(100%,18rem)] flex-1">
           <label htmlFor="printer-search" className="app-label">
             {t('common.search')}
@@ -756,18 +772,14 @@ export function PrintersPage() {
           <input id="printer-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="IP, SNMP…" className="app-input" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">{t('common.filter')}</div>
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">{t('common.filter')}</div>
           <div className="flex flex-wrap gap-1.5">
             {(Object.keys(FILTER_KEYS) as FilterChip[]).map((key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => setFilter(key)}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                  filter === key
-                    ? 'bg-blue-600 text-white ring-2 ring-blue-300 ring-offset-1'
-                    : 'rounded-full bg-zinc-50 px-2 py-0.5 text-neutral-900 ring-1 ring-zinc-200/80 opacity-90 hover:opacity-100'
-                }`}
+                className={`app-chip ${filter === key ? 'app-chip--active' : ''}`}
               >
                 {t(FILTER_KEYS[key])}
               </button>

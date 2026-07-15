@@ -3063,17 +3063,17 @@ export function ServiceRequestsPage() {
         {/* Статистика */}
         {tab === 'stats' ? (
           <div className="stats-report min-w-0 lg:col-span-12">
-            <div className="mb-4 rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:mb-3 print:rounded-xl print:border-slate-300 print:bg-white print:p-4 print:shadow-none print:ring-0">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+            <div className="app-card mb-4 p-5 sm:p-6 print:mb-3 print:rounded-xl print:border print:border-slate-300 print:bg-white print:p-4 print:shadow-none">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-border)] pb-4">
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.stats.analytics')}</div>
-                  <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight text-slate-900">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">{t('requests.stats.analytics')}</div>
+                  <h2 className="mt-1 font-[family-name:var(--font-display)] text-lg font-semibold tracking-tight text-[var(--color-fg)]">
                     {t('requests.stats.title')}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
                     {t('requests.stats.loadedHint', { count: rows.length })}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500 print:text-[11px] print:text-slate-700">
+                  <p className="mt-1 text-xs text-[var(--color-fg-subtle)] print:text-[11px]">
                     {t('requests.stats.periodGenerated', {
                       period: statsPeriodLabel,
                       date: new Date().toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU'),
@@ -3084,7 +3084,7 @@ export function ServiceRequestsPage() {
                   <button
                     type="button"
                     onClick={() => void downloadExecutivePdf()}
-                    className="rounded-xl border border-zinc-300 bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-black"
+                    className="app-btn app-btn-primary !min-h-[36px] !px-3.5 !py-2 !text-xs"
                     title={t('requests.stats.presentationPdfTitle')}
                   >
                     {t('requests.stats.presentationPdf')}
@@ -3092,7 +3092,7 @@ export function ServiceRequestsPage() {
                   <button
                     type="button"
                     onClick={() => window.print()}
-                    className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    className="app-btn app-btn-secondary !min-h-[36px] !px-3.5 !py-2 !text-xs"
                     title={t('requests.stats.printTitle')}
                   >
                     {t('requests.database.printPdf')}
@@ -3100,7 +3100,7 @@ export function ServiceRequestsPage() {
                   <button
                     type="button"
                     onClick={() => void downloadPdf()}
-                    className="app-btn app-btn-primary !min-h-[36px] !px-3.5 !py-2 !text-xs"
+                    className="app-btn app-btn-secondary !min-h-[36px] !px-3.5 !py-2 !text-xs"
                     title={t('requests.stats.tablePdfTitle')}
                   >
                     {t('requests.stats.tablePdf')}
@@ -3108,83 +3108,78 @@ export function ServiceRequestsPage() {
                 </div>
               </div>
 
-              <div className="mb-3 grid gap-3 rounded-xl border border-slate-200/80 bg-slate-50/50 p-3 print:hidden lg:grid-cols-12">
-                <label className="block lg:col-span-4">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.reportName')}</span>
-                  <input
-                    type="text"
-                    value={execReportTitle}
-                    onChange={(e) => setExecReportTitle(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
-                  />
-                </label>
-                <label className="block lg:col-span-4">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.audience')}</span>
-                  <input
-                    type="text"
-                    value={execReportAudience}
-                    onChange={(e) => setExecReportAudience(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
-                  />
-                </label>
-                <label className="block lg:col-span-4">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.author')}</span>
-                  <input
-                    type="text"
-                    value={execReportAuthor}
-                    onChange={(e) => setExecReportAuthor(e.target.value)}
-                    placeholder={user?.full_name || user?.username || t('requests.stats.authorPlaceholder')}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
-                  />
-                </label>
-                <div className="flex flex-wrap items-center gap-2 lg:col-span-12">
-                  <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
-                    <input type="checkbox" checked={execIncludeNarrative} onChange={(e) => setExecIncludeNarrative(e.target.checked)} />
-                    {t('requests.stats.includeNarrative')}
+              <details className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] print:hidden">
+                <summary className="cursor-pointer select-none px-3 py-2.5 text-sm font-semibold text-[var(--color-fg)]">
+                  {t('requests.stats.pdfOptions')}
+                </summary>
+                <div className="grid gap-3 border-t border-[var(--color-border)] p-3 lg:grid-cols-12">
+                  <label className="block lg:col-span-4">
+                    <span className="app-label">{t('requests.stats.reportName')}</span>
+                    <input type="text" value={execReportTitle} onChange={(e) => setExecReportTitle(e.target.value)} className="app-input" />
                   </label>
-                  <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
-                    <input type="checkbox" checked={execIncludeChart} onChange={(e) => setExecIncludeChart(e.target.checked)} />
-                    {t('requests.stats.includeChart')}
+                  <label className="block lg:col-span-4">
+                    <span className="app-label">{t('requests.stats.audience')}</span>
+                    <input type="text" value={execReportAudience} onChange={(e) => setExecReportAudience(e.target.value)} className="app-input" />
                   </label>
-                  <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
-                    <input type="checkbox" checked={execIncludeDistributions} onChange={(e) => setExecIncludeDistributions(e.target.checked)} />
-                    {t('requests.stats.includeDistributions')}
+                  <label className="block lg:col-span-4">
+                    <span className="app-label">{t('requests.stats.author')}</span>
+                    <input
+                      type="text"
+                      value={execReportAuthor}
+                      onChange={(e) => setExecReportAuthor(e.target.value)}
+                      placeholder={user?.full_name || user?.username || t('requests.stats.authorPlaceholder')}
+                      className="app-input"
+                    />
                   </label>
-                  <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700">
-                    <input type="checkbox" checked={execIncludeAssigneeLoad} onChange={(e) => setExecIncludeAssigneeLoad(e.target.checked)} />
-                    {t('requests.stats.includeAssigneeLoad')}
-                  </label>
+                  <div className="flex flex-wrap items-center gap-2 lg:col-span-12">
+                    <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-fg)]">
+                      <input type="checkbox" checked={execIncludeNarrative} onChange={(e) => setExecIncludeNarrative(e.target.checked)} />
+                      {t('requests.stats.includeNarrative')}
+                    </label>
+                    <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-fg)]">
+                      <input type="checkbox" checked={execIncludeChart} onChange={(e) => setExecIncludeChart(e.target.checked)} />
+                      {t('requests.stats.includeChart')}
+                    </label>
+                    <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-fg)]">
+                      <input type="checkbox" checked={execIncludeDistributions} onChange={(e) => setExecIncludeDistributions(e.target.checked)} />
+                      {t('requests.stats.includeDistributions')}
+                    </label>
+                    <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-fg)]">
+                      <input type="checkbox" checked={execIncludeAssigneeLoad} onChange={(e) => setExecIncludeAssigneeLoad(e.target.checked)} />
+                      {t('requests.stats.includeAssigneeLoad')}
+                    </label>
+                  </div>
                 </div>
-              </div>
+              </details>
 
               <div className="stats-report-controls grid gap-3 sm:grid-cols-2 lg:grid-cols-12 print:hidden">
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.from')}</span>
+                  <span className="app-label">{t('requests.stats.from')}</span>
                   <input
                     type="date"
                     value={statsFrom}
                     onChange={(e) => setStatsFrom(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
+                    className="app-input"
                   />
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.to')}</span>
+                  <span className="app-label">{t('requests.stats.to')}</span>
                   <input
                     type="date"
                     value={statsTo}
                     onChange={(e) => setStatsTo(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm"
+                    className="app-input"
                   />
                 </label>
                 <label className="block lg:col-span-3">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.basis')}</span>
+                  <span className="app-label">{t('requests.stats.basis')}</span>
                   <select
                     value={statsBasis}
                     onChange={(e) => {
                       const next = e.target.value
                       if (isStatsBasis(next)) setStatsBasis(next)
                     }}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
+                    className="app-input"
                   >
                     <option value="opened">{t('requests.stats.basisOpened')}</option>
                     <option value="last_change">{t('requests.stats.basisLastChange')}</option>
@@ -3192,39 +3187,39 @@ export function ServiceRequestsPage() {
                   </select>
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.grouping')}</span>
+                  <span className="app-label">{t('requests.stats.grouping')}</span>
                   <select
                     value={statsGroup}
                     onChange={(e) => {
                       const next = e.target.value
                       if (isStatsGroup(next)) setStatsGroup(next)
                     }}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
+                    className="app-input"
                   >
                     <option value="day">{t('requests.stats.groupDay')}</option>
                     <option value="week">{t('requests.stats.groupWeek')}</option>
                   </select>
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.chart')}</span>
+                  <span className="app-label">{t('requests.stats.chart')}</span>
                   <select
                     value={statsChartMode}
                     onChange={(e) => {
                       const next = e.target.value
                       if (isStatsChartMode(next)) setStatsChartMode(next)
                     }}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
+                    className="app-input"
                   >
                     <option value="total">{t('requests.stats.chartTotal')}</option>
                     <option value="status">{t('requests.stats.chartStatus')}</option>
                   </select>
                 </label>
                 <label className="block lg:col-span-1">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.topN')}</span>
+                  <span className="app-label">{t('requests.stats.topN')}</span>
                   <select
                     value={String(statsTopN)}
                     onChange={(e) => setStatsTopN(Math.max(5, Math.min(15, Number(e.target.value) || 8)))}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
+                    className="app-input"
                   >
                     <option value="6">6</option>
                     <option value="8">8</option>
@@ -3233,11 +3228,11 @@ export function ServiceRequestsPage() {
                   </select>
                 </label>
                 <label className="block lg:col-span-2">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t('requests.stats.tableSort')}</span>
+                  <span className="app-label">{t('requests.stats.tableSort')}</span>
                   <select
                     value={sortKey}
                     onChange={(e) => setSortKey(e.target.value as SortKey)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm"
+                    className="app-input"
                   >
                     <option value="id_desc">{t('requests.stats.sortIdDesc')}</option>
                     <option value="id_asc">{t('requests.stats.sortIdAsc')}</option>
@@ -3247,23 +3242,23 @@ export function ServiceRequestsPage() {
                   </select>
                 </label>
                 <div className="flex flex-wrap items-end gap-3 lg:col-span-2">
-                  <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm">
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm">
                     <input
                       type="checkbox"
-                      className="rounded border-slate-300"
+                      className="rounded border-[var(--color-border)]"
                       checked={statsOnlyWithPlanned}
                       onChange={(e) => setStatsOnlyWithPlanned(e.target.checked)}
                     />
-                    <span className="text-sm font-medium text-slate-700">{t('requests.stats.onlyWithDeadline')}</span>
+                    <span className="text-sm font-medium text-[var(--color-fg)]">{t('requests.stats.onlyWithDeadline')}</span>
                   </label>
-                  <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm">
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm">
                     <input
                       type="checkbox"
-                      className="rounded border-slate-300"
+                      className="rounded border-[var(--color-border)]"
                       checked={statsOnlyOverdue}
                       onChange={(e) => setStatsOnlyOverdue(e.target.checked)}
                     />
-                    <span className="text-sm font-medium text-slate-700">{t('requests.stats.overdueOnly')}</span>
+                    <span className="text-sm font-medium text-[var(--color-fg)]">{t('requests.stats.overdueOnly')}</span>
                   </label>
                 </div>
               </div>
@@ -3724,15 +3719,15 @@ export function ServiceRequestsPage() {
 
               <div className="lg:col-span-8">
                 <div className="mb-3 flex items-end justify-between gap-3">
-                  <h2 className="text-sm font-semibold text-slate-800">
+                  <h2 className="text-sm font-semibold text-[var(--color-fg)]">
                     {t('requests.templates.title')}
-                    {!tplLoading ? <span className="ml-2 font-normal text-slate-500">· {tplTotal}</span> : null}
+                    {!tplLoading ? <span className="ml-2 font-normal text-[var(--color-fg-muted)]">· {tplTotal}</span> : null}
                   </h2>
                   <button
                     type="button"
                     disabled={tplLoading}
                     onClick={() => void loadTemplates()}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2 !text-xs disabled:opacity-50"
                   >
                     {t('requests.templates.refresh')}
                   </button>
@@ -3740,23 +3735,49 @@ export function ServiceRequestsPage() {
 
                 <div className="space-y-3">
                   {tplLoading ? (
-                    <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
-                      {t('requests.templates.loading')}
-                    </p>
+                    <p className="app-empty-state">{t('requests.templates.loading')}</p>
                   ) : tplRows.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
-                      {t('requests.templates.empty')}
-                    </p>
+                    <p className="app-empty-state">{t('requests.templates.empty')}</p>
                   ) : (
                     tplRows.map((tpl) => (
                       <article
                         key={tpl.id}
-                        className="rounded-2xl border border-slate-200/70 bg-white/95 px-4 py-4 shadow-sm ring-1 ring-slate-200/25"
+                        className="app-card px-4 py-4"
                       >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => applyTemplateToForm(tpl)}
+                              className="app-btn app-btn-primary !min-h-0 !px-3 !py-1.5 !text-xs"
+                            >
+                              {t('requests.templates.apply')}
+                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => beginEditTemplate(tpl)}
+                                className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5"
+                                title={t('requests.templates.edit')}
+                                aria-label={t('requests.templates.edit')}
+                              >
+                                <IconPencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={tplBusy}
+                                onClick={() => void deleteTemplate(tpl.id, tpl.title)}
+                                className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 disabled:opacity-50"
+                                title={t('requests.templates.delete')}
+                                aria-label={t('requests.templates.delete')}
+                              >
+                                <IconTrash className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="font-semibold text-slate-900">{tpl.title}</h3>
+                              <h3 className="font-semibold text-[var(--color-fg)]">{tpl.title}</h3>
                               <span
                                 className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS_PILL[tpl.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'}`}
                               >
@@ -3764,33 +3785,33 @@ export function ServiceRequestsPage() {
                               </span>
                             </div>
                             {tpl.description ? (
-                              <p className="mt-2 text-sm leading-relaxed text-slate-600">{tpl.description}</p>
+                              <p className="mt-2 text-sm leading-relaxed text-[var(--color-fg-muted)]">{tpl.description}</p>
                             ) : null}
                             {tpl.requester_name || tpl.category ? (
-                              <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-slate-600">
+                              <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-[var(--color-fg-muted)]">
                                 {tpl.requester_name ? (
-                                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200/80">
+                                  <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1">
                                     {t('requests.templates.requester', { name: tpl.requester_name })}
                                   </span>
                                 ) : null}
                                 {tpl.category ? (
-                                  <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200/80">
+                                  <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1">
                                     {t('requests.templates.category', { name: tpl.category })}
                                   </span>
                                 ) : null}
                               </div>
                             ) : null}
-                            <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                            <div className="mt-2 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-[var(--color-fg-subtle)]">
                               <span>{tpl.created_by_username}</span>
                               {tpl.assignee_usernames && tpl.assignee_usernames.length > 0 ? (
-                                <span className="font-medium text-slate-700" title={tpl.assignee_usernames.join(', ')}>
+                                <span className="font-medium text-[var(--color-fg-muted)]" title={tpl.assignee_usernames.join(', ')}>
                                   {t('requests.templates.assignees', { names: tpl.assignee_usernames.join(', ') })}
                                 </span>
                               ) : null}
-                              {tpl.computer_id ? <span className="text-slate-500">{t('requests.templates.pc', { id: tpl.computer_id })}</span> : null}
+                              {tpl.computer_id ? <span>{t('requests.templates.pc', { id: tpl.computer_id })}</span> : null}
                               <span>· {requestPriorityLabel(tpl.priority)}</span>
                             </div>
-                            <div className="mt-2 grid grid-cols-1 gap-1 rounded-lg bg-slate-50/90 px-2 py-2 text-[11px] text-slate-600 ring-1 ring-slate-100 sm:grid-cols-3">
+                            <div className="mt-2 grid grid-cols-1 gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-2 text-[11px] text-[var(--color-fg-muted)] sm:grid-cols-3">
                               <span>
                                 {t('requests.templates.openedDate', { date: fmtRuDateTime(tpl.opened_at, locale) })}
                               </span>
@@ -3801,32 +3822,6 @@ export function ServiceRequestsPage() {
                                 {t('requests.templates.closedDate', { date: fmtRuDateTime(tpl.closed_at, locale) })}
                               </span>
                             </div>
-                          </div>
-                          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-                            <button
-                              type="button"
-                              onClick={() => beginEditTemplate(tpl)}
-                              className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
-                            >
-                              <IconPencil className="h-4 w-4 shrink-0 text-slate-600" />
-                              {t('requests.templates.edit')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => applyTemplateToForm(tpl)}
-                              className="app-btn app-btn-primary !min-h-[40px] !px-3 !py-2 !text-xs"
-                            >
-                              {t('requests.templates.apply')}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={tplBusy}
-                              onClick={() => void deleteTemplate(tpl.id, tpl.title)}
-                              className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50"
-                            >
-                              <IconTrash className="h-4 w-4 shrink-0" />
-                              {t('requests.templates.delete')}
-                            </button>
                           </div>
                         </div>
                       </article>

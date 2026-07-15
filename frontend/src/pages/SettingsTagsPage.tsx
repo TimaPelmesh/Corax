@@ -11,16 +11,60 @@ function pickerValue(raw: string | null | undefined) {
   return '#64748b'
 }
 
+/** Filled circle color control — avoids native color input's "rect in rounded box" look. */
+function ColorCirclePicker({
+  id,
+  value,
+  onChange,
+  ariaLabel,
+  sizeClass = 'h-9 w-9',
+}: {
+  id?: string
+  value: string
+  onChange?: (hex: string) => void
+  ariaLabel?: string
+  sizeClass?: string
+}) {
+  if (!onChange) {
+    return (
+      <span
+        className={`inline-block ${sizeClass} shrink-0 rounded-full border border-black/10 shadow-sm`}
+        style={{ backgroundColor: value }}
+        title={value}
+        aria-hidden
+      />
+    )
+  }
+  return (
+    <label
+      className={`relative inline-flex ${sizeClass} shrink-0 cursor-pointer overflow-hidden rounded-full border border-black/10 shadow-sm transition hover:brightness-95`}
+      style={{ backgroundColor: value }}
+      title={value}
+    >
+      <input
+        id={id}
+        type="color"
+        aria-label={ariaLabel}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
+  )
+}
+
 function TagRow({
   tag,
   onReload,
   onRemove,
   canManage,
+  rowClassName,
 }: {
   tag: TagBrief
   onReload: () => void
   onRemove: (id: number, label: string) => void
   canManage: boolean
+  rowClassName?: string
 }) {
   const t = useT()
   const [nameDraft, setNameDraft] = useState(tag.name)
@@ -68,28 +112,11 @@ function TagRow({
     [tag.color, tag.id, onReload, t],
   )
 
-  const clearColor = useCallback(async () => {
-    setRowErr(null)
-    try {
-      await api.updateTag(tag.id, { color: null })
-      setColorDraft('#64748b')
-      onReload()
-    } catch (e) {
-      setRowErr(e instanceof Error ? e.message : t('common.error'))
-    }
-  }, [tag.id, onReload, t])
-
   if (!canManage) {
-    const swatch = pickerValue(tag.color)
     return (
-      <tr className="app-table-row">
+      <tr className={`app-table-row ${rowClassName ?? ''}`}>
         <td className="px-3 py-2 align-middle">
-          <span
-            className="inline-block h-7 w-7 rounded-lg border border-[var(--color-border)] shadow-sm"
-            style={{ backgroundColor: swatch }}
-            title={swatch}
-            aria-hidden
-          />
+          <ColorCirclePicker value={pickerValue(tag.color)} />
         </td>
         <td className="min-w-[12rem] px-3 py-2 align-middle text-sm font-medium text-[var(--color-fg)]">{tag.name}</td>
         <td className="px-3 py-2 text-right align-middle text-xs text-[var(--color-fg-subtle)]">—</td>
@@ -98,25 +125,13 @@ function TagRow({
   }
 
   return (
-    <tr className="app-table-row">
+    <tr className={`app-table-row ${rowClassName ?? ''}`}>
       <td className="px-3 py-2 align-middle">
-        <div className="flex items-center gap-2">
-          <input
-            type="color"
-            aria-label={t('settingsTags.colorAria', { name: tag.name })}
-            className="h-9 w-11 cursor-pointer rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5 shadow-sm"
-            value={colorDraft}
-            onChange={(e) => void onColorPick(e.target.value)}
-          />
-          <button
-            type="button"
-            title={t('settingsTags.resetColorTitle')}
-            className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
-            onClick={() => void clearColor()}
-          >
-            {t('settingsTags.resetColor')}
-          </button>
-        </div>
+        <ColorCirclePicker
+          value={colorDraft}
+          onChange={(hex) => void onColorPick(hex)}
+          ariaLabel={t('settingsTags.colorAria', { name: tag.name })}
+        />
       </td>
       <td className="min-w-[12rem] px-3 py-2 align-middle">
         <input
@@ -206,6 +221,7 @@ export function SettingsTagsPage() {
         </div>
         <div>
           <h1 className="page-title">{t('titles.tags')}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('pages.tagsSubtitle')}</p>
         </div>
       </div>
 
@@ -230,13 +246,15 @@ export function SettingsTagsPage() {
             <label htmlFor="new-tag-color" className="app-label">
               {t('settingsTags.colorLabel')}
             </label>
-            <input
-              id="new-tag-color"
-              type="color"
-              className="h-[42px] w-14 cursor-pointer rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-sm"
-              value={newColor}
-              onChange={(e) => setNewColor(e.target.value)}
-            />
+            <div className="flex h-[42px] items-center">
+              <ColorCirclePicker
+                id="new-tag-color"
+                value={newColor}
+                onChange={setNewColor}
+                ariaLabel={t('settingsTags.colorLabel')}
+                sizeClass="h-9 w-9"
+              />
+            </div>
           </div>
           <button
             type="button"
@@ -260,27 +278,28 @@ export function SettingsTagsPage() {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-100">
+          <tbody>
             {loading ? (
               <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={3} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                   {t('common.loading')}
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-slate-500">
+                <td colSpan={3} className="px-4 py-10 text-center text-[var(--color-fg-muted)]">
                   {t('settingsTags.emptyState')}
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
+              rows.map((r, idx) => (
                 <TagRow
                   key={`${r.id}-${r.name}-${r.color ?? ''}`}
                   tag={r}
                   canManage={canManage}
                   onReload={() => void load()}
                   onRemove={removeTag}
+                  rowClassName={idx > 0 ? 'border-t border-[var(--color-border)]' : undefined}
                 />
               ))
             )}
