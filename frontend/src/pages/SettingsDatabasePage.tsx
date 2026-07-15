@@ -4,15 +4,15 @@ import { api, type DatabaseBackupStatus } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconDisk } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 export function SettingsDatabasePage() {
   const t = useT()
+  const toast = useToast()
   const { user, loading: authLoading } = useAuth()
   const importRef = useRef<HTMLInputElement | null>(null)
   const [status, setStatus] = useState<DatabaseBackupStatus | null>(null)
   const [statusErr, setStatusErr] = useState<string | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
   const [confirm, setConfirm] = useState('')
@@ -33,11 +33,6 @@ export function SettingsDatabasePage() {
     return <Navigate to="/" replace />
   }
 
-  function showToast(msg: string, ms = 7000) {
-    setToast(msg)
-    window.setTimeout(() => setToast(null), ms)
-  }
-
   const toolsOk = Boolean(status?.pg_dump_available && status?.pg_restore_available)
 
   return (
@@ -53,14 +48,6 @@ export function SettingsDatabasePage() {
           </p>
         </div>
       </div>
-
-      {toast ? (
-        <div className="app-alert app-alert-success mb-4" role="status">
-          {toast}
-        </div>
-      ) : null}
-
-      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
 
       {statusErr ? <div className="app-alert app-alert-warning mb-4">{statusErr}</div> : null}
 
@@ -131,12 +118,11 @@ export function SettingsDatabasePage() {
             className="app-btn app-btn-primary"
             disabled={exportBusy || !toolsOk}
             onClick={() => {
-              setErr(null)
               setExportBusy(true)
               void api
                 .exportDatabaseDump()
-                .then(() => showToast(t('settingsDatabase.exportSuccess')))
-                .catch((e) => setErr(e instanceof Error ? e.message : t('settingsDatabase.exportFailed')))
+                .then(() => toast.ok(t('settingsDatabase.exportSuccess')))
+                .catch((e) => toast.error(e instanceof Error ? e.message : t('settingsDatabase.exportFailed')))
                 .finally(() => setExportBusy(false))
             }}
           >
@@ -171,13 +157,12 @@ export function SettingsDatabasePage() {
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (!f) return
-              setErr(null)
               setImportBusy(true)
               void api
                 .importDatabaseDump(f, confirm)
                 .then((r) => {
                   setConfirm('')
-                  showToast(
+                  toast.ok(
                     t('settingsDatabase.importSuccess', {
                       database: r.database,
                       kb: Math.round(r.bytes / 1024),
@@ -185,11 +170,10 @@ export function SettingsDatabasePage() {
                         ? t('settingsDatabase.restartRecommended')
                         : '',
                     }),
-                    10000,
                   )
                   return api.databaseBackupStatus().then(setStatus)
                 })
-                .catch((ex) => setErr(ex instanceof Error ? ex.message : t('settingsDatabase.importFailed')))
+                .catch((ex) => toast.error(ex instanceof Error ? ex.message : t('settingsDatabase.importFailed')))
                 .finally(() => {
                   setImportBusy(false)
                   e.target.value = ''

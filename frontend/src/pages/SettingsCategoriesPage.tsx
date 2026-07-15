@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext'
 import { IconTag, IconTicket, IconTrash } from '../components/icons'
 import { filterCategoryTree } from '../requestCategories'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 function collectExpandableIds(nodes: RequestCategoryTreeNode[]): number[] {
   const ids: number[] = []
@@ -330,11 +331,11 @@ function TreeNodeRow({
 
 export function SettingsCategoriesPage() {
   const t = useT()
+  const toast = useToast()
   const { user } = useAuth()
   const [tree, setTree] = useState<RequestCategoryTreeNode[]>([])
   const [newRootName, setNewRootName] = useState('')
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set())
   const [addingUnderId, setAddingUnderId] = useState<number | null>(null)
@@ -346,7 +347,6 @@ export function SettingsCategoriesPage() {
   const canManage = Boolean(user?.is_superuser || user?.role === 'editor')
 
   const load = useCallback(async () => {
-    setErr(null)
     try {
       const data = await api.requestCategories()
       setTree(data)
@@ -355,11 +355,11 @@ export function SettingsCategoriesPage() {
         setExpandedIds(new Set(collectExpandableIds(data)))
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsCategories.loadFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsCategories.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -400,14 +400,13 @@ export function SettingsCategoriesPage() {
   async function addRoot() {
     const name = newRootName.trim()
     if (!name) return
-    setErr(null)
     setRootBusy(true)
     try {
       await api.createRequestCategory({ name, parent_id: null })
       setNewRootName('')
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsCategories.addFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsCategories.addFailed'))
     } finally {
       setRootBusy(false)
     }
@@ -427,14 +426,13 @@ export function SettingsCategoriesPage() {
   async function submitAddChild(parentId: number) {
     const name = addChildDraft.trim()
     if (!name) return
-    setErr(null)
     setAddChildBusy(true)
     try {
       await api.createRequestCategory({ name, parent_id: parentId })
       cancelAddChild()
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsCategories.addFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsCategories.addFailed'))
     } finally {
       setAddChildBusy(false)
     }
@@ -445,13 +443,12 @@ export function SettingsCategoriesPage() {
       ? t('settingsCategories.deleteConfirmWithChildren', { label })
       : t('settingsCategories.deleteConfirmSingle', { label })
     if (!confirm(msg)) return
-    setErr(null)
     try {
       await api.deleteRequestCategory(id)
       if (addingUnderId === id) cancelAddChild()
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsCategories.deleteFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsCategories.deleteFailed'))
     }
   }
 
@@ -463,7 +460,6 @@ export function SettingsCategoriesPage() {
     if (swapWith < 0 || swapWith >= siblings.length) return
     const a = siblings[index]
     const b = siblings[swapWith]
-    setErr(null)
     try {
       await Promise.all([
         api.updateRequestCategory(a.id, { sort_order: b.sort_order }),
@@ -471,7 +467,7 @@ export function SettingsCategoriesPage() {
       ])
       await load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsCategories.moveFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsCategories.moveFailed'))
     }
   }
 
@@ -488,8 +484,6 @@ export function SettingsCategoriesPage() {
           </p>
         </div>
       </div>
-
-      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
 
       {canManage ? (
         <div className="mb-6 flex max-w-2xl flex-wrap items-end gap-3">

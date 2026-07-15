@@ -1507,6 +1507,63 @@ export const api = {
 
   printerSchedulerStatus: () =>
     request<PrinterSchedulerStatus>(`${API_PREFIX}/printers/scheduler-status`),
+
+  networkDevices: (params?: { q?: string; device_type?: string; role?: string; limit?: number }) => {
+    const sp = new URLSearchParams()
+    if (params?.q) sp.set('q', params.q)
+    if (params?.device_type) sp.set('device_type', params.device_type)
+    if (params?.role) sp.set('role', params.role)
+    if (params?.limit != null) sp.set('limit', String(params.limit))
+    const qs = sp.toString()
+    return request<NetworkDevice[]>(`${API_PREFIX}/network/devices${qs ? `?${qs}` : ''}`)
+  },
+
+  networkDevice: (id: number) =>
+    request<NetworkDevice>(`${API_PREFIX}/network/devices/${id}`),
+
+  createNetworkDevice: (body: NetworkDeviceCreate) =>
+    request<NetworkDevice>(`${API_PREFIX}/network/devices`, { method: 'POST', json: body }),
+
+  patchNetworkDevice: (
+    id: number,
+    body: {
+      hostname?: string | null
+      device_type?: string | null
+      location?: string | null
+      notes?: string | null
+      ip_address?: string | null
+    },
+  ) => request<NetworkDevice>(`${API_PREFIX}/network/devices/${id}`, { method: 'PATCH', json: body }),
+
+  deleteNetworkDevice: (id: number) =>
+    request<void>(`${API_PREFIX}/network/devices/${id}`, { method: 'DELETE' }),
+
+  bulkDeleteNetworkDevices: (ids: number[]) =>
+    request<void>(`${API_PREFIX}/network/devices/bulk-delete`, { method: 'POST', json: { ids } }),
+
+  discoverNetworkDevices: () =>
+    request<NetworkJobStatus>(`${API_PREFIX}/network/discover`, {
+      method: 'POST',
+      timeout_ms: 30_000,
+    }),
+
+  pollAllNetworkDevices: () =>
+    request<NetworkJobStatus>(`${API_PREFIX}/network/poll`, { method: 'POST', timeout_ms: 30_000 }),
+
+  networkJobStatus: () => request<NetworkJobStatus>(`${API_PREFIX}/network/job-status`),
+
+  pollNetworkDevice: (id: number) =>
+    request<NetworkDevice>(`${API_PREFIX}/network/devices/${id}/poll`, {
+      method: 'POST',
+      timeout_ms: 60_000,
+    }),
+
+  networkPollConfig: () => request<NetworkPollConfig>(`${API_PREFIX}/network/poll-config`),
+
+  updateNetworkPollConfig: (body: Partial<NetworkPollConfigUpdate>) =>
+    request<NetworkPollConfig>(`${API_PREFIX}/network/poll-config`, { method: 'PUT', json: body }),
+
+  networkTopology: () => request<NetworkTopology>(`${API_PREFIX}/network/topology`),
 }
 
 export type WikiRagDocumentRow = {
@@ -1760,4 +1817,150 @@ export type PrinterSchedulerStatus = {
   next_run_at: string | null
   last_run_at: string | null
   last_run_summary: PrinterPollResult | null
+}
+
+export type NetworkDeviceInterface = {
+  if_index: string
+  name: string | null
+  descr: string | null
+  if_type: number | null
+  oper_status: string | null
+  speed: number | null
+  mac: string | null
+}
+
+export type NetworkDeviceNeighbor = {
+  protocol: string
+  remote_name: string | null
+  remote_port: string | null
+  remote_descr: string | null
+  remote_ip: string | null
+  local_if_index: string | null
+  local_port: string | null
+}
+
+export type NetworkDeviceFdb = {
+  mac: string
+  port: string | null
+  if_index: string | null
+}
+
+export type NetworkDevice = {
+  id: number
+  ip_address: string
+  hostname: string | null
+  sys_name: string | null
+  sys_descr: string | null
+  sys_object_id: string | null
+  device_type: string
+  /** UI role: gateway | dns | infra | switch | router | … */
+  role: string
+  vendor: string | null
+  location: string | null
+  snmp_status: string | null
+  snmp_error: string | null
+  last_snmp_at: string | null
+  last_seen_at: string | null
+  interfaces: NetworkDeviceInterface[]
+  neighbors: NetworkDeviceNeighbor[]
+  fdb: NetworkDeviceFdb[]
+  extras: Record<string, unknown>
+  source: string
+  notes: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export type NetworkJobStatus = {
+  running: boolean
+  kind: string
+  phase: string
+  progress: number
+  message: string
+  started_at: string | null
+  finished_at: string | null
+  last_result: Record<string, unknown>
+  error: string | null
+}
+
+export type NetworkDeviceCreate = {
+  ip_address: string
+  hostname?: string | null
+  device_type?: string | null
+  location?: string | null
+  notes?: string | null
+}
+
+export type NetworkDiscoveryResult = {
+  scanned: number
+  found: number
+  created: number
+  updated: number
+  skipped: number
+  errors: number
+  duration_ms: number
+  networks: string[]
+  message: string
+}
+
+export type NetworkPollResult = {
+  polled: number
+  online: number
+  offline: number
+  snmp_ok: number
+  snmp_error: number
+  duration_ms: number
+  discovered: number
+  discovery_created: number
+  discovery_updated: number
+  links_devices: number
+  links_computers: number
+  message: string
+  networks: string[]
+}
+
+export type NetworkPollConfig = {
+  poll_enabled: boolean
+  poll_interval_minutes: number
+  snmp_community: string
+  snmp_community_set: boolean
+  snmp_timeout_seconds: number
+  poll_concurrency: number
+  cidr_list: string[]
+  last_run_at: string | null
+}
+
+export type NetworkPollConfigUpdate = {
+  poll_enabled?: boolean
+  poll_interval_minutes?: number
+  snmp_community?: string
+  snmp_timeout_seconds?: number
+  poll_concurrency?: number
+  cidr_list?: string[]
+}
+
+export type NetworkTopologyNode = {
+  id: string
+  kind: string
+  ref_id: number
+  label: string
+  device_type: string | null
+  ip_address: string | null
+  vendor: string | null
+  snmp_status: string | null
+}
+
+export type NetworkTopologyEdge = {
+  id: string
+  source: string
+  target: string
+  link_type: string
+  local_port: string | null
+  remote_port: string | null
+  confidence: number
+}
+
+export type NetworkTopology = {
+  nodes: NetworkTopologyNode[]
+  edges: NetworkTopologyEdge[]
 }

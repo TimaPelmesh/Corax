@@ -3,6 +3,7 @@ import { api, type TagBrief } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconTag, IconTrash } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 const NEW_TAG_DEFAULT_COLOR = '#059669'
 
@@ -162,23 +163,22 @@ function TagRow({
 
 export function SettingsTagsPage() {
   const t = useT()
+  const toast = useToast()
   const { user } = useAuth()
   const [rows, setRows] = useState<TagBrief[]>([])
   const [name, setName] = useState('')
   const [newColor, setNewColor] = useState(NEW_TAG_DEFAULT_COLOR)
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    setErr(null)
     try {
       setRows(await api.tags())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsTags.loadFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsTags.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -189,14 +189,13 @@ export function SettingsTagsPage() {
   async function addTag() {
     const n = name.trim()
     if (!n) return
-    setErr(null)
     try {
       await api.createTag({ name: n, color: newColor })
       setName('')
       setNewColor(NEW_TAG_DEFAULT_COLOR)
       void load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsTags.createFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsTags.createFailed'))
     }
   }
 
@@ -204,12 +203,11 @@ export function SettingsTagsPage() {
     if (!confirm(t('settingsTags.deleteConfirm', { label }))) {
       return
     }
-    setErr(null)
     try {
       await api.deleteTag(id)
       void load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsTags.deleteFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsTags.deleteFailed'))
     }
   }
 
@@ -224,8 +222,6 @@ export function SettingsTagsPage() {
           <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('pages.tagsSubtitle')}</p>
         </div>
       </div>
-
-      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
 
       {canManage ? (
         <div className="mb-6 flex max-w-2xl flex-wrap items-end gap-3">

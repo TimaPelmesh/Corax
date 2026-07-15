@@ -227,6 +227,7 @@ export function Layout() {
       { path: '/computers', labelKey: 'nav.computers' },
       { path: '/software', labelKey: 'nav.software' },
       { path: '/printers', labelKey: 'nav.printers' },
+      { path: '/network', labelKey: 'nav.network' },
       { path: '/knowledge-base/warehouse', labelKey: 'nav.warehouse' },
       { path: '/requests', labelKey: 'nav.requestNew' },
       { path: '/requests/database', labelKey: 'nav.requestList' },
@@ -281,6 +282,12 @@ export function Layout() {
             keywords: ['каталог', 'софт', 'программы', 'apps'],
           },
           { to: '/printers', icon: IconPrinter, labelKey: 'nav.printers', keywords: ['snmp', 'toner'] },
+          {
+            to: '/network',
+            icon: IconGraph,
+            labelKey: 'nav.network',
+            keywords: ['snmp', 'switch', 'router', 'сеть', 'топология', 'lldp'],
+          },
           {
             to: '/knowledge-base/warehouse',
             icon: IconWarehouse,

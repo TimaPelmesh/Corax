@@ -5,6 +5,7 @@ import { api, type AgentBundleProfile, type AgentBundleTarget } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 const MODULE_KEYS = [
   'patches',
@@ -34,6 +35,7 @@ function buildServerUrl(host: string, port: string): string {
 
 export function AgentBundlePage() {
   const t = useT()
+  const toast = useToast()
   const { user, loading: authLoading } = useAuth()
   const [serverHost, setServerHost] = useState('')
   const [lanCandidates, setLanCandidates] = useState<string[]>([])
@@ -49,8 +51,6 @@ export function AgentBundlePage() {
     Object.fromEntries(MODULE_KEYS.map((k) => [k, true])),
   )
   const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [okMsg, setOkMsg] = useState<string | null>(null)
 
   const serverUrl = useMemo(() => buildServerUrl(serverHost, serverPort), [serverHost, serverPort])
 
@@ -69,7 +69,7 @@ export function AgentBundlePage() {
       })
       .catch((ex) => {
         if (cancelled) return
-        setErr(ex instanceof Error ? ex.message : t('agentBundle.lanDetectFailed'))
+        toast.error(ex instanceof Error ? ex.message : t('agentBundle.lanDetectFailed'))
       })
       .finally(() => {
         if (!cancelled) setLanLoading(false)
@@ -77,7 +77,7 @@ export function AgentBundlePage() {
     return () => {
       cancelled = true
     }
-  }, [authLoading, t, user?.is_superuser])
+  }, [authLoading, t, toast, user?.is_superuser])
 
   const showModules = platform === 'win10' && level === 'custom'
   const moduleList = useMemo(() => [...MODULE_KEYS], [])
@@ -101,11 +101,9 @@ export function AgentBundlePage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (!serverHost.trim()) {
-      setErr(t('agentBundle.serverHostRequired'))
+      toast.error(t('agentBundle.serverHostRequired'))
       return
     }
-    setErr(null)
-    setOkMsg(null)
     setBusy(true)
     try {
       const label =
@@ -132,13 +130,13 @@ export function AgentBundlePage() {
                   }
                 : { enabled: false },
           })
-      setOkMsg(t('agentBundle.downloadSuccess', { filename }))
+      toast.ok(t('agentBundle.downloadSuccess', { filename }))
     } catch (ex) {
       let msg = ex instanceof Error ? ex.message : t('agentBundle.buildError')
       if (msg.includes('Method Not Allowed') || msg.includes('405')) {
         msg += t('agentBundle.apiNotRespondingSuffix')
       }
-      setErr(msg)
+      toast.error(msg)
     } finally {
       setBusy(false)
     }
@@ -181,15 +179,6 @@ export function AgentBundlePage() {
           </div>
         </div>
       </div>
-
-      {err ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>
-      ) : null}
-      {okMsg ? (
-        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          {okMsg}
-        </div>
-      ) : null}
 
       <form
         onSubmit={(e) => void onSubmit(e)}

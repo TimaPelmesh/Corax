@@ -4,6 +4,7 @@ import { api, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconUsers } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 function isDirectoryUser(u: User) {
   return u.is_ldap || u.role === 'directory'
@@ -15,12 +16,11 @@ function isServiceAccount(u: User) {
 
 export function UsersPage() {
   const t = useT()
+  const toast = useToast()
   const { user, refresh, logout } = useAuth()
   const nav = useNavigate()
   const [rows, setRows] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
-  const [ok, setOk] = useState<string | null>(null)
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -42,17 +42,16 @@ export function UsersPage() {
   const [section, setSection] = useState<'profile' | 'accounts' | 'directory'>('accounts')
 
   const load = useCallback(async () => {
-    setErr(null)
     setLoading(true)
     try {
       const data = await api.users()
       setRows(data)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -89,8 +88,6 @@ export function UsersPage() {
 
   async function onCreate(e: FormEvent) {
     e.preventDefault()
-    setErr(null)
-    setOk(null)
     try {
       await api.createUser({
         username,
@@ -104,17 +101,15 @@ export function UsersPage() {
       setFullName('')
       setIsSuper(false)
       setRole('observer')
-      setOk(t('users.createdOk'))
+      toast.ok(t('users.createdOk'))
       void load()
     } catch (err) {
-      setErr(err instanceof Error ? err.message : t('common.error'))
+      toast.error(err instanceof Error ? err.message : t('common.error'))
     }
   }
 
   async function onUpdateMyProfile(e: FormEvent) {
     e.preventDefault()
-    setErr(null)
-    setOk(null)
     try {
       const updated = await api.updateMyProfile({
         username: myUsername.trim(),
@@ -122,37 +117,33 @@ export function UsersPage() {
         email: myEmail.trim() || null,
       })
       if (updated.username !== user?.username) {
-        setOk(t('users.loginChanged'))
+        toast.ok(t('users.loginChanged'))
         await logout()
         nav('/login', { replace: true })
         return
       }
       await refresh()
-      setOk(t('users.profileSaved'))
+      toast.ok(t('users.profileSaved'))
     } catch (error) {
-      setErr(error instanceof Error ? error.message : t('common.error'))
+      toast.error(error instanceof Error ? error.message : t('common.error'))
     }
   }
 
   async function onChangeMyPassword(e: FormEvent) {
     e.preventDefault()
-    setErr(null)
-    setOk(null)
     try {
       await api.changeMyPassword({ current_password: currentPassword, new_password: newPassword })
       setCurrentPassword('')
       setNewPassword('')
-      setOk(t('users.passwordChanged'))
+      toast.ok(t('users.passwordChanged'))
     } catch (error) {
-      setErr(error instanceof Error ? error.message : t('users.passwordChangeFailed'))
+      toast.error(error instanceof Error ? error.message : t('users.passwordChangeFailed'))
     }
   }
 
   async function onSaveEdit(e: FormEvent) {
     e.preventDefault()
     if (editId == null) return
-    setErr(null)
-    setOk(null)
     try {
       await api.updateUser(editId, {
         username: editUsername.trim(),
@@ -161,10 +152,10 @@ export function UsersPage() {
         password: editPassword.trim() || undefined,
       })
       setEditId(null)
-      setOk(t('users.accountUpdated'))
+      toast.ok(t('users.accountUpdated'))
       void load()
     } catch (error) {
-      setErr(error instanceof Error ? error.message : t('common.error'))
+      toast.error(error instanceof Error ? error.message : t('common.error'))
     }
   }
 
@@ -179,9 +170,6 @@ export function UsersPage() {
           <p className="mt-1 text-sm text-[var(--color-fg-muted)]">{t('pages.usersSubtitle')}</p>
         </div>
       </div>
-
-      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
-      {ok ? <div className="app-alert app-alert-success mb-4">{ok}</div> : null}
 
       <div className="mb-4 flex flex-wrap gap-1.5">
         {(
@@ -417,7 +405,7 @@ export function UsersPage() {
                                 void (async () => {
                                   await api.setUserRole(u.id, nextRole)
                                   void load()
-                                })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
+                                })().catch((error) => toast.error(error instanceof Error ? error.message : t('common.error')))
                               }}
                             >
                               <option value="observer">observer</option>
@@ -438,7 +426,7 @@ export function UsersPage() {
                                   void (async () => {
                                     await api.setUserAdmin(u.id, true)
                                     void load()
-                                  })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
+                                  })().catch((error) => toast.error(error instanceof Error ? error.message : t('common.error')))
                                 }}
                               >
                                 {t('users.makeAdmin')}
@@ -452,7 +440,7 @@ export function UsersPage() {
                                   void (async () => {
                                     await api.setUserAdmin(u.id, false)
                                     void load()
-                                  })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
+                                  })().catch((error) => toast.error(error instanceof Error ? error.message : t('common.error')))
                                 }}
                               >
                                 {t('users.revokeAdmin')}
@@ -466,7 +454,7 @@ export function UsersPage() {
                                   void (async () => {
                                     await api.deleteUser(u.id)
                                     void load()
-                                  })().catch((error) => setErr(error instanceof Error ? error.message : t('common.error')))
+                                  })().catch((error) => toast.error(error instanceof Error ? error.message : t('common.error')))
                                 }}
                               >
                                 {t('common.delete')}

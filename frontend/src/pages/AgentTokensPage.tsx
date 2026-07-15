@@ -4,28 +4,28 @@ import { api, type AgentTokenCreated, type AgentTokenRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 export function AgentTokensPage() {
   const t = useT()
+  const toast = useToast()
   const { user } = useAuth()
   const [rows, setRows] = useState<AgentTokenRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
   const [label, setLabel] = useState('')
   const [allowedHostname, setAllowedHostname] = useState('')
   const [createdOnce, setCreatedOnce] = useState<AgentTokenCreated | null>(null)
 
   const load = useCallback(async () => {
-    setErr(null)
     try {
       const data = await api.agentTokens()
       setRows(data)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -37,7 +37,6 @@ export function AgentTokensPage() {
 
   async function onCreate(e: FormEvent) {
     e.preventDefault()
-    setErr(null)
     setCreatedOnce(null)
     try {
       const row = await api.createAgentToken({
@@ -49,18 +48,17 @@ export function AgentTokensPage() {
       setAllowedHostname('')
       void load()
     } catch (err) {
-      setErr(err instanceof Error ? err.message : t('common.error'))
+      toast.error(err instanceof Error ? err.message : t('common.error'))
     }
   }
 
   async function onRevoke(id: number) {
     if (!confirm(t('agentTokens.revokeConfirm'))) return
-    setErr(null)
     try {
       await api.revokeAgentToken(id)
       void load()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     }
   }
 
@@ -92,10 +90,6 @@ export function AgentTokensPage() {
             {t('agentTokens.copyToken')}
           </button>
         </div>
-      ) : null}
-
-      {err ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>
       ) : null}
 
       <form onSubmit={onCreate} className="app-card mb-10 max-w-xl space-y-4 p-6 sm:p-7">

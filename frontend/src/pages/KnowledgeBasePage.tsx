@@ -3,6 +3,7 @@ import ReactFlow, { Background, Controls, MiniMap, type Edge, type Node } from '
 import 'reactflow/dist/style.css'
 import { api, type Computer, type ServiceRequestRow, type TagBrief, type UserDirectoryItem } from '../api'
 import { IconGraph } from '../components/icons'
+import { useToast } from '../ToastContext'
 
 type KBMode = 'tagCloud'
 
@@ -46,18 +47,17 @@ function renderNode(data: KBNodeData) {
 }
 
 export function KnowledgeBasePage() {
+  const toast = useToast()
   const [_mode] = useState<KBMode>('tagCloud')
   const [pcList, setPcList] = useState<Computer[]>([])
   const [userDir, setUserDir] = useState<UserDirectoryItem[]>([])
   const [tags, setTags] = useState<TagBrief[]>([])
   const [requests, setRequests] = useState<ServiceRequestRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
 
   const [selectedTagId, setSelectedTagId] = useState<string>('')
 
   const loadBase = useCallback(async () => {
-    setErr(null)
     setLoading(true)
     try {
       const [pcs, users, tags, reqs] = await Promise.all([
@@ -72,11 +72,11 @@ export function KnowledgeBasePage() {
       setRequests(reqs)
       if (!selectedTagId && tags.length) setSelectedTagId(String(tags[0].id))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки')
+      toast.error(e instanceof Error ? e.message : 'Ошибка загрузки')
     } finally {
       setLoading(false)
     }
-  }, [selectedTagId])
+  }, [selectedTagId, toast])
 
   useEffect(() => {
     void loadBase()
@@ -194,8 +194,6 @@ export function KnowledgeBasePage() {
           </div>
         </div>
       </div>
-
-      {err ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div> : null}
 
       <div className="app-card overflow-hidden p-0">
         <div className="flex h-[min(72vh,820px)] w-full flex-row">

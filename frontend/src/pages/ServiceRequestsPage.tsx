@@ -23,6 +23,7 @@ import { useAuth } from '../AuthContext'
 import { IconPencil, IconTicket, IconTrash } from '../components/icons'
 import { collectCategoryPaths, filterCategoryTree, flattenCategoryNodes } from '../requestCategories'
 import { useLocale, useT, translateStatic } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
@@ -702,27 +703,6 @@ function MiniStatCard({
   )
 }
 
-function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
-  const t = useT()
-  return (
-    <div
-      role="status"
-      className="fixed bottom-6 left-1/2 z-[100] flex max-w-md -translate-x-1/2 items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-medium text-white shadow-lg"
-    >
-      <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
-      {message}
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="ml-2 rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-white"
-        aria-label={t('requests.toastClose')}
-      >
-        ×
-      </button>
-    </div>
-  )
-}
-
 function ComputerPicker({
   computers,
   valueId,
@@ -1156,6 +1136,7 @@ function DirectoryAssigneesPicker({
 
 export function ServiceRequestsPage() {
   const t = useT()
+  const toast = useToast()
   const { locale } = useLocale()
   const DB_PAGE_SIZE = 100
   const location = useLocation()
@@ -1177,7 +1158,6 @@ export function ServiceRequestsPage() {
   const [rows, setRows] = useState<ServiceRequestRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [dbShowAll, setDbShowAll] = useState(false)
@@ -1206,7 +1186,6 @@ export function ServiceRequestsPage() {
   const [computerId, setComputerId] = useState('')
   const [createTemplateSelect, setCreateTemplateSelect] = useState('')
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
 
   const [tplRows, setTplRows] = useState<ServiceRequestTemplateRow[]>([])
   const [tplTotal, setTplTotal] = useState(0)
@@ -1601,7 +1580,6 @@ export function ServiceRequestsPage() {
       skipNextListReload = false
       return
     }
-    setErr(null)
     setLoading(true)
     try {
       const needAll = tab === 'stats'
@@ -1612,21 +1590,20 @@ export function ServiceRequestsPage() {
       setRows(r.items)
       setTotal(r.total)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setLoading(false)
     }
-  }, [dbShowAll, filterStatus, tab, t])
+  }, [dbShowAll, filterStatus, tab, t, toast])
 
   const loadTemplates = useCallback(async () => {
-    setErr(null)
     setTplLoading(true)
     try {
       const r = await api.serviceRequestTemplates({ limit: 300 })
       setTplRows(r.items)
       setTplTotal(r.total)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
       setTplRows([])
       setTplTotal(0)
     } finally {
@@ -1694,12 +1671,6 @@ export function ServiceRequestsPage() {
     if (tab !== 'templates' && tab !== 'create') return
     void loadTemplates()
   }, [tab, loadTemplates])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = window.setTimeout(() => setToast(null), 4200)
-    return () => window.clearTimeout(t)
-  }, [toast])
 
   // Hotkeys for fast duration planning (Alt+1..4)
   useEffect(() => {
@@ -1794,7 +1765,6 @@ export function ServiceRequestsPage() {
     setEditingRequestId(t.id)
     setEditingReturnPath(location.pathname)
     setEditDeleteConfirm(false)
-    setErr(null)
     navigate('/requests')
     window.requestAnimationFrame(() => {
       const el = getAppScrollContainer()
@@ -1814,7 +1784,6 @@ export function ServiceRequestsPage() {
     e.preventDefault()
     if (!title.trim()) return
     setSaving(true)
-    setErr(null)
     try {
       const closedLocalValue = closedSameAsPlanned ? plannedCloseLocal : closedAtLocal
       const closedParsed = closedLocalValue.trim() ? fromDatetimeLocalValue(closedLocalValue) : null
@@ -1847,7 +1816,7 @@ export function ServiceRequestsPage() {
         setTitle('')
         setDescription('')
         resetCreateFormAfterSubmit()
-        setToast(t('requests.messages.saved'))
+        toast.ok(t('requests.messages.saved'))
         void refreshSummary()
         if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath)
       } else {
@@ -1857,25 +1826,24 @@ export function ServiceRequestsPage() {
         setTitle('')
         setDescription('')
         resetCreateFormAfterSubmit()
-        setToast(t('requests.messages.created'))
+        toast.ok(t('requests.messages.created'))
         await load()
         void refreshSummary()
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setSaving(false)
     }
   }
 
   async function downloadPdf() {
-    setErr(null)
     setPdfBusy(true)
     try {
       await api.exportServiceRequestsPdf({ status: filterStatus, limit: dbShowAll ? 2000 : 400 })
-      setToast(t('requests.messages.pdfSaved'))
+      toast.ok(t('requests.messages.pdfSaved'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setPdfBusy(false)
     }
@@ -2008,7 +1976,7 @@ export function ServiceRequestsPage() {
 
       const w = window.open('about:blank', '_blank', 'width=1100,height=900')
       if (!w) {
-        setErr(t('requests.errors.popupBlocked'))
+        toast.error(t('requests.errors.popupBlocked'))
         return
       }
       try {
@@ -2024,7 +1992,7 @@ export function ServiceRequestsPage() {
         const url = URL.createObjectURL(blob)
         const wb = window.open(url, '_blank')
         if (!wb) {
-          setErr(t('requests.errors.reportWindow'))
+          toast.error(t('requests.errors.reportWindow'))
           URL.revokeObjectURL(url)
           return
         }
@@ -2035,13 +2003,12 @@ export function ServiceRequestsPage() {
         }, 450)
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.execPdf'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.execPdf'))
     }
   }
 
   async function removeEditingRequest() {
     if (editingRequestId == null || editDeleting) return
-    setErr(null)
     setEditDeleting(true)
     try {
       await api.deleteServiceRequest(editingRequestId)
@@ -2051,12 +2018,12 @@ export function ServiceRequestsPage() {
       setTitle('')
       setDescription('')
       resetCreateFormAfterSubmit()
-      setToast(t('requests.messages.deleted'))
+      toast.ok(t('requests.messages.deleted'))
       await load()
       void refreshSummary()
       if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.delete'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.delete'))
     } finally {
       setEditDeleting(false)
     }
@@ -2083,7 +2050,7 @@ export function ServiceRequestsPage() {
     setClosedAtLocal(closed)
     setClosedSameAsPlanned(Boolean(closed && planned && closed === planned))
     navigate('/requests')
-    setToast(t('requests.messages.templateApplied', { title: template.title }))
+    toast.info(t('requests.messages.templateApplied', { title: template.title }))
   }
 
   function resetTemplateForm() {
@@ -2124,7 +2091,6 @@ export function ServiceRequestsPage() {
   async function saveTemplateFromForm() {
     if (!tplTitle.trim()) return
     setTplBusy(true)
-    setErr(null)
     try {
       const tplClosedLocalValue = tplClosedSameAsPlanned ? tplPlannedCloseLocal : tplClosedAtLocal
       const body = {
@@ -2142,15 +2108,15 @@ export function ServiceRequestsPage() {
       }
       if (tplEditingId != null) {
         await api.updateServiceRequestTemplate(tplEditingId, body)
-        setToast(t('requests.messages.templateUpdated'))
+        toast.ok(t('requests.messages.templateUpdated'))
       } else {
         await api.createServiceRequestTemplate(body)
-        setToast(t('requests.messages.templateSaved'))
+        toast.ok(t('requests.messages.templateSaved'))
       }
       resetTemplateForm()
       await loadTemplates()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setTplBusy(false)
     }
@@ -2159,14 +2125,13 @@ export function ServiceRequestsPage() {
   async function deleteTemplate(id: number, title: string) {
     if (!window.confirm(`Удалить шаблон «${title}»?`)) return
     setTplBusy(true)
-    setErr(null)
     try {
       await api.deleteServiceRequestTemplate(id)
       if (tplEditingId === id) resetTemplateForm()
-      setToast('Шаблон удалён')
+      toast.ok('Шаблон удалён')
       await loadTemplates()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('requests.errors.generic'))
+      toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setTplBusy(false)
     }
@@ -2176,8 +2141,6 @@ export function ServiceRequestsPage() {
 
   return (
     <div>
-      {toast ? <Toast message={toast} onDismiss={() => setToast(null)} /> : null}
-
       <div className="app-panel mb-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-5">
           <div className="page-hero-icon mt-0.5 shadow-md shadow-neutral-900/5 ring-1 ring-zinc-100/90">
@@ -2575,12 +2538,6 @@ export function ServiceRequestsPage() {
                 </p>
               </div>
 
-              {err && editingRequestId != null ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-900">
-                  {err}
-                </div>
-              ) : null}
-
               <div className="flex flex-col gap-2">
                 <button
                   type="submit"
@@ -2637,7 +2594,6 @@ export function ServiceRequestsPage() {
                           disabled={saving || editDeleting}
                           onClick={() => {
                             setEditDeleteConfirm(true)
-                            setErr(null)
                           }}
                           className="w-full rounded-md border border-blue-200 bg-blue-50 py-2 text-[13px] font-semibold text-blue-800 transition hover:bg-blue-100 disabled:opacity-50"
                         >
@@ -2656,11 +2612,6 @@ export function ServiceRequestsPage() {
         {/* База */}
         {tab === 'database' ? (
         <div className="min-w-0 lg:col-span-12">
-          {err ? (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-900">
-              {err}
-            </div>
-          ) : null}
 
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {filterTabs.map((tab) => {
@@ -3497,11 +3448,6 @@ export function ServiceRequestsPage() {
         {/* Шаблоны */}
         {tab === 'templates' ? (
           <div className="min-w-0 lg:col-span-12">
-            {err ? (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-900">
-                {err}
-              </div>
-            ) : null}
 
             <div className="grid gap-6 lg:grid-cols-12">
               <div className="lg:col-span-4">

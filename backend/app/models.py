@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Table, Text, Column, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Table, Text, Column, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, DiagramsBase
@@ -370,6 +370,80 @@ class PrinterPollConfig(Base):
     snmp_timeout_seconds: Mapped[float] = mapped_column(Float, default=3.5)
     ping_timeout_ms: Mapped[int] = mapped_column(Integer, default=1200)
     poll_concurrency: Mapped[int] = mapped_column(Integer, default=10)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class NetworkDevice(Base):
+    __tablename__ = "network_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dedupe_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    ip_address: Mapped[str] = mapped_column(String(64), index=True)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    sys_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sys_descr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sys_object_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    device_type: Mapped[str] = mapped_column(String(32), default="unknown", index=True)
+    vendor: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    snmp_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    snmp_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_snmp_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    interfaces_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    neighbors_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fdb_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    extras_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="snmp")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class NetworkLink(Base):
+    __tablename__ = "network_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "from_type",
+            "from_id",
+            "to_type",
+            "to_id",
+            "link_type",
+            name="uq_network_links_pair_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    from_type: Mapped[str] = mapped_column(String(32), index=True)
+    from_id: Mapped[int] = mapped_column(Integer, index=True)
+    to_type: Mapped[str] = mapped_column(String(32), index=True)
+    to_id: Mapped[int] = mapped_column(Integer, index=True)
+    link_type: Mapped[str] = mapped_column(String(32), default="lldp", index=True)
+    local_port: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remote_port: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class NetworkPollConfig(Base):
+    __tablename__ = "network_poll_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    poll_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    poll_interval_minutes: Mapped[int] = mapped_column(Integer, default=120)
+    snmp_community: Mapped[str] = mapped_column(String(128), default="public")
+    snmp_timeout_seconds: Mapped[float] = mapped_column(Float, default=3.5)
+    poll_concurrency: Mapped[int] = mapped_column(Integer, default=8)
+    cidr_list_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(

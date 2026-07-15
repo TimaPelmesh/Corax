@@ -6,6 +6,7 @@ import { IconDashboard, IconDisk, IconPcs, IconPrinter, IconSoftware, IconTag } 
 import { donutColorsForTheme } from '../chartColors'
 import { useT } from '../i18n/LocaleContext'
 import { useTheme } from '../ThemeContext'
+import { useToast } from '../ToastContext'
 
 type TranslateFn = ReturnType<typeof useT>
 
@@ -681,8 +682,8 @@ function DashboardSkeleton() {
 
 export function DashboardPage() {
   const t = useT()
+  const toast = useToast()
   const [data, setData] = useState<DashboardSummary | null>(null)
-  const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [chartsMode, setChartsMode] = useState<DashboardChartsMode>(() => readChartsMode())
   const [widgets, setWidgets] = useState<WidgetVisibility>(() => readWidgets())
@@ -703,15 +704,14 @@ export function DashboardPage() {
   )
 
   const load = useCallback(async () => {
-    setErr(null)
     try {
       setData(await api.dashboardSummary())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
@@ -741,12 +741,6 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
-
-      {err && (
-        <div className="app-alert app-alert-error mb-6 shadow-sm">
-          {err}
-        </div>
-      )}
 
       {loading ? (
         <DashboardSkeleton />

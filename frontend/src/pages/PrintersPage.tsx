@@ -11,6 +11,7 @@ import { IconClose, IconPrinter } from '../components/icons'
 import { PrinterDetailModal } from '../components/PrinterDetailModal'
 import { useLocale } from '../i18n/LocaleContext'
 import type { MessageKey } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 type FilterChip = 'all' | 'offline' | 'low_toner' | 'snmp_error'
 
@@ -48,40 +49,6 @@ function formatSchedulerShort(
   return last
     ? t('printers.autoLast', { mins, last })
     : t('printers.autoEvery', { mins })
-}
-
-type InfoTone = 'info' | 'warn' | 'ok' | 'busy'
-
-function PrinterToast({
-  message,
-  tone = 'info',
-  onDismiss,
-  closeLabel,
-}: {
-  message: string
-  tone?: InfoTone
-  onDismiss: () => void
-  closeLabel: string
-}) {
-  const accent =
-    tone === 'warn' ? 'bg-sky-100' : tone === 'busy' ? 'bg-sky-200 animate-pulse' : 'bg-white/80'
-  return (
-    <div
-      role="status"
-      className="toast-enter-right fixed bottom-6 right-6 z-[100] flex max-w-[min(28rem,calc(100vw-3rem))] items-start gap-3 rounded-xl border border-white/15 bg-[var(--color-primary)] px-4 py-3 text-sm font-medium leading-snug text-white shadow-[0_18px_40px_-14px_rgb(37_99_235/0.55)] dark:border-white/20 dark:shadow-[0_18px_44px_-12px_rgb(0_0_0/0.55)]"
-    >
-      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${accent}`} aria-hidden />
-      <span className="min-w-0 flex-1 whitespace-pre-line text-white">{message}</span>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="shrink-0 rounded-lg p-1.5 text-white transition hover:bg-white/25"
-        aria-label={closeLabel}
-      >
-        <IconClose className="h-7 w-7" />
-      </button>
-    </div>
-  )
 }
 
 function supplyBarColor(pct: number | null) {
@@ -272,12 +239,11 @@ type DeleteTarget = {
 export function PrintersPage() {
   const { user } = useAuth()
   const { t, locale } = useLocale()
+  const toast = useToast()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
 
   const [rows, setRows] = useState<NetworkPrinter[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ message: string; tone: InfoTone } | null>(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterChip>('all')
   const [pollBusy, setPollBusy] = useState(false)
@@ -305,7 +271,6 @@ export function PrintersPage() {
   const [detailPrinter, setDetailPrinter] = useState<NetworkPrinter | null>(null)
 
   const reload = useCallback(async (q: string) => {
-    setErr(null)
     const data = await api.printers({ q: q.trim() || undefined, limit: 3000 })
     setRows(data)
     setSelected(new Set())
@@ -320,7 +285,7 @@ export function PrintersPage() {
         const prevRun = lastSchedRunRef.current
         const nextRun = s.last_run_at ?? null
         if (prev && prevRun && nextRun && nextRun !== prevRun && s.last_run_summary?.message) {
-          setToast({ message: s.last_run_summary.message, tone: 'info' })
+          toast.info(s.last_run_summary.message)
         }
         if (nextRun) lastSchedRunRef.current = nextRun
         else if (!lastSchedRunRef.current && s.last_run_at) {
@@ -347,10 +312,7 @@ export function PrintersPage() {
             poll_concurrency: c.poll_concurrency,
           })
           setCfg(saved)
-          setToast({
-            message: t('printers.hourBump'),
-            tone: 'ok',
-          })
+          toast.ok(t('printers.hourBump'))
         } catch {
           /* ignore */
         }
@@ -360,7 +322,7 @@ export function PrintersPage() {
     } catch {
       /* optional */
     }
-  }, [canEdit, t])
+  }, [canEdit, t, toast])
 
   useEffect(() => {
     localStorage.setItem(COLS_STORAGE_KEY, JSON.stringify(visibleCols))
@@ -403,7 +365,7 @@ export function PrintersPage() {
       try {
         await Promise.all([reload(search), reloadMeta()])
       } catch (e) {
-        setErr(e instanceof Error ? e.message : t('printers.loadFailed'))
+        toast.error(e instanceof Error ? e.message : t('printers.loadFailed'))
       } finally {
         setLoading(false)
       }
@@ -415,13 +377,6 @@ export function PrintersPage() {
     const t = window.setInterval(() => void reloadMeta(), 30_000)
     return () => window.clearInterval(t)
   }, [canEdit, reloadMeta])
-
-  useEffect(() => {
-    if (!toast || toast.tone === 'busy') return
-    const ms = toast.tone === 'warn' ? 7000 : 5000
-    const t = window.setTimeout(() => setToast(null), ms)
-    return () => window.clearTimeout(t)
-  }, [toast])
 
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
@@ -477,8 +432,7 @@ export function PrintersPage() {
   const pollAll = async () => {
     if (!canEdit) return
     setPollBusy(true)
-    setErr(null)
-    setToast({ message: t('printers.polling'), tone: 'busy' })
+    toast.busy(t('printers.polling'))
     try {
       const r = await api.pollAllPrinters()
       const [data] = await Promise.all([reload(search), reloadMeta()])
@@ -488,15 +442,14 @@ export function PrintersPage() {
       if (low > 0) alerts.push(t('printers.alertLow', { n: low }))
       if (snmpErr > 0) alerts.push(t('printers.alertSnmp', { n: snmpErr }))
       const base = r.message?.trim() || t('printers.pollDone')
-      setToast({
-        message: alerts.length
-          ? `${base}\n${t('printers.alertsAfterPoll', { alerts: alerts.join(' · ') })}`
-          : base,
-        tone: alerts.length ? 'warn' : 'info',
-      })
+      const message = alerts.length
+        ? `${base}\n${t('printers.alertsAfterPoll', { alerts: alerts.join(' · ') })}`
+        : base
+      if (alerts.length) toast.warn(message)
+      else toast.info(message)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printers.pollFailed'))
-      setToast(null)
+      toast.dismiss()
+      toast.error(e instanceof Error ? e.message : t('printers.pollFailed'))
     } finally {
       setPollBusy(false)
     }
@@ -509,30 +462,28 @@ export function PrintersPage() {
     try {
       await api.pollPrinter(row.id)
       await reload(search)
-      setToast({ message: t('printers.snmpUpdated', { name: displayTitle(row) }), tone: 'ok' })
+      toast.ok(t('printers.snmpUpdated', { name: displayTitle(row) }))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printers.pollFailed'))
+      toast.error(e instanceof Error ? e.message : t('printers.pollFailed'))
     }
   }
 
   const runCleanup = async () => {
     if (!canEdit) return
     setCleanupBusy(true)
-    setErr(null)
     try {
       const r = await api.cleanupPrinters()
       await reload(search)
-      setToast({
-        message: t('printers.cleanupResult', {
+      toast.info(
+        t('printers.cleanupResult', {
           dup: r.deleted_duplicates,
           noise: r.deleted_noise,
           noIp: r.deleted_no_ip,
           remaining: r.remaining,
         }),
-        tone: 'info',
-      })
+      )
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printers.cleanupFailed'))
+      toast.error(e instanceof Error ? e.message : t('printers.cleanupFailed'))
     } finally {
       setCleanupBusy(false)
     }
@@ -549,9 +500,9 @@ export function PrintersPage() {
       }
       setDeleteTarget(null)
       await reload(search)
-      setToast({ message: t('printers.deletedN', { n: deleteTarget.ids.length }), tone: 'ok' })
+      toast.ok(t('printers.deletedN', { n: deleteTarget.ids.length }))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printers.deleteFailed'))
+      toast.error(e instanceof Error ? e.message : t('printers.deleteFailed'))
     } finally {
       setDeleteBusy(false)
     }
@@ -572,9 +523,9 @@ export function PrintersPage() {
       })
       setCfg(saved)
       await reloadMeta()
-      setToast({ message: t('printers.settingsSaved'), tone: 'ok' })
+      toast.ok(t('printers.settingsSaved'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printers.saveFailed'))
+      toast.error(e instanceof Error ? e.message : t('printers.saveFailed'))
     } finally {
       setCfgBusy(false)
     }
@@ -597,9 +548,9 @@ export function PrintersPage() {
       setAddIp('')
       setAddLocation('')
       await reload(search)
-      setToast({ message: t('printers.addedHint'), tone: 'info' })
+      toast.info(t('printers.addedHint'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printers.addFailed'))
+      toast.error(e instanceof Error ? e.message : t('printers.addFailed'))
     } finally {
       setAddBusy(false)
     }
@@ -743,12 +694,6 @@ export function PrintersPage() {
           </div>
         </div>
       </div>
-
-      {toast ? (
-        <PrinterToast message={toast.message} tone={toast.tone} onDismiss={() => setToast(null)} closeLabel={t('common.close')} />
-      ) : null}
-
-      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
 
       <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[

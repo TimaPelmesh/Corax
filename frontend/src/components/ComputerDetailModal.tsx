@@ -6,6 +6,7 @@ import { useAuth } from '../AuthContext'
 import { parseAgentExtras } from '../computerAgentExtras'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { groupPeripheralsForDisplay } from '../peripheralDisplay'
+import { useToast } from '../ToastContext'
 import { IconClose } from './icons'
 
 export function tagPillProps(t: TagBrief): { className: string; style?: CSSProperties } {
@@ -95,11 +96,11 @@ export function ComputerDetailModal({
   overlayZClass = 'z-50',
 }: Props) {
   const t = useT()
+  const toast = useToast()
   const { locale } = useLocale()
   const { user } = useAuth()
   const [detail, setDetail] = useState<ComputerDetail | null>(null)
   const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState('')
   const [locationDraft, setLocationDraft] = useState('')
   const [historyRows, setHistoryRows] = useState<AssetChangeLog[] | null>(null)
@@ -112,13 +113,11 @@ export function ComputerDetailModal({
     if (!computerId) {
       setDetail(null)
       setHistoryRows(null)
-      setErr(null)
       setLoading(false)
       return
     }
     let cancelled = false
     setLoading(true)
-    setErr(null)
     void Promise.all([api.computer(computerId), api.computerHistory(computerId, 120)])
       .then(([d, hist]) => {
         if (cancelled) return
@@ -131,7 +130,7 @@ export function ComputerDetailModal({
         setHistoryRows(hist)
       })
       .catch((e: unknown) => {
-        if (!cancelled) setErr(e instanceof Error ? e.message : t('common.error'))
+        if (!cancelled) toast.error(e instanceof Error ? e.message : t('common.error'))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -139,7 +138,7 @@ export function ComputerDetailModal({
     return () => {
       cancelled = true
     }
-  }, [computerId, t])
+  }, [computerId, t, toast])
 
   useEffect(() => {
     void api
@@ -189,7 +188,6 @@ export function ComputerDetailModal({
 
   const saveMeta = useCallback(async () => {
     if (!detail || !user?.is_superuser) return
-    setErr(null)
     const userIdText = assignUserId.trim()
     let assigned: number | undefined
     if (userIdText === '') assigned = 0
@@ -207,7 +205,7 @@ export function ComputerDetailModal({
       onChanged?.()
       onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('computerDetail.saveFailed'))
+      toast.error(e instanceof Error ? e.message : t('computerDetail.saveFailed'))
     }
   }, [
     detail,
@@ -219,6 +217,7 @@ export function ComputerDetailModal({
     onChanged,
     onClose,
     t,
+    toast,
   ])
 
   const deletePc = useCallback(async () => {
@@ -230,15 +229,14 @@ export function ComputerDetailModal({
     ) {
       return
     }
-    setErr(null)
     try {
       await api.deleteComputer(detail.id)
       onChanged?.()
       onClose()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('computerDetail.deleteFailed'))
+      toast.error(e instanceof Error ? e.message : t('computerDetail.deleteFailed'))
     }
-  }, [detail, user?.is_superuser, onChanged, onClose, t])
+  }, [detail, user?.is_superuser, onChanged, onClose, t, toast])
 
   if (!computerId) return null
 
@@ -255,9 +253,9 @@ export function ComputerDetailModal({
       >
         {loading && !detail ? (
           <div className="py-12 text-center text-slate-500">{t('computerDetail.loading')}</div>
-        ) : err && !detail ? (
+        ) : !detail ? (
           <div className="py-8">
-            <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</p>
+            <p className="text-center text-sm text-slate-500">{t('computerDetail.noData')}</p>
             <button type="button" className="app-btn app-btn-secondary mt-4" onClick={onClose}>
               {t('computerDetail.close')}
             </button>
@@ -281,12 +279,6 @@ export function ComputerDetailModal({
                 <IconClose className="h-6 w-6" />
               </button>
             </div>
-
-            {err ? (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
-                {err}
-              </div>
-            ) : null}
 
             <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-8">
               <section className="flex min-w-0 flex-col">

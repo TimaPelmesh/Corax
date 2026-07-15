@@ -3,6 +3,7 @@ import { api, type Bitrix24Config } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey, IconTicket } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 function base64Url(bytes: Uint8Array) {
   let s = ''
@@ -19,21 +20,19 @@ function genSecret() {
 
 export function SettingsBitrix24Page() {
   const t = useT()
+  const toast = useToast()
   const { user } = useAuth()
   const [cfg, setCfg] = useState<Bitrix24Config | null>(null)
-  const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    setErr(null)
     try {
       setCfg(await api.bitrix24Config())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsBitrix.loadFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsBitrix.loadFailed'))
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -61,14 +60,12 @@ export function SettingsBitrix24Page() {
   async function save(patch: Partial<Bitrix24Config>) {
     if (!cfg) return
     setSaving(true)
-    setErr(null)
     try {
       const next = await api.updateBitrix24Config(patch)
       setCfg(next)
-      setToast(t('settingsBitrix.saveSuccess'))
-      window.setTimeout(() => setToast(null), 3500)
+      toast.ok(t('settingsBitrix.saveSuccess'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsBitrix.saveFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsBitrix.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -78,17 +75,14 @@ export function SettingsBitrix24Page() {
     if (!webhookUrl) return
     try {
       await navigator.clipboard.writeText(webhookUrl)
-      setToast(t('settingsBitrix.copyWebhookSuccess'))
-      window.setTimeout(() => setToast(null), 2500)
+      toast.ok(t('settingsBitrix.copyWebhookSuccess'))
     } catch {
-      setToast(t('settingsBitrix.copyWebhookFailed'))
-      window.setTimeout(() => setToast(null), 2500)
+      toast.error(t('settingsBitrix.copyWebhookFailed'))
     }
   }
 
   async function runTest() {
     setTesting(true)
-    setErr(null)
     try {
       const r = await api.bitrix24IncomingTest({
         title: t('settingsBitrix.testTitle'),
@@ -97,10 +91,9 @@ export function SettingsBitrix24Page() {
         category: cfg?.default_category ?? 'bitrix24',
         priority: cfg?.default_priority ?? 'normal',
       })
-      setToast(t('settingsBitrix.testSuccess', { id: r.request_id }))
-      window.setTimeout(() => setToast(null), 5000)
+      toast.ok(t('settingsBitrix.testSuccess', { id: r.request_id }))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsBitrix.testFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsBitrix.testFailed'))
     } finally {
       setTesting(false)
     }
@@ -119,16 +112,6 @@ export function SettingsBitrix24Page() {
           </p>
         </div>
       </div>
-
-      {toast ? (
-        <div className="mb-4 rounded-xl border border-zinc-200/90 bg-zinc-50 px-4 py-3 text-sm font-medium text-neutral-950 shadow-sm">
-          {toast}
-        </div>
-      ) : null}
-
-      {err ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
-      ) : null}
 
       {!cfg ? (
         <div className="app-card p-6 text-sm text-slate-600">{t('common.loading')}</div>

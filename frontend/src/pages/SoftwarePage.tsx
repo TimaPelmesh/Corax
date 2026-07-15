@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CatalogKind, type SoftwareCatalogRow } from '../api'
 import { IconSoftware } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 export function SoftwarePage() {
   const t = useT()
+  const toast = useToast()
   const [kind, setKind] = useState<CatalogKind>('software')
   const [query, setQuery] = useState('')
   const [rows, setRows] = useState<SoftwareCatalogRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [hosts, setHosts] = useState<string[] | null>(null)
   const [hostsLoading, setHostsLoading] = useState(false)
@@ -28,16 +29,15 @@ export function SoftwarePage() {
   )
 
   const load = useCallback(async (nextKind: CatalogKind, q: string) => {
-    setErr(null)
     setLoading(true)
     try {
       setRows(await api.catalog(nextKind, q.trim() || undefined))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -60,7 +60,7 @@ export function SoftwarePage() {
       const r = await api.catalogHosts(kind, name)
       setHosts(r.hostnames)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
       setHosts([])
     } finally {
       setHostsLoading(false)
@@ -83,12 +83,6 @@ export function SoftwarePage() {
         </div>
         <h1 className="page-title">{t('titles.software')}</h1>
       </div>
-
-      {err && (
-        <div className="app-alert app-alert-error mb-4">
-          {err}
-        </div>
-      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-2">

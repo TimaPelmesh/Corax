@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../AuthContext'
 import { IconClose, IconTrash, IconWarehouse } from '../components/icons'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 function fmtWhen(iso: string | null | undefined, locale: 'ru' | 'en') {
   if (!iso) return '—'
@@ -50,6 +51,7 @@ function presetLabel(t: (key: MessageKey) => string, key: string, fallback?: str
 
 export function WarehousePage() {
   const t = useT()
+  const toast = useToast()
   const { locale } = useLocale()
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
@@ -59,8 +61,6 @@ export function WarehousePage() {
   const [activeRoomId, setActiveRoomId] = useState<number | null>(null)
   const [items, setItems] = useState<WarehouseStockItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [roomMenuOpen, setRoomMenuOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -109,7 +109,6 @@ export function WarehousePage() {
   )
 
   const reload = useCallback(async () => {
-    setErr(null)
     const [roomRows, presetRows] = await Promise.all([api.warehouseRooms(), api.warehousePresets()])
     setRooms(roomRows)
     setPresets(presetRows)
@@ -137,12 +136,12 @@ export function WarehousePage() {
       try {
         await reload()
       } catch (e) {
-        setErr(e instanceof Error ? e.message : t('common.error'))
+        toast.error(e instanceof Error ? e.message : t('common.error'))
       } finally {
         setLoading(false)
       }
     })()
-  }, [reload])
+  }, [reload, t, toast])
 
   useEffect(() => {
     if (!activeRoomId) return
@@ -150,37 +149,30 @@ export function WarehousePage() {
       try {
         await reloadItems(activeRoomId, search)
       } catch (e) {
-        setErr(e instanceof Error ? e.message : t('common.error'))
+        toast.error(e instanceof Error ? e.message : t('common.error'))
       }
     })()
-  }, [activeRoomId, search, reloadItems])
-
-  useEffect(() => {
-    if (!toast) return
-    const t = window.setTimeout(() => setToast(null), 3200)
-    return () => window.clearTimeout(t)
-  }, [toast])
+  }, [activeRoomId, search, reloadItems, t, toast])
 
   const submitRoomDialog = async () => {
     if (!canEdit || !roomDialog) return
     const title = roomDialog.title.trim()
     if (!title) return
     setRoomBusy(true)
-    setErr(null)
     try {
       if (roomDialog.mode === 'create') {
         const created = await api.createWarehouseRoom({ title })
         await reload()
         setActiveRoomId(created.id)
-        setToast(t('warehouse.roomCreated'))
+        toast.ok(t('warehouse.roomCreated'))
       } else if (activeRoom) {
         await api.patchWarehouseRoom(activeRoom.id, { title })
         await reload()
-        setToast(t('warehouse.roomRenamed'))
+        toast.ok(t('warehouse.roomRenamed'))
       }
       setRoomDialog(null)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('warehouse.roomSaveFailed'))
+      toast.error(e instanceof Error ? e.message : t('warehouse.roomSaveFailed'))
     } finally {
       setRoomBusy(false)
     }
@@ -190,16 +182,16 @@ export function WarehousePage() {
     if (!canEdit || !activeRoom) return
     setRoomMenuOpen(false)
     if (rooms.length <= 1) {
-      setErr(t('warehouse.roomDeleteOnlyOne'))
+      toast.error(t('warehouse.roomDeleteOnlyOne'))
       return
     }
     if (!window.confirm(t('warehouse.roomDeleteConfirm', { title: activeRoom.title }))) return
     try {
       await api.deleteWarehouseRoom(activeRoom.id)
       await reload()
-      setToast(t('warehouse.roomDeleted'))
+      toast.ok(t('warehouse.roomDeleted'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('warehouse.roomDeleteFailed'))
+      toast.error(e instanceof Error ? e.message : t('warehouse.roomDeleteFailed'))
     }
   }
 
@@ -222,7 +214,6 @@ export function WarehousePage() {
     const name = addName.trim()
     if (!name) return
     setAddBusy(true)
-    setErr(null)
     try {
       await api.createWarehouseItem({
         room_id: activeRoomId,
@@ -238,9 +229,9 @@ export function WarehousePage() {
       setAddOpen(false)
       await reload()
       await reloadItems(activeRoomId, search)
-      setToast(t('warehouse.itemAdded'))
+      toast.ok(t('warehouse.itemAdded'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('warehouse.itemAddFailed'))
+      toast.error(e instanceof Error ? e.message : t('warehouse.itemAddFailed'))
     } finally {
       setAddBusy(false)
     }
@@ -253,9 +244,9 @@ export function WarehousePage() {
       await api.writeOffWarehouseItem(item.id)
       if (activeRoomId) await reloadItems(activeRoomId, search)
       await reload()
-      setToast(t('warehouse.itemWrittenOff'))
+      toast.ok(t('warehouse.itemWrittenOff'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('warehouse.writeOffFailed'))
+      toast.error(e instanceof Error ? e.message : t('warehouse.writeOffFailed'))
     }
   }
 
@@ -263,7 +254,7 @@ export function WarehousePage() {
     if (!canEdit) return
     const others = rooms.filter((r) => r.id !== item.room_id)
     if (!others.length) {
-      setErr(t('warehouse.noOtherRoom'))
+      toast.error(t('warehouse.noOtherRoom'))
       return
     }
     setTransferItemId(item.id)
@@ -273,15 +264,14 @@ export function WarehousePage() {
   const submitTransfer = async () => {
     if (!canEdit || !transferItemId || !transferToId) return
     setTransferBusy(true)
-    setErr(null)
     try {
       await api.transferWarehouseItem(transferItemId, { to_room_id: transferToId })
       setTransferItemId(null)
       if (activeRoomId) await reloadItems(activeRoomId, search)
       await reload()
-      setToast(t('warehouse.itemMoved'))
+      toast.ok(t('warehouse.itemMoved'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('warehouse.transferFailed'))
+      toast.error(e instanceof Error ? e.message : t('warehouse.transferFailed'))
     } finally {
       setTransferBusy(false)
     }
@@ -294,9 +284,9 @@ export function WarehousePage() {
       await api.deleteWarehouseItem(item.id)
       if (activeRoomId) await reloadItems(activeRoomId, search)
       await reload()
-      setToast(t('warehouse.itemDeleted'))
+      toast.ok(t('warehouse.itemDeleted'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('warehouse.deleteFailed'))
+      toast.error(e instanceof Error ? e.message : t('warehouse.deleteFailed'))
     }
   }
 
@@ -320,9 +310,6 @@ export function WarehousePage() {
           </span>
         ) : null}
       </div>
-
-      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
-      {toast ? <div className="app-alert app-alert-success mb-4">{toast}</div> : null}
 
       <div className="flex flex-col gap-4 lg:flex-row">
         <aside className="lg:w-56 shrink-0">

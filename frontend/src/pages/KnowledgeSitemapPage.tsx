@@ -21,6 +21,7 @@ import {
 } from '../floorPlacePhotos'
 import { IconClose, IconGraph } from '../components/icons'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 type ViewBox = { x: number; y: number; w: number; h: number }
 
@@ -583,6 +584,7 @@ function EquipmentMenuIcon({ kind }: { kind: FloorIconKind }) {
 
 export function KnowledgeSitemapPage() {
   const t = useT()
+  const toast = useToast()
   const { locale } = useLocale()
   const { user } = useAuth()
   const canEdit = !!user && (user.is_superuser || user.role === 'editor')
@@ -643,7 +645,6 @@ export function KnowledgeSitemapPage() {
   const [pcDetailLoading, setPcDetailLoading] = useState(false)
   const [pcInfoModalOpen, setPcInfoModalOpen] = useState(false)
   const [pcInfoSwFilter, setPcInfoSwFilter] = useState('')
-  const [err, setErr] = useState<string | null>(null)
   const [photoLightboxUrl, setPhotoLightboxUrl] = useState<string | null>(null)
   const placePhotoInputRef = useRef<HTMLInputElement | null>(null)
   const placePhotosSectionRef = useRef<HTMLDivElement | null>(null)
@@ -899,7 +900,6 @@ export function KnowledgeSitemapPage() {
 
   const loadMaps = useCallback(async () => {
     setLoading(true)
-    setErr(null)
     try {
       let rows = await api.diagrams()
       if (!rows.length) {
@@ -922,7 +922,7 @@ export function KnowledgeSitemapPage() {
       setActiveId(preferred.id)
       await loadDiagram(preferred.id)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось загрузить карту сайта')
+      toast.error(e instanceof Error ? e.message : 'Не удалось загрузить карту сайта')
     } finally {
       setLoading(false)
     }
@@ -1071,7 +1071,7 @@ export function KnowledgeSitemapPage() {
       if (!canEdit) return
       const id = selectedIds.length === 1 ? selectedIds[0] : null
       if (!id) {
-        setErr(
+        toast.error(
           'Сначала выберите один объект на карте, затем перетащите фото снова — снимки добавляются к выбранному оборудованию.',
         )
         return
@@ -1085,7 +1085,7 @@ export function KnowledgeSitemapPage() {
       const existing = parsePlacePhotosJson(sm.meta?.place_photos_json)
       const slots = MAX_PLACE_PHOTOS - existing.length
       if (slots <= 0) {
-        setErr('Достигнут лимит фото для этого объекта.')
+        toast.error('Достигнут лимит фото для этого объекта.')
         return
       }
 
@@ -1096,7 +1096,6 @@ export function KnowledgeSitemapPage() {
       }
 
       setPlacePhotoBusy(true)
-      setErr(null)
       const toAdd: Array<{ id: string; dataUrl: string; caption: string }> = []
       try {
         for (const f of imageFiles) {
@@ -1126,7 +1125,7 @@ export function KnowledgeSitemapPage() {
           }
         })
       } catch (ex) {
-        setErr(ex instanceof Error ? ex.message : 'Не удалось добавить фото')
+        toast.error(ex instanceof Error ? ex.message : 'Не удалось добавить фото')
       } finally {
         setPlacePhotoBusy(false)
       }
@@ -1230,14 +1229,13 @@ export function KnowledgeSitemapPage() {
     async (id: number, nextLayout: FloorLayout) => {
       setSaving(true)
       setSaveState('saving')
-      setErr(null)
       try {
         await api.saveDiagramLayout(id, normalizeLayout(nextLayout))
         setLastSavedAt(Date.now())
         lastLocalCommitAtRef.current = Date.now()
         setSaveState('saved')
       } catch (e) {
-        setErr(e instanceof Error ? e.message : 'Не удалось сохранить карту')
+        toast.error(e instanceof Error ? e.message : 'Не удалось сохранить карту')
         setSaveState('error')
       } finally {
         setSaving(false)
@@ -1253,14 +1251,13 @@ export function KnowledgeSitemapPage() {
     pendingIconsRef.current = null
     autosaveInFlightRef.current = true
     setSaveState('saving')
-    setErr(null)
     try {
       await api.patchDiagramLayout(activeId, { icons })
       setLastSavedAt(Date.now())
       lastLocalCommitAtRef.current = Date.now()
       setSaveState('saved')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось автосохранить изменения')
+      toast.error(e instanceof Error ? e.message : 'Не удалось автосохранить изменения')
       setSaveState('error')
     } finally {
       autosaveInFlightRef.current = false
@@ -1306,7 +1303,6 @@ export function KnowledgeSitemapPage() {
     setFloorMenuOpen(false)
     if (activeId) await save()
     setLoading(true)
-    setErr(null)
     try {
       const title = window.prompt('Название этажа', `Этаж ${diagrams.length + 1}`)?.trim()
       if (title === undefined) return
@@ -1316,7 +1312,7 @@ export function KnowledgeSitemapPage() {
       setActiveId(created.id)
       await loadDiagram(created.id)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось добавить этаж')
+      toast.error(e instanceof Error ? e.message : 'Не удалось добавить этаж')
     } finally {
       setLoading(false)
     }
@@ -1334,7 +1330,7 @@ export function KnowledgeSitemapPage() {
       setRenamingFloor(false)
       setFloorMenuOpen(false)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось переименовать этаж')
+      toast.error(e instanceof Error ? e.message : 'Не удалось переименовать этаж')
     }
   }
 
@@ -1343,7 +1339,7 @@ export function KnowledgeSitemapPage() {
     setFloorMenuOpen(false)
     if (!activeDiagram) return
     if (diagrams.length <= 1) {
-      setErr('Нельзя удалить единственный этаж')
+      toast.error('Нельзя удалить единственный этаж')
       return
     }
     if (!window.confirm(`Удалить этаж "${activeDiagram.title}"?`)) return
@@ -1359,7 +1355,7 @@ export function KnowledgeSitemapPage() {
         setActiveId(null)
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось удалить этаж')
+      toast.error(e instanceof Error ? e.message : 'Не удалось удалить этаж')
     }
   }
 
@@ -1367,7 +1363,7 @@ export function KnowledgeSitemapPage() {
     if (!canEdit) return
     if (!file) return
     if (!activeId) {
-      setErr('Сначала выберите этаж для импорта фона')
+      toast.error('Сначала выберите этаж для импорта фона')
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
@@ -1386,7 +1382,6 @@ export function KnowledgeSitemapPage() {
       }
     }
     setLoading(true)
-    setErr(null)
     try {
       await api.replaceDiagramBackgroundPng(activeId, file)
       const rows = await api.diagrams()
@@ -1397,7 +1392,7 @@ export function KnowledgeSitemapPage() {
       setSaveState('saved')
       setLastSavedAt(Date.now())
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось импортировать PNG')
+      toast.error(e instanceof Error ? e.message : 'Не удалось импортировать PNG')
     } finally {
       setLoading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -1471,7 +1466,7 @@ export function KnowledgeSitemapPage() {
       URL.revokeObjectURL(svgUrl)
       canvas.toBlob((blob) => {
         if (!blob) {
-          setErr('Не удалось сформировать PNG')
+          toast.error('Не удалось сформировать PNG')
           return
         }
         const url = URL.createObjectURL(blob)
@@ -1482,7 +1477,7 @@ export function KnowledgeSitemapPage() {
         URL.revokeObjectURL(url)
       }, 'image/png')
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Не удалось экспортировать PNG')
+      toast.error(e instanceof Error ? e.message : 'Не удалось экспортировать PNG')
     }
   }
 
@@ -1629,7 +1624,6 @@ export function KnowledgeSitemapPage() {
         </div>
       </div>
 
-      {err ? <div className="app-alert app-alert-error mb-4">{err}</div> : null}
       {!canEdit ? (
         <div className="app-alert app-alert-warning mb-4">{t('sitemap.viewOnly')}</div>
       ) : null}

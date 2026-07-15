@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api, type WikiRagDocContent, type WikiRagDocumentRow } from '../../api'
 import { useT } from '../../i18n/LocaleContext'
+import { useToast } from '../../ToastContext'
 
 
 
@@ -27,6 +28,7 @@ export function WikiRagDocViewer({
 
 }) {
   const t = useT()
+  const toast = useToast()
 
   const [content, setContent] = useState<WikiRagDocContent | null>(null)
 
@@ -35,8 +37,6 @@ export function WikiRagDocViewer({
   const [loading, setLoading] = useState(false)
 
   const [saving, setSaving] = useState(false)
-
-  const [err, setErr] = useState<string | null>(null)
 
 
 
@@ -54,8 +54,6 @@ export function WikiRagDocViewer({
 
     setLoading(true)
 
-    setErr(null)
-
     try {
 
       const c = await api.wikiRagDocumentContent(doc.id)
@@ -68,7 +66,7 @@ export function WikiRagDocViewer({
 
       setContent(null)
 
-      setErr(e instanceof Error ? e.message : t('wikirag.viewer.openFailed'))
+      toast.error(e instanceof Error ? e.message : t('wikirag.viewer.openFailed'))
 
     } finally {
 
@@ -76,7 +74,7 @@ export function WikiRagDocViewer({
 
     }
 
-  }, [doc, t])
+  }, [doc, t, toast])
 
 
 
@@ -94,8 +92,6 @@ export function WikiRagDocViewer({
 
     setSaving(true)
 
-    setErr(null)
-
     try {
 
       const c = await api.saveWikiRagDocumentContent(doc.id, draft)
@@ -108,7 +104,7 @@ export function WikiRagDocViewer({
 
     } catch (e) {
 
-      setErr(e instanceof Error ? e.message : t('wikirag.viewer.saveFailed'))
+      toast.error(e instanceof Error ? e.message : t('wikirag.viewer.saveFailed'))
 
     } finally {
 
@@ -212,7 +208,6 @@ export function WikiRagDocViewer({
 
 
 
-      {err ? <p className="mb-2 text-xs text-red-700">{err}</p> : null}
 
 
 

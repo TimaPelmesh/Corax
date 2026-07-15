@@ -4,6 +4,7 @@ import { api, type Computer, type TagBrief } from '../api'
 import { ComputerDetailModal, fmtDate, tagPillProps } from '../components/ComputerDetailModal'
 import { IconPcs } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 const PC_COLUMN_KEYS = ['location', 'tags', 'os', 'ram', 'software', 'peripheral', 'last'] as const
 
@@ -60,7 +61,7 @@ export function ComputersPage() {
   const [rows, setRows] = useState<Computer[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
+  const toast = useToast()
   const columnsMenuRef = useRef<HTMLDivElement | null>(null)
   const tagsMenuRef = useRef<HTMLDivElement | null>(null)
   const [columnsMenuOpen, setColumnsMenuOpen] = useState(false)
@@ -181,7 +182,6 @@ export function ComputersPage() {
   }
 
   const load = useCallback(async () => {
-    setErr(null)
     try {
       const data = await api.computers({
         q: debouncedHostSearch.trim() || undefined,
@@ -191,11 +191,11 @@ export function ComputersPage() {
       setRows(data.items)
       setTotal(data.total)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [debouncedHostSearch, filterTagIds, t])
+  }, [debouncedHostSearch, filterTagIds, t, toast])
 
   useEffect(() => {
     void load()
@@ -245,12 +245,6 @@ export function ComputersPage() {
           <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('pages.computersSubtitle')}</p>
         </div>
       </div>
-
-      {err && (
-        <div className="app-alert app-alert-error mb-4">
-          {err}
-        </div>
-      )}
 
       <div className="app-card mb-4 flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
         <div className="min-w-[min(100%,18rem)] flex-1">

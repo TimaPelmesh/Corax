@@ -23,6 +23,7 @@ const ROUTE_TITLES: Array<{ path: string; key: MessageKey; end?: boolean }> = [
   { path: '/software', key: 'titles.software' },
   { path: '/computers', key: 'titles.computers' },
   { path: '/printers', key: 'titles.printers' },
+  { path: '/network', key: 'titles.network' },
   { path: '/users', key: 'titles.users' },
   { path: '/', key: 'titles.dashboard', end: true },
 ]

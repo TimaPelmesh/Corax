@@ -4,6 +4,7 @@ import { api, type LdapConfig, type LdapSyncResult, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 function fieldTrim(v: string) {
   return v.replace(/\s+/g, ' ').trim()
@@ -11,13 +12,11 @@ function fieldTrim(v: string) {
 
 export function SettingsLdapPage() {
   const t = useT()
+  const toast = useToast()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [okMsg, setOkMsg] = useState<string | null>(null)
-  const [testMsg, setTestMsg] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<LdapSyncResult | null>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -48,9 +47,6 @@ export function SettingsLdapPage() {
   const ldapUsers = useMemo(() => users.filter((u) => u.is_ldap), [users])
 
   const load = useCallback(async () => {
-    setErr(null)
-    setOkMsg(null)
-    setTestMsg(null)
     setLoading(true)
     try {
       const [cfg, usersRows] = await Promise.all([api.ldapConfig(), api.users()])
@@ -68,11 +64,11 @@ export function SettingsLdapPage() {
       setEmailAttr(cfg.email_attr ?? 'mail')
       setSyncLimit(cfg.sync_limit ?? 500)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, toast])
 
   useEffect(() => {
     void load()
@@ -85,9 +81,6 @@ export function SettingsLdapPage() {
   async function onSave(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
-    setErr(null)
-    setOkMsg(null)
-    setTestMsg(null)
     try {
       const body = {
         enabled,
@@ -105,7 +98,7 @@ export function SettingsLdapPage() {
       const cfg = await api.updateLdapConfig(body)
       setLoaded(cfg)
       setBindPassword('')
-      setOkMsg(
+      toast.ok(
         t('settingsLdap.saveSummary', {
           uri: cfg.uri || '—',
           baseDn: cfg.user_search_base || '—',
@@ -116,7 +109,7 @@ export function SettingsLdapPage() {
         }),
       )
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setSaving(false)
     }
@@ -124,13 +117,10 @@ export function SettingsLdapPage() {
 
   async function onTestBind() {
     if (!allowAnonymous && !bindPassword.trim() && !bindPasswordSet) {
-      setErr(t('settingsLdap.bindPasswordMissing'))
+      toast.error(t('settingsLdap.bindPasswordMissing'))
       return
     }
     setTesting(true)
-    setErr(null)
-    setOkMsg(null)
-    setTestMsg(null)
     setSyncResult(null)
     try {
       const r = await api.testLdapConfig({
@@ -145,9 +135,9 @@ export function SettingsLdapPage() {
         email_attr: emailAttr.trim() || undefined,
         probe_username: null,
       })
-      setTestMsg(r.ok ? r.message : t('settingsLdap.testFailed'))
+      toast.info(r.ok ? r.message : t('settingsLdap.testFailed'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setTesting(false)
     }
@@ -157,13 +147,10 @@ export function SettingsLdapPage() {
     const probe = fieldTrim(probeUsername)
     if (!probe) return
     if (!allowAnonymous && !bindPassword.trim() && !bindPasswordSet) {
-      setErr(t('settingsLdap.bindPasswordMissing'))
+      toast.error(t('settingsLdap.bindPasswordMissing'))
       return
     }
     setTesting(true)
-    setErr(null)
-    setOkMsg(null)
-    setTestMsg(null)
     setSyncResult(null)
     try {
       const r = await api.testLdapConfig({
@@ -178,7 +165,7 @@ export function SettingsLdapPage() {
         email_attr: emailAttr.trim() || undefined,
         probe_username: probe,
       })
-      setTestMsg(
+      toast.info(
         t('settingsLdap.testSearchResult', {
           message: r.message,
           found: r.found,
@@ -186,7 +173,7 @@ export function SettingsLdapPage() {
         }),
       )
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('common.error'))
+      toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setTesting(false)
     }
@@ -206,19 +193,6 @@ export function SettingsLdapPage() {
         </div>
       </div>
 
-      {err ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
-      ) : null}
-      {okMsg ? (
-        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
-          {okMsg}
-        </div>
-      ) : null}
-      {testMsg ? (
-        <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-800">
-          {testMsg}
-        </div>
-      ) : null}
       {syncResult ? (
         <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
           <div className="font-medium">
@@ -420,15 +394,12 @@ export function SettingsLdapPage() {
             onClick={() => {
               void (async () => {
                 setSyncing(true)
-                setErr(null)
-                setOkMsg(null)
-                setTestMsg(null)
                 setSyncResult(null)
                 try {
                   const r = await api.ldapSync()
                   setSyncResult(r)
                 } catch (e) {
-                  setErr(e instanceof Error ? e.message : t('common.error'))
+                  toast.error(e instanceof Error ? e.message : t('common.error'))
                 } finally {
                   setSyncing(false)
                 }

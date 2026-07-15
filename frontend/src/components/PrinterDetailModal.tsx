@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { api, type NetworkPrinter, type PrinterSupply } from '../api'
 import { useAuth } from '../AuthContext'
 import { useLocale, useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 import { IconClose, IconPrinter } from './icons'
 
 function fmtWhen(iso: string | null | undefined, locale: 'ru' | 'en') {
@@ -133,13 +134,13 @@ export function PrinterDetailModal({
   overlayZClass = 'z-50',
 }: Props) {
   const t = useT()
+  const toast = useToast()
   const { locale } = useLocale()
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
   const [row, setRow] = useState<NetworkPrinter | null>(initial)
   const [locationDraft, setLocationDraft] = useState('')
   const [notesDraft, setNotesDraft] = useState('')
-  const [err, setErr] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [polling, setPolling] = useState(false)
 
@@ -147,7 +148,6 @@ export function PrinterDetailModal({
     setRow(initial)
     setLocationDraft(initial?.location ?? '')
     setNotesDraft(initial?.notes ?? '')
-    setErr(null)
   }, [initial])
 
   useEffect(() => {
@@ -174,7 +174,6 @@ export function PrinterDetailModal({
   const saveMeta = useCallback(async () => {
     if (!row || !canEdit) return
     setSaving(true)
-    setErr(null)
     try {
       const updated = await api.patchPrinter(row.id, {
         location: locationDraft.trim() || null,
@@ -183,26 +182,25 @@ export function PrinterDetailModal({
       setRow(updated)
       onChanged?.(updated)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printerDetail.saveFailed'))
+      toast.error(e instanceof Error ? e.message : t('printerDetail.saveFailed'))
     } finally {
       setSaving(false)
     }
-  }, [row, canEdit, locationDraft, notesDraft, onChanged, t])
+  }, [row, canEdit, locationDraft, notesDraft, onChanged, t, toast])
 
   const pollNow = useCallback(async () => {
     if (!row || !canEdit || !row.ip_address) return
     setPolling(true)
-    setErr(null)
     try {
       const updated = await api.pollPrinter(row.id)
       setRow(updated)
       onChanged?.(updated)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('printerDetail.pollFailed'))
+      toast.error(e instanceof Error ? e.message : t('printerDetail.pollFailed'))
     } finally {
       setPolling(false)
     }
-  }, [row, canEdit, onChanged, t])
+  }, [row, canEdit, onChanged, t, toast])
 
   if (!initial || !row) return null
 
@@ -273,10 +271,6 @@ export function PrinterDetailModal({
             <IconClose className="h-6 w-6" />
           </button>
         </div>
-
-        {err ? (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
-        ) : null}
 
         <div className="mt-5 grid shrink-0 grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
           <section className="flex min-w-0 flex-col">

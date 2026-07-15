@@ -22,6 +22,7 @@ import { KnowledgeSitemapPage } from './pages/KnowledgeSitemapPage'
 import { WikiRagPage } from './pages/WikiRagPage'
 import { WarehousePage } from './pages/WarehousePage'
 import { PrintersPage } from './pages/PrintersPage'
+import { NetworkPage } from './pages/NetworkPage'
 
 function DocumentTitle() {
   const { pathname } = useLocation()
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="software" element={<SoftwarePage />} />
         <Route path="computers" element={<ComputersPage />} />
         <Route path="printers" element={<PrintersPage />} />
+        <Route path="network" element={<NetworkPage />} />
         <Route path="requests" element={<ServiceRequestsPage />} />
         <Route path="requests/database" element={<ServiceRequestsPage />} />
         <Route path="requests/stats" element={<ServiceRequestsPage />} />

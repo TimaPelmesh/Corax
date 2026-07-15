@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { api, type DashboardSegmentKind } from '../api'
 import { ComputerDetailModal } from './ComputerDetailModal'
 import { IconClose } from './icons'
+import { useToast } from '../ToastContext'
 
 export type DashboardDrilldownSelection = {
   kind: DashboardSegmentKind
@@ -17,28 +18,26 @@ type Props = {
 }
 
 export function DashboardDrilldownPanel({ selection, onClose }: Props) {
+  const toast = useToast()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<Awaited<ReturnType<typeof api.dashboardSegmentComputers>> | null>(null)
   const [computerId, setComputerId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!selection) {
       setData(null)
-      setError(null)
       setComputerId(null)
       return
     }
     let cancelled = false
     setLoading(true)
-    setError(null)
     void api
       .dashboardSegmentComputers(selection.kind, selection.name, selection.chartTitle)
       .then((res) => {
         if (!cancelled) setData(res)
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить список ПК')
+        if (!cancelled) toast.error(e instanceof Error ? e.message : 'Не удалось загрузить список ПК')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -46,7 +45,7 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
     return () => {
       cancelled = true
     }
-  }, [selection])
+  }, [selection, toast])
 
   useEffect(() => {
     if (!selection) return
@@ -120,9 +119,7 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
               className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-[var(--color-border)] px-2 py-1.5 sm:px-3"
               aria-live="polite"
             >
-              {error ? (
-                <p className="app-alert app-alert-error mx-1 my-3 text-center">{error}</p>
-              ) : loading ? (
+              {loading ? (
                 <ul className="space-y-0">
                   {Array.from({ length: 6 }).map((_, i) => (
                     <li key={i} className="px-3 py-3">
@@ -157,7 +154,11 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
         document.body,
       )}
       {computerId != null ? (
-        <ComputerDetailModal computerId={computerId} onClose={() => setComputerId(null)} />
+        <ComputerDetailModal
+          computerId={computerId}
+          onClose={() => setComputerId(null)}
+          overlayZClass="z-[80]"
+        />
       ) : null}
     </>
   )

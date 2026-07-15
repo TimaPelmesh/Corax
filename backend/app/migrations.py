@@ -278,6 +278,98 @@ def _migrate_printer_poll_config(sync_conn) -> None:
     )
 
 
+def _migrate_network_extras_json(sync_conn) -> None:
+    if "network_devices" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "network_devices")
+    if "extras_json" not in cols:
+        sync_conn.execute(text("ALTER TABLE network_devices ADD COLUMN extras_json TEXT"))
+
+
+def _migrate_network_tables(sync_conn) -> None:
+    tables = _table_names(sync_conn)
+    if "network_devices" not in tables:
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE network_devices (
+                  id SERIAL PRIMARY KEY,
+                  dedupe_key VARCHAR(255) NOT NULL UNIQUE,
+                  ip_address VARCHAR(64) NOT NULL,
+                  hostname VARCHAR(255),
+                  sys_name VARCHAR(255),
+                  sys_descr TEXT,
+                  sys_object_id VARCHAR(255),
+                  device_type VARCHAR(32) DEFAULT 'unknown',
+                  vendor VARCHAR(128),
+                  location VARCHAR(255),
+                  snmp_status VARCHAR(32),
+                  snmp_error TEXT,
+                  last_snmp_at TIMESTAMP,
+                  last_seen_at TIMESTAMP,
+                  interfaces_json TEXT,
+                  neighbors_json TEXT,
+                  fdb_json TEXT,
+                  extras_json TEXT,
+                  source VARCHAR(16) DEFAULT 'snmp',
+                  notes TEXT,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_devices_ip_address ON network_devices (ip_address)"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_devices_hostname ON network_devices (hostname)"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_devices_device_type ON network_devices (device_type)"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_devices_dedupe_key ON network_devices (dedupe_key)"))
+    if "network_links" not in tables:
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE network_links (
+                  id SERIAL PRIMARY KEY,
+                  from_type VARCHAR(32) NOT NULL,
+                  from_id INTEGER NOT NULL,
+                  to_type VARCHAR(32) NOT NULL,
+                  to_id INTEGER NOT NULL,
+                  link_type VARCHAR(32) DEFAULT 'lldp',
+                  local_port VARCHAR(128),
+                  remote_port VARCHAR(128),
+                  confidence DOUBLE PRECISION DEFAULT 1.0,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  CONSTRAINT uq_network_links_pair_type UNIQUE (from_type, from_id, to_type, to_id, link_type)
+                )
+                """
+            )
+        )
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_links_from_type ON network_links (from_type)"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_links_from_id ON network_links (from_id)"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_links_to_type ON network_links (to_type)"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_links_to_id ON network_links (to_id)"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_links_link_type ON network_links (link_type)"))
+    if "network_poll_config" not in tables:
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE network_poll_config (
+                  id SERIAL PRIMARY KEY,
+                  poll_enabled BOOLEAN DEFAULT FALSE,
+                  poll_interval_minutes INTEGER DEFAULT 120,
+                  snmp_community VARCHAR(128) DEFAULT 'public',
+                  snmp_timeout_seconds DOUBLE PRECISION DEFAULT 3.5,
+                  poll_concurrency INTEGER DEFAULT 8,
+                  cidr_list_json TEXT,
+                  last_run_at TIMESTAMP,
+                  last_run_summary_json TEXT,
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+
+
 def _migrate_service_request_categories_tree(sync_conn) -> None:
     from app.request_categories_defaults import DEFAULT_REQUEST_CATEGORIES
 
@@ -492,6 +584,8 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-06-15_purge_orphan_computer_children", _migrate_purge_orphan_computer_children),
     ("2026-07-13_users_avatar", _migrate_users_avatar_columns),
     ("2026-07-13_users_avatar_data", _migrate_users_avatar_data),
+    ("2026-07-15_network_devices", _migrate_network_tables),
+    ("2026-07-15_network_extras_json", _migrate_network_extras_json),
 ]
 
 

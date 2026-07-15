@@ -5,6 +5,7 @@ import { WikiRagChat } from '../components/wikirag/WikiRagChat'
 import { WikiRagDocViewer } from '../components/wikirag/WikiRagDocViewer'
 import { IconBook, IconClose, IconTrash } from '../components/icons'
 import { useLocale, useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 const ACCEPT =
   '.pdf,.txt,.md,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.webp,application/pdf,text/plain'
@@ -56,10 +57,10 @@ function DocRow({
   onReload: () => void
 }) {
   const t = useT()
+  const toast = useToast()
   const { locale } = useLocale()
   const [commentDraft, setCommentDraft] = useState(row.comment ?? '')
   const [saving, setSaving] = useState(false)
-  const [rowErr, setRowErr] = useState<string | null>(null)
 
   useEffect(() => {
     setCommentDraft(row.comment ?? '')
@@ -70,12 +71,11 @@ function DocRow({
     const prev = row.comment?.trim() || null
     if (next === prev) return
     setSaving(true)
-    setRowErr(null)
     try {
       await api.updateWikiRagDocument(row.id, { comment: next })
       onReload()
     } catch (e) {
-      setRowErr(e instanceof Error ? e.message : t('wikirag.common.genericError'))
+      toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
     } finally {
       setSaving(false)
     }
@@ -87,7 +87,7 @@ function DocRow({
       await api.deleteWikiRagDocument(row.id)
       onReload()
     } catch (e) {
-      setRowErr(e instanceof Error ? e.message : t('wikirag.common.genericError'))
+      toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
     }
   }
 
@@ -118,7 +118,6 @@ function DocRow({
           <span className="text-xs text-slate-600">{row.comment?.trim() || '—'}</span>
         )}
         {saving ? <span className="text-[10px] text-slate-400">{t('wikirag.documents.savePending')}</span> : null}
-        {rowErr ? <p className="text-[10px] text-red-700">{rowErr}</p> : null}
       </td>
       {canManage ? (
         <td className="px-3 py-2.5 align-top text-right">
@@ -138,14 +137,13 @@ function DocRow({
 
 export function WikiRagPage() {
   const t = useT()
+  const toast = useToast()
   const { user } = useAuth()
   const [rows, setRows] = useState<WikiRagDocumentRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
   const [uploadComment, setUploadComment] = useState('')
   const [uploading, setUploading] = useState(false)
   const [importingCorax, setImportingCorax] = useState(false)
-  const [importMsg, setImportMsg] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [modalDocId, setModalDocId] = useState<number | null>(null)
@@ -159,17 +157,16 @@ export function WikiRagPage() {
   const pickFile = useCallback((file: File | null | undefined) => {
     if (!file) return
     if (!isAllowedFile(file)) {
-      setErr(t('wikirag.common.invalidFileType'))
+      toast.error(t('wikirag.common.invalidFileType'))
       return
     }
-    setErr(null)
     setSelectedFile(file)
     if (fileRef.current) {
       const dt = new DataTransfer()
       dt.items.add(file)
       fileRef.current.files = dt.files
     }
-  }, [t])
+  }, [t, toast])
 
   const clearSelectedFile = useCallback(() => {
     setSelectedFile(null)
@@ -177,17 +174,16 @@ export function WikiRagPage() {
   }, [])
 
   const load = useCallback(async () => {
-    setErr(null)
     try {
       const list = await api.wikiRagDocuments()
       setRows(list)
       if (modalDocId && !list.some((r) => r.id === modalDocId)) setModalDocId(null)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('wikirag.common.loadingError'))
+      toast.error(e instanceof Error ? e.message : t('wikirag.common.loadingError'))
     } finally {
       setLoading(false)
     }
-  }, [modalDocId])
+  }, [modalDocId, t, toast])
 
   useEffect(() => {
     void load()
@@ -228,19 +224,19 @@ export function WikiRagPage() {
     e.preventDefault()
     const file = selectedFile ?? fileRef.current?.files?.[0]
     if (!file) {
-      setErr(t('wikirag.common.selectFile'))
+      toast.error(t('wikirag.common.selectFile'))
       return
     }
     setUploading(true)
-    setErr(null)
     try {
       const created = await api.uploadWikiRagDocument(file, uploadComment)
       setUploadComment('')
       clearSelectedFile()
       await load()
       setModalDocId(created.id)
+      toast.ok(t('wikirag.common.created'))
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : t('wikirag.common.uploadFailed'))
+      toast.error(ex instanceof Error ? ex.message : t('wikirag.common.uploadFailed'))
     } finally {
       setUploading(false)
     }
@@ -260,16 +256,6 @@ export function WikiRagPage() {
         </div>
       </div>
 
-      {err ? (
-        <div className="app-alert app-alert-error mb-4">{err}</div>
-      ) : null}
-
-      {importMsg ? (
-        <div className="app-alert app-alert-success mb-4">
-          {importMsg}
-        </div>
-      ) : null}
-
       {canManage ? (
         <section className="app-card mb-6 p-5 sm:p-6">
           <h2 className="text-sm font-semibold text-neutral-950">{t('wikirag.import.title')}</h2>
@@ -281,11 +267,9 @@ export function WikiRagPage() {
             disabled={importingCorax}
             onClick={() => void (async () => {
               setImportingCorax(true)
-              setImportMsg(null)
-              setErr(null)
               try {
                 const res = await api.importWikiRagCorax()
-                setImportMsg(
+                toast.ok(
                   t('wikirag.import.summary', {
                     action: res.created ? t('wikirag.common.created') : t('wikirag.common.updated'),
                     files: res.files ?? res.documents?.length ?? 1,
@@ -298,7 +282,7 @@ export function WikiRagPage() {
                 setModalDocId(res.document.id)
               } catch (ex) {
                 const msg = ex instanceof Error ? ex.message : t('wikirag.common.importFailed')
-                setErr(
+                toast.error(
                   msg === 'Method Not Allowed'
                     ? t('wikirag.common.importMethodNotAllowed')
                     : msg,

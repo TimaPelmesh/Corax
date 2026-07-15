@@ -32,6 +32,7 @@ from app.routers import (
     database_backup,
     diagrams,
     monitors,
+    network,
     printers,
     request_categories,
     service_requests,
@@ -339,6 +340,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(computers.router, prefix=base)
     app.include_router(monitors.router, prefix=base)
     app.include_router(printers.router, prefix=base)
+    app.include_router(network.router, prefix=base)
     app.include_router(diagrams.router, prefix=base)
     app.include_router(dashboard.router, prefix=base)
     app.include_router(tags.router, prefix=base)

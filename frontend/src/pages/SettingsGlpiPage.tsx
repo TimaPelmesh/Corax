@@ -4,6 +4,7 @@ import { api, type ServiceRequestRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconPcs, IconTicket } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -80,12 +81,11 @@ function exportRequestsCsvFile(items: ServiceRequestRow[]) {
 
 export function SettingsGlpiPage() {
   const t = useT()
+  const toast = useToast()
   const { user, loading: authLoading } = useAuth()
   const glpiPcsImportRef = useRef<HTMLInputElement | null>(null)
   const glpiRequestsImportRef = useRef<HTMLInputElement | null>(null)
   const requestsJsonImportRef = useRef<HTMLInputElement | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
   const [pcsImportBusy, setPcsImportBusy] = useState(false)
   const [pcsExportBusy, setPcsExportBusy] = useState(false)
   const [pcsExportGlpiBusy, setPcsExportGlpiBusy] = useState(false)
@@ -103,80 +103,69 @@ export function SettingsGlpiPage() {
     return <Navigate to="/" replace />
   }
 
-  function showToast(msg: string, ms = 5000) {
-    setToast(msg)
-    window.setTimeout(() => setToast(null), ms)
-  }
-
   async function exportParkCsv() {
-    setErr(null)
     setPcsExportBusy(true)
     try {
       await api.exportComputersCsv()
-      showToast(t('settingsGlpi.exportCsvReady'))
+      toast.ok(t('settingsGlpi.exportCsvReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsGlpi.exportCsvFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsGlpi.exportCsvFailed'))
     } finally {
       setPcsExportBusy(false)
     }
   }
 
   async function exportParkGlpiCsv() {
-    setErr(null)
     setPcsExportGlpiBusy(true)
     try {
       await api.exportGlpiPcsCsv()
-      showToast(t('settingsGlpi.exportGlpiReady'))
+      toast.ok(t('settingsGlpi.exportGlpiReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsGlpi.exportGlpiFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsGlpi.exportGlpiFailed'))
     } finally {
       setPcsExportGlpiBusy(false)
     }
   }
 
   async function exportRequestsJson() {
-    setErr(null)
     setReqExportJsonBusy(true)
     try {
       const r = await api.serviceRequests({ limit: 1000 })
       exportRequestsJsonFile(r.items, r.total)
-      showToast(t('settingsGlpi.requestsExportJsonReady'))
+      toast.ok(t('settingsGlpi.requestsExportJsonReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsExportJsonFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsGlpi.requestsExportJsonFailed'))
     } finally {
       setReqExportJsonBusy(false)
     }
   }
 
   async function exportRequestsCsv() {
-    setErr(null)
     setReqExportCsvBusy(true)
     try {
       const r = await api.serviceRequests({ limit: 1000 })
       exportRequestsCsvFile(r.items)
-      showToast(t('settingsGlpi.requestsExportCsvReady'))
+      toast.ok(t('settingsGlpi.requestsExportCsvReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsExportCsvFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsGlpi.requestsExportCsvFailed'))
     } finally {
       setReqExportCsvBusy(false)
     }
   }
 
   async function exportRequestsGlpiCsv() {
-    setErr(null)
     setReqExportGlpiBusy(true)
     try {
       await api.exportServiceRequestsGlpiCsv()
-      showToast(t('settingsGlpi.requestsExportGlpiReady'))
+      toast.ok(t('settingsGlpi.requestsExportGlpiReady'))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsExportGlpiFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsGlpi.requestsExportGlpiFailed'))
     } finally {
       setReqExportGlpiBusy(false)
     }
   }
 
   async function importRequestsJson(file: File) {
-    setErr(null)
     setReqImportJsonBusy(true)
     try {
       const raw = await file.text()
@@ -218,9 +207,9 @@ export function SettingsGlpiPage() {
           fail += 1
         }
       }
-      showToast(t('settingsGlpi.requestsImportJsonResult', { ok, fail }), 7000)
+      toast.ok(t('settingsGlpi.requestsImportJsonResult', { ok, fail }))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : t('settingsGlpi.requestsImportJsonFailed'))
+      toast.error(e instanceof Error ? e.message : t('settingsGlpi.requestsImportJsonFailed'))
     } finally {
       setReqImportJsonBusy(false)
     }
@@ -239,19 +228,6 @@ export function SettingsGlpiPage() {
           </p>
         </div>
       </div>
-
-      {toast ? (
-        <div
-          className="mb-4 rounded-xl border border-zinc-200/90 bg-zinc-50 px-4 py-3 text-sm font-medium text-neutral-950 shadow-sm"
-          role="status"
-        >
-          {toast}
-        </div>
-      ) : null}
-
-      {err ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{err}</div>
-      ) : null}
 
       <div className="space-y-8">
         <div>
@@ -273,22 +249,20 @@ export function SettingsGlpiPage() {
                 onChange={(e) => {
                   const f = e.target.files?.[0]
                   if (!f) return
-                  setErr(null)
                   setPcsImportBusy(true)
                   void api
                     .importGlpiPcsCsv(f)
                     .then((r) => {
-                      showToast(
+                      toast.ok(
                         t('settingsGlpi.pcsImportSummary', {
                           created: r.created,
                           updated: r.updated,
                           skipped: r.skipped,
                           rows: r.rows_total,
                         }),
-                        7000,
                       )
                     })
-                    .catch((ex) => setErr(ex instanceof Error ? ex.message : t('settingsGlpi.importFailed')))
+                    .catch((ex) => toast.error(ex instanceof Error ? ex.message : t('settingsGlpi.importFailed')))
                     .finally(() => {
                       setPcsImportBusy(false)
                       e.target.value = ''
@@ -351,13 +325,12 @@ export function SettingsGlpiPage() {
                 onChange={(e) => {
                   const f = e.target.files?.[0]
                   if (!f) return
-                  setErr(null)
                   setReqImportGlpiBusy(true)
                   void api
                     .importServiceRequestsGlpiCsv(f)
                     .then((r) => {
                       const errCount = Array.isArray(r.errors) ? r.errors.length : 0
-                      showToast(
+                      toast.ok(
                         t('settingsGlpi.requestsImportGlpiSummary', {
                           created: r.created,
                           updated: r.updated,
@@ -366,11 +339,10 @@ export function SettingsGlpiPage() {
                             ? t('settingsGlpi.requestsImportGlpiErrors', { count: errCount })
                             : '',
                         }),
-                        7000,
                       )
                     })
                     .catch((ex) =>
-                      setErr(ex instanceof Error ? ex.message : t('settingsGlpi.requestsImportGlpiFailed')),
+                      toast.error(ex instanceof Error ? ex.message : t('settingsGlpi.requestsImportGlpiFailed')),
                     )
                     .finally(() => {
                       setReqImportGlpiBusy(false)
