@@ -62,6 +62,7 @@ async def test_cycle_batches_and_pauses():
     result.scalars.return_value.all.return_value = pcs
     db.execute = AsyncMock(return_value=result)
     db.commit = AsyncMock()
+    db.expire_all = MagicMock()  # sync API; AsyncMock would warn "never awaited"
 
     pauses: list[float] = []
 

@@ -38,6 +38,8 @@ def _observer_headers(client: TestClient, auth_headers: dict[str, str]) -> tuple
 
 
 def test_wol_requires_auth(client: TestClient):
+    # Session-scoped TestClient keeps login cookies; clear so CSRF does not mask 401.
+    client.cookies.clear()
     assert client.get("/api/v1/computers/wol/config").status_code == 401
     assert client.post("/api/v1/computers/1/wake").status_code == 401
 
@@ -195,5 +197,6 @@ def test_wol_config_cooldown_update(client: TestClient, auth_headers: dict[str, 
 
 
 def test_ping_sweep_requires_auth(client: TestClient):
+    client.cookies.clear()
     assert client.post("/api/v1/computers/ping-sweep").status_code == 401
     assert client.get("/api/v1/computers/ping-status").status_code == 401
