@@ -317,6 +317,9 @@ export type Computer = {
   hostname: string
   serial_number: string | null
   mac_primary: string | null
+  ip_address?: string | null
+  ping_status?: 'online' | 'offline' | 'unknown' | string | null
+  last_ping_at?: string | null
   cpu: string | null
   ram_gb: number | null
   memory_used_percent: number | null
@@ -352,6 +355,42 @@ export type AssetChangeLog = {
   old_value: string | null
   new_value: string | null
   payload_json: string | null
+}
+
+export type WolConfig = {
+  enabled: boolean
+  force_disabled: boolean
+  allowlist_computer_ids: number[]
+  wake_user_ids?: number[]
+  cooldown_seconds: number
+}
+
+export type WolStatus = {
+  enabled: boolean
+  force_disabled: boolean
+  allowlisted: boolean
+  user_may_wake?: boolean
+  has_mac: boolean
+  cooldown_remaining_seconds: number | null
+  can_wake: boolean
+}
+
+export type WolWakeResult = {
+  ok: boolean
+  computer_id: number
+  hostname: string
+  mac: string
+  sent: number
+  message: string
+}
+
+export type ComputerPingResult = {
+  computer_id: number
+  hostname: string
+  ip_address: string | null
+  online: boolean | null
+  checked: boolean
+  message: string
 }
 
 export type ComputerListResponse = { items: Computer[]; total: number }
@@ -666,7 +705,15 @@ export const api = {
     return request<ComputerListResponse>(`${API_PREFIX}/computers${qs ? `?${qs}` : ''}`)
   },
 
-  computer: (id: number) => request<ComputerDetail>(`${API_PREFIX}/computers/${id}`),
+  computer: (id: number, opts?: { includeSoftware?: boolean }) => {
+    const p = new URLSearchParams()
+    if (opts?.includeSoftware === false) p.set('include_software', 'false')
+    const qs = p.toString()
+    return request<ComputerDetail>(`${API_PREFIX}/computers/${id}${qs ? `?${qs}` : ''}`)
+  },
+
+  computerSoftware: (id: number) =>
+    request<SoftwareItem[]>(`${API_PREFIX}/computers/${id}/software`),
 
   computerHistory: (id: number, limit?: number) => {
     const p = new URLSearchParams()
@@ -674,6 +721,46 @@ export const api = {
     const qs = p.toString()
     return request<AssetChangeLog[]>(`${API_PREFIX}/computers/${id}/history${qs ? `?${qs}` : ''}`)
   },
+
+  wolConfig: () => request<WolConfig>(`${API_PREFIX}/computers/wol/config`),
+
+  updateWolConfig: (body: {
+    enabled?: boolean
+    allowlist_computer_ids?: number[]
+    wake_user_ids?: number[]
+    cooldown_seconds?: number
+  }) => request<WolConfig>(`${API_PREFIX}/computers/wol/config`, { method: 'PUT', json: body }),
+
+  computerWolStatus: (id: number) =>
+    request<WolStatus>(`${API_PREFIX}/computers/${id}/wol-status`),
+
+  setComputerWolAllow: (id: number, allowed: boolean) =>
+    request<WolStatus>(`${API_PREFIX}/computers/${id}/wol-allow`, {
+      method: 'PUT',
+      json: { allowed },
+    }),
+
+  pingComputer: (id: number) =>
+    request<ComputerPingResult>(`${API_PREFIX}/computers/${id}/ping`, { method: 'POST' }),
+
+  computersPingStatus: (kick = false) =>
+    request<{
+      items: Array<{
+        id: number
+        ping_status: string | null
+        last_ping_at: string | null
+        ip_address: string | null
+      }>
+      sweep: { started?: boolean; reason?: string; mode?: string } | null
+    }>(`${API_PREFIX}/computers/ping-status${kick ? '?kick=true' : ''}`),
+
+  computersPingSweep: () =>
+    request<{ started: boolean; reason: string; mode: string }>(`${API_PREFIX}/computers/ping-sweep`, {
+      method: 'POST',
+    }),
+
+  wakeComputer: (id: number) =>
+    request<WolWakeResult>(`${API_PREFIX}/computers/${id}/wake`, { method: 'POST' }),
 
   updateComputer: (
     id: number,

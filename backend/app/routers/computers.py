@@ -1,14 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, field_serializer
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth import get_current_user, get_current_editor_or_superuser
+from app.auth import get_current_user, get_current_editor_or_superuser, get_current_superuser
+from app.computer_ip import resolve_computer_ipv4
+from app.config import settings
 from app.database import get_db
-from app.models import DiskVolume, Peripheral, Computer, InstalledSoftware, Tag, User, computer_tags
+from app.models import (
+    AssetChangeLog,
+    DiskVolume,
+    Peripheral,
+    Computer,
+    InstalledSoftware,
+    Tag,
+    User,
+    computer_tags,
+)
 from app.peripheral_display import prepare_peripherals_for_display
+from app.printer_poll import ping_ip
+from app.rate_limit import limiter
 from app.schemas import ComputerDetail, ComputerOut, ComputerUpdate, DiskVolume as DiskVolumeOut, PeripheralItem, SoftwareItem, TagBrief
+from app.wol import format_mac, normalize_mac, send_wake
+from app.wol_config import (
+    check_cooldown,
+    get_effective_wol_config,
+    get_wol_config_row,
+    mark_woken,
+    serialize_id_list,
+    user_may_wake,
+)
 import csv
 import io
 import json
@@ -60,6 +83,203 @@ async def _tags_for_computers_bulk(db: AsyncSession, computer_ids: list[int]) ->
 router = APIRouter(prefix="/computers", tags=["computers"])
 
 
+class WolConfigOut(BaseModel):
+    enabled: bool
+    force_disabled: bool
+    allowlist_computer_ids: list[int]
+    wake_user_ids: list[int]
+    cooldown_seconds: int
+
+
+class WolConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    allowlist_computer_ids: list[int] | None = None
+    wake_user_ids: list[int] | None = None
+    cooldown_seconds: int | None = Field(default=None, ge=30, le=3600)
+
+
+class WolAllowUpdate(BaseModel):
+    allowed: bool
+
+
+class WolStatusOut(BaseModel):
+    enabled: bool
+    force_disabled: bool
+    allowlisted: bool
+    user_may_wake: bool
+    has_mac: bool
+    cooldown_remaining_seconds: int | None = None
+    can_wake: bool
+
+
+class WolWakeOut(BaseModel):
+    ok: bool
+    computer_id: int
+    hostname: str
+    mac: str
+    sent: int
+    message: str
+
+
+class ComputerPingOut(BaseModel):
+    computer_id: int
+    hostname: str
+    ip_address: str | None
+    online: bool | None
+    checked: bool
+    message: str
+
+
+class ComputerPingStatusItem(BaseModel):
+    id: int
+    ping_status: str | None = None
+    last_ping_at: datetime | None = None
+    ip_address: str | None = None
+
+    @field_serializer("last_ping_at")
+    def _ser_last_ping_at(self, v: datetime | None):
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        return v.isoformat().replace("+00:00", "Z")
+
+
+class ComputerPingStatusOut(BaseModel):
+    items: list[ComputerPingStatusItem]
+    sweep: dict | None = None
+
+
+def _wol_config_out(cfg) -> WolConfigOut:
+    return WolConfigOut(
+        enabled=cfg.enabled,
+        force_disabled=cfg.force_disabled,
+        allowlist_computer_ids=cfg.allowlist,
+        wake_user_ids=cfg.wake_user_ids,
+        cooldown_seconds=cfg.cooldown_seconds,
+    )
+
+
+def _resolve_computer_ip(c: Computer) -> str | None:
+    return resolve_computer_ipv4(
+        ip_address=getattr(c, "ip_address", None),
+        hostname=c.hostname,
+        mac_primary=c.mac_primary,
+        raw_payload=c.raw_payload,
+    )
+
+
+async def _wol_status_for(db: AsyncSession, c: Computer, user: User) -> WolStatusOut:
+    cfg = await get_effective_wol_config(db)
+    may = user_may_wake(user, cfg)
+    has_mac = bool((c.mac_primary or "").strip())
+    if has_mac:
+        try:
+            normalize_mac(c.mac_primary)
+        except ValueError:
+            has_mac = False
+    cool = check_cooldown(c.id, cfg.cooldown_seconds) if cfg.enabled and may else None
+    # Allowlist retired for now: any PC with MAC may be woken by granted operators.
+    can_wake = bool(cfg.enabled and may and has_mac and cool is None)
+    return WolStatusOut(
+        enabled=cfg.enabled,
+        force_disabled=cfg.force_disabled,
+        allowlisted=True,
+        user_may_wake=may,
+        has_mac=has_mac,
+        cooldown_remaining_seconds=cool,
+        can_wake=can_wake,
+    )
+
+
+@router.get("/ping-status", response_model=ComputerPingStatusOut)
+async def computers_ping_status(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    kick: bool = Query(False, description="Start a batched sweep if indicators are mostly unknown"),
+):
+    """Lightweight ping cache for live list indicators (no ICMP in this call)."""
+    r = await db.execute(
+        select(Computer.id, Computer.ping_status, Computer.last_ping_at, Computer.ip_address).order_by(
+            Computer.id.asc()
+        )
+    )
+    items = [
+        ComputerPingStatusItem(
+            id=int(row[0]),
+            ping_status=(str(row[1]).strip().lower() if row[1] else None),
+            last_ping_at=row[2],
+            ip_address=(str(row[3]).strip() if row[3] else None),
+        )
+        for row in r.all()
+    ]
+    sweep = None
+    if kick:
+        unknown = sum(1 for it in items if not it.ping_status or it.ping_status == "unknown")
+        if unknown >= max(1, len(items) // 4) or not items:
+            from app.computer_ping_scheduler import computer_ping_scheduler
+
+            sweep = computer_ping_scheduler.request_full(reason="ui")
+    return ComputerPingStatusOut(items=items, sweep=sweep)
+
+
+@router.post("/ping-sweep")
+async def computers_ping_sweep(_: User = Depends(get_current_user)):
+    """Kick a careful batched full sweep (non-blocking)."""
+    from app.computer_ping_scheduler import computer_ping_scheduler
+
+    return computer_ping_scheduler.request_full(reason="ui")
+
+
+@router.get("/wol/config", response_model=WolConfigOut)
+async def get_wol_config(
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    return _wol_config_out(await get_effective_wol_config(db))
+
+
+@router.put("/wol/config", response_model=WolConfigOut)
+async def put_wol_config(
+    body: WolConfigUpdate,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await get_wol_config_row(db)
+    if body.enabled is not None:
+        row.enabled = bool(body.enabled)
+    if body.allowlist_computer_ids is not None:
+        ids = list(dict.fromkeys(int(x) for x in body.allowlist_computer_ids if int(x) > 0))[:500]
+        if ids:
+            found = (
+                await db.execute(select(Computer.id).where(Computer.id.in_(ids)))
+            ).scalars().all()
+            found_set = {int(x) for x in found}
+            missing = [i for i in ids if i not in found_set]
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Неизвестные ПК в allowlist: {', '.join(str(x) for x in missing[:20])}",
+                )
+        row.allowlist_computer_ids_json = serialize_id_list(ids)
+    if body.wake_user_ids is not None:
+        uids = list(dict.fromkeys(int(x) for x in body.wake_user_ids if int(x) > 0))[:200]
+        if uids:
+            found = (await db.execute(select(User.id).where(User.id.in_(uids)))).scalars().all()
+            found_set = {int(x) for x in found}
+            missing = [i for i in uids if i not in found_set]
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Неизвестные пользователи: {', '.join(str(x) for x in missing[:20])}",
+                )
+        row.wake_user_ids_json = serialize_id_list(uids)
+    if body.cooldown_seconds is not None:
+        row.cooldown_seconds = int(body.cooldown_seconds)
+    await db.commit()
+    return _wol_config_out(await get_effective_wol_config(db))
+
+
 @router.get("")
 async def list_computers(
     _: User = Depends(get_current_user),
@@ -102,14 +322,31 @@ async def list_computers(
     rows = r.unique().all()
     ids = [c.id for c, _, _ in rows]
     tags_by_pc = await _tags_for_computers_bulk(db, ids)
+    ping_by_id: dict[int, tuple[str | None, datetime | None, str | None]] = {}
+    if ids:
+        pr = await db.execute(
+            select(Computer.id, Computer.ping_status, Computer.last_ping_at, Computer.ip_address).where(
+                Computer.id.in_(ids)
+            )
+        )
+        for pid, pst, plat, pip in pr.all():
+            ping_by_id[int(pid)] = (
+                (str(pst).strip().lower() if pst else None),
+                plat,
+                (str(pip).strip() if pip else None),
+            )
     out: list[ComputerOut] = []
     for c, sc, pc in rows:
+        pst, plat, pip = ping_by_id.get(int(c.id), (None, None, None))
         out.append(
             ComputerOut(
                 id=c.id,
                 hostname=c.hostname,
                 serial_number=c.serial_number,
                 mac_primary=c.mac_primary,
+                ip_address=pip or getattr(c, "ip_address", None),
+                ping_status=pst,
+                last_ping_at=plat,
                 cpu=c.cpu,
                 ram_gb=c.ram_gb,
                 os_name=c.os_name,
@@ -360,24 +597,53 @@ async def export_glpi_pcs_csv(_: User = Depends(get_current_user)):
     )
 
 
-@router.get("/{computer_id}", response_model=ComputerDetail)
-async def get_computer(
+@router.get("/{computer_id}/software", response_model=list[SoftwareItem])
+async def get_computer_software(
     computer_id: int,
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    exists = await db.execute(select(Computer.id).where(Computer.id == computer_id))
+    if exists.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="ПК не найден")
+    rd = await db.execute(
+        select(InstalledSoftware.name, InstalledSoftware.version)
+        .where(InstalledSoftware.computer_id == computer_id)
+        .order_by(InstalledSoftware.name.asc())
+    )
+    return [SoftwareItem(name=str(n), version=v) for n, v in rd.all()]
+
+
+@router.get("/{computer_id}", response_model=ComputerDetail)
+async def get_computer(
+    computer_id: int,
+    include_software: bool = Query(
+        True,
+        description="Если false — без списка ПО (быстрее); список: GET …/software",
+    ),
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    load_opts = [selectinload(Computer.peripherals)]
+    if include_software:
+        load_opts.insert(0, selectinload(Computer.software))
     r = await db.execute(
-        select(Computer)
-        .options(
-            selectinload(Computer.software),
-            selectinload(Computer.peripherals),
-        )
-        .where(Computer.id == computer_id)
+        select(Computer).options(*load_opts).where(Computer.id == computer_id)
     )
     c = r.scalar_one_or_none()
     if not c:
         raise HTTPException(status_code=404, detail="ПК не найден")
-    sw = [SoftwareItem(name=s.name, version=s.version) for s in c.software]
+    if include_software:
+        sw = [SoftwareItem(name=s.name, version=s.version) for s in c.software]
+        cnt = len(sw)
+    else:
+        sw = []
+        cnt_r = await db.execute(
+            select(func.count())
+            .select_from(InstalledSoftware)
+            .where(InstalledSoftware.computer_id == computer_id)
+        )
+        cnt = int(cnt_r.scalar_one() or 0)
     pe = [
         PeripheralItem(kind=k, name=n)
         for k, n in prepare_peripherals_for_display([(p.kind, p.name) for p in c.peripherals])
@@ -394,13 +660,15 @@ async def get_computer(
         for d in rd.scalars().all()
         if isinstance(d.mount, str) and _DRIVE_LETTER_RE.match(d.mount)
     ]
-    cnt = len(sw)
     tags = await _tags_for_computer(db, computer_id)
     return ComputerDetail(
         id=c.id,
         hostname=c.hostname,
         serial_number=c.serial_number,
         mac_primary=c.mac_primary,
+        ip_address=getattr(c, "ip_address", None) or _resolve_computer_ip(c),
+        ping_status=getattr(c, "ping_status", None),
+        last_ping_at=getattr(c, "last_ping_at", None),
         cpu=c.cpu,
         ram_gb=c.ram_gb,
         os_name=c.os_name,
@@ -422,6 +690,186 @@ async def get_computer(
         peripherals=pe,
         tags=tags,
         agent_extended=_agent_extended_from_raw(c.raw_payload),
+    )
+
+
+@router.get("/{computer_id}/wol-status", response_model=WolStatusOut)
+async def computer_wol_status(
+    computer_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    r = await db.execute(select(Computer).where(Computer.id == computer_id))
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="ПК не найден")
+    return await _wol_status_for(db, c, user)
+
+
+@router.put("/{computer_id}/wol-allow", response_model=WolStatusOut)
+async def computer_wol_allow(
+    computer_id: int,
+    body: WolAllowUpdate,
+    user: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    r = await db.execute(select(Computer).where(Computer.id == computer_id))
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="ПК не найден")
+    row = await get_wol_config_row(db)
+    cfg = await get_effective_wol_config(db)
+    ids = set(cfg.allowlist)
+    if body.allowed:
+        ids.add(int(computer_id))
+    else:
+        ids.discard(int(computer_id))
+    row.allowlist_computer_ids_json = serialize_id_list(sorted(ids))
+    db.add(
+        AssetChangeLog(
+            computer_id=computer_id,
+            source="panel",
+            kind="meta",
+            field_key="wol_allowlist",
+            old_value="1" if not body.allowed else "0",
+            new_value="1" if body.allowed else "0",
+            payload_json=json.dumps(
+                {"by_user_id": user.id, "by_username": user.username, "allowed": bool(body.allowed)},
+                ensure_ascii=False,
+            ),
+        )
+    )
+    await db.commit()
+    return await _wol_status_for(db, c, user)
+
+
+@router.post("/{computer_id}/ping", response_model=ComputerPingOut)
+@limiter.limit(settings.rate_limit_ping)
+async def computer_ping(
+    request: Request,
+    computer_id: int,
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ICMP reachability check (monitoring only). Uses last-known IP from agent."""
+    _ = request
+    r = await db.execute(select(Computer).where(Computer.id == computer_id))
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="ПК не найден")
+    ip = _resolve_computer_ip(c)
+    if not ip:
+        c.ping_status = "unknown"
+        await db.commit()
+        return ComputerPingOut(
+            computer_id=computer_id,
+            hostname=c.hostname,
+            ip_address=None,
+            online=None,
+            checked=False,
+            message=(
+                "Нет IP для ping: в отчёте агента нет адреса, "
+                "DNS по hostname не ответил, ARP по MAC пуст. "
+                "Включите модуль «Сеть» в агенте или проверьте DNS/VLAN с сервером CORAX."
+            ),
+        )
+    # Always refresh stored IP from latest resolved value (agent payload may have improved).
+    c.ip_address = ip
+    # Manual / card check: slightly longer timeout than background batches.
+    online = await ping_ip(ip, timeout_ms=1500)
+    c.ping_status = "online" if online else "offline"
+    c.last_ping_at = datetime.now(timezone.utc)
+    await db.commit()
+    return ComputerPingOut(
+        computer_id=computer_id,
+        hostname=c.hostname,
+        ip_address=ip,
+        online=online,
+        checked=True,
+        message="В сети" if online else "Не отвечает на ping",
+    )
+
+
+@router.post("/{computer_id}/wake", response_model=WolWakeOut)
+@limiter.limit(settings.rate_limit_wake)
+async def wake_computer(
+    request: Request,
+    computer_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Send Wake-on-LAN for one PC.
+    Superuser or user granted in Settings → WoL.
+    No client-supplied MAC/IP. No bulk wake. Cannot power off.
+    """
+    _ = request  # required by slowapi
+    r = await db.execute(select(Computer).where(Computer.id == computer_id))
+    c = r.scalar_one_or_none()
+    if not c:
+        raise HTTPException(status_code=404, detail="ПК не найден")
+
+    cfg = await get_effective_wol_config(db)
+    if cfg.force_disabled:
+        raise HTTPException(status_code=403, detail="Wake-on-LAN отключён на сервере (WOL_FORCE_DISABLED)")
+    if not user_may_wake(user, cfg):
+        raise HTTPException(status_code=403, detail="Нет права Wake-on-LAN. Выдаёт администратор в настройках.")
+    if not cfg.enabled:
+        raise HTTPException(status_code=403, detail="Wake-on-LAN отключён на сервере.")
+
+    cool = check_cooldown(computer_id, cfg.cooldown_seconds)
+    if cool is not None:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Подождите {cool} с перед повторным Wake этого ПК.",
+        )
+
+    if not (c.mac_primary or "").strip():
+        raise HTTPException(status_code=400, detail="У ПК нет MAC (mac_primary). Нужен отчёт агента.")
+    try:
+        mac = normalize_mac(c.mac_primary)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Некорректный MAC в карточке ПК.") from e
+
+    result = send_wake(mac)
+    mark_woken(computer_id)
+    mac_s = format_mac(mac)
+    db.add(
+        AssetChangeLog(
+            computer_id=computer_id,
+            source="panel",
+            kind="meta",
+            field_key="wake",
+            old_value=None,
+            new_value=mac_s,
+            payload_json=json.dumps(
+                {
+                    "by_user_id": user.id,
+                    "by_username": user.username,
+                    "mac": mac_s,
+                    "sent": result["sent"],
+                    "errors": result["errors"],
+                },
+                ensure_ascii=False,
+            ),
+        )
+    )
+    await db.commit()
+
+    ok = result["sent"] > 0
+    msg = (
+        f"Magic packet отправлен ({result['sent']} шт.). "
+        "ПК должен быть в той же L2-сети; WoL — в BIOS и NIC."
+        if ok
+        else "Не удалось отправить пакеты (сеть/интерфейсы сервера)."
+    )
+    return WolWakeOut(
+        ok=ok,
+        computer_id=computer_id,
+        hostname=c.hostname,
+        mac=mac_s,
+        sent=int(result["sent"]),
+        message=msg,
     )
 
 
@@ -492,6 +940,9 @@ async def update_computer(
         hostname=c2.hostname,
         serial_number=c2.serial_number,
         mac_primary=c2.mac_primary,
+        ip_address=getattr(c2, "ip_address", None),
+        ping_status=getattr(c2, "ping_status", None),
+        last_ping_at=getattr(c2, "last_ping_at", None),
         cpu=c2.cpu,
         ram_gb=c2.ram_gb,
         os_name=c2.os_name,
@@ -517,10 +968,36 @@ async def update_computer(
 async def computer_history(
     computer_id: int,
     _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
     limit: int = Query(100, ge=1, le=500),
 ):
-    _ = (computer_id, limit)
-    return []
+    exists = (
+        await db.execute(select(Computer.id).where(Computer.id == computer_id))
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(status_code=404, detail="ПК не найден")
+    rows = (
+        await db.execute(
+            select(AssetChangeLog)
+            .where(AssetChangeLog.computer_id == computer_id)
+            .order_by(AssetChangeLog.created_at.desc(), AssetChangeLog.id.desc())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": row.id,
+            "computer_id": row.computer_id,
+            "created_at": row.created_at,
+            "source": row.source,
+            "kind": row.kind,
+            "field_key": row.field_key,
+            "old_value": row.old_value,
+            "new_value": row.new_value,
+            "payload_json": row.payload_json,
+        }
+        for row in rows
+    ]
 
 
 @router.post("/import-glpi-pcs-csv")

@@ -80,6 +80,8 @@ cookies.txt
 glpi*.csv
 *glpi*.csv
 **/glpi*.csv
+# Local WoL helper (may contain LAN targets / experiments) — never commit
+wake_pc.py
 
 ## Local planning (never push to GitHub)
 ROADMAP.local.md

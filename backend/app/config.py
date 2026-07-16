@@ -96,6 +96,19 @@ class Settings(BaseSettings):
     # slowapi limits (see backend/app/rate_limit.py); disabled when ENVIRONMENT=test.
     rate_limit_login: str = "10/minute"
     rate_limit_agent: str = "120/minute"
+    # Wake-on-LAN from panel (superuser + DB allowlist). Kill-switch overrides DB enable.
+    wol_force_disabled: bool = False
+    rate_limit_wake: str = "5/minute"
+    rate_limit_ping: str = "60/minute"
+    # Fleet ICMP: batched + drip (fast enough, network-safe).
+    # Full reconcile ~every interval; between — small stale batches every ~15–45s.
+    computer_ping_enabled: bool = True
+    computer_ping_interval_minutes: int = 15
+    computer_ping_concurrency: int = 3
+    computer_ping_batch_size: int = 10
+    computer_ping_batch_pause_ms: int = 350
+    computer_ping_timeout_ms: int = 700
+    computer_ping_jitter_ms: int = 40
     # Dev-only: accept any Bearer on /agent/inventory (explicit opt-in; unsafe if misconfigured).
     allow_dev_any_agent_token: bool = False
     # In production OpenAPI (/docs) is off unless ENABLE_OPENAPI=true.

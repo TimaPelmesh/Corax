@@ -214,6 +214,9 @@ class ComputerOut(BaseModel):
     hostname: str
     serial_number: str | None
     mac_primary: str | None
+    ip_address: str | None = None
+    ping_status: str | None = None  # online | offline | unknown
+    last_ping_at: datetime | None = None
     cpu: str | None
     ram_gb: float | None
     os_name: str | None
@@ -235,8 +238,8 @@ class ComputerOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_serializer("last_report_at")
-    def _ser_last_report_at(self, v: datetime | None):
+    @field_serializer("last_report_at", "last_ping_at")
+    def _ser_computer_dt(self, v: datetime | None):
         # SQLite often drops tzinfo even with timezone=True.
         # Treat naive timestamps as UTC to prevent a visible shift in UI.
         if v is None:

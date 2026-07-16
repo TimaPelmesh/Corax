@@ -19,13 +19,24 @@ def client() -> TestClient:
 
 @pytest.fixture(scope="session")
 def auth_headers(client: TestClient) -> dict[str, str]:
-    username = settings.bootstrap_admin_username.strip()
-    password = (settings.bootstrap_admin_password or "").strip()
+    # CI: fresh DB + BOOTSTRAP_ADMIN_* from defaults/.env.example.
+    # Local prod-like DB: set TEST_LOGIN_USERNAME / TEST_LOGIN_PASSWORD if bootstrap ≠ real admin.
+    username = (os.environ.get("TEST_LOGIN_USERNAME") or settings.bootstrap_admin_username).strip()
+    password = (os.environ.get("TEST_LOGIN_PASSWORD") or settings.bootstrap_admin_password or "").strip()
     r = client.post(
         "/api/v1/auth/login/json",
         json={"username": username, "password": password, "return_token": True},
     )
-    assert r.status_code == 200, r.text
+    if r.status_code != 200:
+        pytest.exit(
+            "auth_headers: login failed "
+            f"(HTTP {r.status_code}). "
+            "CI uses a fresh Postgres and bootstrap admin. "
+            "Locally either point DATABASE_URL at an empty test DB, "
+            "or set TEST_LOGIN_USERNAME / TEST_LOGIN_PASSWORD to a real admin. "
+            f"Response: {r.text[:200]}",
+            returncode=1,
+        )
     token = r.json().get("access_token")
     assert token
     return {"Authorization": f"Bearer {token}"}

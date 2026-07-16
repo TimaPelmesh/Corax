@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { api, type AssetChangeLog, type ComputerDetail, type TagBrief } from '../api'
+import {
+  api,
+  type AssetChangeLog,
+  type Computer,
+  type ComputerDetail,
+  type ComputerPingResult,
+  type SoftwareItem,
+  type TagBrief,
+  type WolStatus,
+} from '../api'
 import { useAuth } from '../AuthContext'
 import { parseAgentExtras } from '../computerAgentExtras'
 import { useLocale, useT } from '../i18n/LocaleContext'
@@ -34,6 +43,15 @@ export function fmtDate(iso: string | null, locale: 'ru' | 'en') {
 
 function describeChange(h: AssetChangeLog, t: ReturnType<typeof useT>): string {
   const src = h.source === 'agent' ? t('computerDetail.agentSource') : t('computerDetail.panelSource')
+  if (h.kind === 'meta' && h.field_key === 'wake') {
+    return t('computerDetail.wolWakeEvent', { mac: h.new_value ?? '—', source: src })
+  }
+  if (h.kind === 'meta' && h.field_key === 'wol_allowlist') {
+    return t('computerDetail.wolAllowEvent', {
+      state: h.new_value === '1' ? t('computerDetail.wolAllowed') : t('computerDetail.wolDenied'),
+      source: src,
+    })
+  }
   if (h.kind === 'field' && h.field_key) {
     return t('computerDetail.fieldChange', {
       field: h.field_key,
@@ -84,13 +102,26 @@ function describeChange(h: AssetChangeLog, t: ReturnType<typeof useT>): string {
 
 type Props = {
   computerId: number | null
+  /** List-row snapshot so the shell paints before the detail API returns. */
+  preview?: Computer | null
   onClose: () => void
   onChanged?: () => void
   overlayZClass?: string
 }
 
+function detailFromPreview(p: Computer): ComputerDetail {
+  return {
+    ...p,
+    disks: p.disks ?? [],
+    software: [],
+    peripherals: [],
+    agent_extended: null,
+  }
+}
+
 export function ComputerDetailModal({
   computerId,
+  preview = null,
   onClose,
   onChanged,
   overlayZClass = 'z-50',
@@ -101,6 +132,9 @@ export function ComputerDetailModal({
   const { user } = useAuth()
   const [detail, setDetail] = useState<ComputerDetail | null>(null)
   const [loading, setLoading] = useState(false)
+  const [softwareRows, setSoftwareRows] = useState<SoftwareItem[] | null>(null)
+  const [softwareLoading, setSoftwareLoading] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [notesDraft, setNotesDraft] = useState('')
   const [locationDraft, setLocationDraft] = useState('')
   const [historyRows, setHistoryRows] = useState<AssetChangeLog[] | null>(null)
@@ -108,26 +142,61 @@ export function ComputerDetailModal({
   const [swFilter, setSwFilter] = useState('')
   const [allTags, setAllTags] = useState<TagBrief[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
+  const [wolStatus, setWolStatus] = useState<WolStatus | null>(null)
+  const [wolBusy, setWolBusy] = useState(false)
+  const [pingResult, setPingResult] = useState<ComputerPingResult | null>(null)
+  const [pingBusy, setPingBusy] = useState(false)
+  const onChangedRef = useRef(onChanged)
+  onChangedRef.current = onChanged
+  const previewRef = useRef(preview)
+  previewRef.current = preview
 
   useEffect(() => {
     if (!computerId) {
       setDetail(null)
+      setSoftwareRows(null)
       setHistoryRows(null)
+      setWolStatus(null)
+      setPingResult(null)
       setLoading(false)
+      setSoftwareLoading(false)
+      setHistoryLoading(false)
       return
     }
     let cancelled = false
-    setLoading(true)
-    void Promise.all([api.computer(computerId), api.computerHistory(computerId, 120)])
-      .then(([d, hist]) => {
+    setWolStatus(null)
+    setPingResult(null)
+    setHistoryRows(null)
+    setSoftwareRows(null)
+    setSwFilter('')
+
+    const snap = previewRef.current?.id === computerId ? previewRef.current : null
+    if (snap) {
+      const seeded = detailFromPreview(snap)
+      setDetail(seeded)
+      setNotesDraft(seeded.notes ?? '')
+      setLocationDraft(seeded.location ?? '')
+      setSelectedTagIds(seeded.tags.map((tag) => tag.id))
+      setAssignUserId(seeded.assigned_user_id != null ? String(seeded.assigned_user_id) : '')
+      setLoading(false)
+    } else {
+      setDetail(null)
+      setLoading(true)
+    }
+
+    setSoftwareLoading(true)
+    setHistoryLoading(true)
+
+    // Core card first (no heavy software list) — paint ASAP.
+    void api
+      .computer(computerId, { includeSoftware: false })
+      .then((d) => {
         if (cancelled) return
         setDetail(d)
         setNotesDraft(d.notes ?? '')
         setLocationDraft(d.location ?? '')
-        setSelectedTagIds(d.tags.map((t) => t.id))
+        setSelectedTagIds(d.tags.map((tag) => tag.id))
         setAssignUserId(d.assigned_user_id != null ? String(d.assigned_user_id) : '')
-        setSwFilter('')
-        setHistoryRows(hist)
       })
       .catch((e: unknown) => {
         if (!cancelled) toast.error(e instanceof Error ? e.message : t('common.error'))
@@ -135,10 +204,54 @@ export function ComputerDetailModal({
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+
+    void api
+      .computerSoftware(computerId)
+      .then((sw) => {
+        if (!cancelled) setSoftwareRows(sw)
+      })
+      .catch(() => {
+        if (!cancelled) setSoftwareRows([])
+      })
+      .finally(() => {
+        if (!cancelled) setSoftwareLoading(false)
+      })
+
+    void api
+      .computerHistory(computerId, 120)
+      .then((hist) => {
+        if (!cancelled) setHistoryRows(hist)
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryRows([])
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false)
+      })
+
     return () => {
       cancelled = true
     }
   }, [computerId, t, toast])
+
+  useEffect(() => {
+    if (!computerId || !user) {
+      setWolStatus(null)
+      return
+    }
+    let cancelled = false
+    void api
+      .computerWolStatus(computerId)
+      .then((s) => {
+        if (!cancelled) setWolStatus(s)
+      })
+      .catch(() => {
+        if (!cancelled) setWolStatus(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [computerId, user])
 
   useEffect(() => {
     void api
@@ -165,12 +278,14 @@ export function ComputerDetailModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [computerId, onClose])
 
+  const softwareList = softwareRows ?? detail?.software ?? []
+  const softwareTotal = softwareRows?.length ?? detail?.software_count ?? softwareList.length
+
   const filteredSoftware = useMemo(() => {
-    if (!detail) return []
     const q = swFilter.trim().toLowerCase()
-    if (!q) return detail.software
-    return detail.software.filter((s) => s.name.toLowerCase().includes(q))
-  }, [detail, swFilter])
+    if (!q) return softwareList
+    return softwareList.filter((s) => s.name.toLowerCase().includes(q))
+  }, [softwareList, swFilter])
 
   const agentExtras = useMemo(
     () => parseAgentExtras(detail?.agent_extended ?? null),
@@ -237,6 +352,119 @@ export function ComputerDetailModal({
       toast.error(e instanceof Error ? e.message : t('computerDetail.deleteFailed'))
     }
   }, [detail, user?.is_superuser, onChanged, onClose, t, toast])
+
+  const refreshWol = useCallback(async () => {
+    if (!detail || !user) return
+    try {
+      setWolStatus(await api.computerWolStatus(detail.id))
+    } catch {
+      /* keep previous */
+    }
+  }, [detail, user])
+
+  const checkPing = useCallback(async () => {
+    if (!detail) return
+    // Do not no-op when busy — previous auto-ping used to swallow the button click.
+    setPingBusy(true)
+    try {
+      const r = await api.pingComputer(detail.id)
+      setPingResult(r)
+      onChangedRef.current?.()
+      if (!r.checked) {
+        toast.warn(r.message || t('computerDetail.pingUnknown'))
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    } finally {
+      setPingBusy(false)
+    }
+  }, [detail, t, toast])
+
+  // Seed from DB cache immediately so the card matches the list before live ping returns.
+  useEffect(() => {
+    if (!detail) return
+    const st = (detail.ping_status || '').toLowerCase()
+    if (st === 'online' || st === 'offline') {
+      setPingResult({
+        computer_id: detail.id,
+        hostname: detail.hostname,
+        ip_address: detail.ip_address ?? null,
+        online: st === 'online',
+        checked: true,
+        message: st === 'online' ? t('computerDetail.pingOnline') : t('computerDetail.pingOffline'),
+      })
+    } else {
+      setPingResult(null)
+    }
+  }, [detail, t])
+
+  // Live ping after first paint so ICMP does not compete with the detail request.
+  useEffect(() => {
+    if (!detail?.id) return
+    let cancelled = false
+    const tid = window.setTimeout(() => {
+      if (cancelled) return
+      setPingBusy(true)
+      void api
+        .pingComputer(detail.id)
+        .then((r) => {
+          if (cancelled) return
+          setPingResult(r)
+          onChangedRef.current?.()
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return
+          toast.error(e instanceof Error ? e.message : t('common.error'))
+        })
+        .finally(() => {
+          if (!cancelled) setPingBusy(false)
+        })
+    }, 150)
+    return () => {
+      cancelled = true
+      window.clearTimeout(tid)
+    }
+  }, [detail?.id, t, toast])
+
+  const cachedOnline = (detail?.ping_status || '').toLowerCase() === 'online'
+  const cachedOffline = (detail?.ping_status || '').toLowerCase() === 'offline'
+  const isOnline =
+    (pingResult?.checked === true && pingResult.online === true) ||
+    (pingResult == null && cachedOnline)
+  const isOffline =
+    (pingResult?.checked === true && pingResult.online === false) ||
+    (pingResult == null && cachedOffline)
+  const canShowWake =
+    Boolean(wolStatus?.user_may_wake) &&
+    Boolean(wolStatus?.can_wake) &&
+    !wolStatus?.force_disabled &&
+    isOffline
+
+  const wakePc = useCallback(async () => {
+    if (!detail || !wolStatus?.user_may_wake || wolBusy || !isOffline) return
+    const mac = detail.mac_primary ?? '—'
+    if (
+      !confirm(
+        t('computerDetail.wolWakeConfirm', { hostname: detail.hostname, mac }),
+      )
+    ) {
+      return
+    }
+    setWolBusy(true)
+    try {
+      const res = await api.wakeComputer(detail.id)
+      if (res.ok) toast.ok(t('computerDetail.wolOk', { sent: res.sent }))
+      else toast.error(res.message || t('computerDetail.wolFailed'))
+      await refreshWol()
+      setHistoryRows(await api.computerHistory(detail.id, 120))
+      void checkPing()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('computerDetail.wolFailed'))
+      await refreshWol()
+    } finally {
+      setWolBusy(false)
+    }
+  }, [detail, wolStatus?.user_may_wake, wolBusy, isOffline, refreshWol, checkPing, t, toast])
 
   if (!computerId) return null
 
@@ -329,6 +557,88 @@ export function ComputerDetailModal({
                   <div className="min-w-0 sm:col-span-2">
                     <dt className="text-slate-500">{t('computerDetail.mac')}</dt>
                     <dd className="font-mono text-slate-700">{detail.mac_primary ?? '—'}</dd>
+                  </div>
+                  <div className="min-w-0 sm:col-span-2 rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                          {t('computerDetail.pingTitle')}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                          {pingBusy && !pingResult ? (
+                            <span className="text-slate-500">{t('computerDetail.pingChecking')}</span>
+                          ) : isOnline ? (
+                            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+                              {t('computerDetail.pingOnline')}
+                            </span>
+                          ) : isOffline ? (
+                            <span className="inline-flex items-center gap-1.5 font-medium text-rose-700">
+                              <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden />
+                              {t('computerDetail.pingOffline')}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-slate-500">
+                              <span className="h-2 w-2 rounded-full bg-slate-300" aria-hidden />
+                              {detail.ip_address
+                                ? t('computerDetail.pingIp', { ip: detail.ip_address })
+                                : t('computerDetail.pingUnknown')}
+                            </span>
+                          )}
+                          {pingResult?.ip_address ? (
+                            <span className="font-mono text-xs text-slate-500">{pingResult.ip_address}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="app-btn app-btn-secondary shrink-0 text-sm"
+                        disabled={pingBusy}
+                        onClick={() => void checkPing()}
+                      >
+                        {pingBusy ? t('computerDetail.pingChecking') : t('computerDetail.pingCheck')}
+                      </button>
+                    </div>
+
+                    {wolStatus?.user_may_wake ? (
+                      <div className="mt-3 border-t border-slate-200/80 pt-2.5">
+                        {wolStatus.force_disabled ? (
+                          <p className="text-xs text-amber-800">{t('computerDetail.wolForceOff')}</p>
+                        ) : isOnline ? (
+                          <p className="text-xs text-slate-500">{t('computerDetail.wolAlreadyOn')}</p>
+                        ) : canShowWake ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              className="app-btn app-btn-primary text-sm"
+                              disabled={wolBusy}
+                              onClick={() => void wakePc()}
+                            >
+                              {wolBusy ? t('computerDetail.wolBusy') : t('computerDetail.wolWake')}
+                            </button>
+                            {wolStatus.cooldown_remaining_seconds != null ? (
+                              <span className="text-xs text-slate-500">
+                                {t('computerDetail.wolCooldown', {
+                                  n: wolStatus.cooldown_remaining_seconds,
+                                })}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : !wolStatus.has_mac ? (
+                          <p className="text-xs text-slate-500">{t('computerDetail.wolNoMac')}</p>
+                        ) : wolStatus.cooldown_remaining_seconds != null ? (
+                          <p className="text-xs text-slate-500">
+                            {t('computerDetail.wolCooldown', {
+                              n: wolStatus.cooldown_remaining_seconds,
+                            })}
+                          </p>
+                        ) : pingBusy ? (
+                          <p className="text-xs text-slate-500">{t('computerDetail.pingChecking')}</p>
+                        ) : (
+                          <p className="text-xs text-slate-500">{t('computerDetail.wolNeedOffline')}</p>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                   {agentExtras?.primaryUser ? (
                     <div className="min-w-0 sm:col-span-2">
@@ -543,10 +853,17 @@ export function ComputerDetailModal({
                   className="mt-2 w-full shrink-0 rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
                 <p className="mt-1 shrink-0 text-xs text-slate-500">
-                  {t('computerDetail.shownCount', { shown: filteredSoftware.length, total: detail.software.length })}
+                  {softwareLoading
+                    ? t('computerDetail.softwareLoading')
+                    : t('computerDetail.shownCount', {
+                        shown: filteredSoftware.length,
+                        total: softwareTotal,
+                      })}
                 </p>
                 <ul className="mt-2 max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-slate-200/90 bg-slate-50/80 text-sm ring-1 ring-slate-100/80 sm:min-h-[min(45vh,20rem)]">
-                  {detail.software.length === 0 ? (
+                  {softwareLoading && softwareList.length === 0 ? (
+                    <li className="px-3 py-4 text-slate-500">{t('computerDetail.loading')}</li>
+                  ) : softwareList.length === 0 ? (
                     <li className="px-3 py-4 text-slate-500">{t('computerDetail.noRecords')}</li>
                   ) : filteredSoftware.length === 0 ? (
                     <li className="px-3 py-4 text-slate-500">{t('computerDetail.noSearchMatches')}</li>
@@ -599,7 +916,9 @@ export function ComputerDetailModal({
               <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
                 {t('computerDetail.history')}
               </h3>
-              {historyRows && historyRows.length > 0 ? (
+              {historyLoading ? (
+                <p className="mt-2 text-sm text-slate-500">{t('computerDetail.loading')}</p>
+              ) : historyRows && historyRows.length > 0 ? (
                 <ul className="mt-2 max-h-48 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200/90 bg-slate-50/80 text-xs text-slate-700">
                   {historyRows.map((h) => (
                     <li key={h.id} className="border-b border-slate-100 px-3 py-2 last:border-0">

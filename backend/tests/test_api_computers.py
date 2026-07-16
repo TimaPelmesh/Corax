@@ -53,6 +53,18 @@ def test_computer_detail_patch_tags_delete(
     assert detail.status_code == 200
     assert len(detail.json()["software"]) >= 2
 
+    light = client.get(
+        f"/api/v1/computers/{pc_id}?include_software=false",
+        headers=auth_headers,
+    )
+    assert light.status_code == 200
+    assert light.json()["software"] == []
+    assert light.json()["software_count"] >= 2
+
+    sw = client.get(f"/api/v1/computers/{pc_id}/software", headers=auth_headers)
+    assert sw.status_code == 200
+    assert len(sw.json()) >= 2
+
     history = client.get(f"/api/v1/computers/{pc_id}/history", headers=auth_headers)
     assert history.status_code == 200
 

@@ -14,6 +14,7 @@ const ROUTE_TITLES: Array<{ path: string; key: MessageKey; end?: boolean }> = [
   { path: '/knowledge-base/warehouse', key: 'titles.warehouse' },
   { path: '/settings/agent-tokens', key: 'titles.agentTokens' },
   { path: '/settings/agent-bundle', key: 'titles.agentBundle' },
+  { path: '/settings/wol', key: 'titles.wol' },
   { path: '/settings/categories', key: 'titles.categories' },
   { path: '/settings/bitrix24', key: 'titles.bitrix24' },
   { path: '/settings/database', key: 'titles.database' },

@@ -805,6 +805,52 @@ body {
   }
 }
 
+@keyframes pc-ping-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 var(--pc-ping-glow, rgba(16, 185, 129, 0.45));
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.92;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+.pc-ping-dot {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  animation: pc-ping-pulse 1.6s ease-in-out infinite;
+}
+
+.pc-ping-dot--online {
+  --pc-ping-glow: rgba(16, 185, 129, 0.55);
+  background: #10b981;
+}
+
+.pc-ping-dot--offline {
+  --pc-ping-glow: rgba(244, 63, 94, 0.5);
+  background: #f43f5e;
+  animation-duration: 2.2s;
+}
+
+.pc-ping-dot--unknown {
+  --pc-ping-glow: rgba(245, 158, 11, 0.45);
+  background: #f59e0b;
+  animation-duration: 2.8s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-ping-dot {
+    animation: none;
+  }
+}
+
 @keyframes wikirag-pulse-ring {
   0% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 35%, transparent);

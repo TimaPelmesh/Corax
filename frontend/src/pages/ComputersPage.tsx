@@ -72,6 +72,7 @@ export function ComputersPage() {
   const [hostSearch, setHostSearch] = useState('')
   const [debouncedHostSearch, setDebouncedHostSearch] = useState('')
   const [filterTagIds, setFilterTagIds] = useState<number[]>([])
+  const [pingFilter, setPingFilter] = useState<'all' | 'online' | 'offline' | 'unknown'>('all')
   const [sort, setSort] = useState<{ key: 'host' | 'ram' | 'periph' | 'last'; dir: 'asc' | 'desc' }>({
     key: 'last',
     dir: 'desc',
@@ -122,9 +123,19 @@ export function ComputersPage() {
     return () => window.clearTimeout(t)
   }, [hostSearch])
 
+  const filteredRows = useMemo(() => {
+    if (pingFilter === 'all') return rows
+    return rows.filter((r) => {
+      const st = (r.ping_status || '').toLowerCase()
+      if (pingFilter === 'online') return st === 'online'
+      if (pingFilter === 'offline') return st === 'offline'
+      return st !== 'online' && st !== 'offline'
+    })
+  }, [rows, pingFilter])
+
   const sortedRows = useMemo(() => {
     const dirMul = sort.dir === 'asc' ? 1 : -1
-    const copy = [...rows]
+    const copy = [...filteredRows]
     copy.sort((a, b) => {
       if (sort.key === 'host') {
         return dirMul * a.hostname.localeCompare(b.hostname, 'ru', { sensitivity: 'base' })
@@ -148,7 +159,7 @@ export function ComputersPage() {
       return dirMul * a.hostname.localeCompare(b.hostname, 'ru', { sensitivity: 'base' })
     })
     return copy
-  }, [rows, sort.dir, sort.key])
+  }, [filteredRows, sort.dir, sort.key])
 
   const pageCount = useMemo(
     () => Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE)),
@@ -163,7 +174,7 @@ export function ComputersPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [debouncedHostSearch, filterTagIds, sort.key, sort.dir])
+  }, [debouncedHostSearch, filterTagIds, pingFilter, sort.key, sort.dir])
 
   useEffect(() => {
     if (page > pageCount) setPage(pageCount)
@@ -181,25 +192,102 @@ export function ComputersPage() {
     return <span className="ml-1 text-[var(--color-fg-muted)]">{sort.dir === 'asc' ? '↑' : '↓'}</span>
   }
 
+  const applyPingMap = useCallback(
+    (
+      items: Computer[],
+      pingItems: Array<{
+        id: number
+        ping_status: string | null
+        last_ping_at: string | null
+        ip_address: string | null
+      }>,
+    ) => {
+      const map = new Map(pingItems.map((x) => [x.id, x]))
+      return items.map((row) => {
+        const s = map.get(row.id)
+        if (!s) return row
+        const nextStatus = (s.ping_status || '').toLowerCase() || null
+        const prevStatus = (row.ping_status || '').toLowerCase() || null
+        // Never downgrade a known online/offline to empty/unknown from a stale payload.
+        const status =
+          nextStatus === 'online' || nextStatus === 'offline'
+            ? nextStatus
+            : prevStatus === 'online' || prevStatus === 'offline'
+              ? prevStatus
+              : nextStatus
+        return {
+          ...row,
+          ping_status: status,
+          last_ping_at: s.last_ping_at ?? row.last_ping_at,
+          ip_address: s.ip_address ?? row.ip_address,
+        }
+      })
+    },
+    [],
+  )
+
   const load = useCallback(async () => {
     try {
-      const data = await api.computers({
-        q: debouncedHostSearch.trim() || undefined,
-        tag_ids: filterTagIds.length ? filterTagIds : undefined,
-        limit: 500,
-      })
-      setRows(data.items)
+      const [data, ping] = await Promise.all([
+        api.computers({
+          q: debouncedHostSearch.trim() || undefined,
+          tag_ids: filterTagIds.length ? filterTagIds : undefined,
+          limit: 500,
+        }),
+        api.computersPingStatus(false).catch(() => ({ items: [], sweep: null })),
+      ])
+      setRows(applyPingMap(data.items, ping.items))
       setTotal(data.total)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setLoading(false)
     }
-  }, [debouncedHostSearch, filterTagIds, t, toast])
+  }, [applyPingMap, debouncedHostSearch, filterTagIds, t, toast])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Live ping dots: poll cache often; kick sweep once if mostly unknown.
+  useEffect(() => {
+    let cancelled = false
+    let first = true
+    let timer: number | null = null
+
+    const pull = async () => {
+      try {
+        const data = await api.computersPingStatus(first)
+        first = false
+        if (cancelled) return
+        setRows((prev) => applyPingMap(prev, data.items))
+      } catch {
+        /* ignore transient */
+      }
+    }
+
+    const schedule = (ms: number) => {
+      timer = window.setTimeout(async () => {
+        await pull()
+        if (!cancelled) schedule(ms)
+      }, ms)
+    }
+
+    void pull().then(() => {
+      if (!cancelled) schedule(2500)
+    })
+
+    const slowDown = window.setTimeout(() => {
+      if (timer != null) window.clearTimeout(timer)
+      if (!cancelled) schedule(8_000)
+    }, 180_000)
+
+    return () => {
+      cancelled = true
+      if (timer != null) window.clearTimeout(timer)
+      window.clearTimeout(slowDown)
+    }
+  }, [applyPingMap])
 
   useEffect(() => {
     void api
@@ -261,6 +349,52 @@ export function ComputersPage() {
           />
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          <div className="shrink-0">
+            <span className="app-label">{t('computers.pingFilterLabel')}</span>
+            <div
+              className="mt-1 flex overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+              role="group"
+              aria-label={t('computers.pingFilterLabel')}
+            >
+              {(
+                [
+                  ['all', t('computers.pingFilterAll')],
+                  ['online', t('computers.pingFilterOnline')],
+                  ['offline', t('computers.pingFilterOffline')],
+                  ['unknown', t('computers.pingFilterUnknown')],
+                ] as const
+              ).map(([key, label]) => {
+                const on = pingFilter === key
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold transition sm:px-3 sm:text-sm ${
+                      on
+                        ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
+                        : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
+                    }`}
+                    aria-pressed={on}
+                    onClick={() => setPingFilter(key)}
+                  >
+                    {key !== 'all' ? (
+                      <span
+                        className={
+                          key === 'online'
+                            ? 'pc-ping-dot pc-ping-dot--online !h-2 !w-2'
+                            : key === 'offline'
+                              ? 'pc-ping-dot pc-ping-dot--offline !h-2 !w-2'
+                              : 'pc-ping-dot pc-ping-dot--unknown !h-2 !w-2'
+                        }
+                        aria-hidden
+                      />
+                    ) : null}
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           {allTags.length > 0 ? (
             <div className="relative shrink-0" ref={tagsMenuRef}>
               <button
@@ -327,9 +461,6 @@ export function ComputersPage() {
                             aria-hidden
                           />
                           <span className="min-w-0 truncate">{tag.name}</span>
-                          {on ? (
-                            <span className="ml-auto text-[10px] font-bold text-[var(--color-primary)]">✓</span>
-                          ) : null}
                         </button>
                       )
                     })}
@@ -471,7 +602,34 @@ export function ComputersPage() {
                   className={`app-table-row cursor-pointer ${idx > 0 ? 'border-t border-[var(--color-border)]' : ''}`}
                   onClick={() => openDetail(r.id)}
                 >
-                  <td className="px-4 py-3 font-medium text-[var(--color-fg)]">{r.hostname}</td>
+                  <td className="px-4 py-3 font-medium text-[var(--color-fg)]">
+                    <span className="inline-flex min-w-0 items-center gap-2.5">
+                      <span
+                        className={
+                          (r.ping_status || '').toLowerCase() === 'online'
+                            ? 'pc-ping-dot pc-ping-dot--online'
+                            : (r.ping_status || '').toLowerCase() === 'offline'
+                              ? 'pc-ping-dot pc-ping-dot--offline'
+                              : 'pc-ping-dot pc-ping-dot--unknown'
+                        }
+                        title={
+                          (r.ping_status || '').toLowerCase() === 'online'
+                            ? t('computers.pingOnline')
+                            : (r.ping_status || '').toLowerCase() === 'offline'
+                              ? t('computers.pingOffline')
+                              : t('computers.pingUnknown')
+                        }
+                        aria-label={
+                          (r.ping_status || '').toLowerCase() === 'online'
+                            ? t('computers.pingOnline')
+                            : (r.ping_status || '').toLowerCase() === 'offline'
+                              ? t('computers.pingOffline')
+                              : t('computers.pingUnknown')
+                        }
+                      />
+                      <span className="min-w-0 truncate">{r.hostname}</span>
+                    </span>
+                  </td>
                   {columns.location ? (
                     <td className="max-w-[8rem] truncate px-4 py-3 text-[var(--color-fg-muted)]">{r.location ?? '—'}</td>
                   ) : null}
@@ -555,6 +713,7 @@ export function ComputersPage() {
 
       <ComputerDetailModal
         computerId={detailComputerId}
+        preview={detailComputerId != null ? rows.find((r) => r.id === detailComputerId) ?? null : null}
         onClose={closeDetail}
         onChanged={() => void load()}
       />

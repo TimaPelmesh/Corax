@@ -278,6 +278,76 @@ def _migrate_printer_poll_config(sync_conn) -> None:
     )
 
 
+def _migrate_wake_on_lan_config(sync_conn) -> None:
+    if "wake_on_lan_config" in _table_names(sync_conn):
+        return
+    if sync_conn.dialect.name == "sqlite":
+        ddl = """
+            CREATE TABLE wake_on_lan_config (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              enabled BOOLEAN NOT NULL DEFAULT 0,
+              allowlist_computer_ids_json TEXT NOT NULL DEFAULT '[]',
+              wake_user_ids_json TEXT NOT NULL DEFAULT '[]',
+              cooldown_seconds INTEGER NOT NULL DEFAULT 120,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+    else:
+        ddl = """
+            CREATE TABLE wake_on_lan_config (
+              id SERIAL PRIMARY KEY,
+              enabled BOOLEAN NOT NULL DEFAULT FALSE,
+              allowlist_computer_ids_json TEXT NOT NULL DEFAULT '[]',
+              wake_user_ids_json TEXT NOT NULL DEFAULT '[]',
+              cooldown_seconds INTEGER NOT NULL DEFAULT 120,
+              updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+    sync_conn.execute(text(ddl))
+
+
+def _migrate_wol_wake_user_ids(sync_conn) -> None:
+    if "wake_on_lan_config" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "wake_on_lan_config")
+    if "wake_user_ids_json" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE wake_on_lan_config ADD COLUMN wake_user_ids_json TEXT DEFAULT '[]'")
+        )
+        sync_conn.execute(
+            text("UPDATE wake_on_lan_config SET wake_user_ids_json = '[]' WHERE wake_user_ids_json IS NULL")
+        )
+
+
+def _migrate_computers_ip_address(sync_conn) -> None:
+    if "computers" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "computers")
+    if "ip_address" not in cols:
+        sync_conn.execute(text("ALTER TABLE computers ADD COLUMN ip_address VARCHAR(64)"))
+        try:
+            sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_computers_ip_address ON computers (ip_address)"))
+        except Exception:
+            pass
+
+
+def _migrate_computers_ping_status(sync_conn) -> None:
+    if "computers" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "computers")
+    if "ping_status" not in cols:
+        sync_conn.execute(text("ALTER TABLE computers ADD COLUMN ping_status VARCHAR(16)"))
+    if "last_ping_at" not in cols:
+        if sync_conn.dialect.name == "sqlite":
+            sync_conn.execute(text("ALTER TABLE computers ADD COLUMN last_ping_at TIMESTAMP"))
+        else:
+            sync_conn.execute(text("ALTER TABLE computers ADD COLUMN last_ping_at TIMESTAMPTZ"))
+    try:
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_computers_ping_status ON computers (ping_status)"))
+    except Exception:
+        pass
+
+
 def _migrate_network_extras_json(sync_conn) -> None:
     if "network_devices" not in _table_names(sync_conn):
         return
@@ -586,6 +656,10 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-07-13_users_avatar_data", _migrate_users_avatar_data),
     ("2026-07-15_network_devices", _migrate_network_tables),
     ("2026-07-15_network_extras_json", _migrate_network_extras_json),
+    ("2026-07-16_wake_on_lan_config", _migrate_wake_on_lan_config),
+    ("2026-07-16_wol_wake_user_ids", _migrate_wol_wake_user_ids),
+    ("2026-07-16_computers_ip_address", _migrate_computers_ip_address),
+    ("2026-07-16_computers_ping_status", _migrate_computers_ping_status),
 ]
 
 

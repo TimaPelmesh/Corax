@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.computer_ip import primary_ipv4_from_extended, resolve_computer_ipv4
 from app.config import settings
 from app.rate_limit import limiter
 from app.database import get_db
@@ -98,11 +99,23 @@ async def submit_inventory(
     raw = json.dumps(report.model_dump(), ensure_ascii=False)
     mfr = normalize_manufacturer(report.manufacturer)
     model = normalize_system_model(report.model) or normalize_system_model(report.motherboard_product)
+    ip_from_agent = primary_ipv4_from_extended(
+        report.extended if isinstance(report.extended, dict) else None,
+        prefer_mac=report.mac_primary,
+    )
+    if not ip_from_agent:
+        ip_from_agent = resolve_computer_ipv4(
+            hostname=hn,
+            mac_primary=report.mac_primary,
+            raw_payload=None,
+        )
 
     if pc:
         action = "updated"
         pc.serial_number = report.serial_number or pc.serial_number
         pc.mac_primary = report.mac_primary or pc.mac_primary
+        if ip_from_agent:
+            pc.ip_address = ip_from_agent
         pc.cpu = report.cpu
         pc.ram_gb = report.ram_gb
         pc.os_name = report.os_name
@@ -131,6 +144,7 @@ async def submit_inventory(
             hostname=hn,
             serial_number=report.serial_number,
             mac_primary=report.mac_primary,
+            ip_address=ip_from_agent,
             cpu=report.cpu,
             ram_gb=report.ram_gb,
             os_name=report.os_name,

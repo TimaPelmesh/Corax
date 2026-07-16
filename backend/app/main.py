@@ -174,16 +174,19 @@ async def lifespan(_: FastAPI):
     print(msg, file=sys.stderr, flush=True)
     _cleanup_agent_inbox()
 
+    from app.computer_ping_scheduler import computer_ping_scheduler
     from app.printer_scheduler import printer_poll_scheduler
 
     env = (settings.environment or "").strip().lower()
     if env != "test":
         await printer_poll_scheduler.start()
+        await computer_ping_scheduler.start()
 
     yield
 
     if env != "test":
         await printer_poll_scheduler.stop()
+        await computer_ping_scheduler.stop()
         await engine.dispose()
         await diagrams_engine.dispose()
         await warehouse_engine.dispose()

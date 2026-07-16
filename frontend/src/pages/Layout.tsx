@@ -251,6 +251,7 @@ export function Layout() {
         { path: '/settings/glpi', labelKey: 'nav.glpi' },
         { path: '/settings/agent-tokens', labelKey: 'nav.agentTokens' },
         { path: '/settings/agent-bundle', labelKey: 'nav.agentBundle' },
+        { path: '/settings/wol', labelKey: 'nav.wol' },
       )
     }
     return items
@@ -368,6 +369,12 @@ export function Layout() {
             icon: IconDisk,
             labelKey: 'nav.agentBundle',
             keywords: ['zip', 'батник', 'deploy', 'win7', 'пакет', 'агент', 'agent'],
+          },
+          {
+            to: '/settings/wol',
+            icon: IconPcs,
+            labelKey: 'nav.wol',
+            keywords: ['wake', 'wol', 'включить', 'ping', 'обслуживание'],
           },
         )
       }
