@@ -49,6 +49,7 @@ logs/
 backend/inventory.db
 backend/diagrams.db
 backend/warehouse.db
+backend/.cache/
 
 ## Agent inbox (raw payload dumps)
 backend/agent_inbox/
@@ -87,3 +88,8 @@ wake_pc.py
 ROADMAP.local.md
 OPS.local.md
 *.local.md
+
+# Local agent dumps / accidental outputs
+/agent.json
+backend/--no-gui
+

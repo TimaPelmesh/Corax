@@ -154,7 +154,7 @@ export const en: MessageTree = {
     glpiSubtitle: 'Import and exchange with GLPI',
     bitrixSubtitle: 'Bitrix24 integration',
     agentTokensSubtitle: 'Tokens for inventory agents',
-    agentBundleSubtitle: 'Build a Windows agent ZIP package',
+    agentBundleSubtitle: 'Build a Windows agent: C++ EXE or ZIP (PowerShell)',
     wolSubtitle:
       'Who may wake PCs for maintenance. The button is on the PC card and only appears when the host is offline.',
   },
@@ -1096,6 +1096,10 @@ export const en: MessageTree = {
     dns: 'DNS',
     wifi: 'Wi‑Fi',
     security: 'Security',
+    gpus: 'GPU',
+    localAdmins: 'Local admins',
+    lastHotfix: 'Last hotfix',
+    batteryHealth: 'Battery health',
     windowsPatches: 'Windows patches',
     disks: 'Disks',
     noDiskData: 'No disk data yet — run `corax_send.bat`.',
@@ -1118,8 +1122,8 @@ export const en: MessageTree = {
     history: 'Change history',
     noHistory: 'No records yet (they will appear after the agent sends data again or after panel edits).',
     locationAssignment: 'Location and assignment',
-    locationRoom: 'Location / room',
-    locationPlaceholder: 'office 3, floor 2',
+    locationRoom: 'Room',
+    locationPlaceholder: 'e.g. 312',
     userId: 'User ID (0 to unassign)',
     note: 'Note',
     deletePc: 'Delete PC from database',
@@ -1449,12 +1453,17 @@ export const en: MessageTree = {
     serverHostRequired: 'Specify the CORAX server IP address on the local network',
     defaultTokenLabelWin7: 'CORAX deploy win7',
     defaultTokenLabelWin10: 'CORAX deploy win10',
+    defaultTokenLabelCpp: 'CORAX deploy cpp',
     downloadSuccess: 'Archive downloaded: {filename}',
     buildError: 'Build failed',
     apiNotRespondingSuffix:
       '. The CORAX API is not responding on this URL/port — check that the server is running (prod :3000 or dev API :3001).',
-    platformWin10: 'Windows 10 / 11',
-    platformWin7: 'Windows 7',
+    platformCpp: 'EXE C++ (recommended)',
+    platformWin10: 'ZIP Win10 / 11 (PowerShell)',
+    platformWin7: 'ZIP Windows 7',
+    formatCpp: 'plain EXE',
+    cppNotice:
+      'Native C++ agent: downloads a single CORAX-Agent.exe (config and token already stamped). Auto-detects Win7/10/11. Double-click for splash + upload. Task Scheduler: CORAX-Agent.exe --silent. Use the server LAN IP (not localhost), or other PCs cannot reach CORAX.',
     parametersTitle: 'Parameters',
     serverIpLabel: 'CORAX server IP address',
     chooseInterface: 'Choose an interface…',
@@ -1474,10 +1483,10 @@ export const en: MessageTree = {
     modulesTitle: 'Modules',
     tokenTitle: 'Agent token',
     tokenNewEachBuild: 'Each build creates a new token.',
-    tokenIntroBefore: 'When downloading the ZIP, the server generates a',
+    tokenIntroBefore: 'On download the server generates a',
     tokenIntroMiddle: 'pair, stores its hash in the database (section',
     tokenIntroLink: 'Agent tokens',
-    tokenIntroAfter: '), and writes the full token to agent_env.bat inside the archive.',
+    tokenIntroAfter: '), and stamps the full token into the EXE (ZIP builds use agent_env.bat).',
     tokenParagraph2:
       'A rebuild means a different token; the old one stays in the database until you revoke it. One ZIP can be rolled out to many PCs.',
     tokenParagraph3:
@@ -1506,17 +1515,24 @@ export const en: MessageTree = {
       'Inside the archive: corax_send.bat, agent_env.bat, agent_config.json, lib/.',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
+    summaryArchiveCpp:
+      'Inside the archive: CORAX-Agent.exe (stamped config), agent.json, run.bat, README.',
     building: 'Building…',
     downloadZip: 'Download ZIP',
+    downloadCpp: 'Download EXE',
     deploymentTitle: 'Deployment',
     deployStep1:
       'Extract the ZIP to a network share (for example \\\\server\\corax\\agent).',
     deployStep2Before: 'On the PC, run',
     deployStep2After: '— the report will be sent to {serverUrl}.',
+    deployStep2CppBefore: 'On the PC, run',
+    deployStep2CppAfter: '(or run.bat) — the report will be sent to {serverUrl}.',
     deployStep3Win10:
       'For recurring collection: run install_schedule.bat as administrator (if scheduling was enabled) or use GPO.',
     deployStep3Win7:
       'Scheduling: create a Windows Task Scheduler task to run the bat manually or through GPO.',
+    deployStep3Cpp:
+      'Optional: Task Scheduler job for CORAX-Agent.exe (daily). Portable run from a share is supported.',
     deployStep4: 'The data will appear in the "Computers" section as the PC summary.',
   },
   sitemap: {

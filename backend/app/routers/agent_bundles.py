@@ -28,10 +28,12 @@ async def create_agent_bundle(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    """Собрать ZIP с CORAX Agent v3 (Win10) для размещения на файловой шаре."""
+    """Собрать агент: ZIP (PowerShell win10/win7) или чистый EXE (cpp)."""
     try:
         data, filename = await build_agent_bundle_zip(db, body)
     except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -44,9 +46,14 @@ async def create_agent_bundle(
             ),
         ) from exc
 
+    media = (
+        "application/vnd.microsoft.portable-executable"
+        if filename.lower().endswith(".exe")
+        else "application/zip"
+    )
     return Response(
         content=data,
-        media_type="application/zip",
+        media_type=media,
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-store",

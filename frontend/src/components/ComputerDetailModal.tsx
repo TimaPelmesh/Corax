@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
   api,
-  type AssetChangeLog,
   type Computer,
   type ComputerDetail,
   type ComputerPingResult,
@@ -13,10 +12,19 @@ import {
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { parseAgentExtras } from '../computerAgentExtras'
-import { useLocale, useT } from '../i18n/LocaleContext'
+import { useT } from '../i18n/LocaleContext'
 import { groupPeripheralsForDisplay } from '../peripheralDisplay'
 import { useToast } from '../ToastContext'
 import { IconClose } from './icons'
+
+export function fmtDate(iso: string | null, locale: 'ru' | 'en') {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU')
+  } catch {
+    return iso
+  }
+}
 
 export function tagPillProps(t: TagBrief): { className: string; style?: CSSProperties } {
   const c = t.color
@@ -30,74 +38,6 @@ export function tagPillProps(t: TagBrief): { className: string; style?: CSSPrope
   return {
     className: 'rounded-full bg-zinc-50 px-2 py-0.5 text-xs text-neutral-900 ring-1 ring-zinc-200/80',
   }
-}
-
-export function fmtDate(iso: string | null, locale: 'ru' | 'en') {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU')
-  } catch {
-    return iso
-  }
-}
-
-function describeChange(h: AssetChangeLog, t: ReturnType<typeof useT>): string {
-  const src = h.source === 'agent' ? t('computerDetail.agentSource') : t('computerDetail.panelSource')
-  if (h.kind === 'meta' && h.field_key === 'wake') {
-    return t('computerDetail.wolWakeEvent', { mac: h.new_value ?? '—', source: src })
-  }
-  if (h.kind === 'meta' && h.field_key === 'wol_allowlist') {
-    return t('computerDetail.wolAllowEvent', {
-      state: h.new_value === '1' ? t('computerDetail.wolAllowed') : t('computerDetail.wolDenied'),
-      source: src,
-    })
-  }
-  if (h.kind === 'field' && h.field_key) {
-    return t('computerDetail.fieldChange', {
-      field: h.field_key,
-      old: h.old_value ?? '—',
-      new: h.new_value ?? '—',
-      source: src,
-    })
-  }
-  if (h.kind === 'software_list' && h.payload_json) {
-    try {
-      const p = JSON.parse(h.payload_json) as {
-        added_total?: number
-        removed_total?: number
-        previous_count?: number
-        new_count?: number
-      }
-      return t('computerDetail.softwareChange', {
-        added: p.added_total ?? 0,
-        removed: p.removed_total ?? 0,
-        prev: p.previous_count ?? '?',
-        next: p.new_count ?? '?',
-        source: src,
-      })
-    } catch {
-      return t('computerDetail.softwareChanged', { source: src })
-    }
-  }
-  if (h.kind === 'peripheral_list' && h.payload_json) {
-    try {
-      const p = JSON.parse(h.payload_json) as {
-        added_total?: number
-        removed_total?: number
-      }
-      return t('computerDetail.peripheralsChange', {
-        added: p.added_total ?? 0,
-        removed: p.removed_total ?? 0,
-        source: src,
-      })
-    } catch {
-      return t('computerDetail.peripheralsChanged', { source: src })
-    }
-  }
-  if (h.kind === 'meta' && h.field_key === 'tags' && h.payload_json) {
-    return t('computerDetail.tagsUpdated', { source: src })
-  }
-  return `${h.kind} (${src})`
 }
 
 type Props = {
@@ -128,17 +68,13 @@ export function ComputerDetailModal({
 }: Props) {
   const t = useT()
   const toast = useToast()
-  const { locale } = useLocale()
   const { user } = useAuth()
   const [detail, setDetail] = useState<ComputerDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [softwareRows, setSoftwareRows] = useState<SoftwareItem[] | null>(null)
   const [softwareLoading, setSoftwareLoading] = useState(false)
-  const [historyLoading, setHistoryLoading] = useState(false)
   const [notesDraft, setNotesDraft] = useState('')
   const [locationDraft, setLocationDraft] = useState('')
-  const [historyRows, setHistoryRows] = useState<AssetChangeLog[] | null>(null)
-  const [assignUserId, setAssignUserId] = useState('')
   const [swFilter, setSwFilter] = useState('')
   const [allTags, setAllTags] = useState<TagBrief[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
@@ -155,18 +91,15 @@ export function ComputerDetailModal({
     if (!computerId) {
       setDetail(null)
       setSoftwareRows(null)
-      setHistoryRows(null)
       setWolStatus(null)
       setPingResult(null)
       setLoading(false)
       setSoftwareLoading(false)
-      setHistoryLoading(false)
       return
     }
     let cancelled = false
     setWolStatus(null)
     setPingResult(null)
-    setHistoryRows(null)
     setSoftwareRows(null)
     setSwFilter('')
 
@@ -177,7 +110,6 @@ export function ComputerDetailModal({
       setNotesDraft(seeded.notes ?? '')
       setLocationDraft(seeded.location ?? '')
       setSelectedTagIds(seeded.tags.map((tag) => tag.id))
-      setAssignUserId(seeded.assigned_user_id != null ? String(seeded.assigned_user_id) : '')
       setLoading(false)
     } else {
       setDetail(null)
@@ -185,7 +117,6 @@ export function ComputerDetailModal({
     }
 
     setSoftwareLoading(true)
-    setHistoryLoading(true)
 
     // Core card first (no heavy software list) — paint ASAP.
     void api
@@ -196,7 +127,6 @@ export function ComputerDetailModal({
         setNotesDraft(d.notes ?? '')
         setLocationDraft(d.location ?? '')
         setSelectedTagIds(d.tags.map((tag) => tag.id))
-        setAssignUserId(d.assigned_user_id != null ? String(d.assigned_user_id) : '')
       })
       .catch((e: unknown) => {
         if (!cancelled) toast.error(e instanceof Error ? e.message : t('common.error'))
@@ -215,18 +145,6 @@ export function ComputerDetailModal({
       })
       .finally(() => {
         if (!cancelled) setSoftwareLoading(false)
-      })
-
-    void api
-      .computerHistory(computerId, 120)
-      .then((hist) => {
-        if (!cancelled) setHistoryRows(hist)
-      })
-      .catch(() => {
-        if (!cancelled) setHistoryRows([])
-      })
-      .finally(() => {
-        if (!cancelled) setHistoryLoading(false)
       })
 
     return () => {
@@ -297,43 +215,55 @@ export function ComputerDetailModal({
     [detail?.peripherals],
   )
 
+  const metaReadyRef = useRef(false)
+  useEffect(() => {
+    metaReadyRef.current = false
+    if (!detail) return
+    const t = window.setTimeout(() => {
+      metaReadyRef.current = true
+    }, 400)
+    return () => window.clearTimeout(t)
+  }, [detail?.id])
+
+  const persistMeta = useCallback(
+    async (patch: {
+      notes?: string | null
+      location?: string | null
+      tag_ids?: number[]
+    }) => {
+      if (!detail || !user?.is_superuser) return
+      try {
+        await api.updateComputer(detail.id, patch)
+        onChangedRef.current?.()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t('computerDetail.saveFailed'))
+      }
+    },
+    [detail, user?.is_superuser, t, toast],
+  )
+
   function toggleTag(id: number) {
-    setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+    setSelectedTagIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      void persistMeta({ tag_ids: next })
+      return next
+    })
   }
 
-  const saveMeta = useCallback(async () => {
-    if (!detail || !user?.is_superuser) return
-    const userIdText = assignUserId.trim()
-    let assigned: number | undefined
-    if (userIdText === '') assigned = 0
-    else {
-      const n = Number.parseInt(userIdText, 10)
-      assigned = Number.isFinite(n) ? n : 0
-    }
-    try {
-      await api.updateComputer(detail.id, {
-        notes: notesDraft || null,
-        location: locationDraft.trim() || null,
-        assigned_user_id: assigned,
-        tag_ids: selectedTagIds,
+  // Autosave location + notes — no Save button.
+  useEffect(() => {
+    if (!detail || !user?.is_superuser || !metaReadyRef.current) return
+    const notes = notesDraft || null
+    const location = locationDraft.trim() || null
+    if ((detail.notes ?? null) === notes && (detail.location ?? null) === location) return
+
+    const timer = window.setTimeout(() => {
+      void persistMeta({ notes, location }).then(() => {
+        setDetail((d) => (d ? { ...d, notes, location } : d))
       })
-      onChanged?.()
-      onClose()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('computerDetail.saveFailed'))
-    }
-  }, [
-    detail,
-    user?.is_superuser,
-    assignUserId,
-    notesDraft,
-    locationDraft,
-    selectedTagIds,
-    onChanged,
-    onClose,
-    t,
-    toast,
-  ])
+    }, 650)
+    return () => window.clearTimeout(timer)
+  }, [notesDraft, locationDraft, detail, user?.is_superuser, persistMeta])
 
   const deletePc = useCallback(async () => {
     if (!detail || !user?.is_superuser) return
@@ -456,7 +386,6 @@ export function ComputerDetailModal({
       if (res.ok) toast.ok(t('computerDetail.wolOk', { sent: res.sent }))
       else toast.error(res.message || t('computerDetail.wolFailed'))
       await refreshWol()
-      setHistoryRows(await api.computerHistory(detail.id, 120))
       void checkPing()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('computerDetail.wolFailed'))
@@ -539,7 +468,9 @@ export function ComputerDetailModal({
                   </div>
                   <div className="min-w-0">
                     <dt className="text-slate-500">{t('computerDetail.gpu')}</dt>
-                    <dd className="break-words text-slate-900">{detail.gpu_name ?? '—'}</dd>
+                    <dd className="break-words text-slate-900">
+                      {agentExtras?.gpus[0] || detail.gpu_name || '—'}
+                    </dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
                     <dt className="text-slate-500">{t('computerDetail.motherboard')}</dt>
@@ -600,12 +531,10 @@ export function ComputerDetailModal({
                       </button>
                     </div>
 
-                    {wolStatus?.user_may_wake ? (
+                    {wolStatus?.user_may_wake && (wolStatus.force_disabled || !isOnline) ? (
                       <div className="mt-3 border-t border-slate-200/80 pt-2.5">
                         {wolStatus.force_disabled ? (
                           <p className="text-xs text-amber-800">{t('computerDetail.wolForceOff')}</p>
-                        ) : isOnline ? (
-                          <p className="text-xs text-slate-500">{t('computerDetail.wolAlreadyOn')}</p>
                         ) : canShowWake ? (
                           <div className="flex flex-wrap items-center gap-2">
                             <button
@@ -670,6 +599,20 @@ export function ComputerDetailModal({
                       <dd className="text-slate-900">{agentExtras.securityHint}</dd>
                     </div>
                   ) : null}
+                  {agentExtras?.localAdmins.length ? (
+                    <div className="min-w-0 sm:col-span-2">
+                      <dt className="text-slate-500">{t('computerDetail.localAdmins')}</dt>
+                      <dd className="break-words font-mono text-sm text-slate-800">
+                        {agentExtras.localAdmins.join(', ')}
+                      </dd>
+                    </div>
+                  ) : null}
+                  {agentExtras?.batteryHealthPercent != null ? (
+                    <div className="min-w-0">
+                      <dt className="text-slate-500">{t('computerDetail.batteryHealth')}</dt>
+                      <dd className="text-slate-900">{agentExtras.batteryHealthPercent}%</dd>
+                    </div>
+                  ) : null}
                 </dl>
                 {agentExtras && agentExtras.patchIds.length > 0 ? (
                   <div className="mt-4 border-t border-slate-100 pt-3">
@@ -689,6 +632,34 @@ export function ComputerDetailModal({
                         </span>
                       ))}
                     </dd>
+                  </div>
+                ) : null}
+                {user?.is_superuser ? (
+                  <div className="mt-4 border-t border-slate-100 pt-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,9rem)_1fr] sm:items-start">
+                      <div className="min-w-0">
+                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                          {t('computerDetail.locationRoom')}
+                        </label>
+                        <input
+                          className="mt-1.5 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-1.5 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                          value={locationDraft}
+                          onChange={(e) => setLocationDraft(e.target.value)}
+                          placeholder={t('computerDetail.locationPlaceholder')}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                          {t('computerDetail.note')}
+                        </label>
+                        <input
+                          className="mt-1.5 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-1.5 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                          value={notesDraft}
+                          onChange={(e) => setNotesDraft(e.target.value)}
+                          placeholder="…"
+                        />
+                      </div>
+                    </div>
                   </div>
                 ) : null}
               </section>
@@ -766,60 +737,60 @@ export function ComputerDetailModal({
                     ) : null}
                   </div>
                 ) : null}
-              </section>
-            </div>
 
-            <div className="mt-6 shrink-0">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('computerDetail.tags')}</h3>
-              {user?.is_superuser ? (
-                <div className="mt-2">
-                  {allTags.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      {t('computerDetail.tagsDirectoryEmpty')}{' '}
-                      <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2 hover:text-neutral-800">
-                        {t('computerDetail.tagsPage')}
-                      </Link>
-                      .
-                    </p>
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('computerDetail.tags')}</h3>
+                  {user?.is_superuser ? (
+                    <div className="mt-2">
+                      {allTags.length === 0 ? (
+                        <p className="text-sm text-slate-500">
+                          {t('computerDetail.tagsDirectoryEmpty')}{' '}
+                          <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2 hover:text-neutral-800">
+                            {t('computerDetail.tagsPage')}
+                          </Link>
+                          .
+                        </p>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200/70 bg-white p-2">
+                          {allTags.map((tg) => (
+                            <label
+                              key={tg.id}
+                              className={`mb-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition last:mb-0 ${
+                                selectedTagIds.includes(tg.id)
+                                  ? 'border-zinc-400 bg-zinc-50 text-neutral-950'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                checked={selectedTagIds.includes(tg.id)}
+                                onChange={() => toggleTag(tg.id)}
+                              />
+                              <span className="min-w-0 flex-1 break-words">{tg.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200/70 bg-white p-2">
-                      {allTags.map((t) => (
-                        <label
-                          key={t.id}
-                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
-                            selectedTagIds.includes(t.id)
-                              ? 'border-zinc-400 bg-zinc-50 text-neutral-950'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                          } mb-2 last:mb-0`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            checked={selectedTagIds.includes(t.id)}
-                            onChange={() => toggleTag(t.id)}
-                          />
-                          <span className="min-w-0 flex-1 break-words">{t.name}</span>
-                        </label>
-                      ))}
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {detail.tags.length === 0 ? (
+                        <span className="text-sm text-slate-500">—</span>
+                      ) : (
+                        detail.tags.map((tg) => {
+                          const pill = tagPillProps(tg)
+                          return (
+                            <span key={tg.id} className={`${pill.className} px-2.5 py-1`} style={pill.style}>
+                              {tg.name}
+                            </span>
+                          )
+                        })
+                      )}
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {detail.tags.length === 0 ? (
-                    <span className="text-sm text-slate-500">—</span>
-                  ) : (
-                    detail.tags.map((t) => {
-                      const pill = tagPillProps(t)
-                      return (
-                        <span key={t.id} className={`${pill.className} px-2.5 py-1`} style={pill.style}>
-                          {t.name}
-                        </span>
-                      )
-                    })
-                  )}
-                </div>
-              )}
+              </section>
             </div>
 
             <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:mt-6 lg:grid-cols-2 lg:items-start lg:gap-8">
@@ -911,74 +882,6 @@ export function ComputerDetailModal({
                 </ul>
               </section>
             </div>
-
-            <div className="mt-6 shrink-0 border-t border-slate-200/80 pt-6">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                {t('computerDetail.history')}
-              </h3>
-              {historyLoading ? (
-                <p className="mt-2 text-sm text-slate-500">{t('computerDetail.loading')}</p>
-              ) : historyRows && historyRows.length > 0 ? (
-                <ul className="mt-2 max-h-48 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200/90 bg-slate-50/80 text-xs text-slate-700">
-                  {historyRows.map((h) => (
-                    <li key={h.id} className="border-b border-slate-100 px-3 py-2 last:border-0">
-                      <span className="whitespace-nowrap text-slate-500">{fmtDate(h.created_at, locale)}</span>
-                      <span className="mt-1 block break-words text-slate-800 [overflow-wrap:anywhere] sm:ml-2 sm:mt-0 sm:inline">
-                        {describeChange(h, t)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-sm text-slate-500">
-                  {t('computerDetail.noHistory')}
-                </p>
-              )}
-            </div>
-
-            {user?.is_superuser && (
-              <div className="mt-6 border-t border-slate-200 pt-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  {t('computerDetail.locationAssignment')}
-                </h3>
-                <div className="mt-2 grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-12 lg:gap-x-3 lg:gap-y-2">
-                  <div className="sm:col-span-1 lg:col-span-5">
-                    <label className="text-xs font-medium text-slate-500">{t('computerDetail.locationRoom')}</label>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
-                      value={locationDraft}
-                      onChange={(e) => setLocationDraft(e.target.value)}
-                      placeholder={t('computerDetail.locationPlaceholder')}
-                    />
-                  </div>
-                  <div className="sm:col-span-1 lg:col-span-3">
-                    <label className="text-xs font-medium text-slate-500">{t('computerDetail.userId')}</label>
-                    <input
-                      className="mt-1 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 font-mono text-sm transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
-                      value={assignUserId}
-                      onChange={(e) => setAssignUserId(e.target.value)}
-                      placeholder="1"
-                    />
-                  </div>
-                  <div className="sm:col-span-2 lg:col-span-4">
-                    <label className="text-xs font-medium text-slate-500">{t('computerDetail.note')}</label>
-                    <textarea
-                      className="mt-1 w-full resize-y rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-2 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
-                      rows={2}
-                      value={notesDraft}
-                      onChange={(e) => setNotesDraft(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void saveMeta()}
-                  className="app-btn app-btn-primary mt-3"
-                >
-                  {t('computerDetail.save')}
-                </button>
-              </div>
-            )}
 
             {user?.is_superuser && (
               <div className="mt-8 shrink-0 border-t border-slate-200 pt-6">

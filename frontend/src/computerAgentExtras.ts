@@ -23,6 +23,10 @@ export type ParsedAgentExtras = {
   office: OfficeSummary[]
   securityHint: string | null
   batteryPercent: number | null
+  gpus: string[]
+  localAdmins: string[]
+  batteryHealthPercent: number | null
+  lastHotfix: string | null
 }
 
 function asObj(v: unknown): Record<string, unknown> | null {
@@ -113,7 +117,30 @@ export function parseAgentExtras(ext: Record<string, unknown> | null | undefined
   const secParts: string[] = []
   if (tpm?.present === true) secParts.push('TPM')
   if (ext.secure_boot_enabled === true) secParts.push('Secure Boot')
+  if (ext.pending_reboot === true) secParts.push('Pending reboot')
   if (avName) secParts.push(avName)
+
+  const gpus = asArr(ext.gpus)
+    .map((row) => {
+      const r = asObj(row)
+      if (!r) return null
+      const name = s(r.name)
+      if (!name) return null
+      const vram = typeof r.vram_gb === 'number' ? ` ${r.vram_gb} GB` : ''
+      const drv = s(r.driver_version)
+      return drv ? `${name}${vram} · ${drv}` : `${name}${vram}`
+    })
+    .filter((x): x is string => Boolean(x))
+
+  const localAdmins = asArr(ext.local_admins)
+    .map(s)
+    .filter((x): x is string => Boolean(x))
+    .slice(0, 12)
+
+  const batteryHealth =
+    typeof asObj(ext.battery_health)?.health_percent === 'number'
+      ? (asObj(ext.battery_health)!.health_percent as number)
+      : null
 
   return {
     primaryUser: s(sys?.primary_user),
@@ -126,6 +153,14 @@ export function parseAgentExtras(ext: Record<string, unknown> | null | undefined
     office,
     securityHint: secParts.length ? secParts.join(' · ') : null,
     batteryPercent:
-      typeof battery?.estimated_charge_remaining === 'number' ? battery.estimated_charge_remaining : null,
+      typeof battery?.estimated_charge_remaining === 'number'
+        ? battery.estimated_charge_remaining
+        : typeof asObj(ext.battery_health)?.charge_remaining_percent === 'number'
+          ? (asObj(ext.battery_health)!.charge_remaining_percent as number)
+          : null,
+    gpus,
+    localAdmins,
+    batteryHealthPercent: batteryHealth,
+    lastHotfix: s(ext.last_hotfix_id),
   }
 }

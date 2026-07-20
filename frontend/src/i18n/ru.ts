@@ -151,7 +151,7 @@ export const ru = {
     glpiSubtitle: 'Импорт и обмен с GLPI',
     bitrixSubtitle: 'Интеграция Bitrix24',
     agentTokensSubtitle: 'Токены для агентов инвентаризации',
-    agentBundleSubtitle: 'Сборка ZIP-пакета агента для Windows',
+    agentBundleSubtitle: 'Сборка агента для Windows: C++ EXE или ZIP (PowerShell)',
     wolSubtitle:
       'Кому разрешено включать ПК для обслуживания. Кнопка — в карточке ПК, только если машина не в сети.',
   },
@@ -1093,6 +1093,10 @@ export const ru = {
     dns: 'DNS',
     wifi: 'Wi‑Fi',
     security: 'Безопасность',
+    gpus: 'GPU',
+    localAdmins: 'Локальные админы',
+    lastHotfix: 'Последний hotfix',
+    batteryHealth: 'Износ батареи',
     windowsPatches: 'Патчи Windows',
     disks: 'Диски',
     noDiskData: 'Нет данных по дискам — запустите `corax_send.bat`.',
@@ -1115,8 +1119,8 @@ export const ru = {
     history: 'История изменений',
     noHistory: 'Пока нет записей (появятся после повторной отправки агента или правок в панели).',
     locationAssignment: 'Локация и закрепление',
-    locationRoom: 'Локация / помещение',
-    locationPlaceholder: 'офис 3, этаж 2',
+    locationRoom: 'Кабинет',
+    locationPlaceholder: 'напр. 312',
     userId: 'ID пользователя (0 — снять)',
     note: 'Заметка',
     deletePc: 'Удалить ПК из базы',
@@ -1446,12 +1450,17 @@ export const ru = {
     serverHostRequired: 'Укажите IP-адрес сервера CORAX в локальной сети',
     defaultTokenLabelWin7: 'CORAX deploy win7',
     defaultTokenLabelWin10: 'CORAX deploy win10',
+    defaultTokenLabelCpp: 'CORAX deploy cpp',
     downloadSuccess: 'Архив скачан: {filename}',
     buildError: 'Ошибка сборки',
     apiNotRespondingSuffix:
       '. API CORAX не отвечает на этом URL/порту — проверьте, что сервер запущен (prod :3000 или dev API :3001).',
-    platformWin10: 'Windows 10 / 11',
-    platformWin7: 'Windows 7',
+    platformCpp: 'EXE C++ (рекомендуется)',
+    platformWin10: 'ZIP Win10 / 11 (PowerShell)',
+    platformWin7: 'ZIP Windows 7',
+    formatCpp: 'чистый EXE',
+    cppNotice:
+      'Нативный C++ агент: скачивается один CORAX-Agent.exe (конфиг и токен уже вшиты). Сам определяет Win7/10/11. Двойной клик — splash и отправка. Для Планировщика: CORAX-Agent.exe --silent. В поле IP указывайте LAN-адрес сервера (не localhost), иначе с других ПК отчёт не дойдёт.',
     parametersTitle: 'Параметры',
     serverIpLabel: 'IP-адрес сервера CORAX',
     chooseInterface: 'Выберите интерфейс…',
@@ -1471,10 +1480,10 @@ export const ru = {
     modulesTitle: 'Модули',
     tokenTitle: 'Токен агента',
     tokenNewEachBuild: 'Каждая сборка создаёт новый токен.',
-    tokenIntroBefore: 'При скачивании ZIP сервер генерирует пару',
+    tokenIntroBefore: 'При скачивании сервер генерирует пару',
     tokenIntroMiddle: ', сохраняет хеш в базе (раздел',
     tokenIntroLink: 'Токены агентов',
-    tokenIntroAfter: ') и записывает полный токен в agent_env.bat внутри архива.',
+    tokenIntroAfter: ') и вшивает полный токен в EXE (для ZIP — в agent_env.bat).',
     tokenParagraph2:
       'Повторная сборка - другой токен; старый остаётся в базе, пока не отзовёте. Один ZIP можно раскатать на много ПК.',
     tokenParagraph3:
@@ -1503,17 +1512,24 @@ export const ru = {
       'В архиве: corax_send.bat, agent_env.bat, agent_config.json, lib/.',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
+    summaryArchiveCpp:
+      'В архиве: CORAX-Agent.exe (с вшитым конфигом), agent.json, run.bat, README.',
     building: 'Сборка…',
     downloadZip: 'Скачать ZIP',
+    downloadCpp: 'Скачать EXE',
     deploymentTitle: 'Развёртывание',
     deployStep1:
       'Распакуйте ZIP в сетевую папку (например \\\\server\\corax\\agent).',
     deployStep2Before: 'На ПК запустите',
     deployStep2After: '— отчёт уйдёт на {serverUrl}.',
+    deployStep2CppBefore: 'На ПК запустите',
+    deployStep2CppAfter: '(или run.bat) — отчёт уйдёт на {serverUrl}.',
     deployStep3Win10:
       'Для регулярного сбора: от администратора — install_schedule.bat (если включали расписание) или GPO.',
     deployStep3Win7:
       'Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.',
+    deployStep3Cpp:
+      'Опционально: задача Планировщика на CORAX-Agent.exe (ежедневно). Портативный запуск с шары поддерживается.',
     deployStep4: 'Данные появятся в разделе «Компьютеры» — сводка по ПК.',
   },
   sitemap: {

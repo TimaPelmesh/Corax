@@ -622,7 +622,7 @@ export type AgentBundleLanIp = {
   candidates: string[]
 }
 
-export type AgentBundleTarget = 'win10' | 'win7'
+export type AgentBundleTarget = 'win10' | 'win7' | 'cpp'
 
 export type AgentBundleCreateBody = {
   server_url: string

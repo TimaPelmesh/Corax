@@ -541,7 +541,7 @@ class AgentBundleLanIpOut(BaseModel):
 
 class AgentBundleCreate(BaseModel):
     server_url: str = Field(min_length=8, max_length=512)
-    target: str = Field(default="win10", pattern="^(win10|win7)$")
+    target: str = Field(default="win10", pattern="^(win10|win7|cpp)$")
     profile: str = Field(default="full", pattern="^(full|custom|basic|standard)$")
     modules: AgentBundleModules | None = None
     create_token: bool = True

@@ -41,7 +41,7 @@ export function AgentBundlePage() {
   const [lanCandidates, setLanCandidates] = useState<string[]>([])
   const [lanLoading, setLanLoading] = useState(true)
   const [serverPort, setServerPort] = useState(DEFAULT_PORT)
-  const [platform, setPlatform] = useState<AgentBundleTarget>('win10')
+  const [platform, setPlatform] = useState<AgentBundleTarget>('cpp')
   const [level, setLevel] = useState<AgentBundleProfile>('full')
   const [tokenLabel, setTokenLabel] = useState('CORAX deploy')
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
@@ -79,7 +79,8 @@ export function AgentBundlePage() {
     }
   }, [authLoading, t, toast, user?.is_superuser])
 
-  const showModules = platform === 'win10' && level === 'custom'
+  const showModules = (platform === 'win10' || platform === 'cpp') && level === 'custom'
+  const showExtended = platform === 'win10' || platform === 'cpp'
   const moduleList = useMemo(() => [...MODULE_KEYS], [])
   const enabledModuleCount = useMemo(
     () => Object.values(modules).filter(Boolean).length,
@@ -110,15 +111,17 @@ export function AgentBundlePage() {
         tokenLabel.trim() ||
         (platform === 'win7'
           ? t('agentBundle.defaultTokenLabelWin7')
-          : t('agentBundle.defaultTokenLabelWin10'))
+          : platform === 'cpp'
+            ? t('agentBundle.defaultTokenLabelCpp')
+            : t('agentBundle.defaultTokenLabelWin10'))
       const server = buildServerUrl(serverHost, serverPort)
       const filename = await api.downloadAgentBundle({
             server_url: server,
             target: platform,
-            profile: platform === 'win10' ? level : 'full',
+            profile: showExtended ? level : 'full',
             create_token: true,
             token_label: label,
-            modules: platform === 'win10' && showModules ? modules : undefined,
+            modules: showModules ? modules : undefined,
             schedule:
               platform === 'win10'
                 ? {
@@ -154,6 +157,17 @@ export function AgentBundlePage() {
             {t('pages.agentBundleSubtitle')}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                platform === 'cpp'
+                  ? 'bg-neutral-900 text-white'
+                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+              }`}
+              onClick={() => setPlatform('cpp')}
+            >
+              {t('agentBundle.platformCpp')}
+            </button>
             <button
               type="button"
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
@@ -242,7 +256,7 @@ export function AgentBundlePage() {
             </div>
           ) : null}
 
-          {platform === 'win10' ? (
+          {showExtended ? (
             <>
               <div>
                 <label className="app-label">{t('agentBundle.collectionLevel')}</label>
@@ -392,14 +406,20 @@ export function AgentBundlePage() {
               <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
                 <dt className="text-slate-500">{t('agentBundle.summaryPlatform')}</dt>
                 <dd className="text-right font-medium text-slate-800">
-                  {platform === 'win10' ? t('agentBundle.platformWin10') : t('agentBundle.platformWin7')}
+                  {platform === 'cpp'
+                    ? t('agentBundle.platformCpp')
+                    : platform === 'win10'
+                      ? t('agentBundle.platformWin10')
+                      : t('agentBundle.platformWin7')}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
                 <dt className="text-slate-500">{t('agentBundle.summaryFormat')}</dt>
-                <dd className="text-right font-medium text-slate-800">ZIP</dd>
+                <dd className="text-right font-medium text-slate-800">
+                  {platform === 'cpp' ? t('agentBundle.formatCpp') : 'ZIP'}
+                </dd>
               </div>
-              {platform === 'win10' ? (
+              {showExtended ? (
                 <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
                   <dt className="text-slate-500">{t('agentBundle.summaryLevel')}</dt>
                   <dd className="text-right font-medium text-slate-800">
@@ -411,7 +431,7 @@ export function AgentBundlePage() {
                 <dt className="text-slate-500">{t('agentBundle.summaryToken')}</dt>
                 <dd className="text-right text-slate-800">{t('agentBundle.summaryTokenValue')}</dd>
               </div>
-              {platform === 'win10' && showModules ? (
+              {showModules ? (
                 <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
                   <dt className="text-slate-500">{t('agentBundle.summaryModules')}</dt>
                   <dd className="text-right text-slate-800">{enabledModuleCount}</dd>
@@ -429,7 +449,9 @@ export function AgentBundlePage() {
               ) : null}
             </dl>
             <p className="text-xs leading-relaxed text-slate-500">
-              {platform === 'win10' ? (
+              {platform === 'cpp' ? (
+                <>{t('agentBundle.summaryArchiveCpp')}</>
+              ) : platform === 'win10' ? (
                 <>{t('agentBundle.summaryArchiveWin10')}</>
               ) : (
                 <>{t('agentBundle.summaryArchiveWin7')}</>
@@ -440,7 +462,11 @@ export function AgentBundlePage() {
               className="app-btn app-btn-primary w-full"
               disabled={busy || lanLoading || !serverHost.trim()}
             >
-              {busy ? t('agentBundle.building') : t('agentBundle.downloadZip')}
+              {busy
+                ? t('agentBundle.building')
+                : platform === 'cpp'
+                  ? t('agentBundle.downloadCpp')
+                  : t('agentBundle.downloadZip')}
             </button>
           </div>
 
@@ -451,16 +477,26 @@ export function AgentBundlePage() {
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">
               <li>{t('agentBundle.deployStep1')}</li>
               <li>
-                {t('agentBundle.deployStep2Before')}{' '}
-                <code className="text-xs">
-                  {platform === 'win10' ? 'corax_send.bat' : 'inventory_send_win7.bat'}
-                </code>{' '}
-                {t('agentBundle.deployStep2After', { serverUrl })}
+                {platform === 'cpp' ? (
+                  <>
+                    {t('agentBundle.deployStep2CppBefore')}{' '}
+                    <code className="text-xs">CORAX-Agent.exe</code>{' '}
+                    {t('agentBundle.deployStep2CppAfter', { serverUrl })}
+                  </>
+                ) : (
+                  <>
+                    {t('agentBundle.deployStep2Before')}{' '}
+                    <code className="text-xs">
+                      {platform === 'win10' ? 'corax_send.bat' : 'inventory_send_win7.bat'}
+                    </code>{' '}
+                    {t('agentBundle.deployStep2After', { serverUrl })}
+                  </>
+                )}
               </li>
-              {platform === 'win10' ? (
-                <li>
-                  {t('agentBundle.deployStep3Win10')}
-                </li>
+              {platform === 'cpp' ? (
+                <li>{t('agentBundle.deployStep3Cpp')}</li>
+              ) : platform === 'win10' ? (
+                <li>{t('agentBundle.deployStep3Win10')}</li>
               ) : (
                 <li>{t('agentBundle.deployStep3Win7')}</li>
               )}

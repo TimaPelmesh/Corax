@@ -235,6 +235,11 @@ async def build_agent_bundle_zip(db: AsyncSession, body: AgentBundleCreate) -> t
     if not server.lower().startswith(("http://", "https://")):
         raise ValueError("server_url должен начинаться с http:// или https://")
 
+    if body.target == "cpp":
+        from app.agent_cpp_build import build_cpp_agent_bundle
+
+        return await build_cpp_agent_bundle(db, body)
+
     token, _ = await _resolve_agent_token(db, body)
     if body.target == "win7":
         return _build_win7_zip(body, server, token)
