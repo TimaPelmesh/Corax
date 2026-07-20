@@ -404,23 +404,18 @@ export function Layout() {
 
   const sidebarNav = (
     <>
-      <div className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4">
-        <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center lg:grid-cols-1 lg:justify-items-center">
-          <div className="lg:hidden" aria-hidden />
-          <CoraxLogo
-            variant="wordmark"
-            alt="CORAX"
-            className="mx-auto translate-x-1 justify-self-center sm:translate-x-1.5"
-          />
-          <button
-            type="button"
-            className="flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 lg:hidden"
-            onClick={closeNav}
-            aria-label={t('nav.closeMenu')}
-          >
-            <IconClose className="h-6 w-6" />
-          </button>
+      <div className="relative shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4">
+        <div className="flex w-full items-center justify-center">
+          <CoraxLogo variant="wordmark" alt="CORAX" className="mx-auto" />
         </div>
+        <button
+          type="button"
+          className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 lg:hidden"
+          onClick={closeNav}
+          aria-label={t('nav.closeMenu')}
+        >
+          <IconClose className="h-6 w-6" />
+        </button>
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain bg-[var(--color-surface)] px-3 py-4">

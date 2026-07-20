@@ -46,7 +46,7 @@ export function CoraxLogo({
         decoding="async"
         draggable={false}
         className={[
-          'block h-8 w-auto max-w-full shrink-0 select-none object-contain sm:h-9',
+          'mx-auto block h-8 w-auto max-w-[min(100%,11.5rem)] shrink-0 select-none object-contain sm:h-9',
           className,
         ]
           .filter(Boolean)
