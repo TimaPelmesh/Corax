@@ -9,7 +9,15 @@ import {
   type DragEvent,
   type PointerEvent,
 } from 'react'
-import { api, type Computer, type ComputerDetail, type Diagram, type FloorIconKind, type FloorIconMarker, type FloorLayout } from '../api'
+import {
+  api,
+  type Computer,
+  type Diagram,
+  type FloorIconKind,
+  type FloorIconMarker,
+  type FloorLayout,
+  type NetworkPrinter,
+} from '../api'
 import { useAuth } from '../AuthContext'
 import { useDiagramLive, type DiagramLiveIconDrag } from '../useDiagramLive'
 import {
@@ -19,7 +27,10 @@ import {
   parsePlacePhotosJson,
   serializePlacePhotos,
 } from '../floorPlacePhotos'
-import { IconClose, IconGraph } from '../components/icons'
+import { ComputerDetailModal } from '../components/ComputerDetailModal'
+import { IconGraph } from '../components/icons'
+import { PrinterDetailModal } from '../components/PrinterDetailModal'
+import { useComputerPingLive } from '../hooks/useComputerPingLive'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -143,6 +154,19 @@ function markerCircleFill(kind: FloorIconKind): string {
 
 function markerCircleRadius(kind: FloorIconKind): number {
   return isOutletKind(kind) ? 11 : 22
+}
+
+function printerDisplayName(p: NetworkPrinter): string {
+  return (p.snmp_model || '').trim() || (p.name || '').trim() || (p.ip_address || '').trim() || `#${p.id}`
+}
+
+function printerLowestTonerPercent(p: NetworkPrinter): number | null {
+  let min: number | null = null
+  for (const s of p.supplies ?? []) {
+    if (s.level_percent == null || !Number.isFinite(s.level_percent)) continue
+    min = min == null ? s.level_percent : Math.min(min, s.level_percent)
+  }
+  return min
 }
 
 function floorPcMarkerSearchText(pc: FloorIconMarker, pcDirectory: Computer[]): string {
@@ -291,19 +315,6 @@ function FloorPcMarkerPicker({
   )
 }
 
-const PERIPHERAL_KIND_RU: Record<string, string> = {
-  keyboard: 'Клавиатура',
-  mouse: 'Мышь',
-  monitor: 'Монитор',
-  camera: 'Камера',
-  audio: 'Аудио',
-  printer: 'Принтер',
-  biometric: 'Биометрия',
-  bluetooth: 'Bluetooth',
-  touchpad: 'Тачпад',
-  net: 'Сеть',
-}
-
 function parseViewBox(raw: string | null | undefined): ViewBox {
   const parts = (raw ?? '').trim().split(/\s+/).map(Number)
   if (parts.length !== 4 || parts.some((v) => !Number.isFinite(v))) return DEFAULT_VIEWBOX
@@ -428,15 +439,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = () => reject(new Error('Не удалось прочитать изображение фона'))
     reader.readAsDataURL(blob)
   })
-}
-
-function fmtDate(iso: string | null) {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString('ru-RU')
-  } catch {
-    return iso
-  }
 }
 
 function EquipmentGlyph({ kind }: { kind: FloorIconKind }) {
@@ -598,6 +600,7 @@ export function KnowledgeSitemapPage() {
   const loadedRef = useRef(false)
   const [diagrams, setDiagrams] = useState<Diagram[]>([])
   const [pcDirectory, setPcDirectory] = useState<Computer[]>([])
+  const [printerDirectory, setPrinterDirectory] = useState<NetworkPrinter[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
   const [layout, setLayout] = useState<FloorLayout>(DEFAULT_LAYOUT)
   /** Эфемерные координаты с WS (чужой drag) — не трогаем layout, чтобы не дёргать автосохранение. */
@@ -641,10 +644,10 @@ export function KnowledgeSitemapPage() {
   const [outletVis, setOutletVis] = useState<OutletVisibility>(DEFAULT_OUTLET_VIS)
   const [pcLinkDialogOpen, setPcLinkDialogOpen] = useState(false)
   const [pcLinkQuery, setPcLinkQuery] = useState('')
-  const [pcDetail, setPcDetail] = useState<ComputerDetail | null>(null)
-  const [pcDetailLoading, setPcDetailLoading] = useState(false)
-  const [pcInfoModalOpen, setPcInfoModalOpen] = useState(false)
-  const [pcInfoSwFilter, setPcInfoSwFilter] = useState('')
+  const [printerLinkDialogOpen, setPrinterLinkDialogOpen] = useState(false)
+  const [printerLinkQuery, setPrinterLinkQuery] = useState('')
+  const [printerDetail, setPrinterDetail] = useState<NetworkPrinter | null>(null)
+  const [detailComputerId, setDetailComputerId] = useState<number | null>(null)
   const [photoLightboxUrl, setPhotoLightboxUrl] = useState<string | null>(null)
   const placePhotoInputRef = useRef<HTMLInputElement | null>(null)
   const placePhotosSectionRef = useRef<HTMLDivElement | null>(null)
@@ -779,6 +782,28 @@ export function KnowledgeSitemapPage() {
     if (!pcId) return null
     return pcDirectory.find((pc) => String(pc.id) === String(pcId)) ?? null
   }, [hoveredMarker, pcDirectory])
+  const hoveredLinkedPrinter = useMemo(() => {
+    if (hoveredMarker?.kind !== 'printer') return null
+    const printerId = hoveredMarker.meta?.printer_id
+    if (!printerId) return null
+    return printerDirectory.find((p) => String(p.id) === String(printerId)) ?? null
+  }, [hoveredMarker, printerDirectory])
+  const pingByComputerId = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const pc of pcDirectory) {
+      const st = (pc.ping_status || '').toLowerCase()
+      if (st) m.set(String(pc.id), st)
+    }
+    return m
+  }, [pcDirectory])
+  const pollByPrinterId = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of printerDirectory) {
+      const st = (p.poll_status || '').toLowerCase()
+      if (st) m.set(String(p.id), st)
+    }
+    return m
+  }, [printerDirectory])
   const filteredPcDirectory = useMemo(() => {
     const q = pcLinkQuery.trim().toLowerCase()
     if (!q) return pcDirectory
@@ -789,18 +814,29 @@ export function KnowledgeSitemapPage() {
       return host.includes(q) || serial.includes(q) || model.includes(q)
     })
   }, [pcDirectory, pcLinkQuery])
+  const filteredPrinterDirectory = useMemo(() => {
+    const q = printerLinkQuery.trim().toLowerCase()
+    if (!q) return printerDirectory
+    return printerDirectory.filter((p) => {
+      const name = (p.name || '').toLowerCase()
+      const model = (p.snmp_model || '').toLowerCase()
+      const ip = (p.ip_address || '').toLowerCase()
+      const loc = (p.location || '').toLowerCase()
+      return name.includes(q) || model.includes(q) || ip.includes(q) || loc.includes(q)
+    })
+  }, [printerDirectory, printerLinkQuery])
   const selectedLinkedPc = useMemo(() => {
     if (selectedMarker?.kind !== 'pc') return null
     const linkedId = selectedMarker.meta?.computer_id
     if (!linkedId) return null
     return pcDirectory.find((pc) => String(pc.id) === String(linkedId)) ?? null
   }, [pcDirectory, selectedMarker])
-  const filteredPcSoftware = useMemo(() => {
-    if (!pcDetail) return []
-    const q = pcInfoSwFilter.trim().toLowerCase()
-    if (!q) return pcDetail.software
-    return pcDetail.software.filter((s) => s.name.toLowerCase().includes(q))
-  }, [pcDetail, pcInfoSwFilter])
+  const selectedLinkedPrinter = useMemo(() => {
+    if (selectedMarker?.kind !== 'printer') return null
+    const linkedId = selectedMarker.meta?.printer_id
+    if (!linkedId) return null
+    return printerDirectory.find((p) => String(p.id) === String(linkedId)) ?? null
+  }, [printerDirectory, selectedMarker])
 
   const loadDiagram = useCallback(async (id: number, opts?: { preserveSelection?: boolean; preserveCamera?: boolean }) => {
     loadedRef.current = false
@@ -953,6 +989,46 @@ export function KnowledgeSitemapPage() {
   }, [])
 
   useEffect(() => {
+    void (async () => {
+      try {
+        const rows = await api.printers({ limit: 3000 })
+        setPrinterDirectory(rows)
+      } catch {
+        setPrinterDirectory([])
+      }
+    })()
+  }, [])
+
+  // Live online lamps on PC markers (same cache + auto sweep as Computers list).
+  useComputerPingLive({
+    pollMs: 2500,
+    onItems: useCallback((items) => {
+      setPcDirectory((prev) => {
+        if (!prev.length) return prev
+        const map = new Map(items.map((row) => [row.id, row]))
+        return prev.map((pc) => {
+          const hit = map.get(pc.id)
+          if (!hit) return pc
+          const nextStatus = (hit.ping_status || '').toLowerCase() || null
+          const prevStatus = (pc.ping_status || '').toLowerCase() || null
+          const status =
+            nextStatus === 'online' || nextStatus === 'offline'
+              ? nextStatus
+              : prevStatus === 'online' || prevStatus === 'offline'
+                ? prevStatus
+                : nextStatus
+          return {
+            ...pc,
+            ping_status: status,
+            last_ping_at: hit.last_ping_at ?? pc.last_ping_at,
+            ip_address: hit.ip_address ?? pc.ip_address,
+          }
+        })
+      })
+    }, []),
+  })
+
+  useEffect(() => {
     return () => {
       if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current)
     }
@@ -995,16 +1071,19 @@ export function KnowledgeSitemapPage() {
   }, [displayMenuOpen])
 
   useEffect(() => {
-    setPcDetail(null)
-    setPcDetailLoading(false)
-    setPcInfoModalOpen(false)
-    setPcInfoSwFilter('')
+    setDetailComputerId(null)
   }, [selectedMarker?.id, selectedMarker?.meta?.computer_id])
 
   useEffect(() => {
     setPcLinkQuery('')
     setPcLinkDialogOpen(false)
+    setPrinterLinkQuery('')
+    setPrinterLinkDialogOpen(false)
   }, [selectedMarker?.id])
+
+  useEffect(() => {
+    setPrinterDetail(null)
+  }, [selectedMarker?.id, selectedMarker?.meta?.printer_id])
 
   const svgPoint = (event: PointerEvent<SVGSVGElement | SVGGElement>) => {
     const svg = svgRef.current
@@ -1999,6 +2078,14 @@ export function KnowledgeSitemapPage() {
                   const titleLines = splitLabelLines(markerTitle(marker))
                   const { x: mx, y: my } = markerDisplayPos(marker)
                   const placePhotoCount = parsePlacePhotosJson(marker.meta?.place_photos_json).length
+                  const linkedParkId =
+                    marker.kind === 'pc' ? String(marker.meta?.computer_id || '').trim() : ''
+                  const pingSt = linkedParkId ? pingByComputerId.get(linkedParkId) : undefined
+                  const showOnlineLamp = pingSt === 'online'
+                  const linkedPrinterId =
+                    marker.kind === 'printer' ? String(marker.meta?.printer_id || '').trim() : ''
+                  const printerPollSt = linkedPrinterId ? pollByPrinterId.get(linkedPrinterId) : undefined
+                  const showPrinterOnlineLamp = printerPollSt === 'online'
                   return (
                     <g
                       key={marker.id}
@@ -2009,6 +2096,22 @@ export function KnowledgeSitemapPage() {
                       onPointerCancel={flushIconsPatchAfterPointerUp}
                       onPointerEnter={() => setHoveredId(marker.id)}
                       onPointerLeave={() => setHoveredId(null)}
+                      onDoubleClick={(e) => {
+                        if (marker.kind === 'printer') {
+                          e.stopPropagation()
+                          const pid = String(marker.meta?.printer_id || '').trim()
+                          if (!pid) return
+                          const row = printerDirectory.find((p) => String(p.id) === pid)
+                          if (row) setPrinterDetail(row)
+                          return
+                        }
+                        if (marker.kind === 'pc') {
+                          e.stopPropagation()
+                          const cid = Number(marker.meta?.computer_id)
+                          if (!Number.isFinite(cid) || cid <= 0) return
+                          setDetailComputerId(cid)
+                        }
+                      }}
                     >
                       {marker.kind === 'text' ? (
                         <text
@@ -2059,6 +2162,20 @@ export function KnowledgeSitemapPage() {
                           ) : null}
                         </>
                       )}
+                      {showOnlineLamp ? (
+                        <g transform="translate(-20 -20)" pointerEvents="none">
+                          <title>{t('sitemap.pcOnline')}</title>
+                          <circle r="8.5" fill="rgba(16,185,129,0.3)" />
+                          <circle r="5.5" fill="#10b981" stroke="white" strokeWidth="1.6" />
+                        </g>
+                      ) : null}
+                      {showPrinterOnlineLamp ? (
+                        <g transform="translate(-20 -20)" pointerEvents="none">
+                          <title>{t('sitemap.pcOnline')}</title>
+                          <circle r="8.5" fill="rgba(16,185,129,0.3)" />
+                          <circle r="5.5" fill="#10b981" stroke="white" strokeWidth="1.6" />
+                        </g>
+                      ) : null}
                       {placePhotoCount > 0 ? (
                         <g transform="translate(20 -20)" pointerEvents="none">
                           <title>Есть фото с места установки</title>
@@ -2086,9 +2203,21 @@ export function KnowledgeSitemapPage() {
                   if (hoveredMarker.kind === 'pc') {
                     const eth = (hoveredMarker.meta?.ethernet_outlet ?? '').trim() || '—'
                     const phone = (hoveredMarker.meta?.phone_outlet ?? '').trim() || '—'
-                    const ip = (hoveredMarker.meta?.ip ?? '').trim() || '—'
+                    const ip =
+                      (hoveredMarker.meta?.ip ?? '').trim() ||
+                      hoveredLinkedPc?.ip_address?.trim() ||
+                      '—'
                     const os = hoveredMarker.meta?.os_name || hoveredLinkedPc?.os_name || '—'
-                    const boxH = 96
+                    const ping = (hoveredLinkedPc?.ping_status || '').toLowerCase()
+                    const netLabel =
+                      ping === 'online'
+                        ? t('sitemap.pcOnline')
+                        : ping === 'offline'
+                          ? t('sitemap.pcOffline')
+                          : hoveredLinkedPc
+                            ? t('sitemap.pcUnknown')
+                            : null
+                    const boxH = netLabel ? 112 : 96
                     return (
                       <g transform={hoverTransform} pointerEvents="none">
                         <rect width="256" height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
@@ -2104,6 +2233,84 @@ export function KnowledgeSitemapPage() {
                         <text x="14" y="84" fill="rgba(255,255,255,0.78)" fontSize="12" fontFamily={textFamily}>
                           {`ОС: ${os}`}
                         </text>
+                        {netLabel ? (
+                          <text
+                            x="14"
+                            y="102"
+                            fill={ping === 'online' ? '#34d399' : ping === 'offline' ? '#fda4af' : 'rgba(255,255,255,0.65)'}
+                            fontSize="12"
+                            fontWeight="600"
+                            fontFamily={textFamily}
+                          >
+                            {`● ${netLabel}`}
+                          </text>
+                        ) : null}
+                      </g>
+                    )
+                  }
+
+                  if (hoveredMarker.kind === 'printer') {
+                    const linked = hoveredLinkedPrinter
+                    const ip =
+                      (hoveredMarker.meta?.ip ?? '').trim() ||
+                      linked?.ip_address?.trim() ||
+                      '—'
+                    const model =
+                      (hoveredMarker.meta?.model ?? '').trim() ||
+                      (linked ? printerDisplayName(linked) : '') ||
+                      '—'
+                    const pages =
+                      linked?.page_count != null
+                        ? t('sitemap.printerPages', { count: String(linked.page_count) })
+                        : null
+                    const tonerPct = linked ? printerLowestTonerPercent(linked) : null
+                    const toner =
+                      tonerPct != null ? t('sitemap.printerToner', { pct: String(tonerPct) }) : null
+                    const poll = (linked?.poll_status || '').toLowerCase()
+                    const netLabel =
+                      poll === 'online'
+                        ? t('sitemap.pcOnline')
+                        : poll === 'offline'
+                          ? t('sitemap.pcOffline')
+                          : linked
+                            ? t('sitemap.pcUnknown')
+                            : null
+                    const lines = [model, `IP: ${ip}`, pages, toner, netLabel ? `● ${netLabel}` : null].filter(
+                      Boolean,
+                    ) as string[]
+                    const boxH = 28 + lines.length * 18
+                    return (
+                      <g transform={hoverTransform} pointerEvents="none">
+                        <rect width="256" height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
+                        <text x="14" y="24" fill="white" fontSize="14" fontWeight="700" fontFamily={textFamily}>
+                          {markerTitle(hoveredMarker)}
+                        </text>
+                        {lines.map((line, idx) => {
+                          const isNet = Boolean(netLabel) && idx === lines.length - 1 && line.startsWith('●')
+                          return (
+                            <text
+                              key={`printer-hover-${idx}`}
+                              x="14"
+                              y={46 + idx * 18}
+                              fill={
+                                isNet
+                                  ? poll === 'online'
+                                    ? '#34d399'
+                                    : poll === 'offline'
+                                      ? '#fda4af'
+                                      : 'rgba(255,255,255,0.65)'
+                                  : idx === 0
+                                    ? 'rgba(255,255,255,0.78)'
+                                    : 'rgba(255,255,255,0.72)'
+                              }
+                              fontSize={idx === 1 ? 11 : 12}
+                              fontWeight={isNet ? 600 : 400}
+                              fontFamily={textFamily}
+                            >
+                              {line}
+                            </text>
+                          )
+                        })}
                       </g>
                     )
                   }
@@ -2347,20 +2554,102 @@ export function KnowledgeSitemapPage() {
                         onClick={() => {
                           const pcId = Number(selectedMarker.meta?.computer_id)
                           if (!Number.isFinite(pcId) || pcId <= 0) return
-                          setPcDetailLoading(true)
-                          setPcDetail(null)
-                          void api
-                            .computer(pcId)
-                            .then((detail) => {
-                              setPcDetail(detail)
-                              setPcInfoSwFilter('')
-                              setPcInfoModalOpen(true)
-                            })
-                            .catch(() => setPcDetail(null))
-                            .finally(() => setPcDetailLoading(false))
+                          setDetailComputerId(pcId)
                         }}
                       >
-                        {pcDetailLoading ? 'Загрузка...' : 'Узнать больше'}
+                        Узнать больше
+                      </button>
+                    </div>
+                  ) : null}
+                </label>
+              ) : null}
+
+              {selectedMarker.kind === 'printer' ? (
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                    {t('sitemap.printerLink')}
+                  </span>
+                  <div className="mt-0.5 flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      className="h-8 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-60"
+                      onClick={() => setPrinterLinkDialogOpen(true)}
+                      disabled={!canEdit}
+                    >
+                      {selectedMarker.meta?.printer_id ? t('sitemap.printerRebind') : t('sitemap.printerBind')}
+                    </button>
+                    {selectedMarker.meta?.printer_id ? (
+                      <button
+                        type="button"
+                        className="h-8 rounded-lg border border-amber-200 bg-white px-2.5 text-xs font-medium text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
+                        onClick={() =>
+                          updateMarker(selectedMarker.id, {
+                            meta: {
+                              ...selectedMarker.meta,
+                              printer_id: '',
+                              model: '',
+                              ip: '',
+                            },
+                          })
+                        }
+                        disabled={!canEdit}
+                      >
+                        {t('sitemap.printerUnbind')}
+                      </button>
+                    ) : null}
+                  </div>
+                  {selectedMarker.meta?.printer_id ? (
+                    <div className="mt-1.5 space-y-0.5 rounded-lg border border-amber-100 bg-amber-50/50 px-2.5 py-1.5 text-[11px] leading-snug text-slate-700">
+                      <div>
+                        {selectedLinkedPrinter
+                          ? printerDisplayName(selectedLinkedPrinter)
+                          : selectedMarker.meta.printer_id}
+                      </div>
+                      <div>
+                        IP:{' '}
+                        {selectedLinkedPrinter?.ip_address || selectedMarker.meta.ip || '—'}
+                      </div>
+                      <div>
+                        {selectedLinkedPrinter?.page_count != null
+                          ? t('sitemap.printerPages', { count: String(selectedLinkedPrinter.page_count) })
+                          : t('sitemap.printerPages', { count: '—' })}
+                      </div>
+                      {(() => {
+                        const pct = selectedLinkedPrinter
+                          ? printerLowestTonerPercent(selectedLinkedPrinter)
+                          : null
+                        return pct != null ? (
+                          <div>{t('sitemap.printerToner', { pct: String(pct) })}</div>
+                        ) : null
+                      })()}
+                      <div>
+                        {(selectedLinkedPrinter?.poll_status || '').toLowerCase() === 'online'
+                          ? t('sitemap.pcOnline')
+                          : (selectedLinkedPrinter?.poll_status || '').toLowerCase() === 'offline'
+                            ? t('sitemap.pcOffline')
+                            : t('sitemap.pcUnknown')}
+                      </div>
+                      <button
+                        type="button"
+                        className="mt-1.5 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                        onClick={() => {
+                          if (selectedLinkedPrinter) {
+                            setPrinterDetail(selectedLinkedPrinter)
+                            return
+                          }
+                          const id = Number(selectedMarker.meta?.printer_id)
+                          if (!Number.isFinite(id) || id <= 0) return
+                          void api
+                            .printers({ limit: 3000 })
+                            .then((rows) => {
+                              setPrinterDirectory(rows)
+                              const hit = rows.find((p) => p.id === id) ?? null
+                              setPrinterDetail(hit)
+                            })
+                            .catch(() => setPrinterDetail(null))
+                        }}
+                      >
+                        {t('sitemap.printerLearnMore')}
                       </button>
                     </div>
                   ) : null}
@@ -2698,156 +2987,97 @@ export function KnowledgeSitemapPage() {
           </div>
         </div>
       ) : null}
-      {pcInfoModalOpen && pcDetail ? (
-        <div
-          className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4"
-          role="dialog"
-          aria-modal
-          onClick={() => setPcInfoModalOpen(false)}
-        >
-          <div
-            className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-y-auto overscroll-contain rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-none ring-0 sm:max-h-[min(96vh,calc(100vh-0.5rem))] sm:max-w-[min(1500px,calc(100vw-1rem))] sm:rounded-2xl sm:border sm:border-slate-200/90 sm:p-6 sm:pt-6 sm:shadow-2xl sm:shadow-slate-900/15 sm:ring-1 sm:ring-white/40 lg:p-8 lg:pt-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex shrink-0 items-start justify-between gap-4">
-              <div className="min-w-0 pr-2">
-                <h2 className="text-xl font-semibold text-slate-900">{pcDetail.hostname}</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  {pcDetail.manufacturer} {pcDetail.model} · {pcDetail.serial_number ?? 'нет серийника'}
-                  {pcDetail.location ? ` · ${pcDetail.location}` : ''}
-                </p>
+      {printerLinkDialogOpen && selectedMarker?.kind === 'printer' ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-neutral-200 bg-white shadow-[0_24px_70px_-24px_rgba(2,6,23,0.5)]">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-neutral-950">{t('sitemap.printerLink')}</div>
+                <div className="text-xs text-slate-500">{t('sitemap.printerLinkHint')}</div>
               </div>
               <button
                 type="button"
-                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90"
-                onClick={() => setPcInfoModalOpen(false)}
-                aria-label="Закрыть"
+                className="rounded-lg border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                onClick={() => setPrinterLinkDialogOpen(false)}
               >
-                <IconClose className="h-6 w-6" />
+                Закрыть
               </button>
             </div>
-
-            <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-8">
-              <section className="flex min-w-0 flex-col">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Система и железо</h3>
-                <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
-                  <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">ОС</dt>
-                    <dd className="break-words text-slate-900">
-                      {pcDetail.os_name ?? '—'} {pcDetail.os_version ? <span className="text-slate-600">({pcDetail.os_version})</span> : null}
-                    </dd>
-                  </div>
-                  <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">Процессор (CPU)</dt>
-                    <dd className="break-words text-slate-900">{pcDetail.cpu ?? '—'}</dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-slate-500">ОЗУ</dt>
-                    <dd className="text-slate-900">{pcDetail.ram_gb != null ? `${Math.round(pcDetail.ram_gb)} ГБ` : '—'}</dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-slate-500">GPU</dt>
-                    <dd className="break-words text-slate-900">{pcDetail.gpu_name ?? '—'}</dd>
-                  </div>
-                  <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">Материнская плата</dt>
-                    <dd className="break-words text-slate-900">
-                      {pcDetail.motherboard_product || pcDetail.motherboard_manufacturer
-                        ? `${pcDetail.motherboard_manufacturer ? `${pcDetail.motherboard_manufacturer} · ` : ''}${pcDetail.motherboard_product ?? '—'}`
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">MAC</dt>
-                    <dd className="font-mono text-slate-700">{pcDetail.mac_primary ?? '—'}</dd>
-                  </div>
-                  <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">Последний отчёт</dt>
-                    <dd className="text-slate-900">{fmtDate(pcDetail.last_report_at)}</dd>
-                  </div>
-                </dl>
-              </section>
-
-              <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-l lg:border-t-0 lg:border-slate-200/80 lg:pl-8 lg:pt-0">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Диски</h3>
-                {(pcDetail.disks?.length ?? 0) > 0 ? (
-                  <div className="mt-2 flex flex-wrap content-start gap-2">
-                    {(pcDetail.disks ?? []).map((d, i) => (
-                      <div key={`${d.mount}-${i}`} className="rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-100/80">
-                        <span className="font-mono font-semibold text-slate-900">{d.mount}</span>
-                        <span className="ml-2 text-slate-700">{d.total_gb != null ? `${d.total_gb.toFixed(1)} ГБ` : '—'}</span>
-                        <span className="ml-2 text-slate-500">своб.</span>
-                        <span className="ml-1 font-mono text-slate-800">{d.free_gb != null ? `${d.free_gb.toFixed(1)} ГБ` : '—'}</span>
+            <div className="p-4">
+              <input
+                value={printerLinkQuery}
+                onChange={(e) => setPrinterLinkQuery(e.target.value)}
+                className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                placeholder={t('sitemap.printerSearchPlaceholder')}
+                autoFocus
+              />
+              <div className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
+                {filteredPrinterDirectory.map((printer) => {
+                  const toner = printerLowestTonerPercent(printer)
+                  return (
+                    <button
+                      key={printer.id}
+                      type="button"
+                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm text-neutral-800 transition hover:bg-neutral-50"
+                      onClick={() => {
+                        updateMarker(selectedMarker.id, {
+                          meta: {
+                            ...selectedMarker.meta,
+                            printer_id: String(printer.id),
+                            model: printer.snmp_model || printer.name || '',
+                            ip: printer.ip_address || '',
+                          },
+                          label: selectedMarker.label || printerDisplayName(printer),
+                        })
+                        setPrinterLinkDialogOpen(false)
+                      }}
+                    >
+                      <div className="font-semibold">{printerDisplayName(printer)}</div>
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {printer.ip_address || 'IP —'}
+                        {printer.page_count != null ? ` · ${printer.page_count} стр.` : ''}
+                        {toner != null ? ` · тонер ${toner}%` : ''}
                       </div>
-                    ))}
+                      <div className="mt-0.5 text-xs text-slate-500">
+                        {printer.location || '—'} · {(printer.poll_status || 'unknown').toLowerCase()}
+                      </div>
+                    </button>
+                  )
+                })}
+                {filteredPrinterDirectory.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                    {t('sitemap.printerNothingFound')}
                   </div>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-500">Нет данных по дискам</p>
-                )}
-              </section>
-            </div>
-
-            <div className="mt-6">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Теги</h3>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {pcDetail.tags.length === 0 ? (
-                  <span className="text-sm text-slate-500">—</span>
-                ) : (
-                  pcDetail.tags.map((t) => (
-                    <span key={t.id} className="rounded-full bg-zinc-50 px-2.5 py-1 text-xs text-neutral-900 ring-1 ring-zinc-200/80">
-                      {t.name}
-                    </span>
-                  ))
-                )}
+                ) : null}
               </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-8">
-              <section className="flex min-w-0 flex-col">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Установленное ПО</h3>
-                <input
-                  type="search"
-                  placeholder="Поиск в списке ПО…"
-                  value={pcInfoSwFilter}
-                  onChange={(e) => setPcInfoSwFilter(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-                <p className="mt-1 text-xs text-slate-500">Показано: {filteredPcSoftware.length} из {pcDetail.software.length}</p>
-                <ul className="mt-2 max-h-[min(70vh,32rem)] min-h-[12rem] overflow-y-auto rounded-xl border border-slate-200/90 bg-slate-50/80 text-sm">
-                  {filteredPcSoftware.length === 0 ? (
-                    <li className="px-3 py-4 text-slate-500">Нет совпадений</li>
-                  ) : (
-                    filteredPcSoftware.map((s, i) => (
-                      <li key={`${s.name}-${i}`} className="border-b border-slate-100 px-3 py-2.5 last:border-0">
-                        <span className="text-slate-900">{s.name}</span>
-                        {s.version ? <span className="ml-2 font-mono text-[13px] text-slate-600">{s.version}</span> : null}
-                      </li>
-                    ))
-                  )}
-                </ul>
-              </section>
-
-              <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-l lg:border-t-0 lg:border-slate-200/80 lg:pl-8 lg:pt-0">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Периферия (PnP)</h3>
-                <ul className="mt-2 max-h-[min(70vh,32rem)] min-h-[12rem] overflow-y-auto rounded-xl border border-zinc-200/70 bg-zinc-50/40 text-sm">
-                  {!pcDetail.peripherals.length ? (
-                    <li className="px-3 py-4 text-slate-500">Нет данных</li>
-                  ) : (
-                    pcDetail.peripherals.map((p, i) => (
-                      <li key={`${p.kind}-${p.name}-${i}`} className="border-b border-zinc-100/80 px-3 py-2.5 last:border-0">
-                        <span className="mr-2 inline-block rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-neutral-900">
-                          {PERIPHERAL_KIND_RU[p.kind] ?? p.kind}
-                        </span>
-                        <span className="text-slate-900">{p.name}</span>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              </section>
             </div>
           </div>
         </div>
       ) : null}
+      <PrinterDetailModal
+        printer={printerDetail}
+        onClose={() => setPrinterDetail(null)}
+        onChanged={(row) => {
+          setPrinterDetail(row)
+          setPrinterDirectory((prev) => {
+            const idx = prev.findIndex((p) => p.id === row.id)
+            if (idx < 0) return [row, ...prev]
+            const next = prev.slice()
+            next[idx] = row
+            return next
+          })
+        }}
+        overlayZClass="z-[60]"
+      />
+      <ComputerDetailModal
+        computerId={detailComputerId}
+        preview={pcDirectory.find((pc) => pc.id === detailComputerId) ?? selectedLinkedPc ?? null}
+        onClose={() => setDetailComputerId(null)}
+        onChanged={() => {
+          void api.computers({ limit: 1000 }).then((rows) => setPcDirectory(rows.items)).catch(() => undefined)
+        }}
+        overlayZClass="z-[60]"
+      />
     </div>
   )
 }

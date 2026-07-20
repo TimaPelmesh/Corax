@@ -101,7 +101,7 @@ class Settings(BaseSettings):
     rate_limit_wake: str = "5/minute"
     rate_limit_ping: str = "60/minute"
     # Fleet ICMP: batched + drip (fast enough, network-safe).
-    # Full reconcile ~every interval; between — small stale batches every ~15–45s.
+    # Full reconcile on UI kick / startup; between — small stale batches every ~8–18s.
     computer_ping_enabled: bool = True
     computer_ping_interval_minutes: int = 15
     computer_ping_concurrency: int = 3

@@ -23,6 +23,10 @@ build/
 dist/
 *.bak
 
+# Keep shipped Windows agent template (stamp-only on Linux/Docker)
+!agent/cpp/prebuilt/
+!agent/cpp/prebuilt/**
+
 ## Node / frontend
 node_modules/
 **/node_modules/

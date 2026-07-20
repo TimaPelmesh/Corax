@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { api, type Computer, type TagBrief } from '../api'
 import { ComputerDetailModal, fmtDate, tagPillProps } from '../components/ComputerDetailModal'
 import { IconPcs } from '../components/icons'
+import { useComputerPingLive } from '../hooks/useComputerPingLive'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -249,45 +250,15 @@ export function ComputersPage() {
     void load()
   }, [load])
 
-  // Live ping dots: poll cache often; kick sweep once if mostly unknown.
-  useEffect(() => {
-    let cancelled = false
-    let first = true
-    let timer: number | null = null
-
-    const pull = async () => {
-      try {
-        const data = await api.computersPingStatus(first)
-        first = false
-        if (cancelled) return
-        setRows((prev) => applyPingMap(prev, data.items))
-      } catch {
-        /* ignore transient */
-      }
-    }
-
-    const schedule = (ms: number) => {
-      timer = window.setTimeout(async () => {
-        await pull()
-        if (!cancelled) schedule(ms)
-      }, ms)
-    }
-
-    void pull().then(() => {
-      if (!cancelled) schedule(2500)
-    })
-
-    const slowDown = window.setTimeout(() => {
-      if (timer != null) window.clearTimeout(timer)
-      if (!cancelled) schedule(8_000)
-    }, 180_000)
-
-    return () => {
-      cancelled = true
-      if (timer != null) window.clearTimeout(timer)
-      window.clearTimeout(slowDown)
-    }
-  }, [applyPingMap])
+  // Live ping dots: poll cache + auto full-sweep while this page is open.
+  useComputerPingLive({
+    onItems: useCallback(
+      (items) => {
+        setRows((prev) => applyPingMap(prev, items))
+      },
+      [applyPingMap],
+    ),
+  })
 
   useEffect(() => {
     void api

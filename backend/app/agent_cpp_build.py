@@ -17,6 +17,7 @@ from app.schemas import AgentBundleCreate
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _CPP_ROOT = _PROJECT_ROOT / "agent" / "cpp"
+_PREBUILT_EXE = _CPP_ROOT / "prebuilt" / "CORAX-Agent.template.exe"
 _CACHE_DIR = _PROJECT_ROOT / "backend" / ".cache" / "corax_agent_cpp"
 _TEMPLATE_EXE = _CACHE_DIR / "CORAX-Agent.template.exe"
 _SRC_HASH_FILE = _CACHE_DIR / "src.hash"
@@ -122,21 +123,58 @@ def patch_config_slot(exe_bytes: bytes, config_json: str) -> bytes:
     return bytes(patched)
 
 
+def _validate_template(path: Path) -> Path:
+    data = path.read_bytes()
+    try:
+        patch_config_slot(data, "{}")
+    except ValueError as exc:
+        raise RuntimeError(f"Шаблон {path.name}: слот конфига некорректен: {exc}") from exc
+    return path
+
+
+def _resolve_prebuilt_template() -> Path | None:
+    """Shipped Windows EXE used on Linux/Docker (stamp-only, no MSVC)."""
+    for cand in (_PREBUILT_EXE, _TEMPLATE_EXE):
+        if cand.is_file() and cand.stat().st_size > 50_000:
+            try:
+                return _validate_template(cand)
+            except RuntimeError:
+                continue
+    return None
+
+
 def ensure_cpp_template_exe(*, force: bool = False) -> Path:
-    """Configure + build Release CORAX-Agent.exe via CMake (cached by source hash)."""
-    if os.name != "nt":
-        raise RuntimeError(
-            "Сборка C++ агента доступна только на Windows-сервере с MSVC/CMake "
-            "(VS Build Tools)."
-        )
+    """Return CORAX-Agent.template.exe ready for config stamping.
+
+    - Linux/Docker: use shipped ``agent/cpp/prebuilt/CORAX-Agent.template.exe``
+      (or cached copy). No MSVC required — only stamp server_url/token.
+    - Windows: rebuild from source when MSVC/CMake available; otherwise fall
+      back to the same prebuilt template.
+    """
     if not _CPP_ROOT.is_dir():
         raise FileNotFoundError(f"Не найден исходник агента: {_CPP_ROOT}")
 
+    # Non-Windows hosts never compile PE — stamp the committed template.
+    if os.name != "nt":
+        pre = _resolve_prebuilt_template()
+        if pre is None:
+            raise RuntimeError(
+                "На Linux/Docker нужен готовый шаблон "
+                "agent/cpp/prebuilt/CORAX-Agent.template.exe "
+                "(собирается на Windows CI / dev-машине и кладётся в репозиторий). "
+                "Сборка MSVC на Linux невозможна — сервер только вшивает конфиг в EXE."
+            )
+        return pre
+
     cmake = _cmake_exe()
     if cmake is None:
+        pre = _resolve_prebuilt_template()
+        if pre is not None:
+            return pre
         raise RuntimeError(
-            "Не найден cmake.exe. Установите Visual Studio Build Tools с компонентами "
-            "«MSVC» и «CMake tools», либо задайте CMAKE_EXE."
+            "Не найден cmake.exe и нет prebuilt-шаблона. "
+            "Установите VS Build Tools (MSVC + CMake) или положите "
+            "agent/cpp/prebuilt/CORAX-Agent.template.exe."
         )
 
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -147,7 +185,7 @@ def ensure_cpp_template_exe(*, force: bool = False) -> Path:
         and _SRC_HASH_FILE.is_file()
         and _SRC_HASH_FILE.read_text(encoding="utf-8").strip() == digest
     ):
-        return _TEMPLATE_EXE
+        return _validate_template(_TEMPLATE_EXE)
 
     build_dir = _CACHE_DIR / "build"
     build_dir.mkdir(parents=True, exist_ok=True)
@@ -194,6 +232,9 @@ def ensure_cpp_template_exe(*, force: bool = False) -> Path:
             check=False,
         )
         if r.returncode != 0:
+            pre = _resolve_prebuilt_template()
+            if pre is not None and not force:
+                return pre
             raise RuntimeError(
                 "CMake configure failed:\n"
                 + ((r.stdout or "") + "\n" + (r.stderr or ""))[-4000:]
@@ -220,6 +261,9 @@ def ensure_cpp_template_exe(*, force: bool = False) -> Path:
         check=False,
     )
     if r.returncode != 0:
+        pre = _resolve_prebuilt_template()
+        if pre is not None and not force:
+            return pre
         raise RuntimeError(
             "CMake build failed:\n" + ((r.stdout or "") + "\n" + (r.stderr or ""))[-4000:]
         )
@@ -233,7 +277,6 @@ def ensure_cpp_template_exe(*, force: bool = False) -> Path:
     if built is None:
         raise RuntimeError("Сборка прошла, но CORAX-Agent.exe не найден в build/")
 
-    # Verify padded slot exists (ignore short C-string literal decoys)
     data = built.read_bytes()
     try:
         patch_config_slot(data, "{}")
@@ -241,6 +284,12 @@ def ensure_cpp_template_exe(*, force: bool = False) -> Path:
         raise RuntimeError(f"Собранный EXE: слот конфига некорректен: {exc}") from exc
 
     shutil.copy2(built, _TEMPLATE_EXE)
+    # Keep repo prebuilt in sync when rebuilding on Windows (optional for packagers).
+    try:
+        _PREBUILT_EXE.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(built, _PREBUILT_EXE)
+    except OSError:
+        pass
     _SRC_HASH_FILE.write_text(digest, encoding="utf-8")
     return _TEMPLATE_EXE
 

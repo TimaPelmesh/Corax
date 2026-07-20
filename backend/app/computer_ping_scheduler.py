@@ -3,9 +3,9 @@ PC fleet ping scheduler.
 
 Strategy (network-safe + timely):
 1) Soon after boot — one careful full batched sweep (indicators fill quickly).
-2) Steady state — rolling drip: every tick ping a small stale batch so the
-   whole park refreshes across the interval without a traffic storm.
-3) Never two heavy cycles at once; concurrency / batch pauses / jitter capped.
+2) Steady state — rolling drip every ~8–18s on a small stale batch.
+3) UI kick (list/map open or focus) — full sweep with short cooldown.
+4) Never two heavy cycles at once; concurrency / batch pauses / jitter capped.
 """
 
 from __future__ import annotations
@@ -54,7 +54,8 @@ class ComputerPingScheduler:
         if self._kick_task and not self._kick_task.done():
             return {"started": False, "reason": "kick_pending", "mode": self.mode}
         now = datetime.now(timezone.utc)
-        if self._last_kick_at and (now - self._last_kick_at).total_seconds() < 45:
+        # Short cooldown so map/list can re-request a full pass while the tab is open.
+        if self._last_kick_at and (now - self._last_kick_at).total_seconds() < 30:
             return {"started": False, "reason": "cooldown", "mode": self.mode}
         self._last_kick_at = now
         self._kick_task = asyncio.create_task(self._run_full(reason=reason), name=f"computer-ping-{reason}")
@@ -89,9 +90,9 @@ class ComputerPingScheduler:
                     return
                 continue
 
-            # Spread small drips across the interval (~20–40s between batches).
-            tick_sec = max(20.0, min(40.0, (interval_min * 60) / 25.0))
-            drip_limit = max(2, min(batch_size, 12))
+            # Spread drips across the interval (~8–18s): ~100 hosts refresh in ~1–2 min.
+            tick_sec = max(8.0, min(18.0, (interval_min * 60) / 50.0))
+            drip_limit = max(4, min(batch_size, 16))
             self.mode = "drip"
             self.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=tick_sec)
 

@@ -196,7 +196,7 @@ async def _wol_status_for(db: AsyncSession, c: Computer, user: User) -> WolStatu
 async def computers_ping_status(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    kick: bool = Query(False, description="Start a batched sweep if indicators are mostly unknown"),
+    kick: bool = Query(False, description="Start a batched sweep if many unknown or stale ping caches"),
 ):
     """Lightweight ping cache for live list indicators (no ICMP in this call)."""
     r = await db.execute(
@@ -215,10 +215,33 @@ async def computers_ping_status(
     ]
     sweep = None
     if kick:
-        unknown = sum(1 for it in items if not it.ping_status or it.ping_status == "unknown")
-        if unknown >= max(1, len(items) // 4) or not items:
-            from app.computer_ping_scheduler import computer_ping_scheduler
+        # Kick when many are unknown OR many known statuses are stale (wrong online/offline
+        # until drip catches them — UI should not wait for a manual open-detail ping).
+        from datetime import datetime, timedelta, timezone
 
+        from app.computer_ping_scheduler import computer_ping_scheduler
+        from app.config import settings
+
+        now = datetime.now(timezone.utc)
+        stale_after = timedelta(
+            minutes=max(2, min(5, int(getattr(settings, "computer_ping_interval_minutes", 15)) // 3))
+        )
+        unknown = 0
+        stale = 0
+        for it in items:
+            st = (it.ping_status or "").strip().lower()
+            if not st or st == "unknown":
+                unknown += 1
+            ts = it.last_ping_at
+            if ts is None:
+                stale += 1
+                continue
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if now - ts > stale_after:
+                stale += 1
+        need = max(1, len(items) // 4) if items else 1
+        if not items or unknown >= need or stale >= need:
             sweep = computer_ping_scheduler.request_full(reason="ui")
     return ComputerPingStatusOut(items=items, sweep=sweep)
 

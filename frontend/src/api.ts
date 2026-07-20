@@ -188,6 +188,8 @@ export type FloorIconKind =
 export type FloorObjectMeta = {
   title?: string | null
   computer_id?: string | null
+  /** ID принтера из парка (для kind === 'printer'). */
+  printer_id?: string | null
   employee_extension?: string | null
   /** Номер розетки (для значка ethernet_outlet / phone_outlet на карте). */
   outlet_number?: string | null
