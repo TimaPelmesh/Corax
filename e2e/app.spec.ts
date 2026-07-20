@@ -61,7 +61,7 @@ test('warehouse: create and delete room when editor', async ({ page }) => {
     timeout: 20_000,
   })
 
-  const addRoom = page.getByRole('button', { name: /\+ Помещение|Add room|\+ Room/i })
+  const addRoom = page.getByRole('button', { name: /\+ Помещение|\+ Room/i })
   if (!(await addRoom.isVisible().catch(() => false))) {
     test.skip(true, 'Room create not available for this role')
     return
@@ -69,17 +69,35 @@ test('warehouse: create and delete room when editor', async ({ page }) => {
 
   const name = `E2E Room ${Date.now()}`
   await addRoom.click()
-  await page.locator('.fixed input.app-input, .fixed input').first().fill(name)
-  await page.getByRole('button', { name: /Сохранить|Save/i }).click()
-  await expect(page.getByRole('button', { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })).toBeVisible({
-    timeout: 15_000,
-  })
 
-  await page.getByRole('button', { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).click()
+  const dialog = page
+    .locator('.fixed')
+    .filter({ has: page.getByRole('heading', { name: /Новое помещение|New room/i }) })
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+
+  const titleInput = dialog.locator('input').first()
+  await titleInput.click()
+  await titleInput.fill(name)
+  await expect(titleInput).toHaveValue(name)
+
+  const createRespPromise = page.waitForResponse(
+    (r) =>
+      r.url().includes('/warehouse/rooms') &&
+      r.request().method() === 'POST' &&
+      !r.url().match(/\/rooms\/\d+/),
+    { timeout: 20_000 },
+  )
+  await dialog.getByRole('button', { name: /Сохранить|Save/i }).click()
+  const createResp = await createRespPromise
+  expect(createResp.ok(), `create room failed: ${createResp.status()} ${await createResp.text()}`).toBeTruthy()
+
+  await expect(dialog).toHaveCount(0, { timeout: 10_000 })
+  // Room list button accessible name is "title + count" — match by text node.
+  await expect(page.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 })
+
+  await page.getByText(name, { exact: true }).click()
   await page.getByRole('button', { name: '⋮' }).click()
   page.once('dialog', (d) => d.accept())
   await page.getByRole('button', { name: /Удалить|Delete/i }).click()
-  await expect(page.getByRole('button', { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })).toHaveCount(0, {
-    timeout: 15_000,
-  })
+  await expect(page.getByText(name, { exact: true })).toHaveCount(0, { timeout: 15_000 })
 })
