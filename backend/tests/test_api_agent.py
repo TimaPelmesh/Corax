@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import asyncio
+import concurrent.futures
 import json
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.testclient import TestClient
 
 from helpers import sample_inventory, unique_hostname
 from app.config import settings
-from app.database import AsyncSessionLocal
 from app.models import Computer
 
 
@@ -142,12 +142,26 @@ def test_agent_raw_payload_strips_software_blob(
     assert created.status_code == 200, created.text
     pc_id = int(created.json()["computer_id"])
 
-    async def _load_raw() -> str | None:
-        async with AsyncSessionLocal() as db:
-            pc = (await db.execute(select(Computer).where(Computer.id == pc_id))).scalar_one()
-            return pc.raw_payload
+    # Read DB on a fresh event loop in another thread — TestClient already owns a loop,
+    # so asyncio.run() in this thread raises "attached to a different loop".
+    def _load_raw() -> str | None:
+        import asyncio
 
-    raw = asyncio.run(_load_raw())
+        async def _inner() -> str | None:
+            eng = create_async_engine(settings.database_url, echo=False)
+            Session = async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
+            try:
+                async with Session() as db:
+                    pc = (await db.execute(select(Computer).where(Computer.id == pc_id))).scalar_one()
+                    return pc.raw_payload
+            finally:
+                await eng.dispose()
+
+        return asyncio.run(_inner())
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        raw = pool.submit(_load_raw).result(timeout=60)
+
     assert raw
     payload = json.loads(raw)
     assert payload.get("software") == []
