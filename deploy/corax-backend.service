@@ -21,6 +21,9 @@ Environment=PORT=3000
 Environment=RELOAD=0
 Environment=PYTHONUTF8=1
 Environment=PYTHONIOENCODING=utf-8
+# HTTPS: Settings → HTTPS (или ./scripts/setup-https.sh IP), затем restart.
+# В production TLS из backend/data/tls включается сам (CORAX_TLS_FORCE не нужен).
+# Отключить: Environment=CORAX_TLS_DISABLED=1
 
 # Секреты и DATABASE_URL — в backend/.env (не в unit-файле)
 ExecStart=/opt/corax/.venv/bin/python3 /opt/corax/run.py
