@@ -1,5 +1,5 @@
 import { type DragEvent, type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { api, type WikiRagDocumentRow } from '../api'
+import { api, type WikiRagDocumentRow, type WikiRagLmStudioStatus } from '../api'
 import { useAuth } from '../AuthContext'
 import { WikiRagChat } from '../components/wikirag/WikiRagChat'
 import { WikiRagDocViewer } from '../components/wikirag/WikiRagDocViewer'
@@ -148,6 +148,7 @@ export function WikiRagPage() {
   const [dragOver, setDragOver] = useState(false)
   const [modalDocId, setModalDocId] = useState<number | null>(null)
   const [chatOpen, setChatOpen] = useState(true)
+  const [lmStatus, setLmStatus] = useState<WikiRagLmStudioStatus | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
 
@@ -188,6 +189,21 @@ export function WikiRagPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .wikiRagLmStudioStatus()
+      .then((st) => {
+        if (!cancelled) setLmStatus(st)
+      })
+      .catch(() => {
+        if (!cancelled) setLmStatus({ ok: false, models: [], detail: 'unreachable' })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!modalDocId) return
@@ -255,6 +271,21 @@ export function WikiRagPage() {
           </p>
         </div>
       </div>
+
+      {lmStatus && !lmStatus.ok ? (
+        <div
+          className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+          role="status"
+        >
+          <div className="font-semibold">{t('wikirag.lmOfflineTitle')}</div>
+          <p className="mt-1 text-[13px] leading-relaxed opacity-90">{t('wikirag.lmOfflineBody')}</p>
+          {lmStatus.detail ? (
+            <p className="mt-1 font-mono text-[11px] opacity-70">
+              {t('wikirag.lmOfflineDetail', { detail: String(lmStatus.detail) })}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {canManage ? (
         <section className="app-card mb-6 p-5 sm:p-6">

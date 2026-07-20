@@ -20,6 +20,28 @@ def test_printers_list_and_poll_config(client: TestClient, auth_headers: dict[st
     assert sched.status_code == 200
 
 
+def test_printers_map_view(client: TestClient, auth_headers: dict[str, str]):
+    created = client.post(
+        "/api/v1/printers",
+        headers=auth_headers,
+        json={"name": f"MapPrinter {unique_hostname('prn')}", "ip_address": "10.55.55.55"},
+    )
+    assert created.status_code == 200, created.text
+    pid = created.json()["id"]
+
+    mapped = client.get("/api/v1/printers?view=map&limit=100", headers=auth_headers)
+    assert mapped.status_code == 200, mapped.text
+    rows = mapped.json()
+    assert isinstance(rows, list)
+    hit = next((r for r in rows if r["id"] == pid), None)
+    assert hit is not None
+    assert "toner_min_percent" in hit
+    assert "supplies" not in hit
+    assert "driver_name" not in hit
+
+    client.delete(f"/api/v1/printers/{pid}", headers=auth_headers)
+
+
 def test_printer_poll_config_update(client: TestClient, auth_headers: dict[str, str]):
     updated = client.put(
         "/api/v1/printers/poll-config",

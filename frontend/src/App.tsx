@@ -12,6 +12,7 @@ import { AgentTokensPage } from './pages/AgentTokensPage'
 import { AgentBundlePage } from './pages/AgentBundlePage'
 import { SettingsLdapPage } from './pages/SettingsLdapPage'
 import { SettingsWolPage } from './pages/SettingsWolPage'
+import { SettingsHttpsPage } from './pages/SettingsHttpsPage'
 import { SettingsTagsPage } from './pages/SettingsTagsPage'
 import { SettingsCategoriesPage } from './pages/SettingsCategoriesPage'
 import { ServiceRequestsPage } from './pages/ServiceRequestsPage'
@@ -87,6 +88,7 @@ export default function App() {
         <Route path="settings/agent-tokens" element={<AgentTokensPage />} />
         <Route path="settings/agent-bundle" element={<AgentBundlePage />} />
         <Route path="settings/wol" element={<SettingsWolPage />} />
+        <Route path="settings/https" element={<SettingsHttpsPage />} />
         <Route path="knowledge-base" element={<Navigate to="/knowledge-base/sitemap" replace />} />
         <Route path="knowledge-base/sitemap" element={<KnowledgeSitemapPage />} />
         <Route path="knowledge-base/wikirag" element={<WikiRagPage />} />

@@ -77,3 +77,52 @@ def test_computer_detail_patch_tags_delete(
 def test_computer_not_found(client: TestClient, auth_headers: dict[str, str]):
     r = client.get("/api/v1/computers/999999999", headers=auth_headers)
     assert r.status_code == 404
+
+
+def test_computers_list_views_and_pagination(
+    client: TestClient,
+    agent_headers: dict[str, str],
+    auth_headers: dict[str, str],
+):
+    pc_id = _create_pc(client, agent_headers, auth_headers)
+
+    listed = client.get("/api/v1/computers?view=list&limit=50", headers=auth_headers)
+    assert listed.status_code == 200, listed.text
+    body = listed.json()
+    assert "items" in body and "total" in body
+    assert body["total"] >= 1
+    hit = next((x for x in body["items"] if x["id"] == pc_id), None)
+    assert hit is not None
+    assert "hostname" in hit
+    assert "software_count" in hit
+    assert "raw_payload" not in hit
+    assert hit.get("disks") == []
+
+    mapped = client.get("/api/v1/computers?view=map&limit=50", headers=auth_headers)
+    assert mapped.status_code == 200, mapped.text
+    mbody = mapped.json()
+    mhit = next((x for x in mbody["items"] if x["id"] == pc_id), None)
+    assert mhit is not None
+    assert set(mhit.keys()) <= {
+        "id",
+        "hostname",
+        "serial_number",
+        "model",
+        "os_name",
+        "ram_gb",
+        "ip_address",
+        "ping_status",
+        "last_ping_at",
+    }
+    assert "software_count" not in mhit
+    assert "tags" not in mhit
+
+    page = client.get(
+        "/api/v1/computers?view=list&skip=0&limit=1&sort=host&sort_dir=asc",
+        headers=auth_headers,
+    )
+    assert page.status_code == 200
+    assert len(page.json()["items"]) <= 1
+    assert page.json()["total"] >= 1
+
+    client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)

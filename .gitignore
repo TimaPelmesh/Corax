@@ -59,6 +59,9 @@ backend/.cache/
 backend/agent_inbox/
 backend/bitrix_bot_inbox/
 
+## Local HTTPS CA / server certs (admin panel)
+backend/data/tls/
+
 ## WikiRAG uploads (local knowledge-base files)
 backend/wiki_rag_docs/
 

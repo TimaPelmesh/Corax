@@ -90,9 +90,27 @@ class ComputerPingScheduler:
                     return
                 continue
 
-            # Spread drips across the interval (~8–18s): ~100 hosts refresh in ~1–2 min.
-            tick_sec = max(8.0, min(18.0, (interval_min * 60) / 50.0))
-            drip_limit = max(4, min(batch_size, 16))
+            # Scale drip with fleet size so large parks refresh in minutes, not tens of minutes.
+            fleet_n = 0
+            try:
+                async with AsyncSessionLocal() as db:
+                    from sqlalchemy import func, select
+
+                    from app.models import Computer
+
+                    fleet_n = int(await db.scalar(select(func.count()).select_from(Computer)) or 0)
+            except Exception:
+                fleet_n = 0
+
+            if fleet_n >= 800:
+                tick_sec = max(6.0, min(12.0, (interval_min * 60) / 80.0))
+                drip_limit = max(12, min(max(batch_size, 24), 40))
+            elif fleet_n >= 200:
+                tick_sec = max(7.0, min(14.0, (interval_min * 60) / 60.0))
+                drip_limit = max(8, min(max(batch_size, 16), 28))
+            else:
+                tick_sec = max(8.0, min(18.0, (interval_min * 60) / 50.0))
+                drip_limit = max(4, min(batch_size, 16))
             self.mode = "drip"
             self.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=tick_sec)
 

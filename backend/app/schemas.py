@@ -250,6 +250,28 @@ class ComputerOut(BaseModel):
         return iso.replace("+00:00", "Z")
 
 
+class ComputerMapItem(BaseModel):
+    """Lean row for building map / bind pickers (no raw_payload, tags, counts)."""
+
+    id: int
+    hostname: str
+    serial_number: str | None = None
+    model: str | None = None
+    os_name: str | None = None
+    ram_gb: float | None = None
+    ip_address: str | None = None
+    ping_status: str | None = None
+    last_ping_at: datetime | None = None
+
+    @field_serializer("last_ping_at")
+    def _ser_map_dt(self, v: datetime | None):
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        return v.isoformat().replace("+00:00", "Z")
+
+
 class ComputerDetail(ComputerOut):
     software: list[SoftwareItem] = []
     peripherals: list[PeripheralItem] = []

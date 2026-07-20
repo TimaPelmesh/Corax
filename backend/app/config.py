@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     # slowapi limits (see backend/app/rate_limit.py); disabled when ENVIRONMENT=test.
     rate_limit_login: str = "10/minute"
     rate_limit_agent: str = "120/minute"
+    # Local CA / HTTPS for admin browsers (files under backend/data/tls by default).
+    tls_dir: str = "data/tls"
     # Wake-on-LAN from panel (superuser + DB allowlist). Kill-switch overrides DB enable.
     wol_force_disabled: bool = False
     rate_limit_wake: str = "5/minute"

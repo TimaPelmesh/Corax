@@ -65,7 +65,11 @@ export function WarehousePage() {
   const [roomMenuOpen, setRoomMenuOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
 
-  const [roomDialog, setRoomDialog] = useState<null | { mode: 'create' | 'rename'; title: string }>(null)
+  const [roomDialog, setRoomDialog] = useState<null | {
+    mode: 'create' | 'rename'
+    title: string
+    notes: string
+  }>(null)
   const [roomBusy, setRoomBusy] = useState(false)
 
   const [transferItemId, setTransferItemId] = useState<number | null>(null)
@@ -161,12 +165,18 @@ export function WarehousePage() {
     setRoomBusy(true)
     try {
       if (roomDialog.mode === 'create') {
-        const created = await api.createWarehouseRoom({ title })
+        const created = await api.createWarehouseRoom({
+          title,
+          notes: roomDialog.notes.trim() || null,
+        })
         await reload()
         setActiveRoomId(created.id)
         toast.ok(t('warehouse.roomCreated'))
       } else if (activeRoom) {
-        await api.patchWarehouseRoom(activeRoom.id, { title })
+        await api.patchWarehouseRoom(activeRoom.id, {
+          title,
+          notes: roomDialog.notes.trim() || null,
+        })
         await reload()
         toast.ok(t('warehouse.roomRenamed'))
       }
@@ -342,6 +352,7 @@ export function WarehousePage() {
                           setRoomDialog({
                             mode: 'create',
                             title: t('warehouse.roomDefaultName', { n: rooms.length + 1 }),
+                            notes: '',
                           })
                         }}
                       >
@@ -353,7 +364,11 @@ export function WarehousePage() {
                         onClick={() => {
                           if (!activeRoom) return
                           setRoomMenuOpen(false)
-                          setRoomDialog({ mode: 'rename', title: activeRoom.title })
+                          setRoomDialog({
+                            mode: 'rename',
+                            title: activeRoom.title,
+                            notes: activeRoom.notes ?? '',
+                          })
                         }}
                         disabled={!activeRoom}
                       >
@@ -406,6 +421,7 @@ export function WarehousePage() {
                   setRoomDialog({
                     mode: 'create',
                     title: t('warehouse.roomDefaultName', { n: rooms.length + 1 }),
+                    notes: '',
                   })
                 }
                 className="mt-2 w-full rounded-xl border border-dashed border-[var(--color-border)] px-3 py-2 text-sm font-medium text-[var(--color-fg-muted)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
@@ -593,6 +609,15 @@ export function WarehousePage() {
                     void submitRoomDialog()
                   }
                 }}
+              />
+            </label>
+            <label className="mt-3 block">
+              <span className="app-label">{t('warehouse.roomNotes')}</span>
+              <textarea
+                value={roomDialog.notes}
+                onChange={(e) => setRoomDialog((d) => (d ? { ...d, notes: e.target.value } : d))}
+                className="app-input min-h-[4.5rem] resize-y"
+                placeholder={t('warehouse.roomNotesPlaceholder')}
               />
             </label>
             <div className="mt-4 flex justify-end gap-2">

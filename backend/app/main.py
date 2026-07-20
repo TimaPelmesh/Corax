@@ -41,6 +41,7 @@ from app.routers import (
     wikirag,
     warehouse,
     settings as settings_router,
+    tls_settings,
 )
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -353,6 +354,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(agent_tokens.router, prefix=base)
     app.include_router(agent_bundles.router, prefix=base)
     app.include_router(settings_router.router, prefix=base)
+    app.include_router(tls_settings.router, prefix=base)
     app.include_router(database_backup.router, prefix=base)
     app.include_router(wikirag.router, prefix=base)
     app.include_router(warehouse.router, prefix=base)

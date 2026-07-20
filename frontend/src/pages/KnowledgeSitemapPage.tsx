@@ -160,7 +160,8 @@ function printerDisplayName(p: NetworkPrinter): string {
   return (p.snmp_model || '').trim() || (p.name || '').trim() || (p.ip_address || '').trim() || `#${p.id}`
 }
 
-function printerLowestTonerPercent(p: NetworkPrinter): number | null {
+function printerLowestTonerPercent(p: { toner_min_percent?: number | null; supplies?: Array<{ level_percent: number | null }> }): number | null {
+  if (p.toner_min_percent != null && Number.isFinite(p.toner_min_percent)) return p.toner_min_percent
   let min: number | null = null
   for (const s of p.supplies ?? []) {
     if (s.level_percent == null || !Number.isFinite(s.level_percent)) continue
@@ -980,8 +981,8 @@ export function KnowledgeSitemapPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const rows = await api.computers({ limit: 1000 })
-        setPcDirectory(rows.items)
+        const rows = await api.computers({ view: 'map', limit: 5000 })
+        setPcDirectory(rows.items as Computer[])
       } catch {
         setPcDirectory([])
       }
@@ -991,7 +992,7 @@ export function KnowledgeSitemapPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const rows = await api.printers({ limit: 3000 })
+        const rows = await api.printers({ limit: 5000, view: 'map' })
         setPrinterDirectory(rows)
       } catch {
         setPrinterDirectory([])
@@ -2499,7 +2500,7 @@ export function KnowledgeSitemapPage() {
               {selectedMarker.kind === 'pc' ? (
                 <label className="block">
                   <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                    Привязка к парку ПК
+                    {t('sitemap.pcParkLink')}
                   </span>
                   <div className="mt-0.5 flex flex-wrap gap-1.5">
                     <button
@@ -2508,7 +2509,7 @@ export function KnowledgeSitemapPage() {
                       onClick={() => setPcLinkDialogOpen(true)}
                       disabled={!canEdit}
                     >
-                      {selectedMarker.meta?.computer_id ? 'Сменить привязку' : 'Привязать ПК'}
+                      {selectedMarker.meta?.computer_id ? t('sitemap.pcRebind') : t('sitemap.pcBind')}
                     </button>
                     {selectedMarker.meta?.computer_id ? (
                       <button
@@ -2529,7 +2530,7 @@ export function KnowledgeSitemapPage() {
                         }
                         disabled={!canEdit}
                       >
-                        Снять
+                        {t('sitemap.pcUnbind')}
                       </button>
                     ) : null}
                   </div>
@@ -2557,7 +2558,7 @@ export function KnowledgeSitemapPage() {
                           setDetailComputerId(pcId)
                         }}
                       >
-                        Узнать больше
+                        {t('sitemap.pcLearnMore')}
                       </button>
                     </div>
                   ) : null}
@@ -2640,7 +2641,7 @@ export function KnowledgeSitemapPage() {
                           const id = Number(selectedMarker.meta?.printer_id)
                           if (!Number.isFinite(id) || id <= 0) return
                           void api
-                            .printers({ limit: 3000 })
+                            .printers({ limit: 5000, view: 'map' })
                             .then((rows) => {
                               setPrinterDirectory(rows)
                               const hit = rows.find((p) => p.id === id) ?? null
@@ -3074,7 +3075,7 @@ export function KnowledgeSitemapPage() {
         preview={pcDirectory.find((pc) => pc.id === detailComputerId) ?? selectedLinkedPc ?? null}
         onClose={() => setDetailComputerId(null)}
         onChanged={() => {
-          void api.computers({ limit: 1000 }).then((rows) => setPcDirectory(rows.items)).catch(() => undefined)
+          void api.computers({ view: 'map', limit: 5000 }).then((rows) => setPcDirectory(rows.items as Computer[])).catch(() => undefined)
         }}
         overlayZClass="z-[60]"
       />

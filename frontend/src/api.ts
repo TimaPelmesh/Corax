@@ -367,6 +367,20 @@ export type WolConfig = {
   cooldown_seconds: number
 }
 
+export type TlsStatus = {
+  enabled: boolean
+  active: boolean
+  files_ready: boolean
+  ca_ready: boolean
+  hostnames: string[]
+  not_after: string | null
+  fingerprint_sha256: string | null
+  generated_at: string | null
+  restart_required: boolean
+  dev_blocked?: boolean
+  tls_dir: string
+}
+
 export type WolStatus = {
   enabled: boolean
   force_disabled: boolean
@@ -395,7 +409,20 @@ export type ComputerPingResult = {
   message: string
 }
 
+export type ComputerMapItem = {
+  id: number
+  hostname: string
+  serial_number: string | null
+  model: string | null
+  os_name: string | null
+  ram_gb: number | null
+  ip_address: string | null
+  ping_status?: string | null
+  last_ping_at?: string | null
+}
+
 export type ComputerListResponse = { items: Computer[]; total: number }
+export type ComputerMapListResponse = { items: ComputerMapItem[]; total: number }
 
 export type DashboardNameCount = { name: string; count: number }
 
@@ -697,14 +724,36 @@ export const api = {
     return request<DashboardSegmentComputers>(`${API_PREFIX}/dashboard/segment-computers?${p}`)
   },
 
-  computers: async (opts?: { skip?: number; limit?: number; q?: string; tag_ids?: number[] }) => {
+  computers: async <V extends 'list' | 'map' | 'full' = 'list'>(
+    opts?: {
+      skip?: number
+      limit?: number
+      q?: string
+      tag_ids?: number[]
+      view?: V
+      ping_status?: 'online' | 'offline' | 'unknown'
+      sort?: 'last' | 'host' | 'ram' | 'periph'
+      sort_dir?: 'asc' | 'desc'
+    },
+  ): Promise<V extends 'map' ? ComputerMapListResponse : ComputerListResponse> => {
     const p = new URLSearchParams()
     if (opts?.skip != null) p.set('skip', String(opts.skip))
     if (opts?.limit != null) p.set('limit', String(opts.limit))
     if (opts?.q) p.set('q', opts.q)
     for (const id of opts?.tag_ids ?? []) p.append('tag_ids', String(id))
+    if (opts?.view) p.set('view', opts.view)
+    if (opts?.ping_status) p.set('ping_status', opts.ping_status)
+    if (opts?.sort) p.set('sort', opts.sort)
+    if (opts?.sort_dir) p.set('sort_dir', opts.sort_dir)
     const qs = p.toString()
-    return request<ComputerListResponse>(`${API_PREFIX}/computers${qs ? `?${qs}` : ''}`)
+    if (opts?.view === 'map') {
+      return (await request<ComputerMapListResponse>(
+        `${API_PREFIX}/computers${qs ? `?${qs}` : ''}`,
+      )) as V extends 'map' ? ComputerMapListResponse : ComputerListResponse
+    }
+    return (await request<ComputerListResponse>(
+      `${API_PREFIX}/computers${qs ? `?${qs}` : ''}`,
+    )) as V extends 'map' ? ComputerMapListResponse : ComputerListResponse
   },
 
   computer: (id: number, opts?: { includeSoftware?: boolean }) => {
@@ -732,6 +781,33 @@ export const api = {
     wake_user_ids?: number[]
     cooldown_seconds?: number
   }) => request<WolConfig>(`${API_PREFIX}/computers/wol/config`, { method: 'PUT', json: body }),
+
+  tlsStatus: () => request<TlsStatus>(`${API_PREFIX}/settings/tls`),
+  tlsGenerate: (body: { hostnames: string[]; days?: number; rotate_ca?: boolean }) =>
+    request<TlsStatus>(`${API_PREFIX}/settings/tls/generate`, { method: 'POST', json: body }),
+  tlsEnable: (enabled: boolean) =>
+    request<TlsStatus>(`${API_PREFIX}/settings/tls/enable`, { method: 'POST', json: { enabled } }),
+  downloadTlsCa: async (): Promise<void> => {
+    const headers = new Headers()
+    const csrf = getCookie('csrf_token')
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+    const res = await fetch(apiUrl(`${API_PREFIX}/settings/tls/ca.crt`), {
+      credentials: 'include',
+      headers,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      const detail = (err as { detail?: string }).detail ?? res.statusText
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail))
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'corax-local-ca.crt'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
 
   computerWolStatus: (id: number) =>
     request<WolStatus>(`${API_PREFIX}/computers/${id}/wol-status`),
@@ -1554,11 +1630,12 @@ export const api = {
 
   warehouseNextCode: () => request<{ internal_code: string }>(`${API_PREFIX}/warehouse/next-code`),
 
-  printers: (params?: { q?: string; poll_status?: string; limit?: number }) => {
+  printers: (params?: { q?: string; poll_status?: string; limit?: number; view?: 'full' | 'map' }) => {
     const sp = new URLSearchParams()
     if (params?.q) sp.set('q', params.q)
     if (params?.poll_status) sp.set('poll_status', params.poll_status)
     if (params?.limit != null) sp.set('limit', String(params.limit))
+    if (params?.view) sp.set('view', params.view)
     const qs = sp.toString()
     return request<NetworkPrinter[]>(`${API_PREFIX}/printers${qs ? `?${qs}` : ''}`)
   },
@@ -1823,6 +1900,7 @@ export type NetworkPrinter = {
   snmp_model: string | null
   page_count: number | null
   supplies: PrinterSupply[]
+  toner_min_percent?: number | null
   last_seen_at: string | null
   last_poll_at: string | null
   last_snmp_at: string | null

@@ -64,6 +64,7 @@ export const en: MessageTree = {
     agentTokens: 'Agent tokens',
     agentBundle: 'Bundle',
     wol: 'Wake-on-LAN',
+    https: 'HTTPS',
     searchMenu: 'Search menu…',
     searchMenuAria: 'Search menu sections',
     closeMenu: 'Close menu',
@@ -132,6 +133,7 @@ export const en: MessageTree = {
     agentTokens: 'Agent tokens',
     agentBundle: 'Agent bundle',
     wol: 'Wake-on-LAN',
+    https: 'HTTPS',
   },
   pages: {
     dashboardSubtitle: 'Fleet overview and status summary',
@@ -157,6 +159,58 @@ export const en: MessageTree = {
     agentBundleSubtitle: 'Build a Windows agent: C++ EXE or ZIP (PowerShell)',
     wolSubtitle:
       'Who may wake PCs for maintenance. The button is on the PC card and only appears when the host is offline.',
+    httpsSubtitle:
+      'HTTPS for a few admin PCs. Local CA — no Let’s Encrypt and no public DNS required.',
+  },
+  settingsHttps: {
+    status: 'Status',
+    flag: 'Enabled in config',
+    process: 'This process',
+    on: 'Yes',
+    off: 'No',
+    listeningHttps: 'Serving HTTPS',
+    listeningHttp: 'Serving HTTP (restart required after enable)',
+    validUntil: 'Certificate valid until',
+    fingerprint: 'SHA-256 fingerprint',
+    restartRequired:
+      'HTTPS is enabled in config. Restart CORAX (stop and start the server), then open https://…',
+    devBlocked:
+      'Running in development (npm start / Vite). Enabling HTTPS on the API breaks login via http://localhost:3000. You can still create a cert and download the CA; turn TLS on with npm run start:prod or CORAX_TLS_FORCE=1.',
+    openUrl: 'Open https://{host}:{port} from a PC where the CA is installed.',
+    enable: 'Enable HTTPS',
+    disable: 'Disable HTTPS',
+    enabled: 'HTTPS will be active after restart',
+    disabled: 'HTTPS disabled — HTTP after restart',
+    create: 'Certificate',
+    createHint:
+      'Enter the LAN IP or hostname you type in the browser. localhost and 127.0.0.1 are added automatically.',
+    hostnames: 'IPs / names (one per line)',
+    hostnamesPh: '192.168.1.10\ncorax.local',
+    days: 'Validity (days, min 1)',
+    generate: 'Create certificate',
+    reissue: 'Reissue server certificate',
+    rotateCa: 'New CA (reinstall on admin PCs)',
+    generated: 'Certificate created',
+    needHosts: 'Enter at least one IP or hostname',
+    trustTitle: 'Trust on admin PCs',
+    trustStep1:
+      'Download the CA only (button below) — corax-local-ca.crt. Not the server “localhost” cert from the browser viewer.',
+    trustStep2:
+      'Install the CA: double-click → Install Certificate → Current User → Place all certificates in the following store → Trusted Root Certification Authorities. Or run scripts\\install-corax-ca.bat.',
+    trustStep3:
+      'Fully quit Chrome/Edge, then open https://IP:port again. The chain must show a trusted CORAX Local CA.',
+    trustFirefox:
+      'Firefox: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import → pick corax-local-ca.crt → enable “Trust this CA to identify websites”.',
+    trustYandex:
+      'Yandex Browser: usually uses the Windows store like Chrome. If it still says Not secure — fully quit the browser, or import the same corax-local-ca.crt. Use https://, not http://.',
+    trustReality:
+      'A local CA will never look like a public bank cert in every browser automatically. For a few admin PCs: Chrome/Edge + one-time CA import in Firefox/Yandex is enough.',
+    downloadCa: 'Download CA (.crt)',
+    caDownloaded: 'CA file downloaded',
+    agentsNote:
+      'Inventory agents can keep using HTTP if that is easier. HTTPS here is for the admin panel.',
+    apiMissingHint:
+      'HTTPS API is not loaded in this process (Windows has no auto-reload). Stop start_all.bat (Ctrl+C) and start it again.',
   },
   settingsWol: {
     cooldown: 'Pause between repeated wakes of the same PC (sec)',
@@ -224,6 +278,8 @@ export const en: MessageTree = {
       pcs: 'PCs',
     },
     empty: 'Nothing found. Refine the query or send agent reports.',
+    emptySearch: 'No results for this query.',
+    clearSearch: 'Clear search',
     installedOnTitle: 'Installed on',
     selectRowHint: 'Select a row in the table on the left.',
     loadingHosts: 'Loading PC list…',
@@ -562,6 +618,8 @@ export const en: MessageTree = {
     roomDialogCreate: 'New room',
     roomDialogRename: 'Rename room',
     roomName: 'Name',
+    roomNotes: 'Notes',
+    roomNotesPlaceholder: 'Optional',
     saving: 'Saving…',
     transferTo: 'Destination',
     moving: 'Moving…',
@@ -605,6 +663,10 @@ export const en: MessageTree = {
       created: 'Created',
       updated: 'Updated',
     },
+    lmOfflineTitle: 'LM Studio is offline',
+    lmOfflineBody:
+      'WikiRAG chat needs a running LM Studio. You can still upload and browse documents without it.',
+    lmOfflineDetail: '{detail}',
     import: {
       title: 'Import from CORAX',
       description:
@@ -1571,6 +1633,11 @@ export const en: MessageTree = {
     printerToner: 'Toner min: {pct}%',
     printerSearchPlaceholder: 'Name / IP / model / location',
     printerNothingFound: 'Nothing found',
+    pcParkLink: 'Link to PC inventory',
+    pcBind: 'Link PC',
+    pcRebind: 'Change link',
+    pcUnbind: 'Unlink',
+    pcLearnMore: 'Learn more',
     autosave: 'Autosave: {time}',
     autosaveTitle: 'Autosave object positions on the map',
     liveConnected: 'Live channel connected',

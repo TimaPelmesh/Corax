@@ -63,4 +63,56 @@ describe('computers API helpers', () => {
     const url = String(fetchMock.mock.calls[0][0])
     expect(url).toContain('/computers/12/software')
   })
+
+  it('computers() passes view/list pagination and sort query params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [], total: 0 }),
+      text: async () => '',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('document', { cookie: '' })
+
+    const { api } = await import('./api')
+    await api.computers({
+      view: 'list',
+      skip: 100,
+      limit: 50,
+      ping_status: 'online',
+      sort: 'host',
+      sort_dir: 'asc',
+    })
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('view=list')
+    expect(url).toContain('skip=100')
+    expect(url).toContain('limit=50')
+    expect(url).toContain('ping_status=online')
+    expect(url).toContain('sort=host')
+    expect(url).toContain('sort_dir=asc')
+  })
+
+  it('computers() map view and printers() map view pass view=map', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [], total: 0 }),
+      text: async () => '',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('document', { cookie: '' })
+
+    const { api } = await import('./api')
+    await api.computers({ view: 'map', limit: 5000 })
+    expect(String(fetchMock.mock.calls[0][0])).toContain('view=map')
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => [],
+      text: async () => '',
+    })
+    await api.printers({ view: 'map', limit: 100 })
+    expect(String(fetchMock.mock.calls[1][0])).toContain('view=map')
+  })
 })

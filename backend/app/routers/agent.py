@@ -96,7 +96,12 @@ async def submit_inventory(
     )
     pc = r.scalar_one_or_none()
     now = datetime.now(timezone.utc)
-    raw = json.dumps(report.model_dump(), ensure_ascii=False)
+    # Persist lean raw: software lives in installed_software; keep count only in blob.
+    dump = report.model_dump()
+    software_list = dump.pop("software", None) or []
+    dump["software"] = []
+    dump["software_count"] = len(software_list)
+    raw = json.dumps(dump, ensure_ascii=False)
     mfr = normalize_manufacturer(report.manufacturer)
     model = normalize_system_model(report.model) or normalize_system_model(report.motherboard_product)
     ip_from_agent = primary_ipv4_from_extended(
@@ -163,7 +168,12 @@ async def submit_inventory(
         db.add(pc)
         await db.flush()
 
+    # Cap normalized software rows to keep list/detail snappy (full list is rare).
+    _SOFTWARE_SAVE_MAX = 2500
+    saved_sw = 0
     for s in report.software:
+        if saved_sw >= _SOFTWARE_SAVE_MAX:
+            break
         if not (s.name or "").strip():
             continue
         db.add(
@@ -173,6 +183,7 @@ async def submit_inventory(
                 version=s.version[:255] if s.version else None,
             )
         )
+        saved_sw += 1
 
     for p in report.peripherals:
         k = (p.kind or "other").strip()[:32] or "other"

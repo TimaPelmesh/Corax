@@ -506,13 +506,15 @@ export function NetworkPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-[var(--color-fg)]">
-            <IconGraph className="h-7 w-7 text-[var(--color-primary)]" />
-            {t('nav.network')}
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-subtle)]">{t('pages.networkSubtitle')}</p>
+      <header className="mb-1 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+          <div className="page-hero-icon mt-0.5 shrink-0">
+            <IconGraph className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="page-title">{t('nav.network')}</h1>
+            <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('pages.networkSubtitle')}</p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-[var(--color-border)] p-0.5">

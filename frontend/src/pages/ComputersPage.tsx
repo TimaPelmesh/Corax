@@ -124,54 +124,15 @@ export function ComputersPage() {
     return () => window.clearTimeout(t)
   }, [hostSearch])
 
-  const filteredRows = useMemo(() => {
-    if (pingFilter === 'all') return rows
-    return rows.filter((r) => {
-      const st = (r.ping_status || '').toLowerCase()
-      if (pingFilter === 'online') return st === 'online'
-      if (pingFilter === 'offline') return st === 'offline'
-      return st !== 'online' && st !== 'offline'
-    })
-  }, [rows, pingFilter])
-
-  const sortedRows = useMemo(() => {
-    const dirMul = sort.dir === 'asc' ? 1 : -1
-    const copy = [...filteredRows]
-    copy.sort((a, b) => {
-      if (sort.key === 'host') {
-        return dirMul * a.hostname.localeCompare(b.hostname, 'ru', { sensitivity: 'base' })
-      }
-      if (sort.key === 'ram') {
-        const av = a.ram_gb ?? -1
-        const bv = b.ram_gb ?? -1
-        return dirMul * (av - bv)
-      }
-      if (sort.key === 'periph') {
-        return dirMul * (a.peripheral_count - b.peripheral_count)
-      }
-      // last report: nulls last in desc, first in asc
-      const at = a.last_report_at ? Date.parse(a.last_report_at) : NaN
-      const bt = b.last_report_at ? Date.parse(b.last_report_at) : NaN
-      const aHas = Number.isFinite(at)
-      const bHas = Number.isFinite(bt)
-      if (aHas && bHas) return dirMul * (at - bt)
-      if (aHas && !bHas) return -1 * dirMul
-      if (!aHas && bHas) return 1 * dirMul
-      return dirMul * a.hostname.localeCompare(b.hostname, 'ru', { sensitivity: 'base' })
-    })
-    return copy
-  }, [filteredRows, sort.dir, sort.key])
+  const filteredRows = useMemo(() => rows, [rows])
+  const sortedRows = filteredRows
 
   const pageCount = useMemo(
-    () => Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE)),
-    [sortedRows.length, PAGE_SIZE],
+    () => Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    [total, PAGE_SIZE],
   )
 
-  const pagedRows = useMemo(() => {
-    const p = Math.min(page, pageCount)
-    const start = (p - 1) * PAGE_SIZE
-    return sortedRows.slice(start, start + PAGE_SIZE)
-  }, [page, pageCount, sortedRows, PAGE_SIZE])
+  const pagedRows = sortedRows
 
   useEffect(() => {
     setPage(1)
@@ -231,9 +192,14 @@ export function ComputersPage() {
     try {
       const [data, ping] = await Promise.all([
         api.computers({
+          view: 'list',
+          skip: (page - 1) * PAGE_SIZE,
+          limit: PAGE_SIZE,
           q: debouncedHostSearch.trim() || undefined,
           tag_ids: filterTagIds.length ? filterTagIds : undefined,
-          limit: 500,
+          ping_status: pingFilter === 'all' ? undefined : pingFilter,
+          sort: sort.key,
+          sort_dir: sort.dir,
         }),
         api.computersPingStatus(false).catch(() => ({ items: [], sweep: null })),
       ])
@@ -244,7 +210,18 @@ export function ComputersPage() {
     } finally {
       setLoading(false)
     }
-  }, [applyPingMap, debouncedHostSearch, filterTagIds, t, toast])
+  }, [
+    PAGE_SIZE,
+    applyPingMap,
+    debouncedHostSearch,
+    filterTagIds,
+    page,
+    pingFilter,
+    sort.dir,
+    sort.key,
+    t,
+    toast,
+  ])
 
   useEffect(() => {
     void load()
@@ -653,10 +630,10 @@ export function ComputersPage() {
         </div>
       </div>
 
-      {!loading && sortedRows.length > PAGE_SIZE ? (
+      {!loading && total > PAGE_SIZE ? (
         <div className="mt-3 flex items-center justify-between gap-3 text-sm text-[var(--color-fg-muted)]">
           <span>
-            {t('computers.shownOf', { shown: pagedRows.length, total: sortedRows.length })}
+            {t('computers.shownOf', { shown: pagedRows.length, total })}
           </span>
           <div className="flex items-center gap-2">
             <button

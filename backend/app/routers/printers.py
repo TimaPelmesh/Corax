@@ -51,6 +51,7 @@ class PrinterOut(BaseModel):
     snmp_model: str | None = None
     page_count: int | None = None
     supplies: list[PrinterSupplyOut] = []
+    toner_min_percent: int | None = None
     last_seen_at: datetime | None
     last_poll_at: datetime | None
     last_snmp_at: datetime | None = None
@@ -74,6 +75,19 @@ class PrinterOut(BaseModel):
         if v.tzinfo is None:
             v = v.replace(tzinfo=timezone.utc)
         return v.isoformat().replace("+00:00", "Z")
+
+
+class PrinterMapItem(BaseModel):
+    """Lean printer row for building map bind/hover."""
+
+    id: int
+    name: str
+    snmp_model: str | None = None
+    ip_address: str | None = None
+    location: str | None = None
+    poll_status: str | None = None
+    page_count: int | None = None
+    toner_min_percent: int | None = None
 
 
 class PrinterCreate(BaseModel):
@@ -209,7 +223,15 @@ def _parse_supplies(raw: str | None) -> list[PrinterSupplyOut]:
     return out
 
 
+def _toner_min_percent(supplies: list[PrinterSupplyOut]) -> int | None:
+    vals = [s.level_percent for s in supplies if s.level_percent is not None]
+    if not vals:
+        return None
+    return int(min(vals))
+
+
 def _printer_out(row: Printer, hostname: str | None = None) -> PrinterOut:
+    supplies = _parse_supplies(row.supplies_json)
     return PrinterOut(
         id=row.id,
         name=row.name,
@@ -226,10 +248,11 @@ def _printer_out(row: Printer, hostname: str | None = None) -> PrinterOut:
         computer_hostname=hostname,
         location=row.location,
         notes=row.notes,
-        source=row.source,
+        source=row.source or "manual",
         snmp_model=row.snmp_model,
         page_count=row.page_count,
-        supplies=_parse_supplies(row.supplies_json),
+        supplies=supplies,
+        toner_min_percent=_toner_min_percent(supplies),
         last_seen_at=row.last_seen_at,
         last_poll_at=row.last_poll_at,
         last_snmp_at=row.last_snmp_at,
@@ -346,17 +369,37 @@ async def scheduler_status(_: User = Depends(get_current_user)):
     return PrinterSchedulerStatusOut(**data)
 
 
-@router.get("", response_model=list[PrinterOut])
+@router.get("")
 async def list_printers(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     q: str | None = Query(default=None),
     poll_status: str | None = Query(default=None),
     limit: int = Query(default=2000, ge=1, le=5000),
+    view: str = Query(default="full", description="full | map"),
 ):
-    stmt = select(Printer).where(snmp_tab_clause()).order_by(Printer.name.asc(), Printer.id.asc())
+    from typing import Literal
+
+    view_norm: Literal["full", "map"] = "map" if (view or "").strip().lower() == "map" else "full"
+
+    if view_norm == "map":
+        stmt = select(
+            Printer.id,
+            Printer.name,
+            Printer.snmp_model,
+            Printer.ip_address,
+            Printer.location,
+            Printer.poll_status,
+            Printer.page_count,
+            Printer.supplies_json,
+        ).where(snmp_tab_clause()).order_by(Printer.name.asc(), Printer.id.asc())
+    else:
+        stmt = select(Printer).where(snmp_tab_clause()).order_by(Printer.name.asc(), Printer.id.asc())
     if poll_status:
-        stmt = stmt.where(Printer.poll_status == poll_status.strip())
+        if view_norm == "map":
+            stmt = stmt.where(Printer.poll_status == poll_status.strip())
+        else:
+            stmt = stmt.where(Printer.poll_status == poll_status.strip())
     if q and q.strip():
         needle = f"%{q.strip().lower()}%"
         stmt = stmt.where(
@@ -369,6 +412,25 @@ async def list_printers(
                 func.lower(func.coalesce(Printer.snmp_model, "")).like(needle),
             )
         )
+    if view_norm == "map":
+        rows = (await db.execute(stmt.limit(limit))).all()
+        out: list[PrinterMapItem] = []
+        for row in rows:
+            supplies = _parse_supplies(row.supplies_json)
+            out.append(
+                PrinterMapItem(
+                    id=int(row.id),
+                    name=row.name,
+                    snmp_model=row.snmp_model,
+                    ip_address=row.ip_address,
+                    location=row.location,
+                    poll_status=row.poll_status,
+                    page_count=row.page_count,
+                    toner_min_percent=_toner_min_percent(supplies),
+                )
+            )
+        return out
+
     rows = (await db.execute(stmt.limit(limit))).scalars().all()
     pc_ids = {r.computer_id for r in rows if r.computer_id}
     hosts = await _hostnames_map(db, pc_ids)

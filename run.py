@@ -9,6 +9,10 @@
 Свой порт:  set PORT=8001 перед запуском (если 3000 занят — WinError 10013 и т.п.).
 Только локально: set HOST=127.0.0.1
 
+HTTPS: Настройки → HTTPS (локальный CA) или SSL_CERTFILE + SSL_KEYFILE.
+В development (npm start / Vite на :3000) панель HTTPS намеренно не поднимает TLS —
+иначе ломается HTTP-прокси. Для HTTPS: npm run start:prod или CORAX_TLS_FORCE=1.
+
 Разработка: npm start в корне — API + Vite (UI http://127.0.0.1:3000).
 
 Прод (один порт, статика из FastAPI): npm run start:prod — сначала сборка фронта.
@@ -50,9 +54,29 @@ def main() -> None:
         "false",
         "no",
     )
-    kw = {"host": host, "port": port, "reload": reload}
+    kw: dict = {"host": host, "port": port, "reload": reload}
     if reload:
         kw["reload_dirs"] = [_BACKEND]
+
+    # HTTPS from admin panel (local CA under backend/data/tls). Env override wins.
+    ssl_cert = (os.environ.get("SSL_CERTFILE") or "").strip()
+    ssl_key = (os.environ.get("SSL_KEYFILE") or "").strip()
+    if ssl_cert and ssl_key:
+        kw["ssl_certfile"] = ssl_cert
+        kw["ssl_keyfile"] = ssl_key
+        os.environ["CORAX_TLS_LISTENING"] = "1"
+    else:
+        try:
+            from app.tls_certs import mark_process_listening_https, runtime_ssl
+
+            tls = runtime_ssl()
+            if tls.enabled and tls.certfile and tls.keyfile:
+                kw["ssl_certfile"] = str(tls.certfile)
+                kw["ssl_keyfile"] = str(tls.keyfile)
+                mark_process_listening_https()
+        except Exception:
+            pass
+
     uvicorn.run("app.main:app", **kw)
 
 

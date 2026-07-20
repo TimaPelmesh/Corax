@@ -61,6 +61,7 @@ export const ru = {
     agentTokens: 'Токены агентов',
     agentBundle: 'Сборка',
     wol: 'Wake-on-LAN',
+    https: 'HTTPS',
     searchMenu: 'Поиск по меню...',
     searchMenuAria: 'Поиск разделов меню',
     closeMenu: 'Закрыть меню',
@@ -129,6 +130,7 @@ export const ru = {
     agentTokens: 'Токены агентов',
     agentBundle: 'Сборка агента',
     wol: 'Wake-on-LAN',
+    https: 'HTTPS',
   },
   pages: {
     dashboardSubtitle: 'Сводка по парку и статусам',
@@ -154,6 +156,57 @@ export const ru = {
     agentBundleSubtitle: 'Сборка агента для Windows: C++ EXE или ZIP (PowerShell)',
     wolSubtitle:
       'Кому разрешено включать ПК для обслуживания. Кнопка — в карточке ПК, только если машина не в сети.',
+    httpsSubtitle:
+      'HTTPS для входа админов с нескольких ПК. Свой локальный CA — без Let’s Encrypt и без публичного DNS.',
+  },
+  settingsHttps: {
+    status: 'Состояние',
+    flag: 'Включено в конфиге',
+    process: 'Этот процесс',
+    on: 'Да',
+    off: 'Нет',
+    listeningHttps: 'Слушает HTTPS',
+    listeningHttp: 'Слушает HTTP (нужен перезапуск после включения)',
+    validUntil: 'Сертификат до',
+    fingerprint: 'Отпечаток SHA-256',
+    restartRequired: 'HTTPS включён в конфиге. Перезапустите CORAX (остановите и снова запустите сервер), затем откройте https://…',
+    devBlocked:
+      'Сейчас development (npm start / Vite). HTTPS на API ломает вход через http://localhost:3000. Сертификат можно создать и скачать CA; включать TLS — через npm run start:prod или CORAX_TLS_FORCE=1.',
+    openUrl: 'Откройте https://{host}:{port} с ПК, где установлен CA.',
+    enable: 'Включить HTTPS',
+    disable: 'Выключить HTTPS',
+    enabled: 'HTTPS будет активен после перезапуска',
+    disabled: 'HTTPS выключен — после перезапуска снова HTTP',
+    create: 'Сертификат',
+    createHint:
+      'Укажите IP или имя сервера в ЛВС (как в адресной строке). localhost и 127.0.0.1 добавятся сами.',
+    hostnames: 'IP / имена (по одному в строке)',
+    hostnamesPh: '192.168.1.10\ncorax.local',
+    days: 'Срок действия (дней, от 1)',
+    generate: 'Создать сертификат',
+    reissue: 'Перевыпустить серверный сертификат',
+    rotateCa: 'Новый CA (нужно заново установить на ПК)',
+    generated: 'Сертификат создан',
+    needHosts: 'Укажите хотя бы один IP или hostname',
+    trustTitle: 'Доверие на админских ПК',
+    trustStep1:
+      'Скачайте именно CA (кнопка ниже) — файл corax-local-ca.crt. Не серверный сертификат из окна браузера «localhost».',
+    trustStep2:
+      'Установите CA: двойной клик → «Установить сертификат» → «Текущий пользователь» → «Поместить все сертификаты в следующее хранилище» → «Доверенные корневые центры сертификации». Либо scripts\\install-corax-ca.bat.',
+    trustStep3:
+      'Полностью закройте Chrome/Edge и откройте https://IP:порт снова. В цепочке должен быть доверенный CORAX Local CA.',
+    trustFirefox:
+      'Firefox: Настройки → Приватность и защита → Сертификаты → Просмотреть сертификаты → Центры сертификации → Импортировать → выберите corax-local-ca.crt → отметьте «Доверять при идентификации веб-сайтов».',
+    trustYandex:
+      'Яндекс.Браузер: обычно как Chrome (хранилище Windows). Если всё ещё «Не защищено» — полностью закройте браузер, либо Импорт через настройки сертификатов / тот же corax-local-ca.crt. Открывайте именно https://, не http://.',
+    trustReality:
+      'Локальный CA никогда не станет «как у банков» во всех браузерах сам. Для 2–3 админских ПК достаточно: Chrome/Edge + импорт CA в Firefox/Яндекс один раз.',
+    downloadCa: 'Скачать CA (.crt)',
+    caDownloaded: 'Файл CA скачан',
+    agentsNote:
+      'Агенты инвентаризации могут продолжать ходить по HTTP, если так удобнее. HTTPS здесь — для панели админов.',
+    apiMissingHint:
+      'API HTTPS ещё не в этом процессе (на Windows нет авто-перезагрузки). Остановите start_all.bat (Ctrl+C) и запустите снова.',
   },
   settingsWol: {
     cooldown: 'Пауза между повторным Wake одного ПК (сек)',
@@ -221,6 +274,8 @@ export const ru = {
       pcs: 'ПК',
     },
     empty: 'Ничего не найдено. Уточните запрос или отправьте отчёты агента.',
+    emptySearch: 'По запросу ничего не найдено.',
+    clearSearch: 'Сбросить поиск',
     installedOnTitle: 'У кого установлено',
     selectRowHint: 'Выберите строку в таблице слева.',
     loadingHosts: 'Загрузка списка ПК…',
@@ -559,6 +614,8 @@ export const ru = {
     roomDialogCreate: 'Новое помещение',
     roomDialogRename: 'Переименовать помещение',
     roomName: 'Название',
+    roomNotes: 'Заметка',
+    roomNotesPlaceholder: 'Необязательно',
     saving: 'Сохранение…',
     transferTo: 'Куда',
     moving: 'Перемещение…',
@@ -602,6 +659,10 @@ export const ru = {
       created: 'Создано',
       updated: 'Обновлено',
     },
+    lmOfflineTitle: 'LM Studio недоступна',
+    lmOfflineBody:
+      'Чат WikiRAG требует запущенную LM Studio. Документы можно загружать и просматривать без неё.',
+    lmOfflineDetail: '{detail}',
     import: {
       title: 'Импорт из CORAX',
       description:
@@ -1568,6 +1629,11 @@ export const ru = {
     printerToner: 'Тонер мин.: {pct}%',
     printerSearchPlaceholder: 'Имя / IP / модель / кабинет',
     printerNothingFound: 'Ничего не найдено',
+    pcParkLink: 'Привязка к парку ПК',
+    pcBind: 'Привязать ПК',
+    pcRebind: 'Сменить привязку',
+    pcUnbind: 'Снять',
+    pcLearnMore: 'Узнать больше',
     autosave: 'Автосохр.: {time}',
     autosaveTitle: 'Автосохранение позиций объектов на карте',
     liveConnected: 'Канал live подключён',

@@ -77,11 +77,14 @@ export function SoftwarePage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-center gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon shrink-0">
+      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
+        <div className="page-hero-icon mt-0.5 shrink-0">
           <IconSoftware className="h-6 w-6" />
         </div>
-        <h1 className="page-title">{t('titles.software')}</h1>
+        <div className="min-w-0">
+          <h1 className="page-title">{t('titles.software')}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('pages.softwareSubtitle')}</p>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -125,7 +128,22 @@ export function SoftwarePage() {
                 {rows.length === 0 && !loading ? (
                   <tr>
                     <td colSpan={2} className="app-table-cell py-12 text-center app-table-cell-muted">
-                      {t('software.empty')}
+                      <p>{query.trim() ? t('software.emptySearch') : t('software.empty')}</p>
+                      {query.trim() ? (
+                        <button
+                          type="button"
+                          className="app-btn app-btn-secondary mt-3 text-xs"
+                          onClick={() => setQuery('')}
+                        >
+                          {t('software.clearSearch')}
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ) : loading && rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="app-table-cell py-12 text-center app-table-cell-muted">
+                      {t('common.loading')}
                     </td>
                   </tr>
                 ) : (

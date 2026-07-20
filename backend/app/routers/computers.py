@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_serializer
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -22,7 +22,16 @@ from app.models import (
 from app.peripheral_display import prepare_peripherals_for_display
 from app.printer_poll import ping_ip
 from app.rate_limit import limiter
-from app.schemas import ComputerDetail, ComputerOut, ComputerUpdate, DiskVolume as DiskVolumeOut, PeripheralItem, SoftwareItem, TagBrief
+from app.schemas import (
+    ComputerDetail,
+    ComputerMapItem,
+    ComputerOut,
+    ComputerUpdate,
+    DiskVolume as DiskVolumeOut,
+    PeripheralItem,
+    SoftwareItem,
+    TagBrief,
+)
 from app.wol import format_mac, normalize_mac, send_wake
 from app.wol_config import (
     check_cooldown,
@@ -38,6 +47,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Literal
 _DRIVE_LETTER_RE = re.compile(r"^[A-Za-z]:$")
 
 
@@ -311,7 +321,18 @@ async def list_computers(
     limit: int = Query(500, ge=1, le=5000),
     q: str | None = Query(None),
     tag_ids: list[int] = Query(default=[]),
+    view: Literal["list", "map", "full"] = Query(
+        "list",
+        description="list/full: table rows without loading raw_payload; map: minimal bind fields",
+    ),
+    ping_status: str | None = Query(
+        None,
+        description="Filter: online | offline | unknown",
+    ),
+    sort: Literal["last", "host", "ram", "periph"] = Query("last"),
+    sort_dir: Literal["asc", "desc"] = Query("desc"),
 ):
+    """Fleet list. Never materializes raw_payload/disks_json for list/map views."""
     sq_sw = (
         select(InstalledSoftware.computer_id, func.count().label("cnt"))
         .group_by(InstalledSoftware.computer_id)
@@ -322,12 +343,35 @@ async def list_computers(
         .group_by(Peripheral.computer_id)
         .subquery()
     )
+
+    # Column subset — excludes Text blobs (raw_payload, disks_json).
+    cols = [
+        Computer.id,
+        Computer.hostname,
+        Computer.serial_number,
+        Computer.mac_primary,
+        Computer.ip_address,
+        Computer.ping_status,
+        Computer.last_ping_at,
+        Computer.cpu,
+        Computer.ram_gb,
+        Computer.os_name,
+        Computer.os_version,
+        Computer.manufacturer,
+        Computer.model,
+        Computer.location,
+        Computer.gpu_name,
+        Computer.memory_used_percent,
+        Computer.motherboard_manufacturer,
+        Computer.motherboard_product,
+        Computer.last_report_at,
+        Computer.notes,
+        Computer.assigned_user_id,
+        func.coalesce(sq_sw.c.cnt, 0).label("software_count"),
+        func.coalesce(sq_pe.c.cnt, 0).label("peripheral_count"),
+    ]
     stmt = (
-        select(
-            Computer,
-            func.coalesce(sq_sw.c.cnt, 0).label("software_count"),
-            func.coalesce(sq_pe.c.cnt, 0).label("peripheral_count"),
-        )
+        select(*cols)
         .outerjoin(sq_sw, Computer.id == sq_sw.c.computer_id)
         .outerjoin(sq_pe, Computer.id == sq_pe.c.computer_id)
     )
@@ -337,57 +381,86 @@ async def list_computers(
         stmt = stmt.join(computer_tags, computer_tags.c.computer_id == Computer.id).where(
             computer_tags.c.tag_id.in_(tag_ids)
         )
+    pst_filter = (ping_status or "").strip().lower()
+    if pst_filter == "online":
+        stmt = stmt.where(func.lower(func.coalesce(Computer.ping_status, "")) == "online")
+    elif pst_filter == "offline":
+        stmt = stmt.where(func.lower(func.coalesce(Computer.ping_status, "")) == "offline")
+    elif pst_filter == "unknown":
+        stmt = stmt.where(
+            or_(
+                Computer.ping_status.is_(None),
+                func.lower(Computer.ping_status) == "unknown",
+                ~func.lower(func.coalesce(Computer.ping_status, "")).in_(("online", "offline")),
+            )
+        )
+
     total = int(
         await db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
     )
-    stmt = stmt.order_by(Computer.last_report_at.desc().nulls_last(), Computer.id).offset(skip).limit(limit)
+
+    asc = sort_dir == "asc"
+    if sort == "host":
+        order_col = Computer.hostname
+    elif sort == "ram":
+        order_col = Computer.ram_gb
+    elif sort == "periph":
+        order_col = func.coalesce(sq_pe.c.cnt, 0)
+    else:
+        order_col = Computer.last_report_at
+    order_expr = order_col.asc().nulls_last() if asc else order_col.desc().nulls_last()
+    stmt = stmt.order_by(order_expr, Computer.id).offset(skip).limit(limit)
     r = await db.execute(stmt)
-    rows = r.unique().all()
-    ids = [c.id for c, _, _ in rows]
+    rows = r.all()
+    ids = [int(row.id) for row in rows]
+
+    if view == "map":
+        items = [
+            ComputerMapItem(
+                id=int(row.id),
+                hostname=row.hostname,
+                serial_number=row.serial_number,
+                model=row.model,
+                os_name=row.os_name,
+                ram_gb=row.ram_gb,
+                ip_address=row.ip_address,
+                ping_status=(str(row.ping_status).strip().lower() if row.ping_status else None),
+                last_ping_at=row.last_ping_at,
+            )
+            for row in rows
+        ]
+        return {"items": items, "total": total}
+
     tags_by_pc = await _tags_for_computers_bulk(db, ids)
-    ping_by_id: dict[int, tuple[str | None, datetime | None, str | None]] = {}
-    if ids:
-        pr = await db.execute(
-            select(Computer.id, Computer.ping_status, Computer.last_ping_at, Computer.ip_address).where(
-                Computer.id.in_(ids)
-            )
-        )
-        for pid, pst, plat, pip in pr.all():
-            ping_by_id[int(pid)] = (
-                (str(pst).strip().lower() if pst else None),
-                plat,
-                (str(pip).strip() if pip else None),
-            )
     out: list[ComputerOut] = []
-    for c, sc, pc in rows:
-        pst, plat, pip = ping_by_id.get(int(c.id), (None, None, None))
+    for row in rows:
         out.append(
             ComputerOut(
-                id=c.id,
-                hostname=c.hostname,
-                serial_number=c.serial_number,
-                mac_primary=c.mac_primary,
-                ip_address=pip or getattr(c, "ip_address", None),
-                ping_status=pst,
-                last_ping_at=plat,
-                cpu=c.cpu,
-                ram_gb=c.ram_gb,
-                os_name=c.os_name,
-                os_version=c.os_version,
-                manufacturer=c.manufacturer,
-                model=c.model,
-                location=c.location,
-                gpu_name=c.gpu_name,
-                memory_used_percent=c.memory_used_percent,
-                motherboard_manufacturer=c.motherboard_manufacturer,
-                motherboard_product=c.motherboard_product,
+                id=int(row.id),
+                hostname=row.hostname,
+                serial_number=row.serial_number,
+                mac_primary=row.mac_primary,
+                ip_address=row.ip_address,
+                ping_status=(str(row.ping_status).strip().lower() if row.ping_status else None),
+                last_ping_at=row.last_ping_at,
+                cpu=row.cpu,
+                ram_gb=row.ram_gb,
+                os_name=row.os_name,
+                os_version=row.os_version,
+                manufacturer=row.manufacturer,
+                model=row.model,
+                location=row.location,
+                gpu_name=row.gpu_name,
+                memory_used_percent=row.memory_used_percent,
+                motherboard_manufacturer=row.motherboard_manufacturer,
+                motherboard_product=row.motherboard_product,
                 disks=[],
-                last_report_at=c.last_report_at,
-                notes=c.notes,
-                assigned_user_id=c.assigned_user_id,
-                software_count=int(sc),
-                peripheral_count=int(pc),
-                tags=tags_by_pc.get(c.id, []),
+                last_report_at=row.last_report_at,
+                notes=row.notes,
+                assigned_user_id=row.assigned_user_id,
+                software_count=int(row.software_count),
+                peripheral_count=int(row.peripheral_count),
+                tags=tags_by_pc.get(int(row.id), []),
             )
         )
     return {"items": out, "total": total}
@@ -408,7 +481,18 @@ async def export_computers_csv(
     q: str | None = Query(None),
     tag_ids: list[int] = Query(default=[]),
 ):
-    data = await list_computers(_, db, 0, 5000, q, tag_ids)
+    data = await list_computers(
+        _,
+        db,
+        skip=0,
+        limit=5000,
+        q=q,
+        tag_ids=tag_ids,
+        view="list",
+        ping_status=None,
+        sort="last",
+        sort_dir="desc",
+    )
     buf = io.StringIO()
     wr = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
     wr.writerow(

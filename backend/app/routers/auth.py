@@ -50,7 +50,8 @@ async def login_json(
     csrf = secrets.token_urlsafe(32)
     xf_proto = (request.headers.get("x-forwarded-proto") or "").strip().lower()
     is_https = request.url.scheme == "https" or xf_proto == "https"
-    secure_cookie = (settings.environment or "").strip().lower() == "production" and is_https
+    # Secure cookies whenever the request itself is HTTPS (LAN self-signed included).
+    secure_cookie = is_https
     response.set_cookie(
         key="access_token",
         value=token,

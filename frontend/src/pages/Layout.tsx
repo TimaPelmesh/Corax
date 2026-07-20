@@ -252,6 +252,7 @@ export function Layout() {
         { path: '/settings/agent-tokens', labelKey: 'nav.agentTokens' },
         { path: '/settings/agent-bundle', labelKey: 'nav.agentBundle' },
         { path: '/settings/wol', labelKey: 'nav.wol' },
+        { path: '/settings/https', labelKey: 'nav.https' },
       )
     }
     return items
@@ -375,6 +376,12 @@ export function Layout() {
             icon: IconPcs,
             labelKey: 'nav.wol',
             keywords: ['wake', 'wol', 'включить', 'ping', 'обслуживание'],
+          },
+          {
+            to: '/settings/https',
+            icon: IconLock,
+            labelKey: 'nav.https',
+            keywords: ['ssl', 'tls', 'cert', 'сертификат', 'https', 'шифр'],
           },
         )
       }

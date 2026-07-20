@@ -2148,7 +2148,7 @@ export function ServiceRequestsPage() {
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="page-title">{t('nav.requests')}</h1>
-            <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-neutral-600">
+            <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
               {t('pages.requestsSubtitle')}
             </p>
           </div>
