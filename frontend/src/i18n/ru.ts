@@ -532,6 +532,7 @@ export const ru = {
     roomSaveFailed: 'Не удалось сохранить помещение',
     roomDeleteFailed: 'Не удалось удалить помещение',
     roomDeleteOnlyOne: 'Нельзя удалить единственное помещение',
+    roomDeleteHasItems: 'Сначала перенесите или спишите позиции в этом помещении',
     roomDeleteConfirm: 'Удалить помещение «{title}»?',
     roomDefaultName: 'Склад {n}',
     addRoom: '+ Помещение',

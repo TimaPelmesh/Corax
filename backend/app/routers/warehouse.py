@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_editor_or_superuser, get_current_user
@@ -298,16 +299,40 @@ async def delete_room(
     row = await db.get(WarehouseRoom, room_id)
     if not row:
         raise HTTPException(status_code=404, detail="Помещение не найдено")
-    cnt = await db.scalar(
-        select(func.count()).select_from(StockItem).where(StockItem.room_id == room_id, StockItem.status != "written_off")
+    live = await db.scalar(
+        select(func.count())
+        .select_from(StockItem)
+        .where(StockItem.room_id == room_id, StockItem.status != "written_off")
     )
-    if cnt and cnt > 0:
-        raise HTTPException(status_code=409, detail="Нельзя удалить помещение с позициями на складе")
+    if live and live > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Нельзя удалить помещение с позициями на складе — сначала перенесите или спишите их",
+        )
     total_rooms = await db.scalar(select(func.count()).select_from(WarehouseRoom))
     if total_rooms and total_rooms <= 1:
         raise HTTPException(status_code=409, detail="Нельзя удалить единственное складское помещение")
-    await db.delete(row)
-    await db.commit()
+
+    # Write-offs stay in DB with room_id (FK RESTRICT) but are hidden from UI counts.
+    # Purge them (and their movements) so an "empty" room can be deleted.
+    written_off_ids = (
+        await db.execute(
+            select(StockItem.id).where(StockItem.room_id == room_id, StockItem.status == "written_off")
+        )
+    ).scalars().all()
+    if written_off_ids:
+        await db.execute(delete(StockMovement).where(StockMovement.item_id.in_(written_off_ids)))
+        await db.execute(delete(StockItem).where(StockItem.id.in_(written_off_ids)))
+
+    try:
+        await db.delete(row)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Нельзя удалить помещение: остались связанные позиции. Перенесите или удалите их.",
+        ) from None
 
 
 @router.get("/items", response_model=list[StockItemOut])

@@ -535,6 +535,7 @@ export const en: MessageTree = {
     roomSaveFailed: 'Could not save room',
     roomDeleteFailed: 'Could not delete room',
     roomDeleteOnlyOne: 'Cannot delete the only room',
+    roomDeleteHasItems: 'Move or write off items in this room first',
     roomDeleteConfirm: 'Delete room "{title}"?',
     roomDefaultName: 'Warehouse {n}',
     addRoom: '+ Room',

@@ -185,6 +185,10 @@ export function WarehousePage() {
       toast.error(t('warehouse.roomDeleteOnlyOne'))
       return
     }
+    if ((activeRoom.item_count ?? 0) > 0) {
+      toast.error(t('warehouse.roomDeleteHasItems'))
+      return
+    }
     if (!window.confirm(t('warehouse.roomDeleteConfirm', { title: activeRoom.title }))) return
     try {
       await api.deleteWarehouseRoom(activeRoom.id)
@@ -359,7 +363,7 @@ export function WarehousePage() {
                         type="button"
                         className="block w-full px-3 py-2 text-left text-sm text-[var(--color-primary)] hover:bg-[var(--color-primary-muted)] disabled:opacity-50"
                         onClick={() => void deleteRoom()}
-                        disabled={!activeRoom}
+                        disabled={!activeRoom || rooms.length <= 1}
                       >
                         {t('common.delete')}
                       </button>
