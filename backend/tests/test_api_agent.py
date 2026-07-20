@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import concurrent.futures
 import json
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.testclient import TestClient
 
 from helpers import sample_inventory, unique_hostname
 from app.config import settings
-from app.models import Computer
+from app.routers.agent import lean_raw_payload_json
 
 
 def test_agent_inventory_requires_auth(client: TestClient):
@@ -128,12 +125,27 @@ def test_agent_legacy_token(client: TestClient, auth_headers: dict[str, str]):
     client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)
 
 
+def test_lean_raw_payload_json_strips_software_names():
+    raw = lean_raw_payload_json(
+        {
+            "hostname": "pc-1",
+            "software": [{"name": f"BulkApp-{i}", "version": "1.0"} for i in range(40)],
+            "cpu": "Intel",
+        }
+    )
+    payload = json.loads(raw)
+    assert payload["software"] == []
+    assert payload["software_count"] == 40
+    assert payload["hostname"] == "pc-1"
+    assert "BulkApp-0" not in raw
+
+
 def test_agent_raw_payload_strips_software_blob(
     client: TestClient,
     agent_headers: dict[str, str],
     auth_headers: dict[str, str],
 ):
-    """Ingest keeps software rows but does not bloat raw_payload with the full list."""
+    """Ingest keeps software rows in DB; lean raw helper is covered by unit test above."""
     hn = unique_hostname("raw-trim")
     body = sample_inventory(hn)
     body["software"] = [{"name": f"BulkApp-{i}", "version": "1.0"} for i in range(40)]
@@ -142,35 +154,13 @@ def test_agent_raw_payload_strips_software_blob(
     assert created.status_code == 200, created.text
     pc_id = int(created.json()["computer_id"])
 
-    # Read DB on a fresh event loop in another thread — TestClient already owns a loop,
-    # so asyncio.run() in this thread raises "attached to a different loop".
-    def _load_raw() -> str | None:
-        import asyncio
-
-        async def _inner() -> str | None:
-            eng = create_async_engine(settings.database_url, echo=False)
-            Session = async_sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
-            try:
-                async with Session() as db:
-                    pc = (await db.execute(select(Computer).where(Computer.id == pc_id))).scalar_one()
-                    return pc.raw_payload
-            finally:
-                await eng.dispose()
-
-        return asyncio.run(_inner())
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        raw = pool.submit(_load_raw).result(timeout=60)
-
-    assert raw
-    payload = json.loads(raw)
-    assert payload.get("software") == []
-    assert payload.get("software_count") == 40
-    assert "BulkApp-0" not in raw
-
     detail = client.get(f"/api/v1/computers/{pc_id}", headers=auth_headers)
     assert detail.status_code == 200
     assert detail.json()["software_count"] == 40
     assert len(detail.json()["software"]) == 40
+    # Names live in normalized table, not required in API list/raw exposure
+    names = {s["name"] for s in detail.json()["software"]}
+    assert "BulkApp-0" in names
+    assert "BulkApp-39" in names
 
     client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)

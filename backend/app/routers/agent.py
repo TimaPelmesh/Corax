@@ -23,6 +23,15 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 _AGENT_TOKEN_PREFIX = "hmac256:"
 
 
+def lean_raw_payload_json(dump: dict) -> str:
+    """Store inventory JSON without the full software list (normalized table holds rows)."""
+    data = dict(dump)
+    software_list = data.pop("software", None) or []
+    data["software"] = []
+    data["software_count"] = len(software_list)
+    return json.dumps(data, ensure_ascii=False)
+
+
 def _hmac_secret(secret: str) -> str:
     key = (settings.agent_token_pepper or settings.secret_key).encode("utf-8")
     return hmac.new(key, secret.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -98,10 +107,7 @@ async def submit_inventory(
     now = datetime.now(timezone.utc)
     # Persist lean raw: software lives in installed_software; keep count only in blob.
     dump = report.model_dump()
-    software_list = dump.pop("software", None) or []
-    dump["software"] = []
-    dump["software_count"] = len(software_list)
-    raw = json.dumps(dump, ensure_ascii=False)
+    raw = lean_raw_payload_json(dump)
     mfr = normalize_manufacturer(report.manufacturer)
     model = normalize_system_model(report.model) or normalize_system_model(report.motherboard_product)
     ip_from_agent = primary_ipv4_from_extended(
