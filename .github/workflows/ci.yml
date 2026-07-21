@@ -86,13 +86,16 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Validate compose file
+        # Compose requires the same vars as backend/.env (not committed). CI dummies only.
         run: docker compose -f docker-compose.yml config --quiet
         env:
           SECRET_KEY: ci-docker-secret-key-min-32-chars-longxx
           AGENT_TOKEN: ci-docker-agent-token
           AGENT_TOKEN_PEPPER: ci-docker-agent-pepper-min-32xxxx
           BOOTSTRAP_ADMIN_PASSWORD: ci-docker-admin-password-strong
+          POSTGRES_USER: inventory
           POSTGRES_PASSWORD: ci-docker-db-password
+          POSTGRES_DB: inventory
 
       - name: Build app image
         run: docker build -t corax:ci .
