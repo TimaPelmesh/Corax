@@ -1322,6 +1322,7 @@ export const ru = {
       'Перезапишет текущую базу PostgreSQL. Перед импортом сделайте дамп. Совместимо с дампами с другой версии PostgreSQL (16 -> 18).',
     confirmLabel: 'Подтверждение: введите {word}',
     importSuccess: 'База «{database}» восстановлена ({kb} КБ).{restart}',
+    importWarnings: 'Восстановление «{database}» с предупреждениями: {detail}',
     restartRecommended: ' Рекомендуется перезапустить CORAX.',
     importFailed: 'Ошибка импорта',
     importBusy: 'Восстановление…',

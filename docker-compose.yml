@@ -1,0 +1,115 @@
+# CORAX — один стек: db + app + db-backup
+# Секреты: только backend/.env  →  npm run docker:up|down|restart
+#
+# Не копируйте secrets в образ: .dockerignore исключает **/.env
+
+name: corax
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in backend/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-inventory}
+    volumes:
+      - corax_pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-127.0.0.1:5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - corax
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: corax:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Всегда production в контейнере (даже если в backend/.env development для npm start)
+      ENVIRONMENT: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      RELOAD: "0"
+      CORAX_DOCKER: "1"
+      SKIP_ENSURE_POSTGRES: "1"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-inventory}
+      DIAGRAMS_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-inventory}
+      WAREHOUSE_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-inventory}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in backend/.env}
+      AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in backend/.env}
+      AGENT_TOKEN_PEPPER: ${AGENT_TOKEN_PEPPER:?Set AGENT_TOKEN_PEPPER in backend/.env}
+      AGENT_LEGACY_TOKENS: ${AGENT_LEGACY_TOKENS:-}
+      ALLOW_LEGACY_AGENT_TOKEN_HASHES: ${ALLOW_LEGACY_AGENT_TOKEN_HASHES:-false}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD in backend/.env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      TLS_DIR: /data/tls
+      AGENT_INBOX_DIR: ${AGENT_INBOX_DIR:-}
+      WIKI_RAG_DIR: /data/wiki_rag_docs
+      PG_BIN_DIR: /usr/bin
+      ENABLE_OPENAPI: ${ENABLE_OPENAPI:-false}
+      CORAX_TLS_FORCE: ${CORAX_TLS_FORCE:-0}
+      BITRIX24_WEBHOOK_URL: ${BITRIX24_WEBHOOK_URL:-}
+      BITRIX24_BOT_ID: ${BITRIX24_BOT_ID:-0}
+      BITRIX24_BOT_CLIENT_ID: ${BITRIX24_BOT_CLIENT_ID:-}
+      BITRIX24_BOT_HANDLER_TOKEN: ${BITRIX24_BOT_HANDLER_TOKEN:-}
+      LM_STUDIO_BASE_URL: ${LM_STUDIO_DOCKER_URL:-http://host.docker.internal:1234/v1}
+      LM_STUDIO_MODEL: ${LM_STUDIO_MODEL:-}
+      LM_STUDIO_TIMEOUT_SECONDS: ${LM_STUDIO_TIMEOUT_SECONDS:-300}
+      LM_STUDIO_MAX_TOKENS: ${LM_STUDIO_MAX_TOKENS:-3072}
+    ports:
+      - "${CORAX_PUBLISH_PORT:-3000}:3000"
+    volumes:
+      - corax_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/v1/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks:
+      - corax
+
+  db-backup:
+    image: prodrigestivill/postgres-backup-local:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB:-inventory}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in backend/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
+      POSTGRES_EXTRA_OPTS: "-Fc"
+      SCHEDULE: ${BACKUP_SCHEDULE:-@daily}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_KEEP_WEEKS: ${BACKUP_KEEP_WEEKS:-4}
+      BACKUP_KEEP_MONTHS: ${BACKUP_KEEP_MONTHS:-3}
+      HEALTHCHECK_PORT: "8080"
+    volumes:
+      - corax_backups:/backups
+    networks:
+      - corax
+
+volumes:
+  corax_pgdata:
+  corax_data:
+  corax_backups:
+
+networks:
+  corax:
+    driver: bridge

@@ -1,7 +1,10 @@
-# Unit-файлы systemd для CORAX (Linux).
-# Полная инструкция: README.md → «Linux: установка с нуля, systemd, cron»
-# (руководство по развёртыванию: пакеты, PostgreSQL, .env, systemd, cron, проверки).
+# Unit-файлы systemd для CORAX (Linux) — опционально, если не используете Docker.
 #
+# Рекомендуемый production: Docker Compose — см. [DOCKER.md](DOCKER.md).
+#
+# Полная инструкция bare-metal: README.md → «Linux: установка с нуля, systemd, cron»
+#
+# Если всё же systemd:
 # Рекомендуемый production: только corax-backend.service (UI + API на :3000).
 # corax-frontend.service — опциональный split-режим (API :3001 + preview :3000).
 # Не используйте --reload / npm run dev в unit-файлах.

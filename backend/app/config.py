@@ -121,12 +121,25 @@ def _is_default_secret(v: str) -> bool:
     s = (v or "").strip()
     if not s:
         return True
+    low = s.lower()
     defaults = {
         "change-me-in-production-use-openssl-rand-hex-32",
         "dev-agent-token-change-in-production",
+        "dev-secret-key-change-me",
         "admin123",
+        "inventory",
+        "postgres",
+        "changeme",
+        "password",
+        "secret",
     }
-    return s in defaults
+    if s in defaults or low in defaults:
+        return True
+    if low.startswith("replace-with-") or low.startswith("generate-with-"):
+        return True
+    if low.startswith("change-me") or low.startswith("your-"):
+        return True
+    return False
 
 
 def _validate_production_settings(s: Settings) -> None:
@@ -136,21 +149,28 @@ def _validate_production_settings(s: Settings) -> None:
     if env != "production":
         return
     bad: list[str] = []
-    if _is_default_secret(s.secret_key):
+    if _is_default_secret(s.secret_key) or len((s.secret_key or "").strip()) < 32:
         bad.append("SECRET_KEY")
-    if _is_default_secret(s.agent_token):
+    if _is_default_secret(s.agent_token) or len((s.agent_token or "").strip()) < 24:
         bad.append("AGENT_TOKEN")
-    if not (s.agent_token_pepper or "").strip():
+    if not (s.agent_token_pepper or "").strip() or _is_default_secret(s.agent_token_pepper):
         bad.append("AGENT_TOKEN_PEPPER")
-    if (s.bootstrap_admin_username or "").strip() and _is_default_secret(s.bootstrap_admin_password or ""):
+    if (s.bootstrap_admin_username or "").strip() and (
+        _is_default_secret(s.bootstrap_admin_password or "")
+        or len((s.bootstrap_admin_password or "").strip()) < 12
+    ):
         bad.append("BOOTSTRAP_ADMIN_PASSWORD")
     for label, url in (
         ("DATABASE_URL", s.database_url),
         ("DIAGRAMS_DATABASE_URL", s.diagrams_database_url),
         ("WAREHOUSE_DATABASE_URL", s.warehouse_database_url),
     ):
-        if not (url or "").strip().lower().startswith("postgresql"):
+        u = (url or "").strip().lower()
+        if not u.startswith("postgresql"):
             bad.append(label)
+        elif ":inventory@" in u or ":postgres@" in u:
+            # Отказ от пароля БД = inventory/postgres в production URL
+            bad.append(f"{label}(weak DB password)")
     if bad:
         raise ValueError(
             "Refusing to start in production with default/empty secrets: "

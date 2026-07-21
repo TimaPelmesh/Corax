@@ -9,9 +9,9 @@ export type ComputerPingLiveItem = {
 }
 
 type Options = {
-  /** Poll /ping-status interval while the page is mounted. Default 2500. */
+  /** Poll /ping-status interval while the page is mounted. Default 4000. */
   pollMs?: number
-  /** Request a full sweep this often while the tab is visible. Default 45000. */
+  /** Request a full sweep this often while the tab is visible. Default 180000. */
   sweepEveryMs?: number
   /** Called whenever the cache snapshot changes. */
   onItems: (items: ComputerPingLiveItem[]) => void
@@ -22,11 +22,14 @@ type Options = {
  * Keeps computer ping_status fresh while a page is open:
  * - polls the DB cache often (no ICMP in this call)
  * - kicks a full sweep on mount / tab focus / periodically (backend cooldown applies)
+ *
+ * Keep sweeps rare: a full fleet pass can run ~45s; stacking them starves the API
+ * and surfaces as browser "Нет ответа от сервера (таймаут)".
  */
 export function useComputerPingLive({
   onItems,
-  pollMs = 2500,
-  sweepEveryMs = 45_000,
+  pollMs = 4000,
+  sweepEveryMs = 180_000,
   enabled = true,
 }: Options) {
   const onItemsRef = useRef(onItems)

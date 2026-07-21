@@ -54,8 +54,8 @@ class ComputerPingScheduler:
         if self._kick_task and not self._kick_task.done():
             return {"started": False, "reason": "kick_pending", "mode": self.mode}
         now = datetime.now(timezone.utc)
-        # Short cooldown so map/list can re-request a full pass while the tab is open.
-        if self._last_kick_at and (now - self._last_kick_at).total_seconds() < 30:
+        # Cooldown: UI polls often; full sweep of ~100 hosts takes ~45s — don't stack them.
+        if self._last_kick_at and (now - self._last_kick_at).total_seconds() < 90:
             return {"started": False, "reason": "cooldown", "mode": self.mode}
         self._last_kick_at = now
         self._kick_task = asyncio.create_task(self._run_full(reason=reason), name=f"computer-ping-{reason}")

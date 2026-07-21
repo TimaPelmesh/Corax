@@ -15,7 +15,12 @@
     "test:backend": "cd backend && python -m pytest -q",
     "test:frontend": "npm run test --prefix frontend",
     "test:e2e": "playwright test",
-    "test:all": "npm run test && npm run test:e2e"
+    "test:all": "npm run test && npm run test:e2e",
+    "docker:up": "docker compose --env-file backend/.env up -d --build",
+    "docker:down": "docker compose --env-file backend/.env down",
+    "docker:restart": "docker compose --env-file backend/.env restart",
+    "docker:logs": "docker compose --env-file backend/.env logs -f",
+    "docker:ps": "docker compose --env-file backend/.env ps"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

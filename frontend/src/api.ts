@@ -38,7 +38,10 @@ function requestTimeoutMessage(path: string): string {
   if (path.includes('/wiki-rag/import/corax')) {
     return 'Импорт CORAX занял слишком много времени. Проверьте, что API запущен, и повторите.'
   }
-  return 'Нет ответа от сервера (таймаут). Проверьте, что API запущен (uvicorn / start_all.bat) и порт совпадает.'
+  return (
+    'Нет ответа от сервера (таймаут). Проверьте, что API запущен ' +
+    '(Docker: npm run docker:up / docker compose ps; локально: npm start) и порт совпадает (обычно :3000).'
+  )
 }
 
 function getCookie(name: string): string | null {

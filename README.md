@@ -26,17 +26,51 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 
 1. [Возможности](#возможности)
 2. [Стек и зависимости](#стек-и-зависимости)
-3. [Полная инструкция по установке](#полная-инструкция-по-установке) — **главный раздел**
+3. [Docker (рекомендуемый способ запуска)](#docker-рекомендуемый-способ-запуска)
+4. [Полная инструкция по установке](#полная-инструкция-по-установке) — **главный раздел**
    - [Где скачать компоненты](#где-скачать-компоненты-официальные-ссылки)
    - [PostgreSQL — подробно](#шаг-1-установка-postgresql)
-4. [Быстрый старт](#быстрый-старт-кратко)
-5. [Архитектура и структура](#архитектура)
-6. [Конфигурация](#конфигурация)
-7. [Агенты, заявки, карта, LDAP, Bitrix24](#агент-инвентаризации)
-8. [Тесты](#тесты-и-проверки)
-9. [Production checklist](#production-checklist)
-10. [Linux: установка с нуля, systemd, cron](#linux-установка-с-нуля-systemd-cron) (руководство по развёртыванию)
-11. [Эксплуатация и бэкапы](#эксплуатация)
+5. [Быстрый старт](#быстрый-старт-кратко)
+6. [Архитектура и структура](#архитектура)
+7. [Конфигурация](#конфигурация)
+8. [Агенты, заявки, карта, LDAP, Bitrix24](#агент-инвентаризации)
+9. [Тесты](#тесты-и-проверки)
+10. [Production checklist](#production-checklist)
+11. [Linux: установка с нуля, systemd, cron](#linux-установка-с-нуля-systemd-cron) (руководство по развёртыванию)
+12. [Эксплуатация и бэкапы](#эксплуатация)
+
+
+## Docker (рекомендуемый способ запуска)
+
+Подробно: **[deploy/DOCKER.md](deploy/DOCKER.md)** — обоснование стека, volumes, HTTPS, restore.
+
+### Почему так
+
+| Компонент | Роль |
+|-----------|------|
+| `app` | Multi-stage образ: UI + FastAPI на порту **3000** |
+| `db` | PostgreSQL 16 (данные в volume) |
+| `db-backup` | Ночные `pg_dump` с ротацией |
+
+Один процесс отдаёт и панель, и API (как production systemd). Dev по-прежнему: `npm start` без Docker.
+
+### Быстрый старт
+
+Секреты — только в **`backend/.env`** (тот же файл, что и для local).
+
+```bash
+cp backend/.env.example backend/.env
+# SECRET_KEY, AGENT_TOKEN, AGENT_TOKEN_PEPPER,
+# BOOTSTRAP_ADMIN_PASSWORD, POSTGRES_PASSWORD  → openssl rand -hex 32
+
+npm run docker:up       # поднять db + app + backup
+npm run docker:restart  # перезапуск
+npm run docker:down     # остановить (volumes сохраняются)
+curl -fsS http://127.0.0.1:3000/api/v1/health/ready
+```
+
+Откройте `http://127.0.0.1:3000/`. Агентам: `http://<LAN-IP>:3000`. Логи: `npm run docker:logs`.
+
 
 ## Возможности
 
@@ -46,7 +80,7 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 - Каталог ПО: список программ и компьютеров, где они установлены.
 - Теги: справочник цветных меток для группировки компьютеров.
 - Заявки: создание, база заявок, статусы, приоритеты, ответственные, шаблоны, статистика, импорт/экспорт GLPI CSV и PDF-выгрузка.
-- Карта здания: этажи/планы, импорт PNG и Visio через LibreOffice, расстановка объектов, привязки к компьютерам/мониторам/пользователям/заявкам, экспорт SVG/PNG/PDF/JSON.
+- Карта здания: этажи/планы, импорт PNG-фона, расстановка объектов, привязки к компьютерам/мониторам/пользователям/заявкам, экспорт SVG/PNG/PDF/JSON.
 - Совместная работа с картой через WebSocket: пользователи видят правки и перемещения объектов в реальном времени.
 - Пользователи и роли: локальные учётные записи CORAX (`observer`, `editor`, `admin`); LDAP/Bitrix24 — справочник для заявок без входа в панель.
 - Токены агентов: выпуск, отзыв, привязка токена к hostname, хранение токенов в виде HMAC-хеша.
@@ -71,7 +105,7 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 
 | Компонент | Зачем |
 |-----------|--------|
-| LibreOffice (`soffice`) | Импорт Visio, экспорт PDF/PNG карт |
+| LibreOffice (`soffice`) | Экспорт PDF/PNG карт (опционально) |
 | LM Studio (локальный API) | WikiRAG — чат по базе знаний |
 | Active Directory / LDAP | Синхронизация справочника для заявок |
 
@@ -155,7 +189,7 @@ CORAX принимает отчёты агентов в LAN, хранит дан
 | **Python** | **3.12+** | [python.org/downloads](https://www.python.org/downloads/) | Windows: галочка **«Add python.exe to PATH»** |
 | **Node.js** | **20 LTS** | [nodejs.org/en/download](https://nodejs.org/en/download) | Нужен для сборки и dev-режима UI |
 | **Git** (опционально) | актуальный | [git-scm.com/download/win](https://git-scm.com/download/win) | Для клонирования и обновлений |
-| **LibreOffice** (опционально) | 7.x+ | [libreoffice.org/download](https://www.libreoffice.org/download/download/) | Карта здания: Visio → PDF/PNG, экспорт планов |
+| **LibreOffice** (опционально) | 7.x+ | [libreoffice.org/download](https://www.libreoffice.org/download/download/) | Карта здания: экспорт PDF/PNG планов |
 | **LM Studio** (опционально) | актуальный | [lmstudio.ai](https://lmstudio.ai/) | WikiRAG — локальный чат по базе знаний |
 
 **PostgreSQL — что выбрать на Windows:** установщик EDB → PostgreSQL 16 → Windows x86-64. Порт **5432**, locale **Russian, Russia** или **C** (UTF-8). Запомните пароль пользователя **`postgres`** — он понадобится в `POSTGRES_ADMIN_PASSWORD` в `backend/.env`.
@@ -455,7 +489,7 @@ Set-Service postgresql-x64-16 -StartupType Automatic
 **Полная установка Ubuntu/Debian с нуля** (пакеты, PostgreSQL, пользователь, firewall, cron) —
 в разделе [Linux: установка с нуля, systemd, cron](#linux-установка-с-нуля-systemd-cron).
 
-Docker в этой инструкции **не используется** — только нативный PostgreSQL + systemd.
+Рекомендуемый путь — **Docker Compose** ([deploy/DOCKER.md](deploy/DOCKER.md)); ниже — опциональный systemd.
 
 Рекомендуемый production: **один** процесс `corax-backend` на порту **3000** (UI из `frontend/dist` + API).
 
@@ -810,17 +844,17 @@ Payload включает:
 - создание пустого этажа;
 - импорт фонового PNG;
 - замену PNG-фона;
-- импорт Visio с конвертацией в SVG через LibreOffice;
 - layout кабинетов и объектов;
 - привязки объектов к тегам, пользователям, компьютерам, мониторам и заявкам;
 - экспорт одного этажа или всех этажей в JSON;
 - экспорт SVG, PNG и PDF;
 - WebSocket для совместного редактирования.
 
-Для Visio/экспорта нужен LibreOffice:
+Для экспорта PDF/PNG через LibreOffice (опционально):
 
 - Windows: укажите `SOFFICE_PATH=C:\Program Files\LibreOffice\program\soffice.exe`.
 - Linux: обычно `SOFFICE_PATH=/usr/bin/soffice`.
+- В Docker-образе Cairo уже есть; LibreOffice для Visio не требуется (импорт Visio отключён).
 
 ## LDAP
 
@@ -923,7 +957,7 @@ E2E-тесты находятся в `e2e/` и запускаются Playwright
 ## Linux: установка с нуля, systemd, cron
 
 **Руководство по развёртыванию CORAX на Linux** (Ubuntu 22.04 / 24.04 LTS, Debian 12 и совместимые).  
-Docker **не нужен**: PostgreSQL и CORAX ставятся нативно, автозапуск — через systemd, ночные обновления — через `update.sh` + cron.
+Для новых серверов предпочтителен **Docker** ([deploy/DOCKER.md](deploy/DOCKER.md)). Опционально без контейнеров:
 
 ### Системные требования
 

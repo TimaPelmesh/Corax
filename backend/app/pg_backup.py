@@ -202,11 +202,34 @@ async def _terminate_other_sessions(cfg: PgConn) -> None:
         await conn.close()
 
 
+def _pg_restore_is_fatal(returncode: int, combined: str) -> bool:
+    """Exit 1 is often benign (--clean on missing objects). Real failures must not look like OK."""
+    if returncode not in (0, 1):
+        return True
+    low = (combined or "").lower()
+    fatal_markers = (
+        "unsupported version",
+        "does not appear to be a valid archive",
+        "could not open input file",
+        "connection to server",
+        "password authentication failed",
+        "fatal:",
+        "no such file",
+    )
+    return any(m in low for m in fatal_markers)
+
+
 async def restore_database_dump(file_bytes: bytes) -> dict:
     if len(file_bytes) > _MAX_RESTORE_BYTES:
         raise ValueError(f"Файл слишком большой (макс. {_MAX_RESTORE_BYTES // (1024 * 1024)} МБ).")
     if len(file_bytes) < 64:
         raise ValueError("Файл слишком маленький для дампа PostgreSQL.")
+    # Custom format from `pg_dump -Fc` (CORAX export). Plain .sql is not supported here.
+    if not file_bytes.startswith(b"PGDMP"):
+        raise ValueError(
+            "Нужен custom-дамп PostgreSQL (pg_dump -Fc / экспорт из панели CORAX). "
+            "Файл должен начинаться с PGDMP. Обычный .sql сюда не подходит."
+        )
 
     if not settings.database_url.strip().lower().startswith("postgresql"):
         raise ValueError("Восстановление поддерживается только для PostgreSQL.")
@@ -255,11 +278,9 @@ async def restore_database_dump(file_bytes: bytes) -> dict:
         stderr = (result.stderr or "").strip()
         stdout = (result.stdout or "").strip()
         combined = "\n".join(x for x in (stderr, stdout) if x)
-        # pg_restore often returns 1 for benign warnings
-        fatal = result.returncode not in (0, 1)
-        if fatal and not combined:
-            raise RuntimeError(f"pg_restore завершился с кодом {result.returncode}.")
-        if fatal:
+        if _pg_restore_is_fatal(result.returncode, combined):
+            if not combined:
+                raise RuntimeError(f"pg_restore завершился с кодом {result.returncode}.")
             raise RuntimeError(combined[-2000:])
 
         from app.migrations import apply_migrations

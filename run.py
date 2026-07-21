@@ -37,9 +37,17 @@ def main() -> None:
     _scripts = os.path.join(_ROOT, "scripts")
     if _scripts not in sys.path:
         sys.path.insert(0, _scripts)
-    from ensure_postgres import ensure_postgres
 
-    ensure_postgres()
+    # In Docker/compose Postgres is a sibling service — skip local Windows/Linux install helpers.
+    skip_ensure = (os.environ.get("SKIP_ENSURE_POSTGRES") or os.environ.get("CORAX_DOCKER") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not skip_ensure:
+        from ensure_postgres import ensure_postgres
+
+        ensure_postgres()
 
     os.chdir(_BACKEND)
 

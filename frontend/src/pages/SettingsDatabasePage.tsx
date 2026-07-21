@@ -162,15 +162,24 @@ export function SettingsDatabasePage() {
                 .importDatabaseDump(f, confirm)
                 .then((r) => {
                   setConfirm('')
-                  toast.ok(
-                    t('settingsDatabase.importSuccess', {
-                      database: r.database,
-                      kb: Math.round(r.bytes / 1024),
-                      restart: r.restart_recommended
-                        ? t('settingsDatabase.restartRecommended')
-                        : '',
-                    }),
-                  )
+                  if (r.warnings && r.log_tail) {
+                    toast.error(
+                      t('settingsDatabase.importWarnings', {
+                        database: r.database,
+                        detail: r.log_tail.slice(0, 400),
+                      }),
+                    )
+                  } else {
+                    toast.ok(
+                      t('settingsDatabase.importSuccess', {
+                        database: r.database,
+                        kb: Math.round(r.bytes / 1024),
+                        restart: r.restart_recommended
+                          ? t('settingsDatabase.restartRecommended')
+                          : '',
+                      }),
+                    )
+                  }
                   return api.databaseBackupStatus().then(setStatus)
                 })
                 .catch((ex) => toast.error(ex instanceof Error ? ex.message : t('settingsDatabase.importFailed')))

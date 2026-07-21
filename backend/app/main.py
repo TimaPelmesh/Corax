@@ -367,13 +367,43 @@ async def health():
 
 @app.get("/api/v1/health")
 async def health_v1():
+    import asyncio
+
     from app.local_ip import list_lan_ipv4, pick_primary_lan_ipv4
 
+    # OS IP discovery is sync/subprocess — never block the event loop on health.
+    lan_ip, lan_ips = await asyncio.gather(
+        asyncio.to_thread(pick_primary_lan_ipv4),
+        asyncio.to_thread(list_lan_ipv4),
+    )
     return {
         "status": "ok",
         "api": "v1",
-        "lan_ip": pick_primary_lan_ipv4(),
-        "lan_ips": list_lan_ipv4(),
+        "lan_ip": lan_ip,
+        "lan_ips": lan_ips,
+    }
+
+
+@app.get("/api/v1/health/ready")
+async def health_ready():
+    """Readiness: process up + PostgreSQL reachable (compose HEALTHCHECK / k8s probes)."""
+    from sqlalchemy import text
+
+    from app.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": "down", "detail": str(e)[:200]},
+        )
+    # No LAN discovery here — Docker healthcheck timeout is 5s; keep this DB-only.
+    return {
+        "status": "ok",
+        "api": "v1",
+        "database": "up",
     }
 
 

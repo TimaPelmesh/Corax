@@ -111,6 +111,40 @@ async def test_restore_database_dump_success(
         ctx.__aexit__ = AsyncMock(return_value=None)
         eng.begin.return_value = ctx
 
-    result = await restore_database_dump(b"x" * 128)
+    result = await restore_database_dump(b"PGDMP" + b"\x00" * 128)
     assert result["ok"] is True
     mock_terminate.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_restore_rejects_non_custom_format():
+    with pytest.raises(ValueError, match="PGDMP"):
+        await restore_database_dump(b"-- plain sql dump\n" + b"x" * 128)
+
+
+@pytest.mark.asyncio
+@patch("app.pg_backup._terminate_other_sessions", new_callable=AsyncMock)
+@patch("app.pg_backup.subprocess.run")
+@patch("app.pg_backup.find_pg_executable")
+@patch("app.database.engine")
+@patch("app.database.diagrams_engine")
+@patch("app.database.warehouse_engine")
+async def test_restore_rejects_unsupported_archive_version(
+    mock_wh_engine,
+    mock_diag_engine,
+    mock_engine,
+    mock_find,
+    mock_run,
+    mock_terminate,
+):
+    mock_find.return_value = MagicMock(__str__=lambda self: "/bin/pg_restore")
+    mock_run.return_value = MagicMock(
+        returncode=1,
+        stderr="pg_restore: error: unsupported version (1.16) in file header",
+        stdout="",
+    )
+    for eng in (mock_engine, mock_diag_engine, mock_wh_engine):
+        eng.dispose = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="unsupported version"):
+        await restore_database_dump(b"PGDMP" + b"\x00" * 128)

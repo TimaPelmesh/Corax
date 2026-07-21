@@ -1326,6 +1326,7 @@ export const en: MessageTree = {
       'This overwrites the current PostgreSQL database. Create a dump first. Compatible with dumps from another PostgreSQL version (16 -> 18).',
     confirmLabel: 'Confirmation: type {word}',
     importSuccess: 'Database "{database}" restored ({kb} KB).{restart}',
+    importWarnings: 'Restore of "{database}" finished with warnings: {detail}',
     restartRecommended: ' CORAX restart is recommended.',
     importFailed: 'Import failed',
     importBusy: 'Restoring…',

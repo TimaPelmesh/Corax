@@ -10,6 +10,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.computer_ip import resolve_computer_ipv4
 from app.config import settings
@@ -19,13 +20,29 @@ from app.printer_poll import ping_ip
 # Prevent overlapping cycles if a previous sweep is still running.
 _cycle_lock = asyncio.Lock()
 
+# Lightweight columns for ping. raw_payload only when IP is missing (see _resolve_ip).
+_PING_LOAD = load_only(
+    Computer.id,
+    Computer.hostname,
+    Computer.mac_primary,
+    Computer.ip_address,
+    Computer.ping_status,
+    Computer.last_ping_at,
+    Computer.raw_payload,
+)
+
 
 def _resolve_ip(c: Computer) -> str | None:
+    """
+    Scheduler path: stored IP or agent payload only.
+    Pass hostname/mac as None so DNS/ARP never run here — those are sync and can
+    freeze the ASGI loop for seconds per host (UI then shows request timeouts).
+    """
     return resolve_computer_ipv4(
         ip_address=getattr(c, "ip_address", None),
-        hostname=c.hostname,
-        mac_primary=c.mac_primary,
-        raw_payload=c.raw_payload,
+        hostname=None,
+        mac_primary=None,
+        raw_payload=getattr(c, "raw_payload", None),
     )
 
 
@@ -97,7 +114,7 @@ async def run_computer_ping_cycle(db: AsyncSession, *, reason: str = "scheduler"
         jitter_ms = int(cfg["jitter_ms"])
 
         t0 = time.monotonic()
-        rows = (await db.execute(select(Computer))).scalars().all()
+        rows = (await db.execute(select(Computer).options(_PING_LOAD))).scalars().all()
         rows_sorted = sorted(rows, key=_stale_key)
 
         targets: list[tuple[int, str]] = []
@@ -180,7 +197,7 @@ async def run_computer_ping_drip(db: AsyncSession, *, limit: int | None = None) 
     jitter_ms = int(cfg["jitter_ms"])
     n = max(1, min(int(limit or batch_size), 40))
 
-    rows = (await db.execute(select(Computer))).scalars().all()
+    rows = (await db.execute(select(Computer).options(_PING_LOAD))).scalars().all()
     candidates: list[tuple[Computer, str]] = []
     for c in rows:
         ip = _resolve_ip(c)
