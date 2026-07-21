@@ -12,7 +12,7 @@ function normalizeWolConfig(c: WolConfig): WolConfig {
     force_disabled: Boolean(c.force_disabled),
     allowlist_computer_ids: [],
     wake_user_ids: Array.isArray(c.wake_user_ids) ? c.wake_user_ids : [],
-    cooldown_seconds: Number.isFinite(c.cooldown_seconds) ? c.cooldown_seconds : 120,
+    cooldown_seconds: Number.isFinite(c.cooldown_seconds) ? c.cooldown_seconds : 0,
   }
 }
 
@@ -129,7 +129,7 @@ export function SettingsWolPage() {
               {t('settingsWol.cooldown')}
               <input
                 type="number"
-                min={30}
+                min={0}
                 max={3600}
                 className="app-input mt-1 max-w-[10rem]"
                 value={cfg.cooldown_seconds}
@@ -139,11 +139,12 @@ export function SettingsWolPage() {
                   if (Number.isFinite(n)) setCfg({ ...cfg, cooldown_seconds: n })
                 }}
                 onBlur={() => {
-                  const n = Math.max(30, Math.min(3600, cfg.cooldown_seconds || 120))
+                  const n = Math.max(0, Math.min(3600, cfg.cooldown_seconds || 0))
                   void savePatch({ cooldown_seconds: n })
                 }}
               />
             </label>
+            <p className="mt-1 text-xs text-slate-500">{t('settingsWol.cooldownHint')}</p>
           </section>
         </div>
       )}

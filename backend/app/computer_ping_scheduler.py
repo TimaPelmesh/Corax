@@ -16,6 +16,9 @@ from datetime import datetime, timedelta, timezone
 from app.computer_ping import _clamp_settings, run_computer_ping_cycle, run_computer_ping_drip
 from app.config import settings
 from app.database import AsyncSessionLocal
+from app.observability import get_logger
+
+log = get_logger("corax.computer_ping")
 
 
 class ComputerPingScheduler:
@@ -120,14 +123,16 @@ class ComputerPingScheduler:
                     summary = await run_computer_ping_drip(db, limit=drip_limit)
                     self.last_summary = summary
                     if summary.get("polled", 0):
-                        print(
-                            f"[ComputerPing:drip] {summary.get('online', 0)}/"
-                            f"{summary.get('polled', 0)} online "
-                            f"(c={summary.get('concurrency')})",
-                            flush=True,
+                        log.info(
+                            "drip",
+                            extra={
+                                "online": summary.get("online", 0),
+                                "polled": summary.get("polled", 0),
+                                "concurrency": summary.get("concurrency"),
+                            },
                         )
             except Exception as e:
-                print(f"[ComputerPing:drip] error: {e}", flush=True)
+                log.warning("drip error: %s", e)
             finally:
                 self.running = False
 
@@ -142,18 +147,21 @@ class ComputerPingScheduler:
                 summary = await run_computer_ping_cycle(db, reason=reason)
                 self.last_summary = summary
                 if summary.get("skipped"):
-                    print(f"[ComputerPing:full] skipped ({summary.get('reason')})", flush=True)
+                    log.info("full skipped", extra={"reason": summary.get("reason")})
                 else:
-                    print(
-                        f"[ComputerPing:full/{reason}] "
-                        f"{summary.get('online', 0)}/{summary.get('polled', 0)} online "
-                        f"batches={summary.get('batches')} "
-                        f"c={summary.get('concurrency')} "
-                        f"{summary.get('elapsed_ms')}ms",
-                        flush=True,
+                    log.info(
+                        "full",
+                        extra={
+                            "trigger": reason,
+                            "online": summary.get("online", 0),
+                            "polled": summary.get("polled", 0),
+                            "batches": summary.get("batches"),
+                            "concurrency": summary.get("concurrency"),
+                            "elapsed_ms": summary.get("elapsed_ms"),
+                        },
                     )
         except Exception as e:
-            print(f"[ComputerPing:full] error: {e}", flush=True)
+            log.warning("full error: %s", e)
         finally:
             self.running = False
             self.mode = "idle"

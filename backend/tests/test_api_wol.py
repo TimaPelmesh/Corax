@@ -79,13 +79,19 @@ def test_wol_observer_cannot_wake_without_grant(
         client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)
 
 
-def test_wol_superuser_wake_and_cooldown(
+def test_wol_superuser_wake_no_forced_cooldown(
     client: TestClient,
     auth_headers: dict[str, str],
     agent_headers: dict[str, str],
 ):
     pc_id = _create_pc(client, agent_headers)
     try:
+        # Ensure pause is off (migration / default).
+        client.put(
+            "/api/v1/computers/wol/config",
+            headers=auth_headers,
+            json={"cooldown_seconds": 0, "wake_user_ids": []},
+        )
         st = client.get(f"/api/v1/computers/{pc_id}/wol-status", headers=auth_headers)
         assert st.status_code == 200
         body = st.json()
@@ -97,9 +103,36 @@ def test_wol_superuser_wake_and_cooldown(
         assert woke.status_code == 200, woke.text
         assert woke.json()["ok"] is True
 
+        # Immediate re-wake must work when cooldown is 0.
+        with patch("app.routers.computers.send_wake", return_value={"sent": 2, "errors": 0}):
+            again = client.post(f"/api/v1/computers/{pc_id}/wake", headers=auth_headers)
+        assert again.status_code == 200, again.text
+    finally:
+        client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)
+
+
+def test_wol_optional_cooldown_still_works(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    agent_headers: dict[str, str],
+):
+    pc_id = _create_pc(client, agent_headers)
+    try:
+        client.put(
+            "/api/v1/computers/wol/config",
+            headers=auth_headers,
+            json={"cooldown_seconds": 120, "wake_user_ids": []},
+        )
+        with patch("app.routers.computers.send_wake", return_value={"sent": 2, "errors": 0}):
+            assert client.post(f"/api/v1/computers/{pc_id}/wake", headers=auth_headers).status_code == 200
         again = client.post(f"/api/v1/computers/{pc_id}/wake", headers=auth_headers)
         assert again.status_code == 429
     finally:
+        client.put(
+            "/api/v1/computers/wol/config",
+            headers=auth_headers,
+            json={"cooldown_seconds": 0, "wake_user_ids": []},
+        )
         client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)
 
 

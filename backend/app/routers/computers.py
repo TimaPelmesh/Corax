@@ -105,7 +105,7 @@ class WolConfigUpdate(BaseModel):
     enabled: bool | None = None
     allowlist_computer_ids: list[int] | None = None
     wake_user_ids: list[int] | None = None
-    cooldown_seconds: int | None = Field(default=None, ge=30, le=3600)
+    cooldown_seconds: int | None = Field(default=None, ge=0, le=3600)
 
 
 class WolAllowUpdate(BaseModel):

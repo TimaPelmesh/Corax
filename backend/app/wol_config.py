@@ -69,7 +69,7 @@ async def get_wol_config_row(db: AsyncSession) -> WakeOnLanConfig:
             enabled=False,
             allowlist_computer_ids_json="[]",
             wake_user_ids_json="[]",
-            cooldown_seconds=120,
+            cooldown_seconds=0,
         )
         db.add(row)
         await db.commit()
@@ -80,7 +80,8 @@ async def get_wol_config_row(db: AsyncSession) -> WakeOnLanConfig:
 async def get_effective_wol_config(db: AsyncSession) -> EffectiveWolConfig:
     row = await get_wol_config_row(db)
     force = bool(getattr(settings, "wol_force_disabled", False))
-    cooldown = max(30, min(int(row.cooldown_seconds or 120), 3600))
+    # 0 = no per-PC pause (admin may still use API rate limit). Previously forced ≥30s.
+    cooldown = max(0, min(int(row.cooldown_seconds or 0), 3600))
     wake_users_raw = getattr(row, "wake_user_ids_json", None) or "[]"
     # Feature is always available unless server kill-switch; no scary DB "enable" gate.
     return EffectiveWolConfig(
@@ -106,13 +107,16 @@ def user_may_wake(user: User, cfg: EffectiveWolConfig) -> bool:
 
 
 def check_cooldown(computer_id: int, cooldown_seconds: int) -> int | None:
-    """Return remaining seconds if cooling down, else None."""
+    """Return remaining seconds if cooling down, else None. cooldown_seconds≤0 disables."""
+    cd = int(cooldown_seconds or 0)
+    if cd <= 0:
+        return None
     with _cooldown_lock:
         last = _last_wake_monotonic.get(int(computer_id))
         if last is None:
             return None
         elapsed = time.monotonic() - last
-        left = int(cooldown_seconds - elapsed)
+        left = int(cd - elapsed)
         return left if left > 0 else None
 
 

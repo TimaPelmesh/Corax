@@ -319,6 +319,13 @@ def _migrate_wol_wake_user_ids(sync_conn) -> None:
         )
 
 
+def _migrate_wol_cooldown_zero(sync_conn) -> None:
+    """Drop forced wake pause — admins need to re-wake / re-check without waiting."""
+    if "wake_on_lan_config" not in _table_names(sync_conn):
+        return
+    sync_conn.execute(text("UPDATE wake_on_lan_config SET cooldown_seconds = 0"))
+
+
 def _migrate_computers_ip_address(sync_conn) -> None:
     if "computers" not in _table_names(sync_conn):
         return
@@ -658,6 +665,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-07-15_network_extras_json", _migrate_network_extras_json),
     ("2026-07-16_wake_on_lan_config", _migrate_wake_on_lan_config),
     ("2026-07-16_wol_wake_user_ids", _migrate_wol_wake_user_ids),
+    ("2026-07-21_wol_cooldown_zero", _migrate_wol_cooldown_zero),
     ("2026-07-16_computers_ip_address", _migrate_computers_ip_address),
     ("2026-07-16_computers_ping_status", _migrate_computers_ping_status),
 ]

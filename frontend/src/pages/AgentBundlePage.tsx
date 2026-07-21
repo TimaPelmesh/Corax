@@ -24,11 +24,39 @@ const MODULE_KEYS = [
   'docker_wsl',
 ] as const
 
-const DEFAULT_PORT = '3001'
+/** Prod/Docker = :3000 (UI+API). Dev split uses :3001 for API — take from address bar when possible. */
+function defaultAgentPort(): string {
+  if (typeof window === 'undefined') return '3000'
+  const p = (window.location.port || '').trim()
+  if (p) return p
+  if (window.location.protocol === 'https:') return '443'
+  return '3000'
+}
+
+/** Docker / compose bridge pools — unreachable from LAN PCs. */
+function isDockerBridgeIp(ip: string): boolean {
+  const m = /^172\.(1[7-9]|2\d)\.(\d{1,3})\.(\d{1,3})$/.exec(ip.trim())
+  return Boolean(m)
+}
+
+/** If admin opened the panel via LAN IP/hostname, that is the URL agents must use (not Docker 172.x). */
+function hostFromBrowser(): string {
+  if (typeof window === 'undefined') return ''
+  const h = (window.location.hostname || '').trim().toLowerCase()
+  if (!h || h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1') return ''
+  if (isDockerBridgeIp(h)) return ''
+  return window.location.hostname.trim()
+}
+
+function usableLanIp(ip: string | null | undefined): string {
+  const v = (ip || '').trim()
+  if (!v || isDockerBridgeIp(v)) return ''
+  return v
+}
 
 function buildServerUrl(host: string, port: string): string {
   const h = host.trim()
-  const p = port.trim() || DEFAULT_PORT
+  const p = port.trim() || defaultAgentPort()
   if (!h) return `http://…:${p}`
   return `http://${h}:${p}`
 }
@@ -37,11 +65,11 @@ export function AgentBundlePage() {
   const t = useT()
   const toast = useToast()
   const { user, loading: authLoading } = useAuth()
-  const [serverHost, setServerHost] = useState('')
+  const [serverHost, setServerHost] = useState(() => hostFromBrowser())
   const [lanCandidates, setLanCandidates] = useState<string[]>([])
   const [lanLoading, setLanLoading] = useState(true)
-  const [serverPort, setServerPort] = useState(DEFAULT_PORT)
-  const [platform, setPlatform] = useState<AgentBundleTarget>('cpp')
+  const [serverPort, setServerPort] = useState(() => defaultAgentPort())
+  const [platform, setPlatform] = useState<AgentBundleTarget>('win10')
   const [level, setLevel] = useState<AgentBundleProfile>('full')
   const [tokenLabel, setTokenLabel] = useState('CORAX deploy')
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
@@ -62,13 +90,25 @@ export function AgentBundlePage() {
       .agentBundleLanIp()
       .then((r) => {
         if (cancelled) return
-        const candidates = r.candidates ?? []
-        setLanCandidates(candidates)
-        const ip = r.ip ?? candidates[0] ?? ''
-        if (ip) setServerHost(ip)
+        const fromApi = (r.candidates ?? []).map((x) => usableLanIp(x)).filter(Boolean)
+        const browserHost = hostFromBrowser()
+        const preferred =
+          usableLanIp(browserHost) || usableLanIp(r.ip) || fromApi[0] || ''
+        const merged = [
+          ...(preferred ? [preferred] : []),
+          ...fromApi.filter((ip) => ip !== preferred),
+        ]
+        setLanCandidates(merged)
+        setServerHost(preferred)
       })
       .catch((ex) => {
         if (cancelled) return
+        const browserHost = hostFromBrowser()
+        if (browserHost) {
+          setServerHost(browserHost)
+          setLanCandidates([browserHost])
+          return
+        }
         toast.error(ex instanceof Error ? ex.message : t('agentBundle.lanDetectFailed'))
       })
       .finally(() => {
@@ -103,6 +143,10 @@ export function AgentBundlePage() {
     e.preventDefault()
     if (!serverHost.trim()) {
       toast.error(t('agentBundle.serverHostRequired'))
+      return
+    }
+    if (isDockerBridgeIp(serverHost)) {
+      toast.error(t('agentBundle.dockerBridgeIp'))
       return
     }
     setBusy(true)
@@ -241,7 +285,7 @@ export function AgentBundlePage() {
                 className="app-input font-mono text-sm"
                 value={serverPort}
                 onChange={(e) => setServerPort(e.target.value.replace(/[^\d]/g, ''))}
-                placeholder={DEFAULT_PORT}
+                placeholder="3000"
                 required
               />
             </div>

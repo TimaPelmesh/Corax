@@ -210,6 +210,7 @@ export const ru = {
   },
   settingsWol: {
     cooldown: 'Пауза между повторным Wake одного ПК (сек)',
+    cooldownHint: '0 — без ожидания (можно сразу жать Wake снова). Защита от спама остаётся на уровне API.',
     forceOff: 'WoL принудительно выключен на сервере (WOL_FORCE_DISABLED).',
     operators: 'Кто может включать ПК',
     operatorsHint: 'Суперадмин всегда может. Остальным — явная галочка. В парке — кнопка только у offline ПК.',
@@ -1511,6 +1512,8 @@ export const ru = {
     },
     lanDetectFailed: 'Не удалось определить LAN IP сервера',
     serverHostRequired: 'Укажите IP-адрес сервера CORAX в локальной сети',
+    dockerBridgeIp:
+      'Это IP Docker (172.17–24.x) — с ПК в LAN он недоступен. Укажите IP хоста (ipconfig / hostname -I) или откройте панель по http://192.168.x.x:3000',
     defaultTokenLabelWin7: 'CORAX deploy win7',
     defaultTokenLabelWin10: 'CORAX deploy win10',
     defaultTokenLabelCpp: 'CORAX deploy cpp',
@@ -1530,7 +1533,7 @@ export const ru = {
     detectingLanIp: 'Определяем LAN IP…',
     detectingLanIpHint: 'Определяем локальный IP этой машины…',
     serverIpHint:
-      'LAN-IP сервера CORAX (не 127.0.0.1). С рабочих ПК этот адрес должен открываться.',
+      'LAN-IP хоста CORAX (не 127.0.0.1 и не 172.x Docker). Если пусто — впишите вручную или CORAX_ADVERTISE_HOST в .env.',
     portLabel: 'Порт',
     agentUrl: 'URL для агента:',
     win7Notice:

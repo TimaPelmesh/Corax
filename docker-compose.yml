@@ -54,9 +54,12 @@ services:
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD in backend/.env}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      # Host LAN IP for agent builds (container itself only sees 172.x). Optional if admin opens panel via LAN IP.
+      CORAX_ADVERTISE_HOST: ${CORAX_ADVERTISE_HOST:-}
       TLS_DIR: /data/tls
       AGENT_INBOX_DIR: ${AGENT_INBOX_DIR:-}
       WIKI_RAG_DIR: /data/wiki_rag_docs
+      LOG_DIR: /data/logs
       PG_BIN_DIR: /usr/bin
       ENABLE_OPENAPI: ${ENABLE_OPENAPI:-false}
       CORAX_TLS_FORCE: ${CORAX_TLS_FORCE:-0}

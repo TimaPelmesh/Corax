@@ -72,6 +72,9 @@ def _private_ipv4(ip: str) -> ipaddress.IPv4Address | None:
 
 
 def local_lan_interfaces() -> list[tuple[str, ipaddress.IPv4Network]]:
+    """Physical/site LAN NICs only — skip Docker bridge pools (useless for WoL to PCs)."""
+    from app.local_ip import _is_likely_container_bridge
+
     found: dict[str, ipaddress.IPv4Network] = {}
     win = platform.system().lower() == "windows"
     if win:
@@ -99,6 +102,8 @@ def local_lan_interfaces() -> list[tuple[str, ipaddress.IPv4Network]]:
                 continue
             if not _private_ipv4(str(iface.ip)):
                 continue
+            if _is_likely_container_bridge(iface.ip):
+                continue
             if 16 <= iface.network.prefixlen <= 30:
                 found[str(iface.ip)] = iface.network
     else:
@@ -111,6 +116,8 @@ def local_lan_interfaces() -> list[tuple[str, ipaddress.IPv4Network]]:
             if not isinstance(iface, ipaddress.IPv4Interface):
                 continue
             if not _private_ipv4(str(iface.ip)):
+                continue
+            if _is_likely_container_bridge(iface.ip):
                 continue
             if 16 <= iface.network.prefixlen <= 30:
                 found[str(iface.ip)] = iface.network
@@ -128,10 +135,14 @@ def _send_one(packet: bytes, *, local_ip: str, bcast: str, port: int) -> None:
 def send_wake(
     mac: bytes,
     *,
-    count: int = 3,
-    delay_ms: int = 30,
+    count: int = 30,
+    delay_ms: int = 20,
 ) -> dict[str, int]:
-    """Send magic packets from each LAN NIC. Returns {sent, errors}."""
+    """Send magic packets from each LAN NIC. Returns {sent, errors}.
+
+    ``count`` is the number of UDP datagrams (default 30). Destinations cycle across
+    subnet broadcast + 255.255.255.255 and ports 9/7 so flaky NICs still hear a wake.
+    """
     packet = build_magic_packet(mac)
     interfaces = local_lan_interfaces()
     routes: list[tuple[str, str]] = []
@@ -142,16 +153,22 @@ def send_wake(
     else:
         routes.append(("", "255.255.255.255"))
 
+    targets: list[tuple[str, str, int]] = [
+        (lip, bcast, port) for lip, bcast in routes for port in _DEFAULT_PORTS
+    ]
+    if not targets:
+        targets = [("", "255.255.255.255", 9)]
+
     sent = 0
     errors = 0
-    for _round in range(max(1, min(count, 5))):
-        for local_ip, bcast in routes:
-            for port in _DEFAULT_PORTS:
-                try:
-                    _send_one(packet, local_ip=local_ip, bcast=bcast, port=port)
-                    sent += 1
-                except OSError:
-                    errors += 1
-        if delay_ms > 0 and _round + 1 < count:
+    n = max(1, min(int(count), 64))
+    for i in range(n):
+        local_ip, bcast, port = targets[i % len(targets)]
+        try:
+            _send_one(packet, local_ip=local_ip, bcast=bcast, port=port)
+            sent += 1
+        except OSError:
+            errors += 1
+        if delay_ms > 0 and i + 1 < n:
             time.sleep(delay_ms / 1000.0)
     return {"sent": sent, "errors": errors}

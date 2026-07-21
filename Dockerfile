@@ -59,6 +59,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     AGENT_INBOX_DIR=/data/agent_inbox \
     WIKI_RAG_DIR=/data/wiki_rag_docs \
     TLS_DIR=/data/tls \
+    LOG_DIR=/data/logs \
     PG_BIN_DIR=/usr/bin
 
 WORKDIR /app
@@ -87,7 +88,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 10001 corax \
   && useradd --system --uid 10001 --gid corax --home-dir /app --shell /usr/sbin/nologin corax \
-  && mkdir -p /data/agent_inbox /data/wiki_rag_docs /data/tls /data/backups \
+  && mkdir -p /data/agent_inbox /data/wiki_rag_docs /data/tls /data/backups /data/logs \
   && chown -R corax:corax /data /app
 
 COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
@@ -96,7 +97,9 @@ COPY --from=python-deps /usr/local/bin /usr/local/bin
 COPY --chown=corax:corax run.py ./
 COPY --chown=corax:corax scripts ./scripts
 COPY --chown=corax:corax backend ./backend
-# Windows agent EXE template (stamp-only on Linux; MSVC not in image)
+# Agent templates for panel ZIP/EXE builds (PowerShell + stamped C++ EXE)
+COPY --chown=corax:corax agent/v3 ./agent/v3
+COPY --chown=corax:corax agent/win7 ./agent/win7
 COPY --chown=corax:corax agent/cpp ./agent/cpp
 COPY --from=frontend-build --chown=corax:corax /frontend/dist ./frontend/dist
 COPY --chown=corax:corax deploy/docker/entrypoint.sh /entrypoint.sh

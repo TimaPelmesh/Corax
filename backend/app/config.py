@@ -35,13 +35,28 @@ class Settings(BaseSettings):
     # Нужен для подписи JWT (вход в панель без него невозможен). В проде задайте в .env.
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     algorithm: str = "HS256"
+    # Session length for panel JWT / HttpOnly cookie. LAN default 24h; shorten in .env if needed.
     access_token_expire_minutes: int = 60 * 24
     agent_token: str = "dev-agent-token-change-in-production"
     # Optional comma-separated fallback tokens for old agents during migration.
     agent_legacy_tokens: str = "dev-agent-token-change-in-production"
     # Extra server-side pepper for hashing agent token secrets (recommended; different from SECRET_KEY).
     agent_token_pepper: str = ""
-    allow_legacy_agent_token_hashes: bool = True
+    # Prefer HMAC-stored agent tokens; plaintext legacy hashes only during migration.
+    allow_legacy_agent_token_hashes: bool = False
+    # --- Observability ---
+    # stdout (Docker/systemd) + rotating files under LOG_DIR (skipped when ENVIRONMENT=test).
+    log_level: str = "INFO"
+    log_dir: str = "logs"
+    log_to_stdout: bool = True
+    log_to_file: bool = True
+    # None = JSON in production, human-readable elsewhere (stdout). File corax.jsonl is always JSON.
+    log_json: bool | None = None
+    log_max_bytes: int = 10_485_760
+    log_backup_count: int = 14
+    # Security headers / CSP (CSP only when ENVIRONMENT=production).
+    security_headers_enabled: bool = True
+    security_csp_enabled: bool = True
     cors_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:3000,http://127.0.0.1:3000"
@@ -115,6 +130,9 @@ class Settings(BaseSettings):
     allow_dev_any_agent_token: bool = False
     # In production OpenAPI (/docs) is off unless ENABLE_OPENAPI=true.
     enable_openapi: bool = False
+    # Host/IP that agents should use (Docker: set to host LAN IP — container sees 172.x otherwise).
+    # Example: CORAX_ADVERTISE_HOST=192.168.1.10
+    corax_advertise_host: str = ""
 
 
 def _is_default_secret(v: str) -> bool:

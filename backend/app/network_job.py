@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from app.database import AsyncSessionLocal
+from app.observability import get_logger
+
+log = get_logger("corax.network_job")
 
 JobKind = Literal["idle", "discover", "poll"]
 JobPhase = Literal[
@@ -107,7 +110,7 @@ class NetworkJobRunner:
             self.state.error = str(e)[:400]
             self.state.message = f"Ошибка: {self.state.error}"
             self.state.progress = 100
-            print(f"[NetworkJob] error: {e}", flush=True)
+            log.warning("job error: %s", e)
         finally:
             self.state.running = False
             self.state.finished_at = datetime.now(timezone.utc)

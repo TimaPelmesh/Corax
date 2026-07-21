@@ -92,6 +92,9 @@ glpi*.csv
 # Local WoL helper (may contain LAN targets / experiments) — never commit
 wake_pc.py
 
+# App log directory (local); Docker uses /data/logs in volume
+backend/logs/
+
 ## Local planning (never push to GitHub)
 ROADMAP.local.md
 OPS.local.md

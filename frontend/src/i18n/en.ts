@@ -214,6 +214,7 @@ export const en: MessageTree = {
   },
   settingsWol: {
     cooldown: 'Pause between repeated wakes of the same PC (sec)',
+    cooldownHint: '0 — no wait (wake again immediately). API rate limit still applies.',
     forceOff: 'WoL is force-disabled on the server (WOL_FORCE_DISABLED).',
     operators: 'Who may wake PCs',
     operatorsHint: 'Superuser always may. Others need an explicit grant. In the fleet — button only for offline PCs.',
@@ -1515,6 +1516,8 @@ export const en: MessageTree = {
     },
     lanDetectFailed: 'Could not detect the server LAN IP',
     serverHostRequired: 'Specify the CORAX server IP address on the local network',
+    dockerBridgeIp:
+      'That is a Docker bridge IP (172.17–24.x) — LAN PCs cannot reach it. Enter the host LAN IP or open the panel via http://192.168.x.x:3000',
     defaultTokenLabelWin7: 'CORAX deploy win7',
     defaultTokenLabelWin10: 'CORAX deploy win10',
     defaultTokenLabelCpp: 'CORAX deploy cpp',
@@ -1534,7 +1537,7 @@ export const en: MessageTree = {
     detectingLanIp: 'Detecting LAN IP…',
     detectingLanIpHint: 'Detecting this machine local IP…',
     serverIpHint:
-      'LAN IP of the CORAX server (not 127.0.0.1). This address must be reachable from workstations.',
+      'CORAX host LAN IP (not 127.0.0.1, not Docker 172.x). If empty — type it or set CORAX_ADVERTISE_HOST in .env.',
     portLabel: 'Port',
     agentUrl: 'Agent URL:',
     win7Notice:

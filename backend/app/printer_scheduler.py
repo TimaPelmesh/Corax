@@ -5,8 +5,11 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from app.database import AsyncSessionLocal
+from app.observability import get_logger
 from app.printer_poll import run_printer_poll_cycle
 from app.printer_poll_config import get_effective_printer_poll_config
+
+log = get_logger("corax.printer_poll")
 
 
 class PrinterPollScheduler:
@@ -48,7 +51,7 @@ class PrinterPollScheduler:
                     interval_min = cfg.poll_interval_minutes
                     enabled = cfg.poll_enabled
             except Exception as e:
-                print(f"[PrinterPoll] config read error: {e}", flush=True)
+                log.warning("config read error: %s", e)
 
             if enabled:
                 try:
@@ -56,7 +59,7 @@ class PrinterPollScheduler:
                     async with AsyncSessionLocal() as db:
                         await run_printer_poll_cycle(db, triggered_by="scheduler")
                 except Exception as e:
-                    print(f"[PrinterPoll] scheduler error: {e}", flush=True)
+                    log.warning("scheduler error: %s", e)
                 finally:
                     self.running = False
 

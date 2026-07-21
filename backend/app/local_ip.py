@@ -79,7 +79,28 @@ def local_ipv4_addresses() -> set[ipaddress.IPv4Address]:
     return out
 
 
+def _is_likely_container_bridge(addr: ipaddress.IPv4Address) -> bool:
+    """Docker default/compose bridges — not reachable from LAN PCs."""
+    # Classic docker0 and typical compose bridge pools.
+    for net in (
+        "172.17.0.0/16",
+        "172.18.0.0/16",
+        "172.19.0.0/16",
+        "172.20.0.0/16",
+        "172.21.0.0/16",
+        "172.22.0.0/16",
+        "172.23.0.0/16",
+        "172.24.0.0/16",
+    ):
+        if addr in ipaddress.ip_network(net):
+            return True
+    return False
+
+
 def _lan_sort_key(addr: ipaddress.IPv4Address) -> tuple[int, int]:
+    # Prefer real site LANs; demote container bridges so they never win by accident.
+    if _is_likely_container_bridge(addr):
+        return (9, int(addr))
     s = str(addr)
     if s.startswith("192.168."):
         return (0, int(addr))
@@ -90,13 +111,31 @@ def _lan_sort_key(addr: ipaddress.IPv4Address) -> tuple[int, int]:
     return (3, int(addr))
 
 
-def list_lan_ipv4() -> list[str]:
-    return [str(a) for a in sorted(local_ipv4_addresses(), key=_lan_sort_key)]
+def list_lan_ipv4(*, include_container_bridges: bool = False) -> list[str]:
+    addrs = local_ipv4_addresses()
+    if not include_container_bridges:
+        # Empty is OK — caller must not fall back to Docker bridges for agent URLs.
+        addrs = {a for a in addrs if not _is_likely_container_bridge(a)}
+    return [str(a) for a in sorted(addrs, key=_lan_sort_key)]
 
 
 def pick_primary_lan_ipv4() -> str | None:
-    items = list_lan_ipv4()
+    """Best site LAN IP for agents. Never returns Docker bridge addresses."""
+    items = list_lan_ipv4(include_container_bridges=False)
     return items[0] if items else None
+
+
+def advertise_lan_ipv4() -> str | None:
+    """Preferred agent target: CORAX_ADVERTISE_HOST, else best local LAN IP (not Docker 172.x)."""
+    from app.config import settings
+
+    raw = (settings.corax_advertise_host or "").strip()
+    if raw:
+        # Allow bare IP or host:port / URL scraps
+        host = raw.split("://")[-1].split("/")[0].split(":")[0].strip()
+        if host:
+            return host
+    return pick_primary_lan_ipv4()
 
 
 def _decode_cmd_out(blob: bytes) -> str:

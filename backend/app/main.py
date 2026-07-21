@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import ipaddress
-import sys
 import time
 import uuid
 from urllib.parse import urlparse
@@ -17,6 +16,13 @@ from app.config import settings
 from app.database import AsyncSessionLocal, Base, DiagramsBase, DiagramsSessionLocal, WarehouseBase, WarehouseSessionLocal, diagrams_engine, engine, warehouse_engine
 from app.auth import hash_password
 from app.migrations import apply_diagrams_migrations, apply_migrations, apply_warehouse_migrations
+from app.observability import (
+    RequestLoggingMiddleware,
+    get_logger,
+    install_exception_handlers,
+    setup_logging,
+)
+from app.security_headers import SecurityHeadersMiddleware
 from app.warehouse_models import StockItem, StockMovement, WarehouseRoom  # noqa: F401 — register ORM metadata
 from app.models import ServiceRequestTemplate, Tag, User
 from app.routers import (
@@ -47,6 +53,20 @@ from app.routers import (
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 _PROJECT_ROOT = _BACKEND_DIR.parent
 _FRONTEND_DIST = _PROJECT_ROOT / "frontend" / "dist"
+
+setup_logging(
+    environment=settings.environment,
+    level=settings.log_level,
+    log_dir=settings.log_dir,
+    log_to_stdout=settings.log_to_stdout,
+    log_to_file=settings.log_to_file,
+    log_json=settings.log_json,
+    max_bytes=settings.log_max_bytes,
+    backup_count=settings.log_backup_count,
+    backend_dir=_BACKEND_DIR,
+)
+log = get_logger("corax.main")
+
 
 async def _seed_dev_data(db: AsyncSessionLocal) -> None:
     env = (settings.environment or "").strip().lower()
@@ -158,22 +178,18 @@ async def lifespan(_: FastAPI):
         try:
             removed = await purge_workstation_printers(db)
             if removed:
-                print(
-                    f"[CORAX] Вкладка «Принтеры»: убрано {removed} записей с парка ПК "
-                    "(остаются только SNMP и ручные).",
-                    file=sys.stderr,
-                    flush=True,
+                log.info(
+                    "purged workstation printers from SNMP tab",
+                    extra={"removed": removed},
                 )
         except Exception as exc:
-            print(f"[CORAX] Очистка принтеров парка ПК: {exc}", file=sys.stderr, flush=True)
+            log.warning("printer purge failed: %s", exc)
 
-    msg = (
-        "\n[CORAX] LAN agents: POST /api/v1/agent/inventory (Bearer = agent_token).\n"
-        "[CORAX] Подсказка: используйте тот же host/port, что у API (например http://127.0.0.1:3001 или http://<server>:3001).\n"
-        "[CORAX] Web UI обычно на http://127.0.0.1:3000 .\n"
+    log.info(
+        "ready — agents POST /api/v1/agent/inventory; UI typically http://127.0.0.1:3000"
     )
-    print(msg, file=sys.stderr, flush=True)
     _cleanup_agent_inbox()
+
 
     from app.computer_ping_scheduler import computer_ping_scheduler
     from app.printer_scheduler import printer_poll_scheduler
@@ -237,7 +253,25 @@ def _is_dev_lan_host(host: str) -> bool:
         return False
 
 
-def _csrf_origin_allowed(origin: str) -> bool:
+def _origin_matches_request(origin: str, request: Request) -> bool:
+    """Same-origin: browser Origin host:port equals request Host (LAN IP / hostname OK)."""
+    try:
+        u = urlparse(origin)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            return False
+        req_host = (request.headers.get("host") or "").strip().lower()
+        if not req_host or u.netloc.lower() != req_host:
+            return False
+        xf = (request.headers.get("x-forwarded-proto") or "").strip().lower()
+        scheme = "https" if (request.url.scheme == "https" or xf == "https") else "http"
+        return u.scheme == scheme
+    except Exception:
+        return False
+
+
+def _csrf_origin_allowed(origin: str, request: Request | None = None) -> bool:
+    if request is not None and _origin_matches_request(origin, request):
+        return True
     if origin in origins:
         return True
     if (settings.environment or "").strip().lower() != "development":
@@ -272,6 +306,17 @@ else:
     _cors_kw["allow_origins"] = origins
 
 app.add_middleware(CORSMiddleware, **_cors_kw)
+
+if settings.security_headers_enabled:
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        environment=settings.environment,
+        enable_csp=settings.security_csp_enabled,
+    )
+
+app.add_middleware(RequestLoggingMiddleware)
+
+install_exception_handlers(app, environment=settings.environment)
 
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _CSRF_EXEMPT_PREFIXES = (
@@ -325,7 +370,7 @@ async def csrf_and_origin_guard(request: Request, call_next):
         return await call_next(request)
 
     origin = (request.headers.get("origin") or "").strip()
-    if origin and not _csrf_origin_allowed(origin):
+    if origin and not _csrf_origin_allowed(origin, request):
         # JSONResponse: HTTPException из BaseHTTPMiddleware на части стеков даёт 500 вместо 403.
         return JSONResponse({"detail": "CSRF: origin not allowed"}, status_code=403)
 

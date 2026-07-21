@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Observability
+
+- Structured logging: stdout + rotating files (`LOG_DIR/corax.jsonl`, `corax.log`); `X-Request-Id` in access logs.
+- Docker: `LOG_DIR=/data/logs` in volume `corax_data`.
+
+### Security
+
+- Security headers middleware (nosniff, frame deny, Referrer-Policy, Permissions-Policy; CSP + HSTS in production/HTTPS).
+- Login JSON: `return_token` default **false**; cookies get `Max-Age` aligned with JWT TTL.
+- `ALLOW_LEGACY_AGENT_TOKEN_HASHES` default **false**.
+
+### Frontend
+
+- ~~`ServiceRequestsPage` split~~ — откатано: UI не трогаем ради LOC.
+
+### Docs / agents
+
+- Agent bundle defaults: port from browser (prod **3000**); LAN IP from address bar / `CORAX_ADVERTISE_HOST` (Docker 172.x demoted).
+- README: removed EXE/PyInstaller agent docs; agents documented as ZIP on **:3000**.
+
 ### Безопасность и документация
 
 - **slowapi**: лимиты на `POST /auth/login`, `/auth/login/json` и `POST /agent/inventory` (`RATE_LIMIT_LOGIN`, `RATE_LIMIT_AGENT` в `.env`).

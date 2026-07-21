@@ -11,6 +11,7 @@
 | **Non-root `uid 10001`** | Меньше blast radius |
 | **`/health/ready`** | Ready = Postgres отвечает |
 | **Sidecar backup** | Ночной `pg_dump` + ротация |
+| **Structured logs** | stdout + `/data/logs/corax.jsonl` (volume) |
 
 ## Быстрый старт
 
@@ -28,7 +29,20 @@ curl -fsS http://127.0.0.1:3000/api/v1/health/ready
 
 Панель: `http://127.0.0.1:3000/` (логин = `BOOTSTRAP_*` из `backend/.env`).
 
-Агентам: `http://<LAN-IP>:3000`.
+Агентам: `http://<LAN-IP>:3000` (порт **3000**, тот же что у панели).
+
+Фаервол хоста: откройте **TCP 3000** (UFW/iptables/cloud SG), иначе стек «healthy», а с других ПК не достучаться.
+
+```bash
+# пример Ubuntu
+sudo ufw allow 3000/tcp
+sudo ufw reload
+# проверка с другой машины в LAN:
+curl -fsS http://<LAN-IP>:3000/api/v1/health
+```
+
+Опционально в `backend/.env`: `CORAX_ADVERTISE_HOST=192.168.x.x` — явный IP для сборки агентов.
+Если открыть панель уже по `http://192.168.x.x:3000`, IP подставится сам.
 
 ## Одна команда
 
@@ -63,11 +77,13 @@ docker compose --env-file backend/.env restart
 | Volume | Содержимое |
 |--------|------------|
 | `corax_pgdata` | PostgreSQL |
-| `corax_data` | `/data/tls`, WikiRAG, (опц. inbox) |
+| `corax_data` | `/data/tls`, WikiRAG, **`/data/logs`**, (опц. inbox) |
 | `corax_backups` | Ночные дампы (`-Fc`) |
 
 ```bash
 npm run docker:logs
+# Файловые логи приложения (JSON):
+docker compose --env-file backend/.env exec app ls -la /data/logs
 docker compose --env-file backend/.env exec db-backup ls -la /backups
 ```
 

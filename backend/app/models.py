@@ -479,7 +479,7 @@ class WakeOnLanConfig(Base):
     allowlist_computer_ids_json: Mapped[str] = mapped_column(Text, default="[]")
     # JSON list of user ids allowed to wake (superuser always may). Empty = only superuser.
     wake_user_ids_json: Mapped[str] = mapped_column(Text, default="[]")
-    cooldown_seconds: Mapped[int] = mapped_column(Integer, default=120)
+    cooldown_seconds: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

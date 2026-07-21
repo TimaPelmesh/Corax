@@ -34,6 +34,18 @@ def test_user_may_wake_superuser_and_grant():
     assert user_may_wake(inactive, cfg) is False
 
 
+def test_cooldown_disabled_when_zero():
+    cid = 9_001_002
+    from app import wol_config
+
+    with wol_config._cooldown_lock:
+        wol_config._last_wake_monotonic.pop(cid, None)
+
+    mark_woken(cid)
+    assert check_cooldown(cid, 0) is None
+    assert check_cooldown(cid, -1) is None
+
+
 def test_cooldown_marks_and_expires(monkeypatch):
     cid = 9_001_001
     # Clear any prior state from other tests.

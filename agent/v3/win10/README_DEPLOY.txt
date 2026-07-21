@@ -11,7 +11,8 @@ CORAX Agent v3 — развёртывание (без Docker)
 4. Планировщик (опционально): после успешного запуска с SCHEDULE_ENABLE=1 в corax_send.bat
    или через register_scheduled_task.ps1 от администратора.
 
-5. API сервер CORAX должен слушать 0.0.0.0:3001 (start_all.bat / backend\start_server.bat).
-   INVENTORY_SERVER = http://<IP-сервера>:3001
+5. API сервер CORAX (Docker / production): http://<IP-сервера>:3000
+   INVENTORY_SERVER = http://<IP-сервера>:3000
+   (dev `npm start`: API может быть на :3001 — смотрите адрес панели)
 
 6. Проверка: в веб-панели CORAX → Компьютеры — появится/обновится запись с расширенным отчётом.

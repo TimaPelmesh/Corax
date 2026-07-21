@@ -18,7 +18,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class LoginJson(BaseModel):
     username: str
     password: str
-    return_token: bool = True
+    # Default false: browser clients use HttpOnly cookie only (frontend already sends false).
+    # Pass true only for API/scripts that need the JWT in the response body.
+    return_token: bool = False
+
+
+def _cookie_max_age() -> int:
+    return max(60, int(settings.access_token_expire_minutes) * 60)
 
 
 @router.post("/login", response_model=Token)
@@ -52,6 +58,7 @@ async def login_json(
     is_https = request.url.scheme == "https" or xf_proto == "https"
     # Secure cookies whenever the request itself is HTTPS (LAN self-signed included).
     secure_cookie = is_https
+    max_age = _cookie_max_age()
     response.set_cookie(
         key="access_token",
         value=token,
@@ -59,6 +66,7 @@ async def login_json(
         samesite="lax",
         secure=secure_cookie,
         path="/",
+        max_age=max_age,
     )
     response.set_cookie(
         key="csrf_token",
@@ -67,6 +75,7 @@ async def login_json(
         samesite="lax",
         secure=secure_cookie,
         path="/",
+        max_age=max_age,
     )
     return Token(access_token=token if body.return_token else "")
 
