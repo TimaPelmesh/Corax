@@ -42,17 +42,43 @@ export function tagPillProps(t: TagBrief): { className: string; style?: CSSPrope
 
 type Props = {
   computerId: number | null
-  /** List-row snapshot so the shell paints before the detail API returns. */
-  preview?: Computer | null
+  /** List/map-row snapshot so the shell paints before the detail API returns.
+   *  Map view may omit tags/disks — detailFromPreview normalizes those fields. */
+  preview?: (Computer | (Partial<Computer> & Pick<Computer, 'id' | 'hostname'>)) | null
   onClose: () => void
   onChanged?: () => void
   overlayZClass?: string
 }
 
-function detailFromPreview(p: Computer): ComputerDetail {
+function detailFromPreview(p: Computer | Partial<Computer> & Pick<Computer, 'id' | 'hostname'>): ComputerDetail {
+  // Map/sitemap preview may be ComputerMapItem (no tags/disks) — normalize arrays
+  // so render never calls .map on undefined.
   return {
-    ...p,
+    id: p.id,
+    hostname: p.hostname,
+    serial_number: p.serial_number ?? null,
+    mac_primary: p.mac_primary ?? null,
+    ip_address: p.ip_address ?? null,
+    ping_status: p.ping_status ?? null,
+    last_ping_at: p.last_ping_at ?? null,
+    cpu: p.cpu ?? null,
+    ram_gb: p.ram_gb ?? null,
+    memory_used_percent: p.memory_used_percent ?? null,
+    gpu_name: p.gpu_name ?? null,
     disks: p.disks ?? [],
+    os_name: p.os_name ?? null,
+    os_version: p.os_version ?? null,
+    manufacturer: p.manufacturer ?? null,
+    model: p.model ?? null,
+    motherboard_manufacturer: p.motherboard_manufacturer ?? null,
+    motherboard_product: p.motherboard_product ?? null,
+    last_report_at: p.last_report_at ?? null,
+    location: p.location ?? null,
+    notes: p.notes ?? null,
+    assigned_user_id: p.assigned_user_id ?? null,
+    software_count: p.software_count ?? 0,
+    peripheral_count: p.peripheral_count ?? 0,
+    tags: p.tags ?? [],
     software: [],
     peripherals: [],
     agent_extended: null,
@@ -109,7 +135,7 @@ export function ComputerDetailModal({
       setDetail(seeded)
       setNotesDraft(seeded.notes ?? '')
       setLocationDraft(seeded.location ?? '')
-      setSelectedTagIds(seeded.tags.map((tag) => tag.id))
+      setSelectedTagIds((seeded.tags ?? []).map((tag) => tag.id))
       setLoading(false)
     } else {
       setDetail(null)
@@ -126,7 +152,7 @@ export function ComputerDetailModal({
         setDetail(d)
         setNotesDraft(d.notes ?? '')
         setLocationDraft(d.location ?? '')
-        setSelectedTagIds(d.tags.map((tag) => tag.id))
+        setSelectedTagIds((d.tags ?? []).map((tag) => tag.id))
       })
       .catch((e: unknown) => {
         if (!cancelled) toast.error(e instanceof Error ? e.message : t('common.error'))
@@ -197,13 +223,14 @@ export function ComputerDetailModal({
   }, [computerId, onClose])
 
   const softwareList = softwareRows ?? detail?.software ?? []
-  const softwareTotal = softwareRows?.length ?? detail?.software_count ?? softwareList.length
+  const softwareSafe = Array.isArray(softwareList) ? softwareList : []
+  const softwareTotal = softwareRows?.length ?? detail?.software_count ?? softwareSafe.length
 
   const filteredSoftware = useMemo(() => {
     const q = swFilter.trim().toLowerCase()
-    if (!q) return softwareList
-    return softwareList.filter((s) => s.name.toLowerCase().includes(q))
-  }, [softwareList, swFilter])
+    if (!q) return softwareSafe
+    return softwareSafe.filter((s) => s.name.toLowerCase().includes(q))
+  }, [softwareSafe, swFilter])
 
   const agentExtras = useMemo(
     () => parseAgentExtras(detail?.agent_extended ?? null),
@@ -775,10 +802,10 @@ export function ComputerDetailModal({
                     </div>
                   ) : (
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {detail.tags.length === 0 ? (
+                      {(detail.tags ?? []).length === 0 ? (
                         <span className="text-sm text-slate-500">—</span>
                       ) : (
-                        detail.tags.map((tg) => {
+                        (detail.tags ?? []).map((tg) => {
                           const pill = tagPillProps(tg)
                           return (
                             <span key={tg.id} className={`${pill.className} px-2.5 py-1`} style={pill.style}>
@@ -832,9 +859,9 @@ export function ComputerDetailModal({
                       })}
                 </p>
                 <ul className="mt-2 max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-slate-200/90 bg-slate-50/80 text-sm ring-1 ring-slate-100/80 sm:min-h-[min(45vh,20rem)]">
-                  {softwareLoading && softwareList.length === 0 ? (
+                  {softwareLoading && softwareSafe.length === 0 ? (
                     <li className="px-3 py-4 text-slate-500">{t('computerDetail.loading')}</li>
-                  ) : softwareList.length === 0 ? (
+                  ) : softwareSafe.length === 0 ? (
                     <li className="px-3 py-4 text-slate-500">{t('computerDetail.noRecords')}</li>
                   ) : filteredSoftware.length === 0 ? (
                     <li className="px-3 py-4 text-slate-500">{t('computerDetail.noSearchMatches')}</li>
