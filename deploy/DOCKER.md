@@ -1,147 +1,295 @@
-# CORAX — Docker (рекомендуемый production)
+# CORAX — Docker (рекомендуемый production / ВМ / LAN)
 
-## Зачем Docker
+Полная инструкция по развёртыванию, проверенная на Linux-ВМ в LAN.  
+Локальная разработка без Docker: `npm start` (см. [README](../README.md)).
 
-| Решение | Почему так |
-|---------|------------|
-| **Compose** (`db` + `app` + `db-backup`) | Один манифест: зависимости, volumes, restart, healthchecks |
-| **Один `backend/.env`** | Те же секреты для local и Docker; не плодим корневой `.env` |
-| **Автосекреты** | `npm run docker:up` создаёт `.env` через `scripts/ensure_docker_env.py`, если файла нет |
-| **Postgres 16 в сервисе** | Данные в volume `corax_pgdata` |
-| **Multi-stage Dockerfile** | Node только на сборке UI; runtime — slim Python |
-| **Non-root `uid 10001`** | Меньше blast radius |
-| **`/health/ready`** | Ready = Postgres отвечает |
-| **Sidecar backup** | Ночной `pg_dump` + ротация |
-| **Structured logs** | stdout + `/data/logs/corax.jsonl` (volume) |
+## Что поднимается одной командой
 
-## Быстрый старт
+| Контейнер | Роль | Порт с хоста |
+|-----------|------|----------------|
+| `corax-app-1` | UI + API (production) | **3000** → 3000 |
+| `corax-db-1` | PostgreSQL 16 | только `127.0.0.1:5433` |
+| `corax-db-backup-1` | ночной `pg_dump` + ротация | нет |
 
-Требования: Docker Engine 24+ / Compose v2. Python 3 на хосте — только для генерации `.env` (stdlib).
+Данные в Docker volumes (`corax_pgdata`, `corax_data`, `corax_backups`) — переживают `docker:down`.
+
+---
+
+## Требования на сервере (ВМ)
+
+| Компонент | Зачем |
+|-----------|--------|
+| Linux (Ubuntu 22.04/24.04 и т.п.) | хост |
+| Docker Engine 24+ / Compose v2 | стек |
+| Git | clone / обновления |
+| Node.js 20+ (npm) | скрипты `npm run docker:*` |
+| Python 3 (`python3`) | только `scripts/ensure_docker_env.py` (stdlib) |
+
+Установка Docker (кратко, Ubuntu):
 
 ```bash
-git clone https://github.com/TimaPelmesh/Corax.git
-cd Corax
-npm run docker:up      # создаст backend/.env + build + start
-npm run docker:ps      # статус трёх контейнеров
-curl -fsS http://127.0.0.1:3000/api/v1/health/ready
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2 git curl ca-certificates
+# Node 20 (если ещё нет):
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 ```
 
-При **первом** запуске (или если в `.env` ещё плейсхолдеры вроде `change-me` / `admin123`) скрипт печатает логин/пароль admin и пишет их в `backend/.docker-credentials` (в `.gitignore`). Повторный `docker:up` с уже сильными секретами **не** перезаписывает их.
+### Права Docker (обязательно)
 
-Панель: `http://127.0.0.1:3000/` — после входа смените пароль администратора в UI.
+Без группы `docker` будет:
 
-Агентам: `http://<LAN-IP>:3000` (порт **3000**, тот же что у панели).
-
-Фаервол хоста: откройте **TCP 3000** (UFW/iptables/cloud SG), иначе стек «healthy», а с других ПК не достучаться.
+`permission denied … /var/run/docker.sock`
 
 ```bash
-# пример Ubuntu
-sudo ufw allow 3000/tcp
-sudo ufw reload
-# проверка с другой машины в LAN:
+sudo usermod -aG docker "$USER"
+# выйти из SSH и зайти снова, либо:
+newgrp docker
+docker ps   # должно работать БЕЗ sudo
+```
+
+Пока группа не применилась — можно `sudo docker …` / `sudo npm run docker:up`.
+
+---
+
+## Развёртывание с нуля (проверено)
+
+```bash
+sudo mkdir -p /opt/corax
+sudo chown "$USER:$USER" /opt/corax
+git clone https://github.com/TimaPelmesh/Corax.git /opt/corax
+cd /opt/corax
+
+# (опционально) npm install в корне — нужен для npm-скриптов, если package.json ещё не трогали
+npm install --ignore-scripts   # или полный npm install
+
+npm run docker:up
+```
+
+Что делает `docker:up`:
+
+1. `docker:init` → `scripts/ensure_docker_env.py`:
+   - нет `backend/.env` → создаёт из example + **сильные** секреты;
+   - есть `.env` со слабыми/плейсхолдерами (`change-me`, `admin123`, `generate-with-…`) → **лечит** их;
+   - сильные секреты **не** перезаписывает.
+2. Печатает логин/пароль admin (если создал/вылечил) → файл `backend/.docker-credentials`.
+3. `docker compose … up -d --build` → собирает образ `corax:local`, поднимает 3 контейнера.
+
+### Логин (важно)
+
+**Фиксированного пароля `admin123` для Docker нет.**
+
+| Где смотреть | |
+|--------------|--|
+| Вывод первого `docker:up` / `docker:init` | Username / Password |
+| Файл | `backend/.docker-credentials` |
+| Вручную | `BOOTSTRAP_ADMIN_*` в `backend/.env` |
+
+```bash
+cat backend/.docker-credentials
+```
+
+После первого входа **смените пароль** в панели (Пользователи).
+
+### Проверка, что стек жив
+
+Подождите **10–20 секунд** после `Started` (миграции + uvicorn). Слишком ранний `curl` даёт `connection reset` — это не «всё сломано».
+
+```bash
+docker ps
+# corax-app-1  → healthy (или starting → healthy)
+# corax-db-1   → healthy
+
+curl -fsS http://127.0.0.1:3000/api/v1/health/ready
+# {"status":"ok","api":"v1","database":"up"}
+```
+
+Панель на сервере: `http://127.0.0.1:3000/`  
+Из LAN: `http://<LAN-IP-ВМ>:3000/`
+
+### Фаервол
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 3000/tcp comment 'CORAX'
+sudo ufw enable
+sudo ufw status
+
+# с другого ПК:
 curl -fsS http://<LAN-IP>:3000/api/v1/health
 ```
 
-Опционально в `backend/.env`: `CORAX_ADVERTISE_HOST=192.168.x.x` — явный IP для сборки агентов.
-Если открыть панель уже по `http://192.168.x.x:3000`, IP подставится сам.
+### LAN для агентов и браузера (обязательно в офисе/лабе)
 
-## Где что менять
+В `backend/.env` (подставьте IP ВМ):
+
+```env
+CORAX_ADVERTISE_HOST=192.168.x.x
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.x.x:3000
+```
+
+Применить:
+
+```bash
+npm run docker:restart
+# или: docker compose --env-file backend/.env up -d
+```
+
+Открывайте панель именно по `http://<LAN-IP>:3000` — тогда сборка агента чаще подставляет правильный URL сама.
+
+> В ответе `/api/v1/health` поле `lan_ip` внутри контейнера часто `null` (Docker не видит LAN). На агентов это не влияет, если задан `CORAX_ADVERTISE_HOST` или вы открыли панель по LAN-IP.
+
+---
+
+## Агенты (Win ZIP)
+
+1. Войти в панель по **LAN-IP**.
+2. **Настройки → Сборка агента** (`/settings/agent-bundle`).
+3. Скачать ZIP (Win10/11 или Win7) — вшиваются URL сервера и токен.
+4. Раздать на ПК (шара / GPO / флешка), запустить.
+5. Проверить появление хоста в **Парк ПК**.
+
+Эндпоинт агента (тот же порт, что у панели):
+
+```http
+POST http://<LAN-IP>:3000/api/v1/agent/inventory
+Authorization: Bearer <token>
+```
+
+Если агент «молчит»:
+
+| Проверка | |
+|----------|--|
+| С ПК: `curl http://<LAN-IP>:3000/api/v1/health` | сеть / firewall |
+| URL в ZIP не `127.0.0.1` и не `172.x` | `CORAX_ADVERTISE_HOST` / открыть панель по LAN |
+| Токен не отозван | Настройки → Токены агентов |
+| Логи | `npm run docker:logs` / `docker logs corax-app-1` |
+
+---
+
+## Где что настраивать
 
 | Где | Что |
 |-----|-----|
-| Авто в `.env` (первый `docker:up`) | `SECRET_KEY`, `AGENT_TOKEN`, `AGENT_TOKEN_PEPPER`, `POSTGRES_PASSWORD`, `BOOTSTRAP_ADMIN_PASSWORD` |
-| Веб после входа | Свой пароль, LDAP, Bitrix24, HTTPS, токены/сборка агентов, бэкап БД |
-| Правка `.env` + `npm run docker:restart` | `CORS_ORIGINS`, `CORAX_ADVERTISE_HOST`, порты, LM Studio |
+| Авто в `.env` | `SECRET_KEY`, `AGENT_TOKEN`, `AGENT_TOKEN_PEPPER`, `POSTGRES_PASSWORD`, bootstrap-пароль |
+| **Веб-панель** | свой пароль, LDAP, Bitrix24, HTTPS, токены/сборка агентов, бэкап БД, склад, карта… |
+| `.env` + restart | `CORS_ORIGINS`, `CORAX_ADVERTISE_HOST`, порты, LM Studio |
 
-Инфраструктурные секреты (JWT, pepper, пароль Postgres) из панели **не** правятся — только через `.env` и перезапуск.
+Секреты JWT / pepper / пароль Postgres из UI **не** правятся (инфраструктура контейнера).
+
+---
+
+## Обновления из GitHub (как жить дальше)
+
+Ручной цикл:
+
+```bash
+cd /opt/corax
+git pull --ff-only
+npm run docker:up
+```
+
+### Ночной cron (рекомендуется)
+
+В репозитории: [`update.sh`](../update.sh). На Docker-ВМ он делает **только**:
+`git pull` → `ensure_docker_env` → `docker compose up -d --build` → health.  
+**Не** гоняет `pip`/`npm build` на хосте и **не** трогает systemd.
+
+```bash
+sudo chmod +x /opt/corax/update.sh
+# разовый прогон:
+sudo /opt/corax/update.sh
+
+# если cron от root, а репо принадлежит user:
+sudo git config --global --add safe.directory /opt/corax
+
+sudo crontab -e
+```
+
+```cron
+0 4 * * * /bin/bash /opt/corax/update.sh >> /var/log/corax_update.log 2>&1
+```
+
+Лог: `sudo tail -n 100 /var/log/corax_update.log`
+
+Явно Docker (если автоопределение мешает): `CORAX_DEPLOY=docker /opt/corax/update.sh`  
+Старый bare-metal путь: `CORAX_DEPLOY=systemd /opt/corax/update.sh`
+
+| Сохраняется | Пересобирается |
+|-------------|----------------|
+| `backend/.env`, volumes (БД, логи, TLS, бэкапы) | образ `corax:local`, контейнеры |
+| данные парка / заявок | код, UI, зависимости **внутри образа** |
+
+Миграции БД — при старте `app`. Откат кода: `git checkout <tag>` + снова `update.sh` / `docker:up`.
+
+Чистый стенд «с нуля» (сотрёт БД):
+
+```bash
+npm run docker:down
+docker compose --env-file backend/.env down -v   # ОПАСНО: удалит volumes
+# при необходимости: rm backend/.env backend/.docker-credentials
+npm run docker:up
+```
+
+---
 
 ## Команды
 
 | Действие | Команда |
 |----------|---------|
-| Поднять (и init `.env` при необходимости) | `npm run docker:up` |
-| Только сгенерировать `.env` | `npm run docker:init` |
-| Остановить | `npm run docker:down` |
-| Перезапустить | `npm run docker:restart` |
-| Логи | `npm run docker:logs` |
+| Поднять / обновить | `npm run docker:up` |
+| Только `.env` | `npm run docker:init` |
 | Статус | `npm run docker:ps` |
+| Логи | `npm run docker:logs` |
+| Перезапуск | `npm run docker:restart` |
+| Стоп (данные живы) | `npm run docker:down` |
 
-Эквивалент без npm:
+Без npm:
 
 ```bash
-python3 scripts/ensure_docker_env.py   # или: npm run docker:init
+python3 scripts/ensure_docker_env.py
 docker compose --env-file backend/.env up -d --build
 docker compose --env-file backend/.env down
-docker compose --env-file backend/.env restart
+docker compose --env-file backend/.env logs -f
 ```
 
-`docker:down` **сохраняет** volumes (БД, TLS, бэкапы). Удалить данные: `docker compose --env-file backend/.env down -v` (ОПАСНО).
+---
 
-## Секреты и безопасность
+## Типичные проблемы (с реальной ВМ)
 
-- Источник правды: **`backend/.env`** (в `.gitignore` и `.dockerignore` — не попадает в Git и в слои образа).
-- Первый запуск: сильные случайные значения через `ensure_docker_env.py` (без ручного `openssl`).
-- В контейнере `ENVIRONMENT=production` всегда (даже если в файле `development` для `npm start`).
-- Слабые/дефолтные секреты → отказ старта.
-- По умолчанию: пустой `AGENT_INBOX_DIR`, `ALLOW_LEGACY_AGENT_TOKEN_HASHES=false`, OpenAPI выкл.
-- Postgres с хоста только на `127.0.0.1` (см. `POSTGRES_PUBLISH_PORT`).
-- Чтобы пересоздать секреты с нуля: остановите стек, удалите `backend/.env` и `backend/.docker-credentials`, затем снова `npm run docker:up` (volumes БД сохранят старый пароль Postgres — при смене `POSTGRES_PASSWORD` нужен `down -v` или ручная смена пароля в PG).
+| Симптом | Причина / решение |
+|---------|-------------------|
+| `permission denied … docker.sock` | пользователь не в группе `docker` (см. выше) или нужен `sudo` |
+| `python: not found` при `sudo npm run docker:up` | на Linux нет `python`, есть `python3`; актуальный `docker:init` выбирает сам через `scripts/run_python.js` |
+| `Refusing to start … default/empty secrets` | слабый `.env` → `python3 scripts/ensure_docker_env.py` (вылечит) + `docker compose … up -d` |
+| `curl: connection reset` сразу после up | подождать 10–20 с, повторить; смотреть `docker logs corax-app-1` |
+| app в Restarting | `docker logs --tail 100 corax-app-1` |
+| Забыли пароль admin | `cat backend/.docker-credentials` |
+| Сменили `POSTGRES_PASSWORD`, БД не пускает | volume со старым паролем → `down -v` (потеря данных) или вернуть старый пароль в `.env` |
+| Агенты не достучались | UFW 3000; LAN-IP в ZIP; не localhost |
 
-## Volumes
-
-| Volume | Содержимое |
-|--------|------------|
-| `corax_pgdata` | PostgreSQL |
-| `corax_data` | `/data/tls`, WikiRAG, **`/data/logs`**, (опц. inbox) |
-| `corax_backups` | Ночные дампы (`-Fc`) |
-
-```bash
-npm run docker:logs
-# Файловые логи приложения (JSON):
-docker compose --env-file backend/.env exec app ls -la /data/logs
-docker compose --env-file backend/.env exec db-backup ls -la /backups
-```
+---
 
 ## HTTPS
 
-1. Поднимите стек по HTTP.
-2. Admin → **Настройки → HTTPS** → CA → установить на админ-ПК → включить → `npm run docker:restart`.
-3. Либо `./scripts/setup-https.sh <IP>` и файлы в volume `corax_data`.
+1. Стек по HTTP.
+2. Admin → **Настройки → HTTPS** → CA на админ-ПК → включить → `npm run docker:restart`.
+3. Или `./scripts/setup-https.sh <IP>` (файлы в volume `corax_data`).
 
-## Обновление
+---
 
-```bash
-git pull --ff-only
-npm run docker:up
-```
+## Бэкап / restore
 
-Миграции схемы — при старте app. Не гоняйте несколько реплик app без внешней блокировки migrate.
-
-## Восстановление БД
+Ночные дампы: volume `corax_backups` (sidecar).  
+Также **Настройки → База данных** в UI.
 
 ```bash
-docker compose --env-file backend/.env stop app
-docker compose --env-file backend/.env exec db-backup ls /backups
-# скопировать dump в контейнер db и pg_restore — см. ниже
-docker cp ./your.dump corax-db-1:/tmp/restore.dump
-docker compose --env-file backend/.env exec db \
-  pg_restore -U inventory -d inventory --clean --if-exists /tmp/restore.dump
-docker compose --env-file backend/.env start app
+docker compose --env-file backend/.env exec db-backup ls -la /backups
 ```
 
-Либо **Настройки → База данных** в UI.
+---
 
-## Отладка
+## Альтернатива без Docker
 
-| Симптом | Что проверить |
-|---------|----------------|
-| нет `backend/.env` | `npm run docker:init` или `npm run docker:up` |
-| app unhealthy | `npm run docker:logs`; Postgres healthy? |
-| Production refuse defaults | Смените слабые секреты; пароль БД ≠ `inventory` |
-| забыли пароль admin | смотрите `backend/.docker-credentials` или сбросьте пользователя в БД |
-| Ping ПК | В образе есть `iputils-ping`; сеть VM → LAN |
-| LM Studio из Docker | `LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1` |
-
-## Альтернатива: systemd без Docker
-
-См. [README — Linux: systemd](../README.md#linux-установка-с-нуля-systemd-cron).
+Bare-metal systemd: [README — Linux](../README.md#linux-установка-с-нуля-systemd-cron).  
+Для новых серверов предпочтителен **этот** Docker-стек.
