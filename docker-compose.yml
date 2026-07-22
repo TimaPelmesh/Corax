@@ -1,5 +1,5 @@
 # CORAX — один стек: db + app + db-backup
-# Секреты: только backend/.env  →  npm run docker:up|down|restart
+# Секреты: backend/.env (создаётся npm run docker:up / scripts/ensure_docker_env.py)
 #
 # Не копируйте secrets в образ: .dockerignore исключает **/.env
 

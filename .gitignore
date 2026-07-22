@@ -4,6 +4,8 @@
 **/.env
 !**/.env.example
 !.env.docker.example
+backend/.docker-credentials
+**/.docker-credentials
 *.pem
 *.key
 *.pfx
