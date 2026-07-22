@@ -16,7 +16,7 @@
     "test:frontend": "npm run test --prefix frontend",
     "test:e2e": "playwright test",
     "test:all": "npm run test && npm run test:e2e",
-    "docker:init": "python scripts/ensure_docker_env.py",
+    "docker:init": "node scripts/run_python.js scripts/ensure_docker_env.py",
     "docker:up": "npm run docker:init && docker compose --env-file backend/.env up -d --build",
     "docker:down": "docker compose --env-file backend/.env down",
     "docker:restart": "docker compose --env-file backend/.env restart",

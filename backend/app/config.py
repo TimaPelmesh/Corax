@@ -144,18 +144,25 @@ def _is_default_secret(v: str) -> bool:
         "change-me-in-production-use-openssl-rand-hex-32",
         "dev-agent-token-change-in-production",
         "dev-secret-key-change-me",
+        "long-random-string-for-agents-min-24-chars",
+        "change-me-strong-password-min-12",
         "admin123",
+        "admin12345",
         "inventory",
         "postgres",
         "changeme",
         "password",
         "secret",
+        "corax_password",
+        "secret_key_change_me_123",
     }
     if s in defaults or low in defaults:
         return True
     if low.startswith("replace-with-") or low.startswith("generate-with-"):
         return True
     if low.startswith("change-me") or low.startswith("your-"):
+        return True
+    if "change_me" in low or "change-me" in low:
         return True
     return False
 

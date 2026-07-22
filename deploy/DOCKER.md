@@ -26,7 +26,7 @@ npm run docker:ps      # статус трёх контейнеров
 curl -fsS http://127.0.0.1:3000/api/v1/health/ready
 ```
 
-При **первом** запуске скрипт печатает логин/пароль admin и пишет их в `backend/.docker-credentials` (в `.gitignore`). Повторный `docker:up` **не** перезаписывает `.env`.
+При **первом** запуске (или если в `.env` ещё плейсхолдеры вроде `change-me` / `admin123`) скрипт печатает логин/пароль admin и пишет их в `backend/.docker-credentials` (в `.gitignore`). Повторный `docker:up` с уже сильными секретами **не** перезаписывает их.
 
 Панель: `http://127.0.0.1:3000/` — после входа смените пароль администратора в UI.
 
@@ -69,7 +69,7 @@ curl -fsS http://<LAN-IP>:3000/api/v1/health
 Эквивалент без npm:
 
 ```bash
-python scripts/ensure_docker_env.py
+python3 scripts/ensure_docker_env.py   # или: npm run docker:init
 docker compose --env-file backend/.env up -d --build
 docker compose --env-file backend/.env down
 docker compose --env-file backend/.env restart
