@@ -370,9 +370,12 @@ export type WolConfig = {
   cooldown_seconds: number
 }
 
+export type TlsMode = 'http' | 'local_ca' | 'enterprise'
+
 export type TlsStatus = {
   enabled: boolean
   active: boolean
+  mode: TlsMode | string
   files_ready: boolean
   ca_ready: boolean
   hostnames: string[]
@@ -382,6 +385,7 @@ export type TlsStatus = {
   restart_required: boolean
   dev_blocked?: boolean
   tls_dir: string
+  agent_scheme: 'http' | 'https' | string
 }
 
 export type WolStatus = {
@@ -486,6 +490,8 @@ export type DashboardSummary = {
   workstation_printers_total?: number
   service_requests_total: number
   service_requests_active: number
+  service_requests_overdue: number
+  service_requests_avg_close_hours: number | null
   service_requests_by_status: DashboardNameCount[]
   by_os: DashboardNameCount[]
   by_manufacturer: DashboardNameCount[]
@@ -614,6 +620,11 @@ function normalizeDashboardSummary(raw: DashboardSummary): DashboardSummary {
     snmp_printers_total: raw.snmp_printers_total ?? raw.workstation_printers_total ?? 0,
     service_requests_total: raw.service_requests_total ?? 0,
     service_requests_active: raw.service_requests_active ?? 0,
+    service_requests_overdue: raw.service_requests_overdue ?? 0,
+    service_requests_avg_close_hours:
+      raw.service_requests_avg_close_hours == null || Number.isNaN(Number(raw.service_requests_avg_close_hours))
+        ? null
+        : Number(raw.service_requests_avg_close_hours),
     service_requests_by_status: raw.service_requests_by_status ?? [],
     by_os: raw.by_os ?? [],
     by_manufacturer: raw.by_manufacturer ?? [],
@@ -788,6 +799,10 @@ export const api = {
   tlsStatus: () => request<TlsStatus>(`${API_PREFIX}/settings/tls`),
   tlsGenerate: (body: { hostnames: string[]; days?: number; rotate_ca?: boolean }) =>
     request<TlsStatus>(`${API_PREFIX}/settings/tls/generate`, { method: 'POST', json: body }),
+  tlsImport: (body: { cert_pem: string; key_pem: string }) =>
+    request<TlsStatus>(`${API_PREFIX}/settings/tls/import`, { method: 'POST', json: body }),
+  tlsSetMode: (mode: TlsMode | string) =>
+    request<TlsStatus>(`${API_PREFIX}/settings/tls/mode`, { method: 'POST', json: { mode } }),
   tlsEnable: (enabled: boolean) =>
     request<TlsStatus>(`${API_PREFIX}/settings/tls/enable`, { method: 'POST', json: { enabled } }),
   downloadTlsCa: async (): Promise<void> => {

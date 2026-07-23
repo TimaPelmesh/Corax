@@ -59,7 +59,7 @@ function SidebarNavLink({
       end={end}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `group relative flex min-h-[36px] touch-manipulation items-center gap-2 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-[15px] font-medium no-underline transition-colors active:scale-[0.99] ${
+        `group relative flex min-h-11 touch-manipulation items-center gap-2 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-[15px] font-medium no-underline transition-colors active:scale-[0.99] lg:min-h-[36px] ${
           isActive
             ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
             : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
@@ -110,7 +110,7 @@ function SidebarGroupButton({
     <button
       type="button"
       onClick={onToggle}
-      className="group flex min-h-[36px] w-full touch-manipulation items-center justify-between rounded-lg border border-transparent px-3 py-2 text-left text-[15px] font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
+      className="group flex min-h-11 w-full touch-manipulation items-center justify-between rounded-lg border border-transparent px-3 py-2 text-left text-[15px] font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] lg:min-h-[36px]"
       aria-expanded={open}
     >
       <span className="flex min-w-0 items-center gap-2">
@@ -120,7 +120,7 @@ function SidebarGroupButton({
         <span className="truncate">{label}</span>
       </span>
       <span
-        className={`flex h-5 w-5 items-center justify-center text-neutral-400 transition-all duration-200 ease-out group-hover:text-neutral-700 ${
+        className={`flex h-5 w-5 items-center justify-center text-[var(--color-fg-subtle)] transition-all duration-200 ease-out group-hover:text-[var(--color-fg-muted)] ${
           open ? 'rotate-180' : 'rotate-0'
         }`}
         aria-hidden
@@ -417,7 +417,7 @@ export function Layout() {
         </div>
         <button
           type="button"
-          className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 lg:hidden"
+          className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--color-fg-muted)] transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)] dark:text-[var(--color-fg-subtle)] lg:hidden"
           onClick={closeNav}
           aria-label={t('nav.closeMenu')}
         >
@@ -581,7 +581,7 @@ export function Layout() {
 
       <aside
         id="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-50 flex h-full w-[min(18.5rem,92vw)] flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-all duration-300 ease-out lg:static lg:z-auto lg:max-w-none lg:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-full w-[min(18.5rem,92vw)] flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] pl-[env(safe-area-inset-left)] transition-all duration-300 ease-out lg:static lg:z-auto lg:max-w-none lg:pl-0 lg:shadow-none ${
           mobileNavVisible ? 'translate-x-0' : '-translate-x-full'
         } ${
           desktopNavHidden
@@ -595,7 +595,7 @@ export function Layout() {
       <main className="relative min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[var(--color-bg)] px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-10 lg:pb-12 lg:pt-10">
         {welcomeToast ? (
           <div
-            className={`pointer-events-none fixed right-4 top-4 z-[200] max-w-[min(22rem,calc(100vw-2rem))] app-panel-sm !rounded-2xl text-sm text-[var(--color-fg)] sm:right-6 sm:top-6 ${
+            className={`pointer-events-none fixed right-4 z-[200] max-w-[min(22rem,calc(100vw-2rem))] app-panel-sm !rounded-2xl text-sm text-[var(--color-fg)] top-[calc(3.5rem+0.75rem+env(safe-area-inset-top,0px))] sm:right-6 lg:top-6 ${
               welcomeToastLeaving ? 'toast-leave-right' : 'toast-enter-right'
             }`}
           >

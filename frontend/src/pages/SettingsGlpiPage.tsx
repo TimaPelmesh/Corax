@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { api, type ServiceRequestRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconPcs, IconTicket } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -96,7 +97,7 @@ export function SettingsGlpiPage() {
   const [reqExportGlpiBusy, setReqExportGlpiBusy] = useState(false)
 
   if (authLoading) {
-    return <p className="text-sm text-slate-500">{t('common.loading')}</p>
+    return <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
   }
 
   if (!user?.is_superuser) {
@@ -217,28 +218,22 @@ export function SettingsGlpiPage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconPcs className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="page-title">{t('titles.glpi')}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            {t('pages.glpiSubtitle')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconPcs className="h-6 w-6" />}
+        title={t('titles.glpi')}
+        subtitle={t('pages.glpiSubtitle')}
+      />
 
       <div className="space-y-8">
         <div>
           <div className="mb-4 flex items-center gap-2">
             <IconPcs className="h-5 w-5 text-blue-600" />
-            <h2 className="text-sm font-semibold text-slate-900">{t('settingsGlpi.parkTitle')}</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.parkTitle')}</h2>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.importTitle')}</h3>
-              <p className="text-sm leading-relaxed text-slate-600">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('settingsGlpi.importTitle')}</h3>
+              <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
                 {t('settingsGlpi.pcsImportDescription')}
               </p>
               <input
@@ -280,8 +275,8 @@ export function SettingsGlpiPage() {
             </section>
 
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.exportTitle')}</h3>
-              <p className="text-sm leading-relaxed text-slate-600">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('settingsGlpi.exportTitle')}</h3>
+              <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
                 {t('settingsGlpi.pcsExportDescription')}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -309,12 +304,12 @@ export function SettingsGlpiPage() {
         <div>
           <div className="mb-4 flex items-center gap-2">
             <IconTicket className="h-5 w-5 text-blue-600" />
-            <h2 className="text-sm font-semibold text-slate-900">{t('settingsGlpi.requestsTitle')}</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.requestsTitle')}</h2>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.importTitle')}</h3>
-              <p className="text-sm leading-relaxed text-slate-600">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('settingsGlpi.importTitle')}</h3>
+              <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
                 {t('settingsGlpi.requestsImportDescription')}
               </p>
               <input
@@ -383,8 +378,8 @@ export function SettingsGlpiPage() {
             </section>
 
             <section className="app-card space-y-4 p-6 sm:p-7">
-              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('settingsGlpi.exportTitle')}</h3>
-              <p className="text-sm leading-relaxed text-slate-600">
+              <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('settingsGlpi.exportTitle')}</h3>
+              <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
                 {t('settingsGlpi.requestsExportDescription')}
               </p>
               <div className="flex flex-wrap gap-2">

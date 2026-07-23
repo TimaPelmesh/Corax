@@ -51,7 +51,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     if (typeof doc.startViewTransition === 'function') {
       root.classList.add('theme-animating')
-      // Paint target bg immediately so the wipe never reveals a black void
+      // Paint target theme bg immediately so the wipe never flashes a void
       root.style.backgroundColor = mode === 'dark' ? '#000000' : '#f0f2f5'
       const transition = doc.startViewTransition(commit)
       void transition.finished.finally(() => {
@@ -64,8 +64,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.classList.add('theme-fade')
     window.setTimeout(() => {
       commit()
-      window.setTimeout(() => root.classList.remove('theme-fade'), 280)
-    }, 40)
+      window.setTimeout(() => root.classList.remove('theme-fade'), 360)
+    }, 50)
   }
 
   const toggleTheme = (origin?: { x: number; y: number }) => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Bitrix24Config } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey, IconTicket } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -101,43 +102,37 @@ export function SettingsBitrix24Page() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconTicket className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="page-title">{t('titles.bitrix24')}</h1>
-          <p className="mt-1 max-w-3xl text-slate-600">
-            {t('pages.bitrixSubtitle')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconTicket className="h-6 w-6" />}
+        title={t('titles.bitrix24')}
+        subtitle={t('pages.bitrixSubtitle')}
+      />
 
       {!cfg ? (
-        <div className="app-card p-6 text-sm text-slate-600">{t('common.loading')}</div>
+        <div className="app-card p-6 text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="app-card space-y-3 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
               {t('settingsBitrix.handlerTitle')}
             </h2>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-[var(--color-fg-muted)]">
               {t('settingsBitrix.handlerDescription')}
             </p>
-            <div className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-3 font-mono text-[12px] text-slate-800">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 font-mono text-[12px] text-[var(--color-fg)]">
               {handlerUrlHint}
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[var(--color-fg-muted)]">
               {t('settingsBitrix.handlerTokenHint')}
             </p>
           </section>
 
           <section className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
               {t('settingsBitrix.settingsTitle')}
             </h2>
 
-            <label className="flex items-center gap-2 text-sm text-slate-700">
+            <label className="flex items-center gap-2 text-sm text-[var(--color-fg)]">
               <input
                 type="checkbox"
                 checked={cfg.enabled}
@@ -149,10 +144,10 @@ export function SettingsBitrix24Page() {
 
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-slate-600">{t('settingsBitrix.secretLabel')}</label>
+                <label className="text-xs font-medium text-[var(--color-fg-muted)]">{t('settingsBitrix.secretLabel')}</label>
                 <button
                   type="button"
-                  className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="rounded-lg px-2 py-1 text-xs font-semibold text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
                   onClick={() => void save({ incoming_secret: genSecret() })}
                   disabled={saving}
                   title={t('settingsBitrix.generateSecretTitle')}
@@ -173,18 +168,18 @@ export function SettingsBitrix24Page() {
                   disabled={saving}
                   onClick={() => void save({ incoming_secret: cfg.incoming_secret })}
                 >
-                  <IconKey className="h-4 w-4 text-neutral-400" />
+                  <IconKey className="h-4 w-4 text-[var(--color-fg-subtle)]" />
                   {t('settingsBitrix.saveSecret')}
                 </button>
               </div>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
                 {t('settingsBitrix.secretHelp')}
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">
+                <label className="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]">
                   {t('settingsBitrix.defaultCategoryLabel')}
                 </label>
                 <input
@@ -195,7 +190,7 @@ export function SettingsBitrix24Page() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">
+                <label className="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]">
                   {t('settingsBitrix.defaultPriorityLabel')}
                 </label>
                 <select
@@ -219,20 +214,20 @@ export function SettingsBitrix24Page() {
               >
                 {testing ? t('settingsBitrix.testing') : t('settingsBitrix.sendTest')}
               </button>
-              <span className="text-xs text-slate-500">{t('settingsBitrix.sendTestHint')}</span>
+              <span className="text-xs text-[var(--color-fg-muted)]">{t('settingsBitrix.sendTestHint')}</span>
             </div>
           </section>
 
           <section className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
               {t('settingsBitrix.webhookTitle')}
             </h2>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-[var(--color-fg-muted)]">
               {t('settingsBitrix.webhookDescription')}
             </p>
 
             <div className="space-y-2">
-              <div className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-3 font-mono text-[12px] text-slate-800">
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 font-mono text-[12px] text-[var(--color-fg)]">
                 {webhookUrl}
               </div>
               <div className="flex flex-wrap gap-2">
@@ -245,8 +240,8 @@ export function SettingsBitrix24Page() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-800">
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-neutral-500">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-fg)]">
+              <div className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
                 {t('settingsBitrix.sampleJsonTitle')}
               </div>
               <pre className="mt-2 overflow-auto rounded-lg bg-neutral-950 p-3 text-[12px] text-white">

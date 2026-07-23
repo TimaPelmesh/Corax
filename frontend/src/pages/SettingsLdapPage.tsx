@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { api, type LdapConfig, type LdapSyncResult, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -181,20 +182,14 @@ export function SettingsLdapPage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconKey className="h-7 w-7 text-blue-600" />
-        </div>
-        <div className="min-w-0">
-          <h1 className="page-title">{t('titles.ldap')}</h1>
-          <p className="mt-1 max-w-2xl text-slate-600">
-            {t('pages.ldapSubtitle')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconKey className="h-7 w-7" />}
+        title={t('titles.ldap')}
+        subtitle={t('pages.ldapSubtitle')}
+      />
 
       {syncResult ? (
-        <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800">
+        <div className="app-alert app-alert-info mb-4 text-sm">
           <div className="font-medium">
             {t('settingsLdap.syncSummary', {
               created: syncResult.created_count,
@@ -202,7 +197,7 @@ export function SettingsLdapPage() {
             })}
           </div>
           {typeof syncResult.scanned_count === 'number' || typeof syncResult.missing_username_attr === 'number' ? (
-            <div className="mt-1 text-xs text-slate-600">
+            <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
               {typeof syncResult.scanned_count === 'number' ? (
                 <>{t('settingsLdap.syncScanned', { count: syncResult.scanned_count })} </>
               ) : null}
@@ -217,17 +212,17 @@ export function SettingsLdapPage() {
             </div>
           ) : null}
           {syncResult.entries.length ? (
-            <div className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-slate-50 p-3 font-mono text-xs text-slate-700">
+            <div className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-[var(--color-surface-muted)] p-3 font-mono text-xs text-[var(--color-fg)]">
               {syncResult.entries.slice(0, 200).map((e) => (
                 <div key={`${e.username}-${String(e.created)}`}>
                   {e.username}
                   {e.created && e.one_time_password ? (
-                    <span className="text-neutral-900">
+                    <span className="text-[var(--color-fg)]">
                       {t('settingsLdap.entryPassword')}
                       <strong>{e.one_time_password}</strong>
                     </span>
                   ) : (
-                    <span className="text-slate-500">{t('settingsLdap.entryExists')}</span>
+                    <span className="text-[var(--color-fg-muted)]">{t('settingsLdap.entryExists')}</span>
                   )}
                 </div>
               ))}
@@ -238,11 +233,11 @@ export function SettingsLdapPage() {
 
       <form onSubmit={onSave} className="app-card max-w-3xl space-y-4 p-6 sm:p-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+          <label className="flex items-center gap-2 text-sm font-medium text-[var(--color-fg)]">
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             {t('settingsLdap.enable')}
           </label>
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+          <label className="flex items-center gap-2 text-sm font-medium text-[var(--color-fg)]">
             <input
               type="checkbox"
               checked={allowAnonymous}
@@ -250,7 +245,7 @@ export function SettingsLdapPage() {
             />
             {t('settingsLdap.anonymousBind')}
           </label>
-          <div className="text-xs font-medium text-slate-500">
+          <div className="text-xs font-medium text-[var(--color-fg-muted)]">
             {t('settingsLdap.statusLabel')}{' '}
             {configured ? (
               <span className="text-emerald-700">{t('settingsLdap.configured')}</span>
@@ -262,26 +257,26 @@ export function SettingsLdapPage() {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-500">{t('settingsLdap.ldapUriLabel')}</label>
+            <label className="app-label">{t('settingsLdap.ldapUriLabel')}</label>
             <input
               value={uri}
               onChange={(e) => setUri(e.target.value)}
               placeholder={t('settingsLdap.ldapUriPlaceholder')}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">{t('settingsLdap.bindDnLabel')}</label>
+            <label className="app-label">{t('settingsLdap.bindDnLabel')}</label>
             <input
               value={bindDn}
               onChange={(e) => setBindDn(e.target.value)}
               placeholder={t('settingsLdap.bindDnPlaceholder')}
               disabled={allowAnonymous}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">{t('settingsLdap.bindPasswordLabel')}</label>
+            <label className="app-label">{t('settingsLdap.bindPasswordLabel')}</label>
             <input
               type="password"
               value={bindPassword}
@@ -292,9 +287,9 @@ export function SettingsLdapPage() {
                   : t('settingsLdap.bindPasswordPlaceholderUnset')
               }
               disabled={allowAnonymous}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input"
             />
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
               {allowAnonymous ? (
                 <>{t('settingsLdap.anonymousBindHint')}</>
               ) : (
@@ -303,40 +298,40 @@ export function SettingsLdapPage() {
             </p>
           </div>
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-500">
+            <label className="app-label">
               {t('settingsLdap.userSearchBaseLabel')}
             </label>
             <input
               value={userSearchBase}
               onChange={(e) => setUserSearchBase(e.target.value)}
               placeholder={t('settingsLdap.userSearchBasePlaceholder')}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input"
             />
           </div>
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs font-medium text-slate-500">
+            <label className="app-label">
               {t('settingsLdap.userFilterLabel')}
             </label>
             <input
               value={userFilter}
               onChange={(e) => setUserFilter(e.target.value)}
               placeholder="(&(objectClass=user)(objectCategory=person))"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input font-mono text-xs"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">
+            <label className="app-label">
               {t('settingsLdap.usernameAttrLabel')}
             </label>
             <input
               value={usernameAttr}
               onChange={(e) => setUsernameAttr(e.target.value)}
               placeholder="sAMAccountName"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input font-mono text-xs"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">
+            <label className="app-label">
               {t('settingsLdap.syncLimitLabel')}
             </label>
             <input
@@ -345,29 +340,29 @@ export function SettingsLdapPage() {
               onChange={(e) => setSyncLimit(Number(e.target.value))}
               min={1}
               max={5000}
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">
+            <label className="app-label">
               {t('settingsLdap.displayNameAttrLabel')}
             </label>
             <input
               value={displayNameAttr}
               onChange={(e) => setDisplayNameAttr(e.target.value)}
               placeholder="displayName"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input font-mono text-xs"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">
+            <label className="app-label">
               {t('settingsLdap.emailAttrLabel')}
             </label>
             <input
               value={emailAttr}
               onChange={(e) => setEmailAttr(e.target.value)}
               placeholder="mail"
-              className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 font-mono text-xs text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+              className="app-input font-mono text-xs"
             />
           </div>
         </div>
@@ -413,14 +408,14 @@ export function SettingsLdapPage() {
           <div className="min-w-[14rem] flex-1" />
           <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
             <div className="min-w-0 flex-1 sm:w-[16rem]">
-              <label className="mb-1 block text-xs font-medium text-slate-500">
+              <label className="app-label">
                 {t('settingsLdap.probeSearchLabel')}
               </label>
               <input
                 value={probeUsername}
                 onChange={(e) => setProbeUsername(e.target.value)}
                 placeholder="jdoe"
-                className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+                className="app-input"
               />
             </div>
             <button
@@ -434,12 +429,12 @@ export function SettingsLdapPage() {
           </div>
         </div>
 
-        {loading ? <p className="text-sm text-slate-500">{t('common.loading')}</p> : null}
+        {loading ? <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p> : null}
       </form>
 
       <div className="app-card mt-6 overflow-hidden p-0">
-        <div className="border-b border-neutral-200 px-4 py-3">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+        <div className="border-b border-[var(--color-border)] px-4 py-3">
+          <h2 className="app-label">
             {t('settingsLdap.ldapUsersTitle')}
           </h2>
         </div>
@@ -457,16 +452,16 @@ export function SettingsLdapPage() {
             <tbody className="divide-y divide-neutral-100">
               {ldapUsers.map((u) => (
                 <tr key={u.id} className="app-table-row">
-                  <td className="px-4 py-3 font-mono text-slate-500">{u.id}</td>
-                  <td className="px-4 py-3 font-medium text-slate-900">{u.username}</td>
-                  <td className="px-4 py-3 text-slate-600">{u.full_name ?? '—'}</td>
+                  <td className="px-4 py-3 font-mono text-[var(--color-fg-muted)]">{u.id}</td>
+                  <td className="px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
+                  <td className="px-4 py-3 text-[var(--color-fg-muted)]">{u.full_name ?? '—'}</td>
                   <td className="px-4 py-3">
                     {u.is_superuser ? (
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-neutral-900">
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-[var(--color-fg)]">
                         {t('settingsLdap.adminRole')}
                       </span>
                     ) : (
-                      <span className="text-slate-600">{u.role}</span>
+                      <span className="text-[var(--color-fg-muted)]">{u.role}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -475,7 +470,7 @@ export function SettingsLdapPage() {
                         {t('settingsLdap.statusActive')}
                       </span>
                     ) : (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-fg-muted)]">
                         {t('settingsLdap.statusInactive')}
                       </span>
                     )}

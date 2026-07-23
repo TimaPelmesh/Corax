@@ -128,7 +128,7 @@ export function UserPrefsPanel({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 backdrop-blur-[2px] sm:items-center sm:p-6"
+      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-[2px] sm:items-center sm:p-6"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}

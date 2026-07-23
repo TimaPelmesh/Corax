@@ -4,7 +4,9 @@ import { Link } from 'react-router-dom'
 import { api, type AgentBundleProfile, type AgentBundleTarget } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
+import { buildAgentServerUrl, schemeFromTls, type AgentUrlScheme } from '../lib/agentServerUrl'
 import { useToast } from '../ToastContext'
 
 const MODULE_KEYS = [
@@ -54,13 +56,6 @@ function usableLanIp(ip: string | null | undefined): string {
   return v
 }
 
-function buildServerUrl(host: string, port: string): string {
-  const h = host.trim()
-  const p = port.trim() || defaultAgentPort()
-  if (!h) return `http://…:${p}`
-  return `http://${h}:${p}`
-}
-
 export function AgentBundlePage() {
   const t = useT()
   const toast = useToast()
@@ -79,8 +74,31 @@ export function AgentBundlePage() {
     Object.fromEntries(MODULE_KEYS.map((k) => [k, true])),
   )
   const [busy, setBusy] = useState(false)
+  const [urlScheme, setUrlScheme] = useState<AgentUrlScheme>(() =>
+    typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https' : 'http',
+  )
 
-  const serverUrl = useMemo(() => buildServerUrl(serverHost, serverPort), [serverHost, serverPort])
+  const serverUrl = useMemo(
+    () => buildAgentServerUrl(serverHost, serverPort, urlScheme),
+    [serverHost, serverPort, urlScheme],
+  )
+
+  useEffect(() => {
+    if (authLoading || !user?.is_superuser) return
+    let cancelled = false
+    void api
+      .tlsStatus()
+      .then((st) => {
+        if (cancelled) return
+        setUrlScheme(schemeFromTls(st.agent_scheme, st.active, st.enabled))
+      })
+      .catch(() => {
+        /* keep browser protocol fallback */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authLoading, user?.is_superuser])
 
   useEffect(() => {
     if (authLoading || !user?.is_superuser) return
@@ -128,7 +146,7 @@ export function AgentBundlePage() {
   )
 
   if (authLoading) {
-    return <p className="text-sm text-slate-500">{t('common.loading')}</p>
+    return <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
   }
 
   if (!user?.is_superuser) {
@@ -158,7 +176,7 @@ export function AgentBundlePage() {
           : platform === 'cpp'
             ? t('agentBundle.defaultTokenLabelCpp')
             : t('agentBundle.defaultTokenLabelWin10'))
-      const server = buildServerUrl(serverHost, serverPort)
+      const server = buildAgentServerUrl(serverHost, serverPort, urlScheme)
       const filename = await api.downloadAgentBundle({
             server_url: server,
             target: platform,
@@ -191,63 +209,47 @@ export function AgentBundlePage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconKey className="h-7 w-7 text-blue-600" />
-        </div>
-        <div>
-          <h1 className="page-title">{t('titles.agentBundle')}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            {t('pages.agentBundleSubtitle')}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
+      <PageHeader
+        icon={<IconKey className="h-7 w-7" />}
+        title={t('titles.agentBundle')}
+        subtitle={t('pages.agentBundleSubtitle')}
+        actions={
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                platform === 'cpp'
-                  ? 'bg-neutral-900 text-white'
-                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
+              className={`app-btn ${platform === 'cpp' ? 'app-btn-primary' : 'app-btn-secondary'}`}
               onClick={() => setPlatform('cpp')}
             >
               {t('agentBundle.platformCpp')}
             </button>
             <button
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                platform === 'win10'
-                  ? 'bg-neutral-900 text-white'
-                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
+              className={`app-btn ${platform === 'win10' ? 'app-btn-primary' : 'app-btn-secondary'}`}
               onClick={() => setPlatform('win10')}
             >
               {t('agentBundle.platformWin10')}
             </button>
             <button
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                platform === 'win7'
-                  ? 'bg-neutral-900 text-white'
-                  : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-              }`}
+              className={`app-btn ${platform === 'win7' ? 'app-btn-primary' : 'app-btn-secondary'}`}
               onClick={() => setPlatform('win7')}
             >
               {t('agentBundle.platformWin7')}
             </button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <form
         onSubmit={(e) => void onSubmit(e)}
         className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,22rem)] xl:grid-cols-[minmax(0,1fr)_24rem]"
       >
         <div className="app-card min-w-0 space-y-5 p-6 sm:p-7">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
             {t('agentBundle.parametersTitle')}
           </h2>
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_7rem]">
+          <div className="grid gap-3 sm:grid-cols-[1fr_7rem_6.5rem]">
             <div>
               <label className="app-label">{t('agentBundle.serverIpLabel')}</label>
               {lanCandidates.length > 1 ? (
@@ -273,7 +275,7 @@ export function AgentBundlePage() {
                   required
                 />
               )}
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
                 {lanLoading
                   ? t('agentBundle.detectingLanIpHint')
                   : t('agentBundle.serverIpHint')}
@@ -289,10 +291,22 @@ export function AgentBundlePage() {
                 required
               />
             </div>
+            <div>
+              <label className="app-label">{t('agentBundle.schemeLabel')}</label>
+              <select
+                className="app-input font-mono text-sm"
+                value={urlScheme}
+                onChange={(e) => setUrlScheme(e.target.value === 'https' ? 'https' : 'http')}
+              >
+                <option value="http">http</option>
+                <option value="https">https</option>
+              </select>
+            </div>
           </div>
-          <p className="-mt-2 text-xs text-slate-500">
+          <p className="-mt-2 text-xs text-[var(--color-fg-muted)]">
             {t('agentBundle.agentUrl')} <code className="font-mono">{serverUrl}</code>
           </p>
+          <p className="text-xs text-[var(--color-fg-subtle)]">{t('agentBundle.schemeHint')}</p>
 
           {platform === 'win7' ? (
             <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 px-4 py-3 text-sm text-amber-950">
@@ -309,10 +323,10 @@ export function AgentBundlePage() {
                     className={`flex cursor-pointer flex-col rounded-xl border px-4 py-3 transition ${
                       level === 'full'
                         ? 'border-blue-300 bg-blue-50/50 ring-1 ring-blue-200'
-                        : 'border-neutral-200 hover:border-neutral-300'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-border)]'
                     }`}
                   >
-                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-[var(--color-fg)]">
                       <input
                         type="radio"
                         name="level"
@@ -321,7 +335,7 @@ export function AgentBundlePage() {
                       />
                       {t('agentBundle.levelFull')}
                     </span>
-                    <span className="mt-1 pl-6 text-xs leading-relaxed text-slate-500">
+                    <span className="mt-1 pl-6 text-xs leading-relaxed text-[var(--color-fg-muted)]">
                       {t('agentBundle.levelFullHint')}
                     </span>
                   </label>
@@ -329,10 +343,10 @@ export function AgentBundlePage() {
                     className={`flex cursor-pointer flex-col rounded-xl border px-4 py-3 transition ${
                       level === 'custom'
                         ? 'border-blue-300 bg-blue-50/50 ring-1 ring-blue-200'
-                        : 'border-neutral-200 hover:border-neutral-300'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-border)]'
                     }`}
                   >
-                    <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-[var(--color-fg)]">
                       <input
                         type="radio"
                         name="level"
@@ -341,7 +355,7 @@ export function AgentBundlePage() {
                       />
                       {t('agentBundle.levelCustom')}
                     </span>
-                    <span className="mt-1 pl-6 text-xs leading-relaxed text-slate-500">
+                    <span className="mt-1 pl-6 text-xs leading-relaxed text-[var(--color-fg-muted)]">
                       {t('agentBundle.levelCustomHint')}
                     </span>
                   </label>
@@ -349,13 +363,13 @@ export function AgentBundlePage() {
               </div>
 
               {showModules ? (
-                <div className="rounded-xl border border-neutral-200 bg-neutral-50/80 p-4">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                     {t('agentBundle.modulesTitle')}
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {moduleList.map((key) => (
-                      <label key={key} className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+                      <label key={key} className="flex cursor-pointer items-start gap-2 text-sm text-[var(--color-fg)]">
                         <input
                           type="checkbox"
                           className="mt-1"
@@ -371,9 +385,9 @@ export function AgentBundlePage() {
             </>
           ) : null}
 
-          <div className="rounded-xl border border-neutral-200 bg-neutral-50/60 p-4">
-            <div className="text-sm font-semibold text-slate-900">{t('agentBundle.tokenTitle')}</div>
-            <div className="mt-2 space-y-2 text-xs leading-relaxed text-slate-600">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/60 p-4">
+            <div className="text-sm font-semibold text-[var(--color-fg)]">{t('agentBundle.tokenTitle')}</div>
+            <div className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
               <p>
                 <strong>{t('agentBundle.tokenNewEachBuild')}</strong> {t('agentBundle.tokenIntroBefore')}{' '}
                 <code className="text-[11px]">public_id.secret</code> {t('agentBundle.tokenIntroMiddle')}{' '}
@@ -394,8 +408,8 @@ export function AgentBundlePage() {
           </div>
 
           {platform === 'win10' ? (
-          <div className="space-y-3 rounded-xl border border-neutral-200 p-4">
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
+          <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-4">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--color-fg)]">
               <input
                 type="checkbox"
                 checked={scheduleEnabled}
@@ -403,7 +417,7 @@ export function AgentBundlePage() {
               />
               {t('agentBundle.scheduleEnable')}
             </label>
-            <p className="text-xs leading-relaxed text-slate-500">
+            <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">
               {t('agentBundle.scheduleHint')}
             </p>
             {scheduleEnabled ? (
@@ -437,19 +451,19 @@ export function AgentBundlePage() {
 
         <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6">
           <div className="app-card space-y-4 p-5 sm:p-6">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
               {t('agentBundle.buildTitle')}
             </h2>
             <dl className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">{t('agentBundle.summaryServer')}</dt>
-                <dd className="max-w-[58%] truncate text-right font-mono text-xs text-slate-800" title={serverUrl}>
+              <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+                <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryServer')}</dt>
+                <dd className="max-w-[58%] truncate text-right font-mono text-xs text-[var(--color-fg)]" title={serverUrl}>
                   {serverUrl}
                 </dd>
               </div>
-              <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">{t('agentBundle.summaryPlatform')}</dt>
-                <dd className="text-right font-medium text-slate-800">
+              <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+                <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryPlatform')}</dt>
+                <dd className="text-right font-medium text-[var(--color-fg)]">
                   {platform === 'cpp'
                     ? t('agentBundle.platformCpp')
                     : platform === 'win10'
@@ -457,34 +471,34 @@ export function AgentBundlePage() {
                       : t('agentBundle.platformWin7')}
                 </dd>
               </div>
-              <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">{t('agentBundle.summaryFormat')}</dt>
-                <dd className="text-right font-medium text-slate-800">
+              <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+                <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryFormat')}</dt>
+                <dd className="text-right font-medium text-[var(--color-fg)]">
                   {platform === 'cpp' ? t('agentBundle.formatCpp') : 'ZIP'}
                 </dd>
               </div>
               {showExtended ? (
-                <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                  <dt className="text-slate-500">{t('agentBundle.summaryLevel')}</dt>
-                  <dd className="text-right font-medium text-slate-800">
+                <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+                  <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryLevel')}</dt>
+                  <dd className="text-right font-medium text-[var(--color-fg)]">
                     {level === 'full' ? t('agentBundle.levelFull') : t('agentBundle.levelCustom')}
                   </dd>
                 </div>
               ) : null}
-              <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                <dt className="text-slate-500">{t('agentBundle.summaryToken')}</dt>
-                <dd className="text-right text-slate-800">{t('agentBundle.summaryTokenValue')}</dd>
+              <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+                <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryToken')}</dt>
+                <dd className="text-right text-[var(--color-fg)]">{t('agentBundle.summaryTokenValue')}</dd>
               </div>
               {showModules ? (
-                <div className="flex justify-between gap-3 border-b border-neutral-100 pb-2">
-                  <dt className="text-slate-500">{t('agentBundle.summaryModules')}</dt>
-                  <dd className="text-right text-slate-800">{enabledModuleCount}</dd>
+                <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+                  <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryModules')}</dt>
+                  <dd className="text-right text-[var(--color-fg)]">{enabledModuleCount}</dd>
                 </div>
               ) : null}
               {platform === 'win10' ? (
                 <div className="flex justify-between gap-3">
-                  <dt className="text-slate-500">{t('agentBundle.summarySchedule')}</dt>
-                  <dd className="text-right text-slate-800">
+                  <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summarySchedule')}</dt>
+                  <dd className="text-right text-[var(--color-fg)]">
                     {scheduleEnabled
                       ? t('agentBundle.summaryScheduleEnabled')
                       : t('agentBundle.summaryScheduleDisabled')}
@@ -492,7 +506,7 @@ export function AgentBundlePage() {
                 </div>
               ) : null}
             </dl>
-            <p className="text-xs leading-relaxed text-slate-500">
+            <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">
               {platform === 'cpp' ? (
                 <>{t('agentBundle.summaryArchiveCpp')}</>
               ) : platform === 'win10' ? (
@@ -514,8 +528,8 @@ export function AgentBundlePage() {
             </button>
           </div>
 
-          <div className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/70 p-5 text-sm text-slate-600">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)]/70 p-5 text-sm text-[var(--color-fg-muted)]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
               {t('agentBundle.deploymentTitle')}
             </p>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">

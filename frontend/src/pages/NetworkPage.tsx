@@ -70,7 +70,7 @@ function fmtWhen(iso: string | null | undefined, locale: string) {
 function statusTone(status: string | null | undefined) {
   if (status === 'ok') return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
   if (status === 'error') return 'bg-red-500/15 text-red-700 dark:text-red-300'
-  return 'bg-slate-500/10 text-slate-600 dark:text-slate-300'
+  return 'bg-[var(--color-surface-muted)]0/10 text-[var(--color-fg-muted)] dark:text-slate-300'
 }
 
 function roleTone(role: string) {
@@ -80,7 +80,7 @@ function roleTone(role: string) {
     case 'dns':
       return 'bg-indigo-500/20 text-indigo-900 dark:text-indigo-200'
     case 'infra':
-      return 'bg-slate-500/20 text-slate-800 dark:text-slate-200'
+      return 'bg-[var(--color-surface-muted)]0/20 text-[var(--color-fg)] dark:text-slate-200'
     case 'switch':
       return 'bg-sky-500/15 text-sky-800 dark:text-sky-200'
     case 'router':
@@ -104,7 +104,7 @@ function roleTone(role: string) {
     case 'modem':
       return 'bg-orange-500/15 text-orange-800 dark:text-orange-200'
     default:
-      return 'bg-slate-500/10 text-slate-700 dark:text-slate-300'
+      return 'bg-[var(--color-surface-muted)]0/10 text-[var(--color-fg)] dark:text-slate-300'
   }
 }
 
@@ -657,12 +657,12 @@ export function NetworkPage() {
               <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
                 <tr>
                   {canEdit ? <th className="w-10 px-3 py-2.5" /> : null}
-                  <th className="px-3 py-2.5">{t('network.colHostname')}</th>
+                  <th className="app-table-sticky-col px-3 py-2.5">{t('network.colHostname')}</th>
                   <th className="px-3 py-2.5">{t('network.colIp')}</th>
                   <th className="px-3 py-2.5">{t('network.colRole')}</th>
-                  <th className="px-3 py-2.5">{t('network.colVendor')}</th>
+                  <th className="app-hide-xs px-3 py-2.5">{t('network.colVendor')}</th>
                   <th className="px-3 py-2.5">{t('network.colStatus')}</th>
-                  <th className="px-3 py-2.5">{t('network.colLastPoll')}</th>
+                  <th className="app-hide-xs px-3 py-2.5">{t('network.colLastPoll')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -702,7 +702,7 @@ export function NetworkPage() {
                           />
                         </td>
                       ) : null}
-                      <td className="px-3 py-2 font-medium">{r.hostname || r.sys_name || '—'}</td>
+                      <td className="app-table-sticky-col px-3 py-2 font-medium">{r.hostname || r.sys_name || '—'}</td>
                       <td className="px-3 py-2 font-mono text-xs">{r.ip_address}</td>
                       <td className="px-3 py-2">
                         <span
@@ -711,13 +711,13 @@ export function NetworkPage() {
                           {t(roleLabelKey(r.role || r.device_type))}
                         </span>
                       </td>
-                      <td className="px-3 py-2">{r.vendor || '—'}</td>
+                      <td className="app-hide-xs px-3 py-2">{r.vendor || '—'}</td>
                       <td className="px-3 py-2">
                         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(r.snmp_status)}`}>
                           {r.snmp_status || '—'}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-[var(--color-fg-subtle)]">{fmtWhen(r.last_snmp_at, locale)}</td>
+                      <td className="app-hide-xs px-3 py-2 text-[var(--color-fg-subtle)]">{fmtWhen(r.last_snmp_at, locale)}</td>
                     </tr>
                   ))
                 )}

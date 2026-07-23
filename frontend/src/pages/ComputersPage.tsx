@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { api, type Computer, type TagBrief } from '../api'
 import { ComputerDetailModal, fmtDate, tagPillProps } from '../components/ComputerDetailModal'
 import { IconPcs } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
+import { TableSkeleton } from '../components/Skeleton'
 import { useComputerPingLive } from '../hooks/useComputerPingLive'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -272,15 +274,11 @@ export function ComputersPage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconPcs className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="page-title">{t('titles.computers')}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('pages.computersSubtitle')}</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconPcs className="h-6 w-6" />}
+        title={t('titles.computers')}
+        subtitle={t('pages.computersSubtitle')}
+      />
 
       <div className="app-card mb-4 flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
         <div className="min-w-[min(100%,18rem)] flex-1">
@@ -300,7 +298,7 @@ export function ComputersPage() {
           <div className="shrink-0">
             <span className="app-label">{t('computers.pingFilterLabel')}</span>
             <div
-              className="mt-1 flex overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+              className="mt-1 grid grid-cols-2 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] sm:flex"
               role="group"
               aria-label={t('computers.pingFilterLabel')}
             >
@@ -317,7 +315,7 @@ export function ComputersPage() {
                   <button
                     key={key}
                     type="button"
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-2 text-xs font-semibold transition sm:px-3 sm:text-sm ${
+                    className={`inline-flex min-h-11 items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-semibold transition sm:min-h-0 sm:justify-start sm:px-3 sm:text-sm ${
                       on
                         ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
                         : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
@@ -466,12 +464,15 @@ export function ComputersPage() {
         </div>
       </div>
 
-      <div className="app-card overflow-hidden p-0">
+      <div
+        key={`pcs-${pingFilter}-${debouncedHostSearch}-${filterTagIds.join(',')}-${sort.key}-${sort.dir}`}
+        className="app-card app-fade-swap overflow-hidden p-0"
+      >
         <div className="-mx-0 overflow-x-auto overscroll-x-contain">
-        <table className="min-w-[720px] w-full text-left text-sm">
+        <table className="min-w-[720px] w-full max-sm:min-w-[28rem] text-left text-sm">
           <thead className="app-table-head">
             <tr>
-              <th className="px-4 py-3">
+              <th className="app-table-sticky-col px-4 py-3">
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 hover:text-[var(--color-fg)]"
@@ -481,9 +482,9 @@ export function ComputersPage() {
                   {t('computers.columns.host')} {sortArrow('host')}
                 </button>
               </th>
-              {columns.location ? <th className="px-4 py-3">{t('computers.columns.location')}</th> : null}
+              {columns.location ? <th className="app-hide-xs px-4 py-3">{t('computers.columns.location')}</th> : null}
               {columns.tags ? <th className="px-4 py-3">{t('computers.columns.tags')}</th> : null}
-              {columns.os ? <th className="px-4 py-3">{t('computers.columns.os')}</th> : null}
+              {columns.os ? <th className="app-hide-xs px-4 py-3">{t('computers.columns.os')}</th> : null}
               {columns.ram ? (
                 <th className="px-4 py-3">
                   <button
@@ -526,8 +527,8 @@ export function ComputersPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={visibleColumnCount} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
-                  {t('common.loading')}
+                <td colSpan={visibleColumnCount} className="p-0">
+                  <TableSkeleton rows={8} cols={Math.min(visibleColumnCount, 6)} />
                 </td>
               </tr>
             ) : total === 0 ? (
@@ -550,7 +551,7 @@ export function ComputersPage() {
                   className={`app-table-row cursor-pointer ${idx > 0 ? 'border-t border-[var(--color-border)]' : ''}`}
                   onClick={() => openDetail(r.id)}
                 >
-                  <td className="px-4 py-3 font-medium text-[var(--color-fg)]">
+                  <td className="app-table-sticky-col px-4 py-3 font-medium text-[var(--color-fg)]">
                     <span className="inline-flex min-w-0 items-center gap-2.5">
                       <span
                         className={
@@ -579,7 +580,7 @@ export function ComputersPage() {
                     </span>
                   </td>
                   {columns.location ? (
-                    <td className="max-w-[8rem] truncate px-4 py-3 text-[var(--color-fg-muted)]">{r.location ?? '—'}</td>
+                    <td className="app-hide-xs max-w-[8rem] truncate px-4 py-3 text-[var(--color-fg-muted)]">{r.location ?? '—'}</td>
                   ) : null}
                   {columns.tags ? (
                     <td className="max-w-[11rem] px-4 py-3">
@@ -600,7 +601,7 @@ export function ComputersPage() {
                     </td>
                   ) : null}
                   {columns.os ? (
-                    <td className="px-4 py-3 text-[var(--color-fg-muted)]">
+                    <td className="app-hide-xs px-4 py-3 text-[var(--color-fg-muted)]">
                       {r.os_name ?? '—'} {r.os_version ? `(${r.os_version})` : ''}
                     </td>
                   ) : null}
@@ -631,14 +632,14 @@ export function ComputersPage() {
       </div>
 
       {!loading && total > PAGE_SIZE ? (
-        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-[var(--color-fg-muted)]">
+        <div className="mt-3 flex flex-col gap-2 text-sm text-[var(--color-fg-muted)] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <span>
             {t('computers.shownOf', { shown: pagedRows.length, total })}
           </span>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="app-btn app-btn-secondary min-h-0 px-3 py-1.5 text-xs"
+              className="app-btn app-btn-secondary min-h-11 px-3 py-1.5 text-xs sm:min-h-0"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
@@ -649,7 +650,7 @@ export function ComputersPage() {
             </span>
             <button
               type="button"
-              className="app-btn app-btn-secondary min-h-0 px-3 py-1.5 text-xs"
+              className="app-btn app-btn-secondary min-h-11 px-3 py-1.5 text-xs sm:min-h-0"
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               disabled={page >= pageCount}
             >

@@ -495,21 +495,21 @@ export function WarehousePage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="app-table min-w-[640px]">
+                <table className="app-table min-w-[640px] max-sm:min-w-[28rem]">
                   <thead className="app-table-head">
                     <tr>
-                      <th className="px-3 py-2.5">{t('warehouse.columns.typeName')}</th>
-                      <th className="px-3 py-2.5">{t('warehouse.columns.code')}</th>
+                      <th className="app-table-sticky-col px-3 py-2.5">{t('warehouse.columns.typeName')}</th>
+                      <th className="app-hide-xs px-3 py-2.5">{t('warehouse.columns.code')}</th>
                       <th className="px-3 py-2.5">{t('warehouse.columns.quantity')}</th>
                       <th className="px-3 py-2.5">{t('warehouse.columns.condition')}</th>
-                      <th className="px-3 py-2.5">{t('warehouse.columns.updated')}</th>
+                      <th className="app-hide-xs px-3 py-2.5">{t('warehouse.columns.updated')}</th>
                       {canEdit ? <th className="px-3 py-2.5 text-right">{t('warehouse.columns.actions')}</th> : null}
                     </tr>
                   </thead>
                   <tbody>
                     {items.map((item) => (
                       <tr key={item.id} className="app-table-row">
-                        <td className="app-table-cell align-top">
+                        <td className="app-table-cell app-table-sticky-col align-top">
                           <div className="font-medium">{item.name}</div>
                           <div className="text-xs text-[var(--color-fg-subtle)]">
                             {presetLabel(t, item.preset_key, item.preset_name)}
@@ -523,7 +523,7 @@ export function WarehousePage() {
                             <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{item.notes}</div>
                           ) : null}
                         </td>
-                        <td className="app-table-cell align-top font-mono text-xs">
+                        <td className="app-table-cell app-hide-xs align-top font-mono text-xs">
                           {item.internal_code ?? '—'}
                         </td>
                         <td className="app-table-cell align-top">
@@ -534,7 +534,7 @@ export function WarehousePage() {
                         <td className="app-table-cell align-top text-xs">
                           {t(`warehouse.conditions.${item.condition as 'new' | 'used' | 'defective'}`)}
                         </td>
-                        <td className="app-table-cell align-top text-xs text-[var(--color-fg-subtle)]">
+                        <td className="app-table-cell app-hide-xs align-top text-xs text-[var(--color-fg-subtle)]">
                           {fmtWhen(item.updated_at, locale)}
                         </td>
                         {canEdit ? (

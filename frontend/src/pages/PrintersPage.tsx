@@ -107,15 +107,15 @@ function supplyTone(name: string): { dot: string; text: string; track: string; f
     return { dot: 'bg-yellow-400', text: 'text-yellow-700', track: 'bg-yellow-50', fill: 'bg-yellow-400' }
   }
   if (/(black|ч[её]рн|carbon|ce400a|ce400x|cf410|cf226)/i.test(s)) {
-    return { dot: 'bg-slate-950', text: 'text-slate-950', track: 'bg-slate-100', fill: 'bg-slate-900' }
+    return { dot: 'bg-slate-950', text: 'text-[var(--color-fg)]', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-900' }
   }
-  return { dot: 'bg-slate-400', text: 'text-slate-600', track: 'bg-slate-100', fill: 'bg-slate-400' }
+  return { dot: 'bg-slate-400', text: 'text-[var(--color-fg-muted)]', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400' }
 }
 
 const SERVICE_TONE = {
   dot: 'bg-slate-300',
-  text: 'text-slate-600',
-  track: 'bg-slate-100',
+  text: 'text-[var(--color-fg-muted)]',
+  track: 'bg-[var(--color-surface-muted)]',
   fill: 'bg-slate-400',
 } as const
 
@@ -141,7 +141,7 @@ function SupplyChip({
       title={s.name}
     >
       <div
-        className={`flex items-start gap-1 text-[10px] leading-snug ${low && colored ? 'font-semibold text-blue-700' : 'font-medium text-slate-600'}`}
+        className={`flex items-start gap-1 text-[10px] leading-snug ${low && colored ? 'font-semibold text-blue-700' : 'font-medium text-[var(--color-fg-muted)]'}`}
       >
         <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-black/10 ${tone.dot}`} />
         <span className={`min-w-0 break-words ${tone.text}`}>{s.name}</span>
@@ -161,7 +161,7 @@ function SupplyChip({
 
 function SuppliesCell({ supplies, serviceLabel }: { supplies: PrinterSupply[]; serviceLabel: string }) {
   if (!supplies.length) {
-    return <span className="text-xs text-slate-400">—</span>
+    return <span className="text-xs text-[var(--color-fg-subtle)]">—</span>
   }
   const { toners, service } = partitionSupplies(supplies)
   return (
@@ -174,8 +174,8 @@ function SuppliesCell({ supplies, serviceLabel }: { supplies: PrinterSupply[]; s
         </div>
       ) : null}
       {service.length > 0 ? (
-        <div className="border-t border-dashed border-slate-200/90 pt-1.5">
-          <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">{serviceLabel}</div>
+        <div className="border-t border-dashed border-[var(--color-border)] pt-1.5">
+          <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">{serviceLabel}</div>
           <div className="flex flex-wrap gap-x-2 gap-y-1">
             {service.map((s) => (
               <SupplyChip key={s.name} s={s} colored={false} />
@@ -733,9 +733,12 @@ export function PrintersPage() {
         </div>
       </div>
 
-      <div className="app-card overflow-hidden p-0 shadow-[0_4px_24px_-8px_rgb(15_23_42_/_0.12)]">
+      <div
+        key={`printers-${filter}`}
+        className="app-card app-fade-swap overflow-hidden p-0 shadow-[0_4px_24px_-8px_rgb(15_23_42_/_0.12)]"
+      >
         <div className="-mx-0 overflow-x-auto overscroll-x-contain">
-          <table className="min-w-[720px] w-full text-left text-sm">
+          <table className="min-w-[720px] w-full max-sm:min-w-[32rem] text-left text-sm">
             <thead className="app-table-head">
               <tr>
                 {canEdit ? (
@@ -748,27 +751,27 @@ export function PrintersPage() {
                     />
                   </th>
                 ) : null}
-                {visibleCols.model ? <th className="min-w-[16rem] px-4 py-3">{t('printers.colModel')}</th> : null}
+                {visibleCols.model ? <th className="app-table-sticky-col min-w-[16rem] px-4 py-3">{t('printers.colModel')}</th> : null}
                 {visibleCols.ip ? <th className="px-4 py-3">{t('printers.colIp')}</th> : null}
-                {visibleCols.location ? <th className="min-w-[8rem] px-4 py-3">{t('printers.colLocation')}</th> : null}
+                {visibleCols.location ? <th className="app-hide-xs min-w-[8rem] px-4 py-3">{t('printers.colLocation')}</th> : null}
                 {visibleCols.status ? <th className="px-4 py-3">{t('printers.colStatus')}</th> : null}
-                {visibleCols.pages ? <th className="px-4 py-3">{t('printers.colPages')}</th> : null}
+                {visibleCols.pages ? <th className="app-hide-xs px-4 py-3">{t('printers.colPages')}</th> : null}
                 {visibleCols.supplies ? <th className="min-w-[14rem] px-4 py-3">{t('printers.colSupplies')}</th> : null}
-                {visibleCols.lastPoll ? <th className="px-4 py-3">{t('printers.colLastPoll')}</th> : null}
+                {visibleCols.lastPoll ? <th className="app-hide-xs px-4 py-3">{t('printers.colLastPoll')}</th> : null}
                 {canEdit && visibleCols.actions ? <th className="px-4 py-3 text-right">{t('printers.colActions')}</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
               {loading ? (
                 <tr>
-                  <td colSpan={colCount} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={colCount} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                     {t('common.loading')}
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={colCount} className="px-4 py-12 text-center">
-                    <p className="text-sm font-medium text-slate-700">{t('common.nothingFound')}</p>
+                    <p className="text-sm font-medium text-[var(--color-fg)]">{t('common.nothingFound')}</p>
                     {canEdit && rows.length === 0 ? (
                       <div className="mt-4 flex justify-center gap-2">
                         <button type="button" className="app-btn app-btn-primary" onClick={() => void pollAll()} disabled={pollBusy}>
@@ -788,18 +791,18 @@ export function PrintersPage() {
                   const problem = r.snmp_status === 'error' || r.poll_status === 'offline' || low
                   const snmpBadge =
                     r.snmp_status === 'ok'
-                      ? { text: 'SNMP OK', cls: 'bg-slate-100 text-slate-700 ring-slate-200' }
+                      ? { text: 'SNMP OK', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-slate-200' }
                       : r.snmp_status === 'error'
                         ? { text: 'SNMP err', cls: 'bg-rose-50 text-rose-800 ring-rose-200' }
                         : r.snmp_status === 'skipped'
-                          ? { text: 'SNMP —', cls: 'bg-slate-50 text-slate-500 ring-slate-200' }
-                          : { text: 'SNMP ?', cls: 'bg-slate-50 text-slate-500 ring-slate-200' }
+                          ? { text: 'SNMP —', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-slate-200' }
+                          : { text: 'SNMP ?', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-slate-200' }
                   const pollBadge =
                     r.poll_status === 'online'
-                      ? { text: t('printers.statusOnline'), cls: 'bg-slate-100 text-slate-700 ring-slate-200' }
+                      ? { text: t('printers.statusOnline'), cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-slate-200' }
                       : r.poll_status === 'offline'
                         ? { text: t('printers.statusOffline'), cls: 'bg-amber-50 text-amber-900 ring-amber-200' }
-                        : { text: t('printers.statusUnknown'), cls: 'bg-slate-50 text-slate-500 ring-slate-200' }
+                        : { text: t('printers.statusUnknown'), cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-slate-200' }
                   return (
                     <tr
                       key={r.id}
@@ -817,23 +820,23 @@ export function PrintersPage() {
                         </td>
                       ) : null}
                       {visibleCols.model ? (
-                        <td className="min-w-[16rem] max-w-[22rem] px-4 py-3 align-top">
-                          <div className="whitespace-normal break-words font-medium leading-snug text-slate-900" title={title}>
+                        <td className="app-table-sticky-col min-w-[16rem] max-w-[22rem] px-4 py-3 align-top">
+                          <div className="whitespace-normal break-words font-medium leading-snug text-[var(--color-fg)]" title={title}>
                             {title}
                           </div>
                           {r.snmp_model && r.name?.trim() && r.name.trim() !== r.snmp_model.trim() ? (
-                            <div className="mt-0.5 whitespace-normal break-words text-xs leading-snug text-slate-500" title={r.name}>
+                            <div className="mt-0.5 whitespace-normal break-words text-xs leading-snug text-[var(--color-fg-muted)]" title={r.name}>
                               {r.name}
                             </div>
                           ) : null}
                         </td>
                       ) : null}
                       {visibleCols.ip ? (
-                        <td className="px-4 py-3 align-top font-mono text-slate-600">{r.ip_address ?? '—'}</td>
+                        <td className="px-4 py-3 align-top font-mono text-[var(--color-fg-muted)]">{r.ip_address ?? '—'}</td>
                       ) : null}
                       {visibleCols.location ? (
-                        <td className="min-w-[8rem] max-w-[12rem] px-4 py-3 align-top">
-                          <span className="whitespace-normal break-words text-slate-600">{r.location ?? '—'}</span>
+                        <td className="app-hide-xs min-w-[8rem] max-w-[12rem] px-4 py-3 align-top">
+                          <span className="whitespace-normal break-words text-[var(--color-fg-muted)]">{r.location ?? '—'}</span>
                         </td>
                       ) : null}
                       {visibleCols.status ? (
@@ -862,7 +865,7 @@ export function PrintersPage() {
                         </td>
                       ) : null}
                       {visibleCols.pages ? (
-                        <td className="px-4 py-3 align-top font-mono tabular-nums font-semibold text-neutral-900">
+                        <td className="app-hide-xs px-4 py-3 align-top font-mono tabular-nums font-semibold text-[var(--color-fg)]">
                           {r.page_count != null ? r.page_count.toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU') : '—'}
                         </td>
                       ) : null}
@@ -872,7 +875,7 @@ export function PrintersPage() {
                         </td>
                       ) : null}
                       {visibleCols.lastPoll ? (
-                        <td className="px-4 py-3 align-top text-slate-500">{fmtWhen(r.last_poll_at ?? r.last_snmp_at, locale)}</td>
+                        <td className="app-hide-xs px-4 py-3 align-top text-[var(--color-fg-muted)]">{fmtWhen(r.last_poll_at ?? r.last_snmp_at, locale)}</td>
                       ) : null}
                       {canEdit && visibleCols.actions ? (
                         <td className="px-4 py-3 text-right align-top" onClick={(e) => e.stopPropagation()}>
@@ -886,7 +889,7 @@ export function PrintersPage() {
                             </button>
                             <button
                               type="button"
-                              className="rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                              className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
                               onClick={() => setDeleteTarget({ ids: [r.id], labels: [title] })}
                             >
                               {t('common.delete')}
@@ -906,14 +909,14 @@ export function PrintersPage() {
       {cfgOpen && cfg && canEdit ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
           <div className="app-card w-full max-w-2xl p-0 shadow-2xl ring-1 ring-white/40">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-950">{t('printers.snmpCfgTitle')}</h2>
-                <p className="mt-1 text-sm text-slate-500">{t('printers.snmpCfgSub')}</p>
+                <h2 className="text-lg font-bold text-[var(--color-fg)]">{t('printers.snmpCfgTitle')}</h2>
+                <p className="mt-1 text-sm text-[var(--color-fg-muted)]">{t('printers.snmpCfgSub')}</p>
               </div>
               <button
                 type="button"
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
+                className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
                 onClick={() => setCfgOpen(false)}
                 aria-label={t('common.close')}
               >
@@ -922,11 +925,11 @@ export function PrintersPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
-              <label className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm">
+              <label className="flex items-center gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
                 <input type="checkbox" checked={cfg.poll_enabled} onChange={(e) => setCfg({ ...cfg, poll_enabled: e.target.checked })} />
                 {t('printers.pollEnabled')}
               </label>
-              <label className="flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-sm">
+              <label className="flex items-center gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
                 <input type="checkbox" checked={cfg.snmp_enabled} onChange={(e) => setCfg({ ...cfg, snmp_enabled: e.target.checked })} />
                 {t('printers.snmpEnabled')}
               </label>
@@ -970,7 +973,7 @@ export function PrintersPage() {
               </label>
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4">
+            <div className="flex justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setCfgOpen(false)} disabled={cfgBusy}>
                 {t('common.cancel')}
               </button>
@@ -987,7 +990,7 @@ export function PrintersPage() {
           <div className="app-card w-full max-w-md p-4 shadow-2xl">
             <div className="mb-3 flex items-start justify-between">
               <h2 className="text-lg font-bold">{t('printers.addTitle')}</h2>
-              <button type="button" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" onClick={() => setAddOpen(false)}>
+              <button type="button" className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]" onClick={() => setAddOpen(false)}>
                 <IconClose className="h-5 w-5" />
               </button>
             </div>
@@ -1023,24 +1026,24 @@ export function PrintersPage() {
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-blue-800">{t('printers.deleteTitle')}</h2>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
                   {deleteTarget.ids.length === 1
                     ? t('printers.deleteOne')
                     : t('printers.deleteMany', { n: deleteTarget.ids.length })}
                 </p>
               </div>
-              <button type="button" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100" onClick={() => setDeleteTarget(null)}>
+              <button type="button" className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]" onClick={() => setDeleteTarget(null)}>
                 <IconClose className="h-5 w-5" />
               </button>
             </div>
-            <ul className="mb-4 max-h-40 overflow-y-auto rounded-xl border border-red-100 bg-blue-50/50 px-3 py-2 text-sm text-slate-800">
+            <ul className="mb-4 max-h-40 overflow-y-auto rounded-xl border border-red-100 bg-blue-50/50 px-3 py-2 text-sm text-[var(--color-fg)]">
               {deleteTarget.labels.slice(0, 12).map((label) => (
                 <li key={label} className="truncate py-0.5">
                   {label}
                 </li>
               ))}
               {deleteTarget.labels.length > 12 ? (
-                <li className="py-0.5 text-slate-500">{t('printers.andMore', { n: deleteTarget.labels.length - 12 })}</li>
+                <li className="py-0.5 text-[var(--color-fg-muted)]">{t('printers.andMore', { n: deleteTarget.labels.length - 12 })}</li>
               ) : null}
             </ul>
             <div className="flex justify-end gap-2">

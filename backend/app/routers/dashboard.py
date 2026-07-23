@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, literal, select
@@ -137,6 +138,31 @@ async def dashboard_summary(
             .where(ServiceRequest.status.in_(["open", "in_progress"]))
         )
         or 0
+    )
+    now = datetime.now(timezone.utc)
+    service_requests_overdue = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ServiceRequest)
+            .where(ServiceRequest.planned_close_at.is_not(None))
+            .where(ServiceRequest.planned_close_at < now)
+            .where(ServiceRequest.closed_at.is_(None))
+            .where(ServiceRequest.status.notin_(["done", "cancelled"]))
+        )
+        or 0
+    )
+    # Average close time: arithmetic mean of (closed_at - coalesce(opened_at, created_at))
+    # only for status=done with a positive duration (bad/backdated timestamps excluded).
+    _opened = func.coalesce(ServiceRequest.opened_at, ServiceRequest.created_at)
+    avg_close_seconds = await db.scalar(
+        select(func.avg(func.extract("epoch", ServiceRequest.closed_at - _opened)))
+        .where(ServiceRequest.status == "done")
+        .where(ServiceRequest.closed_at.is_not(None))
+        .where(_opened.is_not(None))
+        .where(ServiceRequest.closed_at > _opened)
+    )
+    service_requests_avg_close_hours = (
+        round(float(avg_close_seconds) / 3600.0, 1) if avg_close_seconds is not None else None
     )
 
     async def _name_counts(q) -> list[DashboardNameCount]:
@@ -341,6 +367,8 @@ async def dashboard_summary(
         snmp_printers_total=snmp_printers_total,
         service_requests_total=service_requests_total,
         service_requests_active=service_requests_active,
+        service_requests_overdue=service_requests_overdue,
+        service_requests_avg_close_hours=service_requests_avg_close_hours,
         service_requests_by_status=service_requests_by_status,
         by_os=by_os,
         by_manufacturer=by_manufacturer,

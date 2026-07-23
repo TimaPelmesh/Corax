@@ -31,12 +31,12 @@ export function tagPillProps(t: TagBrief): { className: string; style?: CSSPrope
   if (c && /^#[0-9A-Fa-f]{6}$/.test(c)) {
     return {
       className:
-        'rounded-full px-2 py-0.5 text-xs font-medium text-slate-900 ring-1 ring-inset ring-black/[0.08]',
+        'rounded-full px-2 py-0.5 text-xs font-medium text-[var(--color-fg)] ring-1 ring-inset ring-black/[0.08]',
       style: { backgroundColor: `${c}2e`, boxShadow: `inset 0 0 0 1px ${c}55` },
     }
   }
   return {
-    className: 'rounded-full bg-zinc-50 px-2 py-0.5 text-xs text-neutral-900 ring-1 ring-zinc-200/80',
+    className: 'rounded-full bg-zinc-50 px-2 py-0.5 text-xs text-[var(--color-fg)] ring-1 ring-zinc-200/80',
   }
 }
 
@@ -432,31 +432,31 @@ export function ComputerDetailModal({
       onClick={onClose}
     >
       <div
-        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-y-auto overscroll-contain rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-none ring-0 sm:max-h-[min(96vh,calc(100vh-0.5rem))] sm:max-w-[min(1600px,calc(100vw-1rem))] sm:rounded-2xl sm:border sm:border-slate-200/90 sm:p-6 sm:pt-6 sm:shadow-2xl sm:shadow-slate-900/15 sm:ring-1 sm:ring-white/40 lg:p-8 lg:pt-8"
+        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-y-auto overscroll-contain rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-none ring-0 sm:max-h-[min(96vh,calc(100vh-0.5rem))] sm:max-w-[min(1600px,calc(100vw-1rem))] sm:rounded-2xl sm:border sm:border-[var(--color-border)] sm:p-6 sm:pt-6 sm:shadow-2xl sm:shadow-slate-900/15 sm:ring-1 sm:ring-white/40 lg:p-8 lg:pt-8"
         onClick={(e) => e.stopPropagation()}
       >
         {loading && !detail ? (
-          <div className="py-12 text-center text-slate-500">{t('computerDetail.loading')}</div>
+          <div className="py-12 text-center text-[var(--color-fg-muted)]">{t('computerDetail.loading')}</div>
         ) : !detail ? (
           <div className="py-8">
-            <p className="text-center text-sm text-slate-500">{t('computerDetail.noData')}</p>
+            <p className="text-center text-sm text-[var(--color-fg-muted)]">{t('computerDetail.noData')}</p>
             <button type="button" className="app-btn app-btn-secondary mt-4" onClick={onClose}>
               {t('computerDetail.close')}
             </button>
           </div>
         ) : detail ? (
           <>
-            <div className="flex shrink-0 items-start justify-between gap-4">
+            <div className="sticky top-0 z-20 -mx-4 flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)]/95 px-4 pb-3 pt-1 backdrop-blur-md sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 sm:backdrop-blur-none">
               <div className="min-w-0 pr-2">
-                <h2 className="text-xl font-semibold text-slate-900">{detail.hostname}</h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <h2 className="text-xl font-semibold text-[var(--color-fg)]">{detail.hostname}</h2>
+                <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
                   {detail.manufacturer} {detail.model} · {detail.serial_number ?? t('computerDetail.noSerial')}
                   {detail.location ? ` · ${detail.location}` : ''}
                 </p>
               </div>
               <button
                 type="button"
-                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-[var(--color-surface)] p-2.5 text-[var(--color-fg-muted)] shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                 onClick={onClose}
                 aria-label={t('computerDetail.close')}
               >
@@ -466,26 +466,26 @@ export function ComputerDetailModal({
 
             <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-8">
               <section className="flex min-w-0 flex-col">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.systemAndHardware')}
                 </h3>
                 <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">{t('computerDetail.os')}</dt>
-                    <dd className="break-words text-slate-900">
+                    <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.os')}</dt>
+                    <dd className="break-words text-[var(--color-fg)]">
                       {detail.os_name ?? '—'}{' '}
                       {detail.os_version ? (
-                        <span className="text-slate-600">({detail.os_version})</span>
+                        <span className="text-[var(--color-fg-muted)]">({detail.os_version})</span>
                       ) : null}
                     </dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">{t('computerDetail.cpu')}</dt>
-                    <dd className="break-words text-slate-900">{detail.cpu ?? '—'}</dd>
+                    <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.cpu')}</dt>
+                    <dd className="break-words text-[var(--color-fg)]">{detail.cpu ?? '—'}</dd>
                   </div>
                   <div className="min-w-0">
-                    <dt className="text-slate-500">{t('computerDetail.ram')}</dt>
-                    <dd className="text-slate-900">
+                    <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.ram')}</dt>
+                    <dd className="text-[var(--color-fg)]">
                       {detail.ram_gb != null ? (
                         <span className="font-medium">{t('computerDetail.gb', { n: Math.round(detail.ram_gb) })}</span>
                       ) : (
@@ -494,14 +494,14 @@ export function ComputerDetailModal({
                     </dd>
                   </div>
                   <div className="min-w-0">
-                    <dt className="text-slate-500">{t('computerDetail.gpu')}</dt>
-                    <dd className="break-words text-slate-900">
+                    <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.gpu')}</dt>
+                    <dd className="break-words text-[var(--color-fg)]">
                       {agentExtras?.gpus[0] || detail.gpu_name || '—'}
                     </dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">{t('computerDetail.motherboard')}</dt>
-                    <dd className="break-words text-slate-900">
+                    <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.motherboard')}</dt>
+                    <dd className="break-words text-[var(--color-fg)]">
                       {detail.motherboard_product || detail.motherboard_manufacturer ? (
                         <>
                           {detail.motherboard_manufacturer ? `${detail.motherboard_manufacturer} · ` : null}
@@ -513,18 +513,18 @@ export function ComputerDetailModal({
                     </dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
-                    <dt className="text-slate-500">{t('computerDetail.mac')}</dt>
-                    <dd className="font-mono text-slate-700">{detail.mac_primary ?? '—'}</dd>
+                    <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.mac')}</dt>
+                    <dd className="font-mono text-[var(--color-fg)]">{detail.mac_primary ?? '—'}</dd>
                   </div>
-                  <div className="min-w-0 sm:col-span-2 rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2.5">
+                  <div className="min-w-0 sm:col-span-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                           {t('computerDetail.pingTitle')}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
                           {pingBusy && !pingResult ? (
-                            <span className="text-slate-500">{t('computerDetail.pingChecking')}</span>
+                            <span className="text-[var(--color-fg-muted)]">{t('computerDetail.pingChecking')}</span>
                           ) : isOnline ? (
                             <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
                               <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
@@ -536,7 +536,7 @@ export function ComputerDetailModal({
                               {t('computerDetail.pingOffline')}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 text-slate-500">
+                            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
                               <span className="h-2 w-2 rounded-full bg-slate-300" aria-hidden />
                               {detail.ip_address
                                 ? t('computerDetail.pingIp', { ip: detail.ip_address })
@@ -544,7 +544,7 @@ export function ComputerDetailModal({
                             </span>
                           )}
                           {pingResult?.ip_address ? (
-                            <span className="font-mono text-xs text-slate-500">{pingResult.ip_address}</span>
+                            <span className="font-mono text-xs text-[var(--color-fg-muted)]">{pingResult.ip_address}</span>
                           ) : null}
                         </div>
                       </div>
@@ -559,7 +559,7 @@ export function ComputerDetailModal({
                     </div>
 
                     {wolStatus?.user_may_wake && (wolStatus.force_disabled || !isOnline) ? (
-                      <div className="mt-3 border-t border-slate-200/80 pt-2.5">
+                      <div className="mt-3 border-t border-[var(--color-border)] pt-2.5">
                         {wolStatus.force_disabled ? (
                           <p className="text-xs text-amber-800">{t('computerDetail.wolForceOff')}</p>
                         ) : canShowWake ? (
@@ -573,7 +573,7 @@ export function ComputerDetailModal({
                               {wolBusy ? t('computerDetail.wolBusy') : t('computerDetail.wolWake')}
                             </button>
                             {wolStatus.cooldown_remaining_seconds != null ? (
-                              <span className="text-xs text-slate-500">
+                              <span className="text-xs text-[var(--color-fg-muted)]">
                                 {t('computerDetail.wolCooldown', {
                                   n: wolStatus.cooldown_remaining_seconds,
                                 })}
@@ -581,69 +581,69 @@ export function ComputerDetailModal({
                             ) : null}
                           </div>
                         ) : !wolStatus.has_mac ? (
-                          <p className="text-xs text-slate-500">{t('computerDetail.wolNoMac')}</p>
+                          <p className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.wolNoMac')}</p>
                         ) : wolStatus.cooldown_remaining_seconds != null ? (
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-[var(--color-fg-muted)]">
                             {t('computerDetail.wolCooldown', {
                               n: wolStatus.cooldown_remaining_seconds,
                             })}
                           </p>
                         ) : pingBusy ? (
-                          <p className="text-xs text-slate-500">{t('computerDetail.pingChecking')}</p>
+                          <p className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.pingChecking')}</p>
                         ) : (
-                          <p className="text-xs text-slate-500">{t('computerDetail.wolNeedOffline')}</p>
+                          <p className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.wolNeedOffline')}</p>
                         )}
                       </div>
                     ) : null}
                   </div>
                   {agentExtras?.primaryUser ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">{t('computerDetail.user')}</dt>
-                      <dd className="break-words text-slate-900">{agentExtras.primaryUser}</dd>
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.user')}</dt>
+                      <dd className="break-words text-[var(--color-fg)]">{agentExtras.primaryUser}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.gateways.length ? (
                     <div className="min-w-0">
-                      <dt className="text-slate-500">{t('computerDetail.gateway')}</dt>
-                      <dd className="font-mono text-sm text-slate-800">{agentExtras.gateways.join(', ')}</dd>
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.gateway')}</dt>
+                      <dd className="font-mono text-sm text-[var(--color-fg)]">{agentExtras.gateways.join(', ')}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.dnsV4.length ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">{t('computerDetail.dns')}</dt>
-                      <dd className="font-mono text-sm text-slate-800">{agentExtras.dnsV4.join(' · ')}</dd>
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.dns')}</dt>
+                      <dd className="font-mono text-sm text-[var(--color-fg)]">{agentExtras.dnsV4.join(' · ')}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.wifiSsid ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">{t('computerDetail.wifi')}</dt>
-                      <dd className="text-slate-900">{agentExtras.wifiSsid}</dd>
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.wifi')}</dt>
+                      <dd className="text-[var(--color-fg)]">{agentExtras.wifiSsid}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.securityHint ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">{t('computerDetail.security')}</dt>
-                      <dd className="text-slate-900">{agentExtras.securityHint}</dd>
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.security')}</dt>
+                      <dd className="text-[var(--color-fg)]">{agentExtras.securityHint}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.localAdmins.length ? (
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-slate-500">{t('computerDetail.localAdmins')}</dt>
-                      <dd className="break-words font-mono text-sm text-slate-800">
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.localAdmins')}</dt>
+                      <dd className="break-words font-mono text-sm text-[var(--color-fg)]">
                         {agentExtras.localAdmins.join(', ')}
                       </dd>
                     </div>
                   ) : null}
                   {agentExtras?.batteryHealthPercent != null ? (
                     <div className="min-w-0">
-                      <dt className="text-slate-500">{t('computerDetail.batteryHealth')}</dt>
-                      <dd className="text-slate-900">{agentExtras.batteryHealthPercent}%</dd>
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.batteryHealth')}</dt>
+                      <dd className="text-[var(--color-fg)]">{agentExtras.batteryHealthPercent}%</dd>
                     </div>
                   ) : null}
                 </dl>
                 {agentExtras && agentExtras.patchIds.length > 0 ? (
-                  <div className="mt-4 border-t border-slate-100 pt-3">
-                    <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  <div className="mt-4 border-t border-[var(--color-border)] pt-3">
+                    <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                       {t('computerDetail.windowsPatches')}
                       {agentExtras.patchTotal > agentExtras.patchIds.length
                         ? ` · ${agentExtras.patchTotal}`
@@ -653,7 +653,7 @@ export function ComputerDetailModal({
                       {agentExtras.patchIds.map((kb) => (
                         <span
                           key={kb}
-                          className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-800"
+                          className="rounded-md bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs text-[var(--color-fg)]"
                         >
                           {kb}
                         </span>
@@ -662,25 +662,25 @@ export function ComputerDetailModal({
                   </div>
                 ) : null}
                 {user?.is_superuser ? (
-                  <div className="mt-4 border-t border-slate-100 pt-3">
+                  <div className="mt-4 border-t border-[var(--color-border)] pt-3">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,9rem)_1fr] sm:items-start">
                       <div className="min-w-0">
-                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                           {t('computerDetail.locationRoom')}
                         </label>
                         <input
-                          className="mt-1.5 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-1.5 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                          className="mt-1.5 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 px-2.5 py-1.5 text-sm text-[var(--color-fg)] transition focus:border-zinc-500 focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-blue-500/20"
                           value={locationDraft}
                           onChange={(e) => setLocationDraft(e.target.value)}
                           placeholder={t('computerDetail.locationPlaceholder')}
                         />
                       </div>
                       <div className="min-w-0">
-                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                           {t('computerDetail.note')}
                         </label>
                         <input
-                          className="mt-1.5 w-full rounded-lg border border-slate-200/90 bg-slate-50/50 px-2.5 py-1.5 text-sm text-slate-900 transition focus:border-zinc-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                          className="mt-1.5 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 px-2.5 py-1.5 text-sm text-[var(--color-fg)] transition focus:border-zinc-500 focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-blue-500/20"
                           value={notesDraft}
                           onChange={(e) => setNotesDraft(e.target.value)}
                           placeholder="…"
@@ -691,29 +691,29 @@ export function ComputerDetailModal({
                 ) : null}
               </section>
 
-              <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-l lg:border-t-0 lg:border-slate-200/80 lg:pl-8 lg:pt-0">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('computerDetail.disks')}</h3>
+              <section className="flex min-w-0 flex-col border-t border-[var(--color-border)] pt-4 lg:border-l lg:border-t-0 lg:border-[var(--color-border)] lg:pl-8 lg:pt-0">
+                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('computerDetail.disks')}</h3>
                 {(detail.disks?.length ?? 0) > 0 ? (
                   <div className="mt-2 flex flex-wrap content-start gap-2">
                     {(detail.disks ?? []).map((d, i) => (
                       <div
                         key={`${d.mount}-${i}`}
-                        className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-sm shadow-sm ring-1 ring-slate-100/80"
+                        className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm shadow-sm ring-1 ring-slate-100/80"
                       >
-                        <span className="shrink-0 font-mono font-semibold text-slate-900">{d.mount}</span>
+                        <span className="shrink-0 font-mono font-semibold text-[var(--color-fg)]">{d.mount}</span>
                         {d.label ? (
-                          <span className="max-w-[10rem] truncate text-slate-500" title={d.label}>
+                          <span className="max-w-[10rem] truncate text-[var(--color-fg-muted)]" title={d.label}>
                             {d.label}
                           </span>
                         ) : (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-[var(--color-fg-subtle)]">—</span>
                         )}
                         <span className="hidden h-3 w-px shrink-0 bg-slate-200 sm:inline" aria-hidden />
-                        <span className="text-slate-700">
+                        <span className="text-[var(--color-fg)]">
                           {d.total_gb != null ? t('computerDetail.gb', { n: d.total_gb.toFixed(1) }) : '—'}
                         </span>
-                        <span className="text-slate-500">{t('computerDetail.free')}</span>
-                        <span className="font-mono text-slate-800">
+                        <span className="text-[var(--color-fg-muted)]">{t('computerDetail.free')}</span>
+                        <span className="font-mono text-[var(--color-fg)]">
                           {d.free_gb != null ? t('computerDetail.gb', { n: d.free_gb.toFixed(1) }) : '—'}
                         </span>
                         {d.used_percent != null ? (
@@ -723,36 +723,36 @@ export function ComputerDetailModal({
                                 ? 'bg-blue-100 text-blue-900'
                                 : d.used_percent >= 75
                                   ? 'bg-amber-50 text-amber-950'
-                                  : 'bg-zinc-100 text-neutral-900'
+                                  : 'bg-zinc-100 text-[var(--color-fg)]'
                             }`}
                           >
                             {d.used_percent}%
                           </span>
                         ) : (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-[var(--color-fg-subtle)]">—</span>
                         )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-500">
+                  <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
                     {t('computerDetail.noDiskData')}
                   </p>
                 )}
                 {agentExtras && agentExtras.physicalDisks.length > 0 ? (
-                  <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  <div className="mt-4 space-y-2 border-t border-[var(--color-border)] pt-3">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                       {t('computerDetail.media')}
                     </div>
                     {agentExtras.physicalDisks.map((pd, i) => (
                       <div
                         key={i}
-                        className="rounded-lg border border-slate-200/90 bg-slate-50/60 px-3 py-2 text-sm"
+                        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
                       >
-                        <div className="font-medium text-slate-900">{pd.name}</div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <div className="font-medium text-[var(--color-fg)]">{pd.name}</div>
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-[var(--color-fg-muted)]">
                           {pd.media ? (
-                            <span className="rounded bg-white px-1.5 py-0.5 ring-1 ring-slate-200">{pd.media}</span>
+                            <span className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 ring-1 ring-slate-200">{pd.media}</span>
                           ) : null}
                           {pd.health ? <span>{pd.health}</span> : null}
                           {pd.sizeGb != null ? <span>{t('computerDetail.gb', { n: pd.sizeGb })}</span> : null}
@@ -760,32 +760,32 @@ export function ComputerDetailModal({
                       </div>
                     ))}
                     {agentExtras.batteryPercent != null ? (
-                      <div className="text-xs text-slate-600">{t('computerDetail.battery', { n: agentExtras.batteryPercent })}</div>
+                      <div className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.battery', { n: agentExtras.batteryPercent })}</div>
                     ) : null}
                   </div>
                 ) : null}
 
-                <div className="mt-4 border-t border-slate-100 pt-3">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('computerDetail.tags')}</h3>
+                <div className="mt-4 border-t border-[var(--color-border)] pt-3">
+                  <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('computerDetail.tags')}</h3>
                   {user?.is_superuser ? (
                     <div className="mt-2">
                       {allTags.length === 0 ? (
-                        <p className="text-sm text-slate-500">
+                        <p className="text-sm text-[var(--color-fg-muted)]">
                           {t('computerDetail.tagsDirectoryEmpty')}{' '}
-                          <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2 hover:text-neutral-800">
+                          <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2 hover:text-[var(--color-fg)]">
                             {t('computerDetail.tagsPage')}
                           </Link>
                           .
                         </p>
                       ) : (
-                        <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200/70 bg-white p-2">
+                        <div className="max-h-56 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
                           {allTags.map((tg) => (
                             <label
                               key={tg.id}
                               className={`mb-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition last:mb-0 ${
                                 selectedTagIds.includes(tg.id)
-                                  ? 'border-zinc-400 bg-zinc-50 text-neutral-950'
-                                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                  ? 'border-zinc-400 bg-zinc-50 text-[var(--color-fg)]'
+                                  : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:border-slate-300'
                               }`}
                             >
                               <input
@@ -803,7 +803,7 @@ export function ComputerDetailModal({
                   ) : (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {(detail.tags ?? []).length === 0 ? (
-                        <span className="text-sm text-slate-500">—</span>
+                        <span className="text-sm text-[var(--color-fg-muted)]">—</span>
                       ) : (
                         (detail.tags ?? []).map((tg) => {
                           const pill = tagPillProps(tg)
@@ -821,8 +821,8 @@ export function ComputerDetailModal({
             </div>
 
             <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:mt-6 lg:grid-cols-2 lg:items-start lg:gap-8">
-              <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-t-0 lg:pt-0">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              <section className="flex min-w-0 flex-col border-t border-[var(--color-border)] pt-4 lg:border-t-0 lg:pt-0">
+                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.officeVersions')}
                 </h3>
                 {agentExtras && agentExtras.office.length > 0 ? (
@@ -830,7 +830,7 @@ export function ComputerDetailModal({
                     {agentExtras.office.map((o, i) => (
                       <span
                         key={i}
-                        className="rounded-lg border border-slate-200/90 bg-white px-2.5 py-1 text-xs text-slate-800"
+                        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-fg)]"
                         title={o.path ?? undefined}
                       >
                         {o.label}
@@ -838,9 +838,9 @@ export function ComputerDetailModal({
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-500">{t('computerDetail.noData')}</p>
+                  <p className="mt-2 text-sm text-[var(--color-fg-muted)]">{t('computerDetail.noData')}</p>
                 )}
-                <h3 className="mt-5 shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                <h3 className="mt-5 shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.installedSoftware')}
                 </h3>
                 <input
@@ -848,9 +848,9 @@ export function ComputerDetailModal({
                   placeholder={t('computerDetail.softwareSearch')}
                   value={swFilter}
                   onChange={(e) => setSwFilter(e.target.value)}
-                  className="mt-2 w-full shrink-0 rounded-xl border border-slate-200/90 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-zinc-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="mt-2 w-full shrink-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 px-3 py-2.5 text-sm text-[var(--color-fg)] transition placeholder:text-[var(--color-fg-subtle)] focus:border-zinc-500 focus:bg-[var(--color-surface)] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
-                <p className="mt-1 shrink-0 text-xs text-slate-500">
+                <p className="mt-1 shrink-0 text-xs text-[var(--color-fg-muted)]">
                   {softwareLoading
                     ? t('computerDetail.softwareLoading')
                     : t('computerDetail.shownCount', {
@@ -858,22 +858,22 @@ export function ComputerDetailModal({
                         total: softwareTotal,
                       })}
                 </p>
-                <ul className="mt-2 max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-slate-200/90 bg-slate-50/80 text-sm ring-1 ring-slate-100/80 sm:min-h-[min(45vh,20rem)]">
+                <ul className="mt-2 max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-sm ring-1 ring-slate-100/80 sm:min-h-[min(45vh,20rem)]">
                   {softwareLoading && softwareSafe.length === 0 ? (
-                    <li className="px-3 py-4 text-slate-500">{t('computerDetail.loading')}</li>
+                    <li className="px-3 py-4 text-[var(--color-fg-muted)]">{t('computerDetail.loading')}</li>
                   ) : softwareSafe.length === 0 ? (
-                    <li className="px-3 py-4 text-slate-500">{t('computerDetail.noRecords')}</li>
+                    <li className="px-3 py-4 text-[var(--color-fg-muted)]">{t('computerDetail.noRecords')}</li>
                   ) : filteredSoftware.length === 0 ? (
-                    <li className="px-3 py-4 text-slate-500">{t('computerDetail.noSearchMatches')}</li>
+                    <li className="px-3 py-4 text-[var(--color-fg-muted)]">{t('computerDetail.noSearchMatches')}</li>
                   ) : (
                     filteredSoftware.map((s, i) => (
                       <li
                         key={`${s.name}-${i}`}
-                        className="border-b border-slate-100 px-3 py-2.5 last:border-0"
+                        className="border-b border-[var(--color-border)] px-3 py-2.5 last:border-0"
                       >
-                        <span className="text-slate-900">{s.name}</span>
+                        <span className="text-[var(--color-fg)]">{s.name}</span>
                         {s.version && (
-                          <span className="ml-2 font-mono text-[13px] text-slate-600">{s.version}</span>
+                          <span className="ml-2 font-mono text-[13px] text-[var(--color-fg-muted)]">{s.version}</span>
                         )}
                       </li>
                     ))
@@ -881,13 +881,13 @@ export function ComputerDetailModal({
                 </ul>
               </section>
 
-              <section className="flex min-w-0 flex-col border-t border-slate-200/80 pt-4 lg:border-t-0 lg:border-l lg:border-slate-200/80 lg:pl-8 lg:pt-0">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              <section className="flex min-w-0 flex-col border-t border-[var(--color-border)] pt-4 lg:border-t-0 lg:border-l lg:border-[var(--color-border)] lg:pl-8 lg:pt-0">
+                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.peripherals')}
                 </h3>
                 <ul className="mt-2 grid max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] grid-cols-2 gap-1.5 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200/70 bg-zinc-50/40 p-2 text-sm sm:min-h-[min(45vh,20rem)]">
                   {!peripheralGroups.length ? (
-                    <li className="col-span-2 px-2 py-4 text-slate-500">
+                    <li className="col-span-2 px-2 py-4 text-[var(--color-fg-muted)]">
                       {t('computerDetail.noPeripheralData')}
                     </li>
                   ) : (
@@ -895,13 +895,13 @@ export function ComputerDetailModal({
                       g.items.map((p, i) => (
                         <li
                           key={`${p.kind}-${p.name}-${i}`}
-                          className="flex min-w-0 items-center gap-1 rounded-lg border border-zinc-100/90 bg-white px-2 py-1.5"
+                          className="flex min-w-0 items-center gap-1 rounded-lg border border-zinc-100/90 bg-[var(--color-surface)] px-2 py-1.5"
                           title={p.name}
                         >
-                          <span className="w-1/2 shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                          <span className="w-1/2 shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                             {t(`computerDetail.kinds.${g.kind as 'keyboard' | 'mouse' | 'monitor' | 'camera' | 'audio' | 'printer' | 'biometric' | 'bluetooth' | 'touchpad' | 'net'}`)}
                           </span>
-                          <span className="min-w-0 flex-1 truncate text-xs text-slate-900">{p.name}</span>
+                          <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-fg)]">{p.name}</span>
                         </li>
                       )),
                     )
@@ -911,7 +911,7 @@ export function ComputerDetailModal({
             </div>
 
             {user?.is_superuser && (
-              <div className="mt-8 shrink-0 border-t border-slate-200 pt-6">
+              <div className="mt-8 shrink-0 border-t border-[var(--color-border)] pt-6">
                 <button
                   type="button"
                   onClick={() => void deletePc()}
@@ -919,7 +919,7 @@ export function ComputerDetailModal({
                 >
                   {t('computerDetail.deletePc')}
                 </button>
-                <p className="mt-2 text-xs text-slate-500">{t('computerDetail.deletePcHint')}</p>
+                <p className="mt-2 text-xs text-[var(--color-fg-muted)]">{t('computerDetail.deletePcHint')}</p>
               </div>
             )}
           </>

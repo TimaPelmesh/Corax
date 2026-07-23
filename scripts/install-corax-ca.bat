@@ -1,49 +1,77 @@
 @echo off
 setlocal EnableExtensions
-rem Install CORAX Local CA into Windows Trusted Root (Current User).
-rem Run this on EACH admin PC. Then fully quit Chrome/Edge and reopen.
+rem Install CORAX Local CA into Windows Trusted Root.
+rem Default: Current User (admin browsers).
+rem Agents / GPO: run as Administrator with /machine
+rem   install-corax-ca.bat /machine
+rem   install-corax-ca.bat /machine C:\path\to\corax-local-ca.crt
 cd /d "%~dp0.."
 
-set "CA=%~dp0..\backend\data\tls\ca.crt"
+set "MACHINE=0"
+set "CA="
+:parse
+if "%~1"=="" goto after_parse
+if /I "%~1"=="/machine" (
+  set "MACHINE=1"
+  shift
+  goto parse
+)
+if /I "%~1"=="-machine" (
+  set "MACHINE=1"
+  shift
+  goto parse
+)
+set "CA=%~1"
+shift
+goto parse
+:after_parse
+
+if "%CA%"=="" set "CA=%~dp0..\backend\data\tls\ca.crt"
 if not exist "%CA%" set "CA=%~dp0..\backend\data\tls\ca.crt"
 
 if not exist "%CA%" (
   echo [error] CA not found: backend\data\tls\ca.crt
   echo Create it in CORAX: Settings - HTTPS - Create certificate - Download CA
-  echo Or copy corax-local-ca.crt here and pass path:
-  echo   install-corax-ca.bat C:\path\to\corax-local-ca.crt
-  if not "%~1"=="" set "CA=%~1"
-)
-
-if not "%~1"=="" set "CA=%~1"
-
-if not exist "%CA%" (
-  echo [error] File not found: %CA%
+  echo Or pass path: install-corax-ca.bat [/machine] C:\path\to\corax-local-ca.crt
   pause
   exit /b 1
 )
 
-echo [ca] Installing into Current User \ Trusted Root Certification Authorities
 echo [ca] %CA%
-echo.
-
-certutil -user -addstore Root "%CA%"
-if errorlevel 1 (
+if "%MACHINE%"=="1" (
+  echo [ca] Installing into Local Machine \ Trusted Root ^(agents / GPO^)
+  echo [ca] Requires Administrator.
   echo.
-  echo [warn] Current-user install failed. Trying Local Machine ^(may need Admin^)...
   certutil -addstore Root "%CA%"
   if errorlevel 1 (
-    echo [error] certutil failed.
+    echo [error] certutil Local Machine failed. Run elevated CMD/PowerShell.
     pause
     exit /b 1
+  )
+) else (
+  echo [ca] Installing into Current User \ Trusted Root ^(admin browser^)
+  echo.
+  certutil -user -addstore Root "%CA%"
+  if errorlevel 1 (
+    echo.
+    echo [warn] Current-user install failed. Trying Local Machine ^(may need Admin^)...
+    certutil -addstore Root "%CA%"
+    if errorlevel 1 (
+      echo [error] certutil failed.
+      pause
+      exit /b 1
+    )
   )
 )
 
 echo.
 echo [ok] CA installed.
-echo 1^) Close ALL Chrome/Edge windows ^(check tray^).
-echo 2^) Open https://192.168.x.x:3000 again.
-echo 3^) In cert viewer hierarchy, CORAX Local CA must NOT be red/untrusted.
+echo.
+echo Admin PCs: close ALL Chrome/Edge windows, open https://SERVER:3000
+echo Agents: use /machine or deploy via GPO to Computer Configuration \
+echo   Policies \ Windows Settings \ Security Settings \ Public Key Policies \
+echo   Trusted Root Certification Authorities
+echo Rebuild agent ZIP with https:// after enabling HTTPS on the server.
 echo.
 pause
 exit /b 0

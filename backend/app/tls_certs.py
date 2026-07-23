@@ -1,7 +1,12 @@
-"""Local CA + server TLS for admin HTTPS (LAN).
+"""Local CA + server TLS for admin / agent HTTPS (LAN).
+
+Modes (state.json ``mode``):
+  - ``http`` — plain HTTP on the listen port (agents stamp http://)
+  - ``local_ca`` — CORAX-generated CA + leaf (deploy ca.crt via GPO / install script)
+  - ``enterprise`` — imported leaf+key from AD / corporate CA (machines already trust root)
 
 Files under backend/data/tls/ (gitignored). Private keys never leave the server
-except via controlled download of CA *certificate* (public).
+except via controlled download of CA *certificate* (public) for local_ca mode.
 """
 
 from __future__ import annotations
@@ -13,17 +18,21 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric.types import CertificatePublicKeyTypes
 from cryptography.x509.oid import NameOID
 
 from app.config import settings
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 _HOSTNAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?$")
+
+TlsMode = Literal["http", "local_ca", "enterprise"]
+VALID_MODES: frozenset[str] = frozenset({"http", "local_ca", "enterprise"})
 
 
 def tls_dir() -> Path:
@@ -76,7 +85,8 @@ def runtime_ssl() -> TlsRuntime:
         return TlsRuntime(False, None, None)
     p = _paths()
     st = _read_state()
-    enabled = bool(st.get("enabled"))
+    mode = _infer_mode(st, p)
+    enabled = bool(st.get("enabled")) and mode != "http"
     cert = p["server_crt"]
     key = p["server_key"]
     if not enabled or not cert.is_file() or not key.is_file():
@@ -161,43 +171,134 @@ def _load_cert(path: Path) -> x509.Certificate | None:
         return None
 
 
+def _server_files_ok(p: dict[str, Path]) -> bool:
+    return p["server_crt"].is_file() and p["server_key"].is_file()
+
+
+def _infer_mode(st: dict[str, Any], p: dict[str, Path]) -> TlsMode:
+    raw = str(st.get("mode") or "").strip().lower()
+    if raw in VALID_MODES:
+        return raw  # type: ignore[return-value]
+    # Legacy state without mode
+    if bool(st.get("enabled")) and _server_files_ok(p):
+        if p["ca_crt"].is_file() and p["ca_key"].is_file():
+            return "local_ca"
+        return "enterprise"
+    if _server_files_ok(p) and p["ca_crt"].is_file():
+        return "local_ca"
+    if _server_files_ok(p):
+        return "enterprise"
+    return "http"
+
+
+def _names_from_cert(cert: x509.Certificate) -> list[str]:
+    names: list[str] = []
+    try:
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        for n in san:
+            if isinstance(n, x509.DNSName):
+                names.append(n.value)
+            elif isinstance(n, x509.IPAddress):
+                names.append(str(n.value))
+    except x509.ExtensionNotFound:
+        pass
+    try:
+        cn = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+        if cn:
+            v = cn[0].value
+            if isinstance(v, str) and v and v not in names:
+                names.insert(0, v)
+    except Exception:
+        pass
+    return names
+
+
+def _public_keys_match(cert_key: CertificatePublicKeyTypes, priv: Any) -> bool:
+    try:
+        pub = priv.public_key()
+        if type(pub) is not type(cert_key):
+            return False
+        # Compare encoded public numbers / SPKI
+        a = pub.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+        b = cert_key.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+        return a == b
+    except Exception:
+        return False
+
+
 def status() -> dict[str, Any]:
     p = _paths()
     st = _read_state()
-    ca = _load_cert(p["ca_crt"])
     leaf = _load_cert(p["server_crt"])
-    files_ok = p["ca_crt"].is_file() and p["server_crt"].is_file() and p["server_key"].is_file()
-    want_enabled = bool(st.get("enabled")) and files_ok
+    files_ok = _server_files_ok(p)
+    mode = _infer_mode(st, p)
+    want_enabled = bool(st.get("enabled")) and files_ok and mode != "http"
     blocked = tls_blocked_in_dev()
-    enabled = want_enabled and not blocked
+    will_listen = want_enabled and not blocked
     active = process_listening_https()
     not_after = None
     fingerprint = None
     if leaf:
         not_after = leaf.not_valid_after_utc.isoformat().replace("+00:00", "Z")
         fingerprint = _fingerprint_sha256(leaf)
+    # Restart needed when desired listen state != current process
+    restart_required = (will_listen and not active) or (not will_listen and active)
+    # Stamp https into agents when TLS is active or will be after restart
+    agent_scheme = "https" if (will_listen or active) else "http"
     return {
         "enabled": want_enabled,
         "active": active,
+        "mode": mode,
         "files_ready": files_ok,
         "ca_ready": p["ca_crt"].is_file(),
         "hostnames": list(st.get("hostnames") or []),
         "not_after": not_after or st.get("not_after"),
         "fingerprint_sha256": fingerprint or st.get("fingerprint_sha256"),
         "generated_at": st.get("generated_at"),
-        "restart_required": enabled and not active,
-        "dev_blocked": blocked and want_enabled,
+        "restart_required": restart_required,
+        "dev_blocked": blocked and bool(st.get("enabled")) and files_ok,
         "tls_dir": str(p["dir"]),
+        "agent_scheme": agent_scheme,
     }
 
 
 def set_enabled(enabled: bool) -> dict[str, Any]:
     p = _paths()
-    if enabled:
-        if not (p["server_crt"].is_file() and p["server_key"].is_file()):
-            raise ValueError("Сначала создайте сертификат")
     st = _read_state()
-    st["enabled"] = bool(enabled)
+    mode = _infer_mode(st, p)
+    if enabled:
+        if not _server_files_ok(p):
+            raise ValueError("Сначала создайте или импортируйте сертификат")
+        if mode == "http":
+            # Prefer local_ca when CA exists, else enterprise
+            mode = "local_ca" if p["ca_crt"].is_file() else "enterprise"
+        st["mode"] = mode
+        st["enabled"] = True
+    else:
+        st["enabled"] = False
+        st["mode"] = "http"
+    st["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    _write_state(st)
+    return status()
+
+
+def set_mode(mode: str) -> dict[str, Any]:
+    """Switch deployment profile. ``http`` disables TLS; other modes require cert files."""
+    m = (mode or "").strip().lower()
+    if m not in VALID_MODES:
+        raise ValueError("Режим: http, local_ca или enterprise")
+    p = _paths()
+    st = _read_state()
+    if m == "http":
+        st["mode"] = "http"
+        st["enabled"] = False
+    else:
+        if not _server_files_ok(p):
+            raise ValueError("Сначала создайте (local_ca) или импортируйте (enterprise) сертификат")
+        if m == "local_ca" and not p["ca_crt"].is_file():
+            raise ValueError("Для режима local_ca сначала создайте сертификат CORAX Local CA")
+        st["mode"] = m
+        st["enabled"] = True
     st["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     _write_state(st)
     return status()
@@ -343,12 +444,76 @@ def generate(hostnames: list[str], days: int = 825, rotate_ca: bool = False) -> 
     prev_enabled = bool(st.get("enabled"))
     st.update(
         {
+            "mode": "local_ca",
             "enabled": prev_enabled,  # keep toggle; admin enables explicitly
             "hostnames": name_list,
             "generated_at": now.isoformat().replace("+00:00", "Z"),
             "not_after": server_cert.not_valid_after_utc.isoformat().replace("+00:00", "Z"),
             "fingerprint_sha256": _fingerprint_sha256(server_cert),
             "days": days,
+        }
+    )
+    _write_state(st)
+    return status()
+
+
+def import_enterprise(cert_pem: str | bytes, key_pem: str | bytes) -> dict[str, Any]:
+    """Install a leaf (+ optional chain) and private key from a corporate / AD CA."""
+    cert_bytes = cert_pem.encode("utf-8") if isinstance(cert_pem, str) else cert_pem
+    key_bytes = key_pem.encode("utf-8") if isinstance(key_pem, str) else key_pem
+    if not cert_bytes.strip() or not key_bytes.strip():
+        raise ValueError("Нужны PEM сертификата и закрытого ключа")
+
+    try:
+        certs = x509.load_pem_x509_certificates(cert_bytes)
+    except Exception as e:
+        raise ValueError(f"Не удалось разобрать сертификат PEM: {e}") from e
+    if not certs:
+        raise ValueError("В PEM нет сертификатов")
+    leaf = certs[0]
+
+    try:
+        priv = serialization.load_pem_private_key(key_bytes, password=None)
+    except TypeError as e:
+        raise ValueError("Ключ защищён паролем — используйте незашифрованный PEM") from e
+    except Exception as e:
+        raise ValueError(f"Не удалось разобрать ключ PEM: {e}") from e
+
+    if not _public_keys_match(leaf.public_key(), priv):
+        raise ValueError("Закрытый ключ не соответствует сертификату")
+
+    try:
+        bc = leaf.extensions.get_extension_for_class(x509.BasicConstraints).value
+        if bc.ca:
+            raise ValueError("Это CA-сертификат; нужен серверный (leaf) сертификат")
+    except x509.ExtensionNotFound:
+        pass
+
+    p = _paths()
+    p["dir"].mkdir(parents=True, exist_ok=True)
+    p["server_crt"].write_bytes(cert_bytes if cert_bytes.endswith(b"\n") else cert_bytes + b"\n")
+    p["server_key"].write_bytes(
+        priv.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    _chmod_private(p["server_key"])
+
+    now = datetime.now(timezone.utc)
+    names = _names_from_cert(leaf)
+    st = _read_state()
+    prev_enabled = bool(st.get("enabled"))
+    st.update(
+        {
+            "mode": "enterprise",
+            "enabled": prev_enabled,
+            "hostnames": names or list(st.get("hostnames") or []),
+            "generated_at": now.isoformat().replace("+00:00", "Z"),
+            "not_after": leaf.not_valid_after_utc.isoformat().replace("+00:00", "Z"),
+            "fingerprint_sha256": _fingerprint_sha256(leaf),
+            "source": "enterprise_import",
         }
     )
     _write_state(st)

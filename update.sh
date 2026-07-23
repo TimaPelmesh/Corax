@@ -80,7 +80,15 @@ wait_health() {
       echo "Health OK: $HEALTH_URL"
       return 0
     fi
-    # fallback на старый health без /ready
+    # HTTPS mode on same port (local CA inside container / host may be untrusted)
+    if curl -fsSk "https://127.0.0.1:3000/api/v1/health/ready" >/dev/null 2>&1; then
+      echo "Health OK: https://127.0.0.1:3000/api/v1/health/ready"
+      return 0
+    fi
+    if curl -fsS "http://127.0.0.1:3000/api/v1/health/ready" >/dev/null 2>&1; then
+      echo "Health OK: http://127.0.0.1:3000/api/v1/health/ready"
+      return 0
+    fi
     if curl -fsS "http://127.0.0.1:3000/api/v1/health" >/dev/null 2>&1; then
       echo "Health OK: http://127.0.0.1:3000/api/v1/health"
       return 0

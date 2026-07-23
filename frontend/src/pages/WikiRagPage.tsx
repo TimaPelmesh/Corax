@@ -92,7 +92,7 @@ function DocRow({
   }
 
   return (
-    <tr className={`border-t border-neutral-100 ${active ? 'bg-blue-50/50' : 'hover:bg-neutral-50/80'}`}>
+    <tr className={`border-t border-[var(--color-border)] ${active ? 'bg-blue-50/50' : 'hover:bg-[var(--color-surface-muted)]'}`}>
       <td className="px-3 py-2.5 align-top">
         <button
           type="button"
@@ -101,7 +101,7 @@ function DocRow({
         >
           {row.original_filename}
         </button>
-        <div className="mt-0.5 text-[11px] text-slate-500">
+        <div className="mt-0.5 text-[11px] text-[var(--color-fg-muted)]">
           {formatBytes(row.size_bytes, t)} · {formatWhen(row.created_at, locale)} · @{row.uploaded_by_username}
         </div>
       </td>
@@ -111,20 +111,20 @@ function DocRow({
             value={commentDraft}
             onChange={(e) => setCommentDraft(e.target.value)}
             rows={2}
-            className="w-full min-w-[10rem] resize-y rounded-lg border border-neutral-200 px-2 py-1 text-xs"
+            className="w-full min-w-[10rem] resize-y rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs"
             onBlur={() => void saveComment()}
           />
         ) : (
-          <span className="text-xs text-slate-600">{row.comment?.trim() || '—'}</span>
+          <span className="text-xs text-[var(--color-fg-muted)]">{row.comment?.trim() || '—'}</span>
         )}
-        {saving ? <span className="text-[10px] text-slate-400">{t('wikirag.documents.savePending')}</span> : null}
+        {saving ? <span className="text-[10px] text-[var(--color-fg-subtle)]">{t('wikirag.documents.savePending')}</span> : null}
       </td>
       {canManage ? (
         <td className="px-3 py-2.5 align-top text-right">
           <button
             type="button"
             onClick={() => void onDelete()}
-            className="inline-flex items-center rounded-lg border border-zinc-200 bg-white p-1.5 hover:bg-zinc-50"
+            className="inline-flex items-center rounded-lg border border-zinc-200 bg-[var(--color-surface)] p-1.5 hover:bg-zinc-50"
             aria-label={t('wikirag.documents.deleteAria')}
           >
             <IconTrash className="h-4 w-4" />
@@ -289,8 +289,8 @@ export function WikiRagPage() {
 
       {canManage ? (
         <section className="app-card mb-6 p-5 sm:p-6">
-          <h2 className="text-sm font-semibold text-neutral-950">{t('wikirag.import.title')}</h2>
-          <p className="mt-1 text-xs text-slate-500">
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('wikirag.import.title')}</h2>
+          <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
             {t('wikirag.import.description')}
           </p>
           <button
@@ -331,10 +331,10 @@ export function WikiRagPage() {
 
       {/* Загрузка — крупная карточка */}
       <section className="app-card mb-6 p-5 sm:p-6">
-        <h2 className="text-sm font-semibold text-neutral-950">{t('wikirag.upload.title')}</h2>
-        <p className="mt-1 text-xs text-slate-500">{t('wikirag.upload.subtitle')}</p>
+        <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('wikirag.upload.title')}</h2>
+        <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('wikirag.upload.subtitle')}</p>
         {!canManage ? (
-          <p className="mt-4 text-sm text-slate-600">{t('wikirag.upload.restricted')}</p>
+          <p className="mt-4 text-sm text-[var(--color-fg-muted)]">{t('wikirag.upload.restricted')}</p>
         ) : (
           <form className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]" onSubmit={(e) => void onUpload(e)}>
             <div>
@@ -365,15 +365,15 @@ export function WikiRagPage() {
                     ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-400/25'
                     : selectedFile
                       ? 'border-emerald-300 bg-emerald-50/40'
-                      : 'border-neutral-200 bg-neutral-50/50 hover:border-blue-200 hover:bg-blue-50/20'
+                      : 'border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 hover:border-blue-200 hover:bg-blue-50/20'
                 } ${uploading ? 'pointer-events-none opacity-60' : ''}`}
               >
                 {dragOver ? (
                   <p className="text-base font-semibold text-blue-700">{t('wikirag.upload.dropFile')}</p>
                 ) : selectedFile ? (
                   <>
-                    <p className="text-base font-semibold text-neutral-950">{selectedFile.name}</p>
-                    <p className="mt-2 text-sm text-slate-500">{formatBytes(selectedFile.size, t)}</p>
+                    <p className="text-base font-semibold text-[var(--color-fg)]">{selectedFile.name}</p>
+                    <p className="mt-2 text-sm text-[var(--color-fg-muted)]">{formatBytes(selectedFile.size, t)}</p>
                     <button
                       type="button"
                       className="relative z-10 mt-4 text-sm font-medium text-blue-700 underline"
@@ -387,15 +387,15 @@ export function WikiRagPage() {
                   </>
                 ) : (
                   <>
-                    <p className="text-base font-semibold text-neutral-900">{t('wikirag.upload.dragHere')}</p>
-                    <p className="mt-2 text-sm text-slate-500">{t('wikirag.upload.clickToChoose')}</p>
+                    <p className="text-base font-semibold text-[var(--color-fg)]">{t('wikirag.upload.dragHere')}</p>
+                    <p className="mt-2 text-sm text-[var(--color-fg-muted)]">{t('wikirag.upload.clickToChoose')}</p>
                   </>
                 )}
               </div>
             </div>
             <div className="flex flex-col gap-3">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                   {t('wikirag.upload.comment')}
                 </label>
                 <textarea
@@ -403,7 +403,7 @@ export function WikiRagPage() {
                   onChange={(e) => setUploadComment(e.target.value)}
                   rows={5}
                   placeholder={t('wikirag.upload.commentPlaceholder')}
-                  className="w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full resize-y rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
               <button
@@ -420,20 +420,20 @@ export function WikiRagPage() {
 
       {/* Список документов */}
       <section className="app-card overflow-hidden">
-        <div className="border-b border-neutral-100 px-4 py-3 sm:px-5">
-          <h2 className="text-sm font-semibold text-neutral-950">
+        <div className="border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">
             {t('wikirag.documents.title', { count: rows.length })}
           </h2>
-          <p className="mt-0.5 text-xs text-slate-500">{t('wikirag.documents.subtitle')}</p>
+          <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{t('wikirag.documents.subtitle')}</p>
         </div>
         {loading ? (
-          <p className="p-6 text-sm text-slate-500">{t('common.loading')}</p>
+          <p className="p-6 text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
         ) : rows.length === 0 ? (
-          <p className="p-10 text-center text-sm text-slate-500">{t('wikirag.documents.empty')}</p>
+          <p className="p-10 text-center text-sm text-[var(--color-fg-muted)]">{t('wikirag.documents.empty')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[28rem] text-left text-sm">
-              <thead className="bg-neutral-50/90 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <thead className="bg-[var(--color-surface-muted)] text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                 <tr>
                   <th className="px-3 py-2.5">{t('wikirag.documents.file')}</th>
                   <th className="hidden px-3 py-2.5 md:table-cell">{t('wikirag.documents.comment')}</th>
@@ -460,7 +460,7 @@ export function WikiRagPage() {
       {/* Плавающий чат справа */}
       {chatOpen ? (
         <aside
-          className="fixed bottom-4 right-4 top-[max(5.5rem,env(safe-area-inset-top))] z-30 flex w-[min(21rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-neutral-200/90 bg-white/95 p-3 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-4"
+          className="fixed bottom-4 right-4 top-[max(5.5rem,env(safe-area-inset-top))] z-30 flex w-[min(21rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:p-4"
           aria-label={t('wikirag.page.chatAria')}
         >
           <WikiRagChat
@@ -490,12 +490,12 @@ export function WikiRagPage() {
             className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-0 sm:max-h-[min(92vh,900px)] sm:max-w-[min(56rem,calc(100vw-2rem))] sm:rounded-2xl sm:border sm:shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 px-4 py-3 sm:px-5">
-              <h2 className="truncate text-base font-semibold text-neutral-950">{modalDoc.original_filename}</h2>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
+              <h2 className="truncate text-base font-semibold text-[var(--color-fg)]">{modalDoc.original_filename}</h2>
               <button
                 type="button"
                 onClick={() => setModalDocId(null)}
-                className="shrink-0 rounded-xl border border-neutral-200 bg-white p-2 text-neutral-600 hover:bg-blue-50 hover:text-blue-700"
+                className="shrink-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[var(--color-fg-muted)] hover:bg-blue-50 hover:text-blue-700"
                 aria-label={t('wikirag.page.closeViewer')}
               >
                 <IconClose className="h-5 w-5" />

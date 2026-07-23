@@ -1,6 +1,28 @@
 # Changelog
 
-## Unreleased
+## 2.2.0 — 2026-07-23
+
+### HTTPS / agents
+
+- Три режима доступа: **HTTP (LAN)**, **HTTPS + CORAX Local CA**, **HTTPS + корпоративный CA (AD)** — `state.json` `mode`, API `/settings/tls/mode` и `/settings/tls/import`.
+- Сборка агента штампует `http://` или `https://` по `agent_scheme` (не всегда HTTP).
+- Баннер «нужен restart», когда конфиг и процесс не совпадают; честные подсказки про агентов и GPO.
+- `install-corax-ca.bat /machine` — Trusted Root на Local Machine для парка агентов.
+- Документация: EXE (C++, рекомендуется) + ZIP; CA / CORS `https://` / restart.
+
+### Ops / Docker
+
+- Docker healthcheck: `https://…/ready` (`curl -k`) **или** `http://…/ready` — стек не падает после включения TLS.
+- `npm run start:prod` → `ENVIRONMENT=production`, `PORT=3000`, `HOST=0.0.0.0`.
+- Postgres publish по умолчанию `127.0.0.1:5433` (как в `.env.example`).
+- `update.sh`: health учитывает HTTPS.
+
+### Dashboard / UX
+
+- Метрики заявок на дашборде: всего, в работе, просрочено, среднее время закрытия.
+- Общие скелетоны загрузки; более плавное переключение темы.
+- Мобильная адаптация панелей/таблиц без изменения desktop-дизайна.
+- Общий `PageHeader`; Settings/Computers и агентские страницы на CSS-токенах `app-*` / `--color-*`.
 
 ### Observability
 
@@ -12,40 +34,22 @@
 - Security headers middleware (nosniff, frame deny, Referrer-Policy, Permissions-Policy; CSP + HSTS in production/HTTPS).
 - Login JSON: `return_token` default **false**; cookies get `Max-Age` aligned with JWT TTL.
 - `ALLOW_LEGACY_AGENT_TOKEN_HASHES` default **false**.
-
-### Frontend
-
-- ~~`ServiceRequestsPage` split~~ — откатано: UI не трогаем ради LOC.
-
-### Docs / agents
-
-- Agent bundle defaults: port from browser (prod **3000**); LAN IP from address bar / `CORAX_ADVERTISE_HOST` (Docker 172.x demoted).
-- README: removed EXE/PyInstaller agent docs; agents documented as ZIP on **:3000**.
-
-### Безопасность и документация
-
-- **slowapi**: лимиты на `POST /auth/login`, `/auth/login/json` и `POST /agent/inventory` (`RATE_LIMIT_LOGIN`, `RATE_LIMIT_AGENT` в `.env`).
-- В **development** любой Bearer-токен агента принимается только при явном `ALLOW_DEV_ANY_AGENT_TOKEN=true` (по умолчанию выключено).
+- **slowapi**: лимиты на login и `POST /agent/inventory`.
+- В **development** Bearer-токен агента «любой» только при `ALLOW_DEV_ANY_AGENT_TOKEN=true`.
 - В **production** OpenAPI (`/docs`) отключён, пока не задано `ENABLE_OPENAPI=true`.
-- Health `GET /api/v1/health` возвращает поле `api: "v1"`.
-- E2E (Playwright) исправлены и добавлены в CI.
-- Синхронизированы CONTRIBUTING (порт UI **3000**), `АРХИТЕКТУРА_ПРОЕКТА.md`, `MIGRATION.md` (PostgreSQL вместо SQLite).
+
+### Docs
+
+- README / `deploy/DOCKER.md`: Docker-first, health только `:3000`/`/ready` для Docker, Visio убран из обязательного чеклиста.
 
 ### Склад (PostgreSQL)
 
-- Таблицы склада в PostgreSQL (`WAREHOUSE_DATABASE_URL`, по умолчанию та же БД `inventory`).
-- Вкладка **«Склад»** в «Базе знаний»: создание/удаление помещений (как этажи на карте), приход позиций, пресеты компонентов и сетевого оборудования.
+- Таблицы склада в PostgreSQL; вкладка **«Склад»** в «Базе знаний».
 - Права: просмотр — все авторизованные; редактирование — **editor** и **admin**.
-- В форме заявки — заготовка блока **«Действие со складом»** (интеграция позже).
 
 ### Принтеры
 
-- Вкладка **«Принтеры»** в блоке **«Парк ПК»** (`/printers`): **только SNMP по IP** (ручное добавление), без сбора с парка ПК.
-- **SNMP discovery**: скан локальных `/24` подсетей сервера по UDP/161, автосоздание найденных принтеров и последующий полный опрос.
-- **Ping + SNMP** (Printer-MIB): модель, счётчик страниц, расходники.
-- SNMP больше не зависит от ICMP ping: если ping запрещён, UDP/161 всё равно опрашивается.
-- Один принтер = один IP; кнопка **«Очистить дубликаты»** (AnyDesk, PDF, повторы с разных ПК).
-- Удаление любых записей, массовое удаление с карточкой подтверждения.
+- Вкладка **«Принтеры»** (`/printers`): SNMP по IP, discovery, ping+SNMP, дубликаты.
 
 ---
 

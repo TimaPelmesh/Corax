@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link } from 'react-router-dom'
 import { api, type DashboardDiskDeviceRank, type DashboardSegmentKind, type DashboardSummary } from '../api'
 import { DashboardDrilldownPanel, type DashboardDrilldownSelection } from '../components/DashboardDrilldown'
-import { IconDashboard, IconDisk, IconPcs, IconPrinter, IconSoftware, IconTag } from '../components/icons'
+import { IconDashboard, IconDisk, IconPcs, IconPrinter, IconSoftware, IconTag, IconTicket } from '../components/icons'
+import { Skeleton, StatRowSkeleton } from '../components/Skeleton'
 import { donutColorsForTheme } from '../chartColors'
 import { useT } from '../i18n/LocaleContext'
 import { useTheme } from '../ThemeContext'
@@ -34,6 +35,11 @@ type DashboardWidgetId =
   | 'stat.tags_in_directory'
   | 'stat.snmp_printers_total'
   | 'stat.physical_disks_total'
+  | 'stat.requests_total'
+  | 'stat.requests_active'
+  | 'stat.requests_overdue'
+  | 'stat.requests_done'
+  | 'stat.requests_avg_close'
   | 'dist.by_os'
   | 'dist.by_manufacturer'
   | 'dist.ram_buckets'
@@ -54,6 +60,11 @@ const DEFAULT_WIDGETS: WidgetVisibility = {
   'stat.tags_in_directory': true,
   'stat.snmp_printers_total': true,
   'stat.physical_disks_total': true,
+  'stat.requests_total': true,
+  'stat.requests_active': true,
+  'stat.requests_overdue': true,
+  'stat.requests_done': true,
+  'stat.requests_avg_close': true,
   'dist.by_os': true,
   'dist.by_manufacturer': true,
   'dist.ram_buckets': true,
@@ -371,7 +382,8 @@ function BarDistribution({
   const top = normalizedItems.slice(0, 10)
   const clickable = Boolean(onItemClick)
   return (
-    <div className="flex min-h-[11.5rem] items-end gap-1.5 sm:gap-2">
+    <div className="-mx-1 overflow-x-auto px-1 pb-1 sm:mx-0 sm:overflow-visible sm:px-0 sm:pb-0">
+      <div className="flex min-h-[11.5rem] min-w-[28rem] items-end gap-1.5 sm:min-w-0 sm:gap-2">
       {top.map((row, idx) => {
         const pct = Math.round((row.count / max) * 100)
         const tip = clickable
@@ -404,6 +416,7 @@ function BarDistribution({
           </div>
         )
       })}
+      </div>
     </div>
   )
 }
@@ -453,14 +466,14 @@ function DiskDevicesByAvgList({
             onClick={onItemClick ? () => onItemClick(row.hostname) : undefined}
             title={onItemClick ? t('dashboard.showComputerDetails') : undefined}
           >
-            <div className="mb-1.5 flex justify-between gap-2 text-sm">
+            <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
               <span className="min-w-0">
                 <span className="font-semibold text-[var(--color-fg)]">{row.hostname}</span>
                 <span className="block truncate text-xs text-[var(--color-fg-subtle)]">
                   {volLabel}
                 </span>
               </span>
-              <span className="shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-sm font-semibold tabular-nums text-[var(--color-fg)]">
+              <span className="inline-flex h-7 min-w-[3.25rem] shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 font-mono text-xs font-semibold leading-none tabular-nums text-[var(--color-fg)]">
                 {pct}%
               </span>
             </div>
@@ -589,6 +602,26 @@ function PhysicalDisksPanel({
   )
 }
 
+function formatAvgCloseHours(hours: number | null, t: TranslateFn): string {
+  if (hours == null || !Number.isFinite(hours) || hours < 0) {
+    return t('dashboard.stats.requestsAvgClose.empty')
+  }
+  if (hours < 1) {
+    const m = Math.max(1, Math.round(hours * 60))
+    return t('dashboard.stats.requestsAvgClose.minutes', { m: String(m) })
+  }
+  if (hours >= 48) {
+    const d = Math.round((hours / 24) * 10) / 10
+    return t('dashboard.stats.requestsAvgClose.days', { d: String(d) })
+  }
+  const h = Math.round(hours * 10) / 10
+  return t('dashboard.stats.requestsAvgClose.hours', { h: String(h) })
+}
+
+function ticketStatusCount(rows: { name: string; count: number }[], status: string): number {
+  return rows.find((x) => x.name.trim().toLowerCase() === status)?.count ?? 0
+}
+
 function MiniStatCard({
   label,
   value,
@@ -596,31 +629,44 @@ function MiniStatCard({
   icon,
   accent,
   className = '',
+  to,
 }: {
   label: string
   value: string | number
   sub?: ReactNode
   icon: ReactNode
-  accent: 'neutral' | 'brand'
+  accent: 'neutral' | 'brand' | 'warn'
   className?: string
+  to?: string
 }) {
   const isBrand = accent === 'brand'
-  const iconWrap = isBrand
-    ? 'border border-[var(--color-border)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
-    : 'border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]'
+  const isWarn = accent === 'warn'
+  const iconWrap = isWarn
+    ? 'border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-fg)]'
+    : isBrand
+      ? 'border border-[var(--color-border)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
+      : 'border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]'
 
-  return (
-    <div className={`app-panel transition-colors hover:border-[var(--color-border-strong)] ${className}`}>
-      <div className="flex items-start gap-4">
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconWrap}`}>{icon}</div>
+  const body = (
+    <div className={`app-panel !p-3 transition-colors hover:border-[var(--color-border-strong)] sm:!p-4 ${className}`}>
+      <div className="flex items-start gap-3 sm:gap-4">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${iconWrap}`}>{icon}</div>
         <div className="min-w-0 flex-1 pt-0.5">
-          <div className="text-[11px] font-semibold leading-snug text-[var(--color-fg-subtle)]">{label}</div>
-          <div className="admin-stat-value mt-3 text-[1.55rem] leading-none text-[var(--color-fg)] sm:text-[1.7rem]">{value}</div>
-          {sub ? <div className="mt-2 text-[11px] font-medium leading-snug text-[var(--color-fg-subtle)]">{sub}</div> : null}
+          <div className="text-[10px] font-semibold leading-snug text-[var(--color-fg-subtle)] sm:text-[11px]">{label}</div>
+          <div className="admin-stat-value mt-2 text-[1.35rem] leading-none text-[var(--color-fg)] sm:mt-3 sm:text-[1.7rem]">{value}</div>
+          {sub ? <div className="mt-1.5 text-[10px] font-medium leading-snug text-[var(--color-fg-subtle)] sm:mt-2 sm:text-[11px]">{sub}</div> : null}
         </div>
       </div>
     </div>
   )
+  if (to) {
+    return (
+      <Link to={to} className="block rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]">
+        {body}
+      </Link>
+    )
+  }
+  return body
 }
 
 function SectionCard({
@@ -645,7 +691,7 @@ function SectionCard({
     <div className={`app-panel transition-colors hover:border-[var(--color-border-strong)] ${pad} ${className}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[0.95rem] font-semibold tracking-tight text-[var(--color-fg)]">{title}</h2>
+          <h2 className="text-[0.95rem] font-medium tracking-tight text-[var(--color-fg)]">{title}</h2>
           {description ? (
             <p className="mt-2 max-w-prose text-xs leading-relaxed text-[var(--color-fg-subtle)]">{description}</p>
           ) : null}
@@ -659,20 +705,14 @@ function SectionCard({
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 app-stack-3 lg:grid-cols-4">
-        {[0, 1, 2, 3].map((k) => (
-          <div
-            key={k}
-            className="dashboard-skeleton-shimmer h-24 rounded-[1rem] bg-neutral-100 ring-1 ring-neutral-200/50 sm:h-[5.25rem]"
-          />
-        ))}
-      </div>
+    <div className="space-y-5" role="status" aria-busy="true">
+      <StatRowSkeleton count={5} />
+      <StatRowSkeleton count={4} />
       <div className="space-y-3">
-        <div className="dashboard-skeleton-shimmer h-32 rounded-[1rem] ring-1 ring-neutral-200/50" />
-        <div className="grid app-stack-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Skeleton className="h-32 rounded-[1rem]" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((k) => (
-            <div key={k} className="dashboard-skeleton-shimmer h-56 rounded-[1rem] ring-1 ring-neutral-200/50" />
+            <Skeleton key={k} className="h-56 rounded-[1rem]" />
           ))}
         </div>
       </div>
@@ -751,7 +791,7 @@ export function DashboardPage() {
           widgets['stat.tags_in_directory'] ||
           widgets['stat.snmp_printers_total'] ||
           widgets['stat.physical_disks_total'] ? (
-            <div className="grid grid-cols-2 app-stack-3 lg:grid-cols-5">
+            <div className="dashboard-stagger grid grid-cols-2 app-stack-3 sm:grid-cols-3 lg:grid-cols-5">
               {widgets['stat.computers_total'] ? (
                 <MiniStatCard
                   label={t('dashboard.stats.computers.label')}
@@ -808,15 +848,61 @@ export function DashboardPage() {
             </div>
           ) : null}
 
+          {widgets['stat.requests_total'] ||
+          widgets['stat.requests_active'] ||
+          widgets['stat.requests_overdue'] ||
+          widgets['stat.requests_done'] ||
+          widgets['stat.requests_avg_close'] ? (
+            <div className="dashboard-stagger grid grid-cols-2 app-stack-3 sm:grid-cols-3 lg:grid-cols-5">
+              {widgets['stat.requests_total'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.requestsTotal.label')}
+                  value={data.service_requests_total}
+                  sub={t('dashboard.stats.requestsTotal.sub')}
+                  icon={<IconTicket className="h-[18px] w-[18px]" />}
+                  accent="neutral"
+                />
+              ) : null}
+              {widgets['stat.requests_active'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.requestsActive.label')}
+                  value={data.service_requests_active}
+                  sub={t('dashboard.stats.requestsActive.sub')}
+                  icon={<IconTicket className="h-[18px] w-[18px]" />}
+                  accent="neutral"
+                />
+              ) : null}
+              {widgets['stat.requests_overdue'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.requestsOverdue.label')}
+                  value={data.service_requests_overdue}
+                  sub={t('dashboard.stats.requestsOverdue.sub')}
+                  icon={<IconTicket className="h-[18px] w-[18px]" />}
+                  accent="warn"
+                />
+              ) : null}
+              {widgets['stat.requests_done'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.requestsDone.label')}
+                  value={ticketStatusCount(data.service_requests_by_status, 'done')}
+                  sub={t('dashboard.stats.requestsDone.sub')}
+                  icon={<IconTicket className="h-[18px] w-[18px]" />}
+                  accent="neutral"
+                />
+              ) : null}
+              {widgets['stat.requests_avg_close'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.requestsAvgClose.label')}
+                  value={formatAvgCloseHours(data.service_requests_avg_close_hours, t)}
+                  sub={t('dashboard.stats.requestsAvgClose.sub')}
+                  icon={<IconTicket className="h-[18px] w-[18px]" />}
+                  accent="neutral"
+                />
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="space-y-4">
-              <div className="flex flex-col gap-1 border-b border-neutral-200/70 pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-                <div>
-                  <h2 className="text-base font-semibold tracking-tight text-[var(--color-fg)]">{t('dashboard.overview.title')}</h2>
-                  <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
-                    {t('dashboard.overview.description')}
-                  </p>
-                </div>
-              </div>
               {widgets['dist.by_os'] ||
               widgets['dist.by_manufacturer'] ||
               widgets['dist.ram_buckets'] ||
@@ -824,7 +910,7 @@ export function DashboardPage() {
               widgets['dist.by_system_model'] ||
               widgets['dist.top_cpu'] ||
               widgets['dist.physical_disks'] ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="dashboard-stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {widgets['dist.by_os'] ? (
                     <SectionCard title={t('dashboard.sections.byOs.title')} dense className="flex flex-col" bodyClassName="flex flex-1 items-center justify-center">
                       {chartsMode === 'bars' ? (
@@ -963,40 +1049,48 @@ export function DashboardPage() {
                 </div>
               ) : null}
 
-              {widgets['list.top_disk_devices'] ? (
-                <SectionCard
-                  title={t('dashboard.sections.localDisks.title')}
-                  description={t('dashboard.sections.localDisks.description')}
-                  dense
-                >
-                  <DiskDevicesByAvgList
-                    items={data.top_disk_devices}
-                    emptyText={t('dashboard.sections.localDisks.empty')}
-                    {...drillChart('hostname', t('dashboard.sections.localDisks.title'))}
-                  />
-                </SectionCard>
-              ) : null}
-
-              {widgets['list.top_software'] ? (
-                <SectionCard
-                  title={t('dashboard.sections.topSoftware.title')}
-                  description={t('dashboard.sections.topSoftware.description')}
-                  dense
-                  action={
-                    <Link
-                      to="/software"
-                      className="shrink-0 rounded-xl border border-neutral-200/90 bg-white px-3.5 py-2 text-xs font-semibold text-neutral-800 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+              {widgets['list.top_disk_devices'] || widgets['list.top_software'] ? (
+                <div className="grid items-stretch gap-4 lg:grid-cols-2">
+                  {widgets['list.top_disk_devices'] ? (
+                    <SectionCard
+                      title={t('dashboard.sections.localDisks.title')}
+                      description={t('dashboard.sections.localDisks.description')}
+                      dense
+                      className="flex h-full flex-col"
+                      bodyClassName="flex-1"
                     >
-                      {t('dashboard.sections.topSoftware.action')}
-                    </Link>
-                  }
-                >
-                  <RankedMetricList
-                    items={data.top_software}
-                    emptyText={t('dashboard.sections.topSoftware.empty')}
-                    {...drillChart('software', t('dashboard.sections.topSoftware.title'))}
-                  />
-                </SectionCard>
+                      <DiskDevicesByAvgList
+                        items={data.top_disk_devices}
+                        emptyText={t('dashboard.sections.localDisks.empty')}
+                        {...drillChart('hostname', t('dashboard.sections.localDisks.title'))}
+                      />
+                    </SectionCard>
+                  ) : null}
+
+                  {widgets['list.top_software'] ? (
+                    <SectionCard
+                      title={t('dashboard.sections.topSoftware.title')}
+                      description={t('dashboard.sections.topSoftware.description')}
+                      dense
+                      className="flex h-full flex-col"
+                      bodyClassName="flex-1"
+                      action={
+                        <Link
+                          to="/software"
+                          className="shrink-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--color-fg)] shadow-sm transition hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]"
+                        >
+                          {t('dashboard.sections.topSoftware.action')}
+                        </Link>
+                      }
+                    >
+                      <RankedMetricList
+                        items={data.top_software}
+                        emptyText={t('dashboard.sections.topSoftware.empty')}
+                        {...drillChart('software', t('dashboard.sections.topSoftware.title'))}
+                      />
+                    </SectionCard>
+                  ) : null}
+                </div>
               ) : null}
 
               {widgets['list.peripheral_kinds'] || widgets['list.top_peripherals'] ? (
@@ -1030,7 +1124,7 @@ export function DashboardPage() {
                                 className={`rounded-xl px-3 py-2 ring-1 transition ${
                                   isSelected
                                     ? 'bg-neutral-950 ring-neutral-950'
-                                    : 'bg-neutral-50/50 ring-neutral-100 hover:bg-white hover:ring-neutral-200/80'
+                                    : 'bg-[var(--color-surface-muted)]/50 ring-neutral-100 hover:bg-[var(--color-surface)] hover:ring-neutral-200/80'
                                 } cursor-pointer`}
                                 onClick={() =>
                                   toggleDrilldown({
@@ -1043,14 +1137,14 @@ export function DashboardPage() {
                                 title={t('dashboard.showPcList')}
                               >
                                 <div className="mb-1.5 flex justify-between gap-2">
-                                  <span className={`font-medium ${isSelected ? 'text-white' : 'text-neutral-700'}`}>
+                                  <span className={`font-medium ${isSelected ? 'text-white' : 'text-[var(--color-fg-muted)]'}`}>
                                     {p.label}
                                   </span>
                                   <span
                                     className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-xs font-semibold ring-1 ${
                                       isSelected
-                                        ? 'bg-white/10 text-white ring-white/20'
-                                        : 'bg-white/90 text-neutral-900 ring-neutral-200/60'
+                                        ? 'bg-[var(--color-surface)]/10 text-white ring-white/20'
+                                        : 'bg-[var(--color-surface)] text-[var(--color-fg)] ring-neutral-200/60'
                                     }`}
                                   >
                                     {p.pc_count}

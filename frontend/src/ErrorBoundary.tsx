@@ -19,11 +19,11 @@ export class ErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     if (this.state.error) {
       return (
-        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-white p-6 text-center dark:bg-[#080a0f]">
-          <h1 className="text-lg font-semibold text-neutral-950 dark:text-slate-100">
+        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[var(--color-surface)] p-6 text-center dark:bg-[#080a0f]">
+          <h1 className="text-lg font-semibold text-[var(--color-fg)]">
             {translateStatic('common.error')}
           </h1>
-          <p className="max-w-lg text-sm text-neutral-600 dark:text-slate-400">
+          <p className="max-w-lg text-sm text-[var(--color-fg-muted)] dark:text-[var(--color-fg-subtle)]">
             {translateStatic('common.refresh')}
           </p>
           <pre className="max-h-40 max-w-full overflow-auto rounded-lg border border-red-200 bg-red-50 p-3 text-left text-xs text-red-900 dark:border-red-500/40 dark:bg-red-950/40 dark:text-red-200">

@@ -37,6 +37,8 @@ else
   exit 1
 fi
 
-echo "[ok] CA trusted system-wide."
+echo "[ok] CA trusted system-wide (agents + browsers that use the OS store)."
 echo "Firefox still needs manual import (its own store)."
+echo "GPO (AD): publish this CA under Computer Configuration → Public Key Policies"
+echo "  → Trusted Root Certification Authorities, then rebuild agents with https://"
 echo "Restart browsers, open https://SERVER:3000"

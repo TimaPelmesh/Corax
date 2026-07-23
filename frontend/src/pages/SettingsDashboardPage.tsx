@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
 import { IconDashboard } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 
 type DashboardChartsMode = 'donut' | 'bars'
 
@@ -11,6 +12,11 @@ type DashboardWidgetId =
   | 'stat.tags_in_directory'
   | 'stat.snmp_printers_total'
   | 'stat.physical_disks_total'
+  | 'stat.requests_total'
+  | 'stat.requests_active'
+  | 'stat.requests_overdue'
+  | 'stat.requests_done'
+  | 'stat.requests_avg_close'
   | 'dist.by_os'
   | 'dist.by_manufacturer'
   | 'dist.ram_buckets'
@@ -51,6 +57,11 @@ const DEFAULT_WIDGETS: WidgetVisibility = {
   'stat.tags_in_directory': true,
   'stat.snmp_printers_total': true,
   'stat.physical_disks_total': true,
+  'stat.requests_total': true,
+  'stat.requests_active': true,
+  'stat.requests_overdue': true,
+  'stat.requests_done': true,
+  'stat.requests_avg_close': true,
   'dist.by_os': true,
   'dist.by_manufacturer': true,
   'dist.ram_buckets': true,
@@ -115,6 +126,11 @@ export function SettingsDashboardPage() {
         { id: 'stat.tags_in_directory', label: 'Плашка: Тегов' },
         { id: 'stat.snmp_printers_total', label: 'Плашка: Принтеры (SNMP)' },
         { id: 'stat.physical_disks_total', label: 'Плашка: Физические диски (всего + SSD/HDD)' },
+        { id: 'stat.requests_total', label: 'Плашка: Заявок (всего)' },
+        { id: 'stat.requests_active', label: 'Плашка: Заявки в работе' },
+        { id: 'stat.requests_overdue', label: 'Плашка: Просроченные заявки' },
+        { id: 'stat.requests_done', label: 'Плашка: Закрытые заявки (done)' },
+        { id: 'stat.requests_avg_close', label: 'Плашка: Среднее время закрытия' },
         { id: 'dist.by_os', label: 'Диаграмма: Операционные системы' },
         { id: 'dist.by_manufacturer', label: 'Диаграмма: Производители (OEM)' },
         { id: 'dist.ram_buckets', label: 'Диаграмма: Оперативная память' },
@@ -132,25 +148,21 @@ export function SettingsDashboardPage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconDashboard className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="page-title">Настройка дашборда</h1>
-          <p className="mt-1 max-w-3xl text-slate-600">Включение плашек и выбор вида диаграмм.</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconDashboard className="h-6 w-6" />}
+        title="Настройка дашборда"
+        subtitle="Включение плашек и выбор вида диаграмм."
+      />
 
       <div className="app-card max-w-2xl space-y-4 p-6 sm:p-7">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Вид диаграмм</h2>
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Вид диаграмм</h2>
         <div className="grid gap-2 sm:grid-cols-2">
           <button
             type="button"
             className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
               mode === 'donut'
                 ? 'border-neutral-900 bg-neutral-950 text-white shadow-neutral-900/10'
-                : 'border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50'
+                : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]'
             }`}
             onClick={() => {
               setMode('donut')
@@ -158,7 +170,7 @@ export function SettingsDashboardPage() {
             }}
           >
             Круговые
-            <div className={`mt-1 text-xs font-medium ${mode === 'donut' ? 'text-white/80' : 'text-slate-500'}`}>
+            <div className={`mt-1 text-xs font-medium ${mode === 'donut' ? 'text-white/80' : 'text-[var(--color-fg-muted)]'}`}>
               Компактно, хорошо для долей
             </div>
           </button>
@@ -167,7 +179,7 @@ export function SettingsDashboardPage() {
             className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
               mode === 'bars'
                 ? 'border-neutral-900 bg-neutral-950 text-white shadow-neutral-900/10'
-                : 'border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50'
+                : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]'
             }`}
             onClick={() => {
               setMode('bars')
@@ -175,23 +187,23 @@ export function SettingsDashboardPage() {
             }}
           >
             Столбчатые (горизонтальные)
-            <div className={`mt-1 text-xs font-medium ${mode === 'bars' ? 'text-white/80' : 'text-slate-500'}`}>
+            <div className={`mt-1 text-xs font-medium ${mode === 'bars' ? 'text-white/80' : 'text-[var(--color-fg-muted)]'}`}>
               Лучше читаются по абсолютным значениям
             </div>
           </button>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 text-sm text-[var(--color-fg)]">
           Применяется к блоку «Распределение и нагрузка» на главном экране.
         </div>
       </div>
 
       <div className="app-card mt-4 max-w-2xl space-y-4 p-6 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Плашки дашборда</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Плашки дашборда</h2>
           <button
             type="button"
-            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
             onClick={() => {
               const next = { ...DEFAULT_WIDGETS }
               setWidgets(next)
@@ -209,9 +221,9 @@ export function SettingsDashboardPage() {
             return (
               <label
                 key={id}
-                className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-white px-4 py-3 text-sm transition hover:bg-slate-50"
+                className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm transition hover:bg-[var(--color-surface-muted)]"
               >
-                <span className="min-w-0 flex-1 text-slate-800">{w.label}</span>
+                <span className="min-w-0 flex-1 text-[var(--color-fg)]">{w.label}</span>
                 <input
                   type="checkbox"
                   checked={on}
@@ -226,7 +238,7 @@ export function SettingsDashboardPage() {
           })}
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-700">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 text-sm text-[var(--color-fg)]">
           Изменения применяются сразу. Выключенные элементы скрываются на главном экране.
         </div>
       </div>

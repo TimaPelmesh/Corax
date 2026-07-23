@@ -367,9 +367,9 @@ export function UsersPage() {
               <table className="min-w-[760px] w-full text-left text-sm">
                 <thead className="app-table-head">
                   <tr>
-                    <th className="px-4 py-3">{t('users.username')}</th>
+                    <th className="app-table-sticky-col px-4 py-3">{t('users.username')}</th>
                     <th className="px-4 py-3">{t('users.fullName')}</th>
-                    <th className="px-4 py-3">{t('users.role')}</th>
+                    <th className="app-hide-xs px-4 py-3">{t('users.role')}</th>
                     <th className="px-4 py-3">{t('common.actions')}</th>
                   </tr>
                 </thead>
@@ -389,9 +389,9 @@ export function UsersPage() {
                   ) : (
                     serviceRows.map((u) => (
                       <tr key={u.id} className="app-table-row">
-                        <td className="px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
+                        <td className="app-table-sticky-col px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
                         <td className="px-4 py-3 text-[var(--color-fg-muted)]">{u.full_name ?? '—'}</td>
-                        <td className="px-4 py-3">
+                        <td className="app-hide-xs px-4 py-3">
                           {u.is_superuser ? (
                             <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-fg)]">
                               admin
@@ -484,7 +484,7 @@ export function UsersPage() {
             <table className="min-w-[640px] w-full text-left text-sm">
               <thead className="app-table-head">
                 <tr>
-                  <th className="px-4 py-3">{t('users.username')}</th>
+                  <th className="app-table-sticky-col px-4 py-3">{t('users.username')}</th>
                   <th className="px-4 py-3">{t('users.source')}</th>
                   <th className="px-4 py-3">{t('users.fullName')}</th>
                 </tr>
@@ -505,7 +505,7 @@ export function UsersPage() {
                 ) : (
                   directoryRows.map((u) => (
                     <tr key={u.id} className="app-table-row">
-                      <td className="px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
+                      <td className="app-table-sticky-col px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
                       <td className="px-4 py-3 text-[var(--color-fg-muted)]">
                         {u.is_ldap ? (
                           <span className="rounded-full bg-[var(--color-info-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-info-fg)]">

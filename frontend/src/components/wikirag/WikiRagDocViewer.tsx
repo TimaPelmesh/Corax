@@ -120,7 +120,7 @@ export function WikiRagDocViewer({
 
     return (
 
-      <div className="flex min-h-[14rem] items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 p-6 text-center text-sm text-slate-500">
+      <div className="flex min-h-[14rem] items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 p-6 text-center text-sm text-[var(--color-fg-muted)]">
 
         {t('wikirag.viewer.chooseDocument')}
 
@@ -152,17 +152,17 @@ export function WikiRagDocViewer({
 
       {!embedded ? (
 
-        <div className="mb-3 border-b border-neutral-100 pb-3">
+        <div className="mb-3 border-b border-[var(--color-border)] pb-3">
 
-          <h3 className="truncate text-sm font-semibold text-neutral-950">{doc.original_filename}</h3>
+          <h3 className="truncate text-sm font-semibold text-[var(--color-fg)]">{doc.original_filename}</h3>
 
-          {content?.hint ? <p className="mt-0.5 text-xs text-slate-500">{content.hint}</p> : null}
+          {content?.hint ? <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">{content.hint}</p> : null}
 
         </div>
 
       ) : content?.hint ? (
 
-        <p className="mb-2 text-xs text-slate-500">{content.hint}</p>
+        <p className="mb-2 text-xs text-[var(--color-fg-muted)]">{content.hint}</p>
 
       ) : null}
 
@@ -176,7 +176,7 @@ export function WikiRagDocViewer({
 
           download={doc.original_filename}
 
-          className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-neutral-800 shadow-sm hover:bg-neutral-50"
+          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs font-semibold text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)]"
 
         >
 
@@ -215,7 +215,7 @@ export function WikiRagDocViewer({
 
         {loading ? (
 
-          <p className="text-sm text-slate-500">{t('wikirag.viewer.loadingContent')}</p>
+          <p className="text-sm text-[var(--color-fg-muted)]">{t('wikirag.viewer.loadingContent')}</p>
 
         ) : content?.kind === 'image' && previewSrc ? (
 
@@ -225,7 +225,7 @@ export function WikiRagDocViewer({
 
             alt={doc.original_filename}
 
-            className="max-h-[min(65vh,32rem)] rounded-lg border border-neutral-200 object-contain"
+            className="max-h-[min(65vh,32rem)] rounded-lg border border-[var(--color-border)] object-contain"
 
           />
 
@@ -237,7 +237,7 @@ export function WikiRagDocViewer({
 
             onChange={(e) => setDraft(e.target.value)}
 
-            className="h-[min(65vh,32rem)] w-full resize-y rounded-xl border border-neutral-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed text-neutral-900 shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/20"
+            className="h-[min(65vh,32rem)] w-full resize-y rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-xs leading-relaxed text-[var(--color-fg)] shadow-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-500/20"
 
             spellCheck={false}
 
@@ -245,7 +245,7 @@ export function WikiRagDocViewer({
 
         ) : (
 
-          <pre className="whitespace-pre-wrap break-words rounded-xl border border-neutral-200 bg-neutral-50/80 p-3 font-mono text-xs leading-relaxed text-neutral-800">
+          <pre className="whitespace-pre-wrap break-words rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3 font-mono text-xs leading-relaxed text-[var(--color-fg)]">
 
             {content?.content?.trim() || '—'}
 

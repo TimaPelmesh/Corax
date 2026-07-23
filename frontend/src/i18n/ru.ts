@@ -163,21 +163,39 @@ export const ru = {
     status: 'Состояние',
     flag: 'Включено в конфиге',
     process: 'Этот процесс',
+    mode: 'Режим',
+    modeHttp: 'HTTP (LAN)',
+    modeLocalCa: 'HTTPS + CORAX Local CA',
+    modeEnterprise: 'HTTPS + корпоративный CA (AD)',
+    modeHttpHint:
+      'Панель и агенты на http://. Простой вариант для закрытой сети — как обычно в GLPI без TLS.',
+    modeLocalCaHint:
+      'Свой CA CORAX. На агентах и админ-ПК установите ca.crt в Trusted Root (GPO / install-corax-ca.bat с правами администратора на Local Machine). Сборка агента должна штамповать https://.',
+    modeEnterpriseHint:
+      'Импортируйте серверный .crt/.pem и ключ, выданный корпоративным CA. Корневой CA домена уже на машинах через AD/GPO — отдельно CORAX CA не нужен. Агенты: https://.',
+    applyMode: 'Применить режим',
+    modeApplied: 'Режим сохранён — перезапустите CORAX, если требуется',
     on: 'Да',
     off: 'Нет',
     listeningHttps: 'Слушает HTTPS',
-    listeningHttp: 'Слушает HTTP (нужен перезапуск после включения)',
+    listeningHttp: 'Слушает HTTP',
     validUntil: 'Сертификат до',
     fingerprint: 'Отпечаток SHA-256',
-    restartRequired: 'HTTPS включён в конфиге. Перезапустите CORAX (остановите и снова запустите сервер), затем откройте https://…',
+    agentScheme: 'Схема для агентов',
+    restartRequired:
+      'Конфиг и процесс не совпадают. Перезапустите CORAX (docker compose restart app / npm run docker:restart), иначе агенты и браузер будут ходить «не туда».',
+    restartBannerHttp:
+      'HTTPS ещё слушается процессом. После перезапуска останется HTTP — пересоберите ZIP агентов с http://.',
+    restartBannerHttps:
+      'HTTPS включён в конфиге, но процесс ещё на HTTP. После перезапуска нужен https:// и доверие к CA на ПК агентов.',
     devBlocked:
       'Сейчас development (npm start / Vite). HTTPS на API ломает вход через http://localhost:3000. Сертификат можно создать и скачать CA; включать TLS — через npm run start:prod или CORAX_TLS_FORCE=1.',
-    openUrl: 'Откройте https://{host}:{port} с ПК, где установлен CA.',
+    openUrl: 'Откройте https://{host}:{port} с ПК, где установлен CA (или доверен корпоративный корень).',
     enable: 'Включить HTTPS',
-    disable: 'Выключить HTTPS',
+    disable: 'Выключить → HTTP',
     enabled: 'HTTPS будет активен после перезапуска',
     disabled: 'HTTPS выключен — после перезапуска снова HTTP',
-    create: 'Сертификат',
+    create: 'CORAX Local CA',
     createHint:
       'Укажите IP или имя сервера в ЛВС (как в адресной строке). localhost и 127.0.0.1 добавятся сами.',
     hostnames: 'IP / имена (по одному в строке)',
@@ -188,11 +206,19 @@ export const ru = {
     rotateCa: 'Новый CA (нужно заново установить на ПК)',
     generated: 'Сертификат создан',
     needHosts: 'Укажите хотя бы один IP или hostname',
-    trustTitle: 'Доверие на админских ПК',
+    importTitle: 'Импорт корпоративного сертификата',
+    importHint:
+      'PEM leaf (+ цепочка) и незашифрованный private key. После импорта выберите режим «HTTPS + корпоративный CA» и перезапустите.',
+    certPem: 'Сертификат (PEM)',
+    keyPem: 'Закрытый ключ (PEM)',
+    importBtn: 'Импортировать',
+    imported: 'Сертификат импортирован',
+    needImport: 'Вставьте PEM сертификата и ключа',
+    trustTitle: 'Доверие (Local CA)',
     trustStep1:
       'Скачайте именно CA (кнопка ниже) — файл corax-local-ca.crt. Не серверный сертификат из окна браузера «localhost».',
     trustStep2:
-      'Установите CA: двойной клик → «Установить сертификат» → «Текущий пользователь» → «Поместить все сертификаты в следующее хранилище» → «Доверенные корневые центры сертификации». Либо scripts\\install-corax-ca.bat.',
+      'Админ-ПК: Current User → Trusted Root. Агенты / GPO: Local Machine → Trusted Root (scripts\\install-corax-ca.bat от администратора, флаг /machine).',
     trustStep3:
       'Полностью закройте Chrome/Edge и откройте https://IP:порт снова. В цепочке должен быть доверенный CORAX Local CA.',
     trustFirefox:
@@ -200,11 +226,11 @@ export const ru = {
     trustYandex:
       'Яндекс.Браузер: обычно как Chrome (хранилище Windows). Если всё ещё «Не защищено» — полностью закройте браузер, либо Импорт через настройки сертификатов / тот же corax-local-ca.crt. Открывайте именно https://, не http://.',
     trustReality:
-      'Локальный CA никогда не станет «как у банков» во всех браузерах сам. Для 2–3 админских ПК достаточно: Chrome/Edge + импорт CA в Firefox/Яндекс один раз.',
+      'Локальный CA никогда не станет «как у банков» во всех браузерах сам. Для 2–3 админских ПК достаточно: Chrome/Edge + импорт CA в Firefox/Яндекс один раз. Для парка агентов — GPO на Local Machine.',
     downloadCa: 'Скачать CA (.crt)',
     caDownloaded: 'Файл CA скачан',
     agentsNote:
-      'Агенты инвентаризации могут продолжать ходить по HTTP, если так удобнее. HTTPS здесь — для панели админов.',
+      'Один порт = одна схема. При HTTPS агенты должны ходить на https://… и доверять CA (доменному или CORAX Local). Старый ZIP с http:// после включения TLS перестаёт слать инвентарь — пересоберите пакет на странице «Сборка агента».',
     apiMissingHint:
       'API HTTPS ещё не в этом процессе (на Windows нет авто-перезагрузки). Остановите start_all.bat (Ctrl+C) и запустите снова.',
   },
@@ -318,6 +344,43 @@ export const ru = {
       },
       physicalDisks: {
         sub: 'физических дисков',
+      },
+      requestsTotal: {
+        label: 'Заявок',
+        sub: 'всего в системе',
+      },
+      requestsActive: {
+        label: 'В работе',
+        sub: 'открытые и в процессе',
+      },
+      requestsOverdue: {
+        label: 'Просрочено',
+        sub: 'срок закрытия прошёл',
+      },
+      requestsAvgClose: {
+        label: 'Среднее закрытие',
+        sub: 'среднее арифм. · только done',
+        empty: 'нет закрытых',
+        minutes: '{m} мин',
+        hours: '{h} ч',
+        days: '{d} д',
+      },
+      requestsDone: {
+        label: 'Закрыто',
+        sub: 'статус done',
+      },
+    },
+    tickets: {
+      title: 'Сервисные заявки',
+      description: 'Сводка по статусам.',
+      byStatus: 'Заявки по статусам',
+      byStatusEmpty: 'Заявок пока нет',
+      openList: 'К заявкам →',
+      status: {
+        open: 'Открыта',
+        in_progress: 'В работе',
+        done: 'Закрыта',
+        cancelled: 'Отменена',
       },
     },
     overview: {
@@ -1529,6 +1592,9 @@ export const ru = {
       'Нативный C++ агент: скачивается один CORAX-Agent.exe (конфиг и токен уже вшиты). Сам определяет Win7/10/11. Двойной клик — splash и отправка. Для Планировщика: CORAX-Agent.exe --silent. В поле IP указывайте LAN-адрес сервера (не localhost), иначе с других ПК отчёт не дойдёт.',
     parametersTitle: 'Параметры',
     serverIpLabel: 'IP-адрес сервера CORAX',
+    schemeLabel: 'Схема',
+    schemeHint:
+      'Должна совпадать с режимом HTTPS на сервере. При TLS на :3000 ставьте https и доверие CA на ПК агента (GPO).',
     chooseInterface: 'Выберите интерфейс…',
     detectingLanIp: 'Определяем LAN IP…',
     detectingLanIpHint: 'Определяем локальный IP этой машины…',

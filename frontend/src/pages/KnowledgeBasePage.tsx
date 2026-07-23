@@ -40,8 +40,8 @@ function makeGroupNode(
 function renderNode(data: KBNodeData) {
   return (
     <div className="min-w-0">
-      <div className="truncate text-sm font-semibold text-neutral-950">{data.label}</div>
-      {data.sub ? <div className="mt-1 truncate text-xs text-neutral-500">{data.sub}</div> : null}
+      <div className="truncate text-sm font-semibold text-[var(--color-fg)]">{data.label}</div>
+      {data.sub ? <div className="mt-1 truncate text-xs text-[var(--color-fg-muted)]">{data.sub}</div> : null}
     </div>
   )
 }
@@ -188,7 +188,7 @@ export function KnowledgeBasePage() {
           </div>
           <div>
             <h1 className="page-title">База знаний</h1>
-            <p className="mt-1 max-w-2xl text-slate-600">
+            <p className="mt-1 max-w-2xl text-[var(--color-fg-muted)]">
               Теги как облако. Клик по тегу — подробности: пользователи, ПК, периферия и заявки.
             </p>
           </div>
@@ -198,7 +198,7 @@ export function KnowledgeBasePage() {
       <div className="app-card overflow-hidden p-0">
         <div className="flex h-[min(72vh,820px)] w-full flex-row">
           {loading ? (
-            <div className="flex h-full items-center justify-center text-sm text-neutral-500">Загрузка…</div>
+            <div className="flex h-full items-center justify-center text-sm text-[var(--color-fg-muted)]">Загрузка…</div>
           ) : (
             <>
               <div className="min-w-0 flex-1">
@@ -225,65 +225,65 @@ export function KnowledgeBasePage() {
                   <Controls />
                 </ReactFlow>
               </div>
-              <aside className="hidden w-[min(28rem,44vw)] shrink-0 border-l border-neutral-200/80 bg-white p-4 sm:block">
-                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Карточка тега</div>
+              <aside className="hidden w-[min(28rem,44vw)] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:block">
+                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Карточка тега</div>
                 {!activeTag ? (
-                  <div className="mt-3 rounded-xl border border-dashed border-slate-200/90 bg-slate-50/50 px-4 py-6 text-sm text-slate-600">
+                  <div className="mt-3 rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 px-4 py-6 text-sm text-[var(--color-fg-muted)]">
                     Выберите тег в облаке.
                   </div>
                 ) : (
                   <div className="mt-3 space-y-4">
                     <div>
-                      <div className="text-base font-semibold text-neutral-950">{activeTag.name}</div>
-                      <div className="mt-1 text-xs text-slate-500">
+                      <div className="text-base font-semibold text-[var(--color-fg)]">{activeTag.name}</div>
+                      <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
                         {activeTag.color ? `цвет ${activeTag.color}` : 'цвет не задан'}
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-3">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">ПК</div>
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">ПК</div>
                       {tagPcs.length ? (
-                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                        <ul className="mt-2 space-y-1 text-sm text-[var(--color-fg)]">
                           {tagPcs.slice(0, 12).map((pc) => (
                             <li key={pc.id} className="flex items-center justify-between gap-2">
-                              <span className="min-w-0 truncate font-medium text-neutral-900">{pc.hostname}</span>
-                              <span className="shrink-0 text-xs text-slate-500">
+                              <span className="min-w-0 truncate font-medium text-[var(--color-fg)]">{pc.hostname}</span>
+                              <span className="shrink-0 text-xs text-[var(--color-fg-muted)]">
                                 {pc.location ?? pc.os_name ?? '—'}
                               </span>
                             </li>
                           ))}
                         </ul>
                       ) : (
-                        <div className="mt-2 text-sm text-slate-500">Нет ПК с этим тегом</div>
+                        <div className="mt-2 text-sm text-[var(--color-fg-muted)]">Нет ПК с этим тегом</div>
                       )}
                     </div>
 
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-3">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Пользователи</div>
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Пользователи</div>
                       {tagUsers.length ? (
-                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                        <ul className="mt-2 space-y-1 text-sm text-[var(--color-fg)]">
                           {tagUsers.slice(0, 12).map((u) => (
                             <li key={u.id} className="flex items-center justify-between gap-2">
-                              <span className="min-w-0 truncate font-medium text-neutral-900">
+                              <span className="min-w-0 truncate font-medium text-[var(--color-fg)]">
                                 {(u.full_name ?? '').trim() ? u.full_name : u.username}
                               </span>
-                              <span className="shrink-0 text-xs text-slate-500">@{u.username}</span>
+                              <span className="shrink-0 text-xs text-[var(--color-fg-muted)]">@{u.username}</span>
                             </li>
                           ))}
                         </ul>
                       ) : (
-                        <div className="mt-2 text-sm text-slate-500">Нет закреплённых пользователей</div>
+                        <div className="mt-2 text-sm text-[var(--color-fg-muted)]">Нет закреплённых пользователей</div>
                       )}
                     </div>
 
-                    <div className="rounded-xl border border-slate-200/80 bg-white p-3">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">Заявки</div>
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Заявки</div>
                       {tagRequests.length ? (
-                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                        <ul className="mt-2 space-y-1 text-sm text-[var(--color-fg)]">
                           {tagRequests.slice(0, 12).map((r) => (
                             <li key={r.id} className="min-w-0">
-                              <div className="truncate font-medium text-neutral-900">{r.title}</div>
-                              <div className="truncate text-xs text-slate-500">
+                              <div className="truncate font-medium text-[var(--color-fg)]">{r.title}</div>
+                              <div className="truncate text-xs text-[var(--color-fg-muted)]">
                                 {r.status} · {r.priority}
                                 {r.computer_hostname ? ` · ${r.computer_hostname}` : ''}
                               </div>
@@ -291,7 +291,7 @@ export function KnowledgeBasePage() {
                           ))}
                         </ul>
                       ) : (
-                        <div className="mt-2 text-sm text-slate-500">Заявок не найдено</div>
+                        <div className="mt-2 text-sm text-[var(--color-fg-muted)]">Заявок не найдено</div>
                       )}
                     </div>
                   </div>

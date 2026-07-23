@@ -77,9 +77,9 @@ function supplyTone(name: string): { dot: string; track: string; fill: string; t
     return { dot: 'bg-yellow-400', track: 'bg-yellow-50', fill: 'bg-yellow-400', text: 'text-yellow-800' }
   }
   if (/(black|ч[её]рн|carbon|ce400a|ce400x|cf410|cf226)/i.test(s)) {
-    return { dot: 'bg-slate-950', track: 'bg-slate-100', fill: 'bg-slate-900', text: 'text-slate-900' }
+    return { dot: 'bg-slate-950', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-900', text: 'text-[var(--color-fg)]' }
   }
-  return { dot: 'bg-slate-400', track: 'bg-slate-100', fill: 'bg-slate-400', text: 'text-slate-700' }
+  return { dot: 'bg-slate-400', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400', text: 'text-[var(--color-fg)]' }
 }
 
 function SupplyCard({ s, colored }: { s: PrinterSupply; colored: boolean }) {
@@ -87,23 +87,23 @@ function SupplyCard({ s, colored }: { s: PrinterSupply; colored: boolean }) {
   const low = s.level_percent != null && s.level_percent <= 15
   const tone = colored
     ? supplyTone(s.name)
-    : { dot: 'bg-slate-300', track: 'bg-slate-100', fill: 'bg-slate-400', text: 'text-slate-600' }
+    : { dot: 'bg-slate-300', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400', text: 'text-[var(--color-fg-muted)]' }
   return (
     <div
       className={`rounded-xl border px-3 py-2.5 ${
-        low && colored ? 'border-amber-200 bg-amber-50/60' : 'border-slate-200/90 bg-white'
+        low && colored ? 'border-amber-200 bg-amber-50/60' : 'border-[var(--color-border)] bg-[var(--color-surface)]'
       }`}
     >
       <div className="flex items-start gap-2">
         <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ring-1 ring-black/10 ${tone.dot}`} />
         <div className="min-w-0 flex-1">
           <div className={`break-words text-sm font-medium leading-snug ${tone.text}`}>{s.name}</div>
-          <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500">
-            <span className="font-mono tabular-nums text-slate-800">
+          <div className="mt-1 flex items-center justify-between gap-2 text-xs text-[var(--color-fg-muted)]">
+            <span className="font-mono tabular-nums text-[var(--color-fg)]">
               {s.level_percent != null ? `${s.level_percent}%` : t('printerDetail.noData')}
             </span>
             {s.max_capacity != null && s.level_raw != null ? (
-              <span className="font-mono tabular-nums text-slate-400">
+              <span className="font-mono tabular-nums text-[var(--color-fg-subtle)]">
                 {s.level_raw}/{s.max_capacity}
               </span>
             ) : null}
@@ -206,16 +206,16 @@ export function PrinterDetailModal({
 
   const pollBadge =
     row.poll_status === 'online'
-      ? 'bg-slate-100 text-slate-700 ring-slate-200'
+      ? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-slate-200'
       : row.poll_status === 'offline'
         ? 'bg-amber-50 text-amber-900 ring-amber-200'
-        : 'bg-slate-50 text-slate-600 ring-slate-200'
+        : 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-slate-200'
   const snmpBadge =
     row.snmp_status === 'ok'
-      ? 'bg-slate-100 text-slate-700 ring-slate-200'
+      ? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-slate-200'
       : row.snmp_status === 'error'
         ? 'bg-rose-50 text-rose-800 ring-rose-200'
-        : 'bg-slate-50 text-slate-600 ring-slate-200'
+        : 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-slate-200'
 
   return createPortal(
     <div
@@ -225,17 +225,17 @@ export function PrinterDetailModal({
       onClick={onClose}
     >
       <div
-        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-y-auto overscroll-contain rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-none ring-0 sm:max-h-[min(96vh,calc(100vh-0.5rem))] sm:max-w-[min(1100px,calc(100vw-1rem))] sm:rounded-2xl sm:border sm:border-slate-200/90 sm:p-6 sm:pt-6 sm:shadow-2xl sm:shadow-slate-900/15 sm:ring-1 sm:ring-white/40 lg:p-8"
+        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-y-auto overscroll-contain rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-none ring-0 sm:max-h-[min(96vh,calc(100vh-0.5rem))] sm:max-w-[min(1100px,calc(100vw-1rem))] sm:rounded-2xl sm:border sm:border-[var(--color-border)] sm:p-6 sm:pt-6 sm:shadow-2xl sm:shadow-slate-900/15 sm:ring-1 sm:ring-white/40 lg:p-8"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-start justify-between gap-4">
+        <div className="sticky top-0 z-20 -mx-4 flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)]/95 px-4 pb-3 pt-1 backdrop-blur-md sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 sm:backdrop-blur-none">
           <div className="flex min-w-0 items-start gap-3">
             <div className="page-hero-icon mt-0.5 shrink-0">
               <IconPrinter className="h-6 w-6" />
             </div>
             <div className="min-w-0 pr-2">
-              <h2 className="break-words text-xl font-semibold leading-snug text-slate-900">{title}</h2>
-              <p className="mt-1 break-words text-sm text-slate-500">
+              <h2 className="break-words text-xl font-semibold leading-snug text-[var(--color-fg)]">{title}</h2>
+              <p className="mt-1 break-words text-sm text-[var(--color-fg-muted)]">
                 {row.ip_address ?? t('printerDetail.noIp')}
                 {row.location ? ` · ${row.location}` : ''}
                 {row.source ? ` · ${t('printerDetail.source', { source: row.source })}` : ''}
@@ -264,7 +264,7 @@ export function PrinterDetailModal({
           </div>
           <button
             type="button"
-            className="group shrink-0 rounded-xl border-2 border-slate-300 bg-white p-2.5 text-slate-600 shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            className="group shrink-0 rounded-xl border-2 border-slate-300 bg-[var(--color-surface)] p-2.5 text-[var(--color-fg-muted)] shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
             onClick={onClose}
             aria-label={t('printerDetail.close')}
           >
@@ -274,54 +274,54 @@ export function PrinterDetailModal({
 
         <div className="mt-5 grid shrink-0 grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
           <section className="flex min-w-0 flex-col">
-            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
               {t('printerDetail.device')}
             </h3>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
               <div className="min-w-0 sm:col-span-2">
-                <dt className="text-slate-500">{t('printerDetail.snmpModel')}</dt>
-                <dd className="break-words font-medium text-slate-900">{row.snmp_model?.trim() || '—'}</dd>
+                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.snmpModel')}</dt>
+                <dd className="break-words font-medium text-[var(--color-fg)]">{row.snmp_model?.trim() || '—'}</dd>
               </div>
               <div className="min-w-0 sm:col-span-2">
-                <dt className="text-slate-500">{t('printerDetail.coraxName')}</dt>
-                <dd className="break-words text-slate-900">{row.name?.trim() || '—'}</dd>
+                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.coraxName')}</dt>
+                <dd className="break-words text-[var(--color-fg)]">{row.name?.trim() || '—'}</dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-slate-500">{t('printerDetail.ip')}</dt>
-                <dd className="font-mono text-slate-800">{row.ip_address ?? '—'}</dd>
+                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.ip')}</dt>
+                <dd className="font-mono text-[var(--color-fg)]">{row.ip_address ?? '—'}</dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-slate-500">{t('printerDetail.pages')}</dt>
-                <dd className="font-mono text-lg font-semibold tabular-nums text-slate-900">
+                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.pages')}</dt>
+                <dd className="font-mono text-lg font-semibold tabular-nums text-[var(--color-fg)]">
                   {row.page_count != null
                     ? row.page_count.toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU')
                     : '—'}
                 </dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-slate-500">{t('printerDetail.lastPoll')}</dt>
-                <dd className="text-slate-800">{fmtWhen(row.last_poll_at, locale)}</dd>
+                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.lastPoll')}</dt>
+                <dd className="text-[var(--color-fg)]">{fmtWhen(row.last_poll_at, locale)}</dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-slate-500">{t('printerDetail.lastSnmp')}</dt>
-                <dd className="text-slate-800">{fmtWhen(row.last_snmp_at, locale)}</dd>
+                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.lastSnmp')}</dt>
+                <dd className="text-[var(--color-fg)]">{fmtWhen(row.last_snmp_at, locale)}</dd>
               </div>
               {row.driver_name ? (
                 <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-slate-500">{t('printerDetail.driver')}</dt>
-                  <dd className="break-words text-slate-800">{row.driver_name}</dd>
+                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.driver')}</dt>
+                  <dd className="break-words text-[var(--color-fg)]">{row.driver_name}</dd>
                 </div>
               ) : null}
               {row.port_name ? (
                 <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-slate-500">{t('printerDetail.port')}</dt>
-                  <dd className="break-words font-mono text-slate-700">{row.port_name}</dd>
+                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.port')}</dt>
+                  <dd className="break-words font-mono text-[var(--color-fg)]">{row.port_name}</dd>
                 </div>
               ) : null}
               {row.computer_hostname || row.computer_id ? (
                 <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-slate-500">{t('printerDetail.linkedComputer')}</dt>
-                  <dd className="text-slate-900">
+                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.linkedComputer')}</dt>
+                  <dd className="text-[var(--color-fg)]">
                     {row.computer_id ? (
                       <Link className="text-blue-700 underline" to="/computers">
                         {row.computer_hostname || `ID ${row.computer_id}`}
@@ -334,7 +334,7 @@ export function PrinterDetailModal({
               ) : null}
               {row.snmp_error ? (
                 <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-slate-500">{t('printerDetail.snmpError')}</dt>
+                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.snmpError')}</dt>
                   <dd className="break-words rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">
                     {row.snmp_error}
                   </dd>
@@ -343,8 +343,8 @@ export function PrinterDetailModal({
             </dl>
 
             {canEdit ? (
-              <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              <div className="mt-5 space-y-3 border-t border-[var(--color-border)] pt-4">
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('printerDetail.edit')}
                 </h3>
                 <label className="block text-sm">
@@ -385,26 +385,26 @@ export function PrinterDetailModal({
                 </div>
               </div>
             ) : row.notes ? (
-              <div className="mt-5 border-t border-slate-100 pt-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">{t('printerDetail.notes')}</h3>
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-800">{row.notes}</p>
+              <div className="mt-5 border-t border-[var(--color-border)] pt-4">
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('printerDetail.notes')}</h3>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--color-fg)]">{row.notes}</p>
               </div>
             ) : null}
           </section>
 
           <section className="flex min-w-0 flex-col">
-            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
               {t('printerDetail.supplies')}
             </h3>
             {(row.supplies?.length ?? 0) === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">
+              <p className="mt-3 text-sm text-[var(--color-fg-muted)]">
                 {t('printerDetail.noSupplies')}
               </p>
             ) : (
               <div className="mt-3 space-y-4">
                 {supplies.toners.length > 0 ? (
                   <div>
-                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
                       {t('printerDetail.toner')}
                     </div>
                     <div className="grid gap-2 sm:grid-cols-1">
@@ -416,7 +416,7 @@ export function PrinterDetailModal({
                 ) : null}
                 {supplies.service.length > 0 ? (
                   <div>
-                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
                       {t('printerDetail.service')}
                     </div>
                     <div className="grid gap-2">
@@ -429,8 +429,8 @@ export function PrinterDetailModal({
               </div>
             )}
 
-            <div className="mt-6 rounded-xl border border-slate-200/90 bg-slate-50/80 px-4 py-3 text-xs text-slate-600">
-              <div className="font-semibold text-slate-800">{t('printerDetail.technical')}</div>
+            <div className="mt-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 text-xs text-[var(--color-fg-muted)]">
+              <div className="font-semibold text-[var(--color-fg)]">{t('printerDetail.technical')}</div>
               <div className="mt-1 grid gap-1 font-mono">
                 <div>id: {row.id}</div>
                 <div>{t('printerDetail.created', { date: fmtWhen(row.created_at, locale) })}</div>

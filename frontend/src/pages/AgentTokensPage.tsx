@@ -3,6 +3,8 @@ import { Navigate } from 'react-router-dom'
 import { api, type AgentTokenCreated, type AgentTokenRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
+import { TableSkeleton } from '../components/Skeleton'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -64,27 +66,21 @@ export function AgentTokensPage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconKey className="h-7 w-7 text-blue-600" />
-        </div>
-        <div>
-          <h1 className="page-title">{t('titles.agentTokens')}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            {t('pages.agentTokensSubtitle')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconKey className="h-7 w-7" />}
+        title={t('titles.agentTokens')}
+        subtitle={t('pages.agentTokensSubtitle')}
+      />
 
       {createdOnce ? (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-neutral-900">
+        <div className="app-alert app-alert-warning mb-6 text-sm">
           <div className="font-medium">{t('agentTokens.saveNowTitle')}</div>
-          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-white p-3 font-mono text-xs text-slate-800">
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-[var(--color-surface)] p-3 font-mono text-xs text-[var(--color-fg)]">
             {createdOnce.token}
           </pre>
           <button
             type="button"
-            className="mt-2 text-sm font-medium text-blue-700 underline"
+            className="mt-2 text-sm font-medium text-[var(--color-primary)] underline"
             onClick={() => void navigator.clipboard.writeText(createdOnce.token)}
           >
             {t('agentTokens.copyToken')}
@@ -93,7 +89,7 @@ export function AgentTokensPage() {
       ) : null}
 
       <form onSubmit={onCreate} className="app-card mb-10 max-w-xl space-y-4 p-6 sm:p-7">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
           {t('agentTokens.newTokenTitle')}
         </h2>
         <div className="mt-4 space-y-3">
@@ -124,9 +120,11 @@ export function AgentTokensPage() {
         </div>
       </form>
 
-      <h2 className="mb-3 text-sm font-semibold text-slate-900">{t('agentTokens.allTokensTitle')}</h2>
+      <h2 className="mb-3 text-sm font-semibold text-[var(--color-fg)]">{t('agentTokens.allTokensTitle')}</h2>
       {loading ? (
-        <p className="text-sm text-slate-500">{t('common.loading')}</p>
+        <div className="app-card overflow-hidden p-0">
+          <TableSkeleton rows={6} cols={5} />
+        </div>
       ) : (
         <div className="app-card overflow-hidden p-0">
           <div className="overflow-x-auto overscroll-x-contain">
@@ -144,20 +142,20 @@ export function AgentTokensPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="app-table-row border-b border-neutral-100 last:border-0">
+                <tr key={r.id} className="app-table-row border-b border-[var(--color-border)] last:border-0">
                   <td className="px-4 py-3 font-mono text-xs">{r.id}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{r.public_id_prefix}</td>
-                  <td className="px-4 py-3 text-slate-700">{r.label ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-700">{r.allowed_hostname ?? t('agentTokens.anyHostname')}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                  <td className="px-4 py-3 font-mono text-xs text-[var(--color-fg-muted)]">{r.public_id_prefix}</td>
+                  <td className="px-4 py-3 text-[var(--color-fg)]">{r.label ?? '—'}</td>
+                  <td className="px-4 py-3 text-[var(--color-fg)]">{r.allowed_hostname ?? t('agentTokens.anyHostname')}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-[var(--color-fg-muted)]">
                     {new Date(r.created_at).toLocaleString()}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                  <td className="px-4 py-3 whitespace-nowrap text-[var(--color-fg-muted)]">
                     {r.last_used_at ? new Date(r.last_used_at).toLocaleString() : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     {r.revoked_at ? (
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-[var(--color-fg-subtle)]">
                         {t('agentTokens.revokedOn', {
                           date: new Date(r.revoked_at).toLocaleDateString(),
                         })}
@@ -176,7 +174,7 @@ export function AgentTokensPage() {
               ))}
             </tbody>
           </table>
-          {rows.length === 0 ? <p className="p-4 text-sm text-slate-500">{t('agentTokens.emptyState')}</p> : null}
+          {rows.length === 0 ? <p className="p-4 text-sm text-[var(--color-fg-muted)]">{t('agentTokens.emptyState')}</p> : null}
           </div>
         </div>
       )}

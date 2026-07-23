@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom'
 import { api, type User, type WolConfig } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconPcs } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -68,37 +69,31 @@ export function SettingsWolPage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconPcs className="h-7 w-7 text-blue-600" />
-        </div>
-        <div>
-          <h1 className="page-title">{t('titles.wol')}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('pages.wolSubtitle')}</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconPcs className="h-7 w-7" />}
+        title={t('titles.wol')}
+        subtitle={t('pages.wolSubtitle')}
+      />
 
       {loading || !cfg ? (
-        <p className="text-sm text-slate-500">{t('common.loading')}</p>
+        <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
       ) : (
         <div className="space-y-6">
           {cfg.force_disabled ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              {t('settingsWol.forceOff')}
-            </div>
+            <div className="app-alert app-alert-warning text-sm">{t('settingsWol.forceOff')}</div>
           ) : null}
 
           <section className="app-card p-4 sm:p-5">
-            <h2 className="text-sm font-semibold text-slate-900">{t('settingsWol.operators')}</h2>
-            <p className="mt-1 text-xs text-slate-500">{t('settingsWol.operatorsHint')}</p>
-            <div className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-xl border border-slate-200/80 bg-white p-2">
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsWol.operators')}</h2>
+            <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('settingsWol.operatorsHint')}</p>
+            <div className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
               {users.length === 0 ? (
-                <p className="px-2 py-3 text-sm text-slate-500">{t('settingsWol.noUsers')}</p>
+                <p className="px-2 py-3 text-sm text-[var(--color-fg-muted)]">{t('settingsWol.noUsers')}</p>
               ) : (
                 users.map((u) => (
                   <label
                     key={u.id}
-                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-[var(--color-surface-muted)]"
                   >
                     <input
                       type="checkbox"
@@ -107,17 +102,17 @@ export function SettingsWolPage() {
                       disabled={saving || u.is_superuser}
                       onChange={(e) => toggleUser(u.id, e.target.checked)}
                     />
-                    <span className="min-w-0 flex-1 truncate text-slate-800">
+                    <span className="min-w-0 flex-1 truncate text-[var(--color-fg)]">
                       {u.full_name || u.username}
                       {u.is_superuser ? (
-                        <span className="ml-2 text-xs text-slate-400">{t('settingsWol.adminAlways')}</span>
+                        <span className="ml-2 text-xs text-[var(--color-fg-subtle)]">{t('settingsWol.adminAlways')}</span>
                       ) : null}
                     </span>
                   </label>
                 ))
               )}
             </div>
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-[var(--color-fg-muted)]">
               <Link to="/users" className="text-blue-700 underline-offset-2 hover:underline">
                 {t('settingsWol.manageUsers')}
               </Link>
@@ -125,7 +120,7 @@ export function SettingsWolPage() {
           </section>
 
           <section className="app-card p-4 sm:p-5">
-            <label className="block text-sm text-slate-700">
+            <label className="block text-sm text-[var(--color-fg)]">
               {t('settingsWol.cooldown')}
               <input
                 type="number"
@@ -144,7 +139,7 @@ export function SettingsWolPage() {
                 }}
               />
             </label>
-            <p className="mt-1 text-xs text-slate-500">{t('settingsWol.cooldownHint')}</p>
+            <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('settingsWol.cooldownHint')}</p>
           </section>
         </div>
       )}

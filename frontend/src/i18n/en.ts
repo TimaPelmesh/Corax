@@ -166,22 +166,39 @@ export const en: MessageTree = {
     status: 'Status',
     flag: 'Enabled in config',
     process: 'This process',
+    mode: 'Mode',
+    modeHttp: 'HTTP (LAN)',
+    modeLocalCa: 'HTTPS + CORAX Local CA',
+    modeEnterprise: 'HTTPS + enterprise CA (AD)',
+    modeHttpHint:
+      'Panel and agents use http://. Simple closed-LAN setup — similar to GLPI without TLS.',
+    modeLocalCaHint:
+      'CORAX-issued CA. Install ca.crt into Trusted Root on admin PCs and agents (GPO / install-corax-ca.bat as Administrator for Local Machine). Agent ZIP must stamp https://.',
+    modeEnterpriseHint:
+      'Import the server .crt/.pem and key issued by your corporate CA. Domain root is already trusted via AD/GPO — no CORAX CA needed. Agents: https://.',
+    applyMode: 'Apply mode',
+    modeApplied: 'Mode saved — restart CORAX if prompted',
     on: 'Yes',
     off: 'No',
     listeningHttps: 'Serving HTTPS',
-    listeningHttp: 'Serving HTTP (restart required after enable)',
+    listeningHttp: 'Serving HTTP',
     validUntil: 'Certificate valid until',
     fingerprint: 'SHA-256 fingerprint',
+    agentScheme: 'Agent URL scheme',
     restartRequired:
-      'HTTPS is enabled in config. Restart CORAX (stop and start the server), then open https://…',
+      'Config and process disagree. Restart CORAX (docker compose restart app / npm run docker:restart), or agents and browsers will hit the wrong scheme.',
+    restartBannerHttp:
+      'Process still serves HTTPS. After restart it will be HTTP — rebuild agent ZIPs with http://.',
+    restartBannerHttps:
+      'HTTPS is enabled in config but the process still serves HTTP. After restart use https:// and ensure agents trust the CA.',
     devBlocked:
       'Running in development (npm start / Vite). Enabling HTTPS on the API breaks login via http://localhost:3000. You can still create a cert and download the CA; turn TLS on with npm run start:prod or CORAX_TLS_FORCE=1.',
-    openUrl: 'Open https://{host}:{port} from a PC where the CA is installed.',
+    openUrl: 'Open https://{host}:{port} from a PC that trusts the CA (or your enterprise root).',
     enable: 'Enable HTTPS',
-    disable: 'Disable HTTPS',
+    disable: 'Disable → HTTP',
     enabled: 'HTTPS will be active after restart',
     disabled: 'HTTPS disabled — HTTP after restart',
-    create: 'Certificate',
+    create: 'CORAX Local CA',
     createHint:
       'Enter the LAN IP or hostname you type in the browser. localhost and 127.0.0.1 are added automatically.',
     hostnames: 'IPs / names (one per line)',
@@ -189,14 +206,22 @@ export const en: MessageTree = {
     days: 'Validity (days, min 1)',
     generate: 'Create certificate',
     reissue: 'Reissue server certificate',
-    rotateCa: 'New CA (reinstall on admin PCs)',
+    rotateCa: 'New CA (reinstall on PCs)',
     generated: 'Certificate created',
     needHosts: 'Enter at least one IP or hostname',
-    trustTitle: 'Trust on admin PCs',
+    importTitle: 'Import enterprise certificate',
+    importHint:
+      'PEM leaf (+ chain) and unencrypted private key. After import, apply “HTTPS + enterprise CA” and restart.',
+    certPem: 'Certificate (PEM)',
+    keyPem: 'Private key (PEM)',
+    importBtn: 'Import',
+    imported: 'Certificate imported',
+    needImport: 'Paste certificate and key PEM',
+    trustTitle: 'Trust (Local CA)',
     trustStep1:
       'Download the CA only (button below) — corax-local-ca.crt. Not the server “localhost” cert from the browser viewer.',
     trustStep2:
-      'Install the CA: double-click → Install Certificate → Current User → Place all certificates in the following store → Trusted Root Certification Authorities. Or run scripts\\install-corax-ca.bat.',
+      'Admin PCs: Current User → Trusted Root. Agents / GPO: Local Machine → Trusted Root (scripts\\install-corax-ca.bat as Administrator with /machine).',
     trustStep3:
       'Fully quit Chrome/Edge, then open https://IP:port again. The chain must show a trusted CORAX Local CA.',
     trustFirefox:
@@ -204,11 +229,11 @@ export const en: MessageTree = {
     trustYandex:
       'Yandex Browser: usually uses the Windows store like Chrome. If it still says Not secure — fully quit the browser, or import the same corax-local-ca.crt. Use https://, not http://.',
     trustReality:
-      'A local CA will never look like a public bank cert in every browser automatically. For a few admin PCs: Chrome/Edge + one-time CA import in Firefox/Yandex is enough.',
+      'A local CA will never look like a public bank cert in every browser automatically. For a few admin PCs: Chrome/Edge + one-time CA import in Firefox/Yandex is enough. For the agent fleet — GPO to Local Machine.',
     downloadCa: 'Download CA (.crt)',
     caDownloaded: 'CA file downloaded',
     agentsNote:
-      'Inventory agents can keep using HTTP if that is easier. HTTPS here is for the admin panel.',
+      'One port = one scheme. With HTTPS, agents must use https://… and trust the CA (enterprise or CORAX Local). An old ZIP stamped with http:// stops sending inventory after TLS is enabled — rebuild the package on the Agent bundle page.',
     apiMissingHint:
       'HTTPS API is not loaded in this process (Windows has no auto-reload). Stop start_all.bat (Ctrl+C) and start it again.',
   },
@@ -322,6 +347,43 @@ export const en: MessageTree = {
       },
       physicalDisks: {
         sub: 'physical disks',
+      },
+      requestsTotal: {
+        label: 'Tickets',
+        sub: 'total in the system',
+      },
+      requestsActive: {
+        label: 'Active',
+        sub: 'open and in progress',
+      },
+      requestsOverdue: {
+        label: 'Overdue',
+        sub: 'past planned close',
+      },
+      requestsAvgClose: {
+        label: 'Avg. close time',
+        sub: 'arithmetic mean · done only',
+        empty: 'none closed',
+        minutes: '{m} min',
+        hours: '{h} h',
+        days: '{d} d',
+      },
+      requestsDone: {
+        label: 'Done',
+        sub: 'status done',
+      },
+    },
+    tickets: {
+      title: 'Service requests',
+      description: 'Status overview.',
+      byStatus: 'Tickets by status',
+      byStatusEmpty: 'No tickets yet',
+      openList: 'Open tickets →',
+      status: {
+        open: 'Open',
+        in_progress: 'In progress',
+        done: 'Done',
+        cancelled: 'Cancelled',
       },
     },
     overview: {
@@ -1533,6 +1595,9 @@ export const en: MessageTree = {
       'Native C++ agent: downloads a single CORAX-Agent.exe (config and token already stamped). Auto-detects Win7/10/11. Double-click for splash + upload. Task Scheduler: CORAX-Agent.exe --silent. Use the server LAN IP (not localhost), or other PCs cannot reach CORAX.',
     parametersTitle: 'Parameters',
     serverIpLabel: 'CORAX server IP address',
+    schemeLabel: 'Scheme',
+    schemeHint:
+      'Must match the server HTTPS mode. With TLS on :3000 use https and trust the CA on agent PCs (GPO).',
     chooseInterface: 'Choose an interface…',
     detectingLanIp: 'Detecting LAN IP…',
     detectingLanIpHint: 'Detecting this machine local IP…',

@@ -1,4 +1,4 @@
-"""HTTPS / local CA settings (superuser only)."""
+"""HTTPS / local CA / enterprise cert settings (superuser only)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/settings/tls", tags=["tls"])
 class TlsStatusOut(BaseModel):
     enabled: bool
     active: bool
+    mode: str = "http"
     files_ready: bool
     ca_ready: bool
     hostnames: list[str] = []
@@ -25,6 +26,7 @@ class TlsStatusOut(BaseModel):
     restart_required: bool = False
     dev_blocked: bool = False
     tls_dir: str = ""
+    agent_scheme: str = "http"
 
 
 class TlsGenerateIn(BaseModel):
@@ -35,6 +37,15 @@ class TlsGenerateIn(BaseModel):
 
 class TlsEnableIn(BaseModel):
     enabled: bool
+
+
+class TlsModeIn(BaseModel):
+    mode: str = Field(description="http | local_ca | enterprise")
+
+
+class TlsImportIn(BaseModel):
+    cert_pem: str = Field(min_length=32, max_length=256_000)
+    key_pem: str = Field(min_length=32, max_length=256_000)
 
 
 @router.get("", response_model=TlsStatusOut)
@@ -50,6 +61,24 @@ async def generate_tls(body: TlsGenerateIn, _: User = Depends(get_current_superu
         raise HTTPException(status_code=400, detail=str(e)) from e
     except OSError as e:
         raise HTTPException(status_code=500, detail=f"Не удалось записать сертификаты: {e}") from e
+
+
+@router.post("/import", response_model=TlsStatusOut)
+async def import_tls(body: TlsImportIn, _: User = Depends(get_current_superuser)):
+    try:
+        return TlsStatusOut(**tls_certs.import_enterprise(body.cert_pem, body.key_pem))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Не удалось записать сертификаты: {e}") from e
+
+
+@router.post("/mode", response_model=TlsStatusOut)
+async def set_tls_mode(body: TlsModeIn, _: User = Depends(get_current_superuser)):
+    try:
+        return TlsStatusOut(**tls_certs.set_mode(body.mode))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/enable", response_model=TlsStatusOut)

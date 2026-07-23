@@ -31,7 +31,7 @@ const REQUEST_STATUSES = ['open', 'in_progress', 'done', 'cancelled'] as const
 const REQUEST_PRIORITIES = ['low', 'normal', 'high'] as const
 
 const CREATE_FORM_INPUT_CLS =
-  'w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[13px] text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)] transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-primary)_22%,transparent)]'
+  'w-full min-h-11 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2.5 text-[13px] text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)] transition focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-primary)_22%,transparent)] sm:min-h-0 sm:px-2 sm:py-1.5'
 const CREATE_FORM_LABEL_CLS =
   'mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]'
 const STATS_BASES = ['opened', 'last_change', 'closed'] as const
@@ -45,10 +45,10 @@ type StatsGroup = (typeof STATS_GROUPS)[number]
 type StatsChartMode = (typeof STATS_CHART_MODES)[number]
 
 const STATUS_PILL: Record<string, string> = {
-  open: 'bg-blue-50 text-slate-950 ring-1 ring-blue-200/90',
-  in_progress: 'bg-white text-neutral-950 ring-1 ring-neutral-200/90',
-  done: 'bg-neutral-50 text-neutral-950 ring-1 ring-neutral-200/90',
-  cancelled: 'bg-neutral-100 text-neutral-700 ring-1 ring-neutral-200/90',
+  open: 'bg-blue-50 text-[var(--color-fg)] ring-1 ring-blue-200/90',
+  in_progress: 'bg-[var(--color-surface)] text-[var(--color-fg)] ring-1 ring-neutral-200/90',
+  done: 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-1 ring-neutral-200/90',
+  cancelled: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-1 ring-neutral-200/90',
 }
 
 const RECENT_TITLE_KEY = 'service_request_recent_titles_v1'
@@ -79,7 +79,7 @@ function isStatsChartMode(value: string): value is StatsChartMode {
 }
 
 function sortArrow(active: boolean) {
-  return <span className={`ml-1 ${active ? 'text-slate-600' : 'text-slate-300'}`}>{active ? '↓' : '↕'}</span>
+  return <span className={`ml-1 ${active ? 'text-[var(--color-fg-muted)]' : 'text-slate-300'}`}>{active ? '↓' : '↕'}</span>
 }
 
 function getAppScrollContainer(): HTMLElement | null {
@@ -326,7 +326,7 @@ function CategoryPicker({
 
   return (
     <div ref={boxRef} className="relative">
-      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
         {label ?? t('requests.categoryPicker.label')}
       </label>
       <div className="relative">
@@ -357,12 +357,12 @@ function CategoryPicker({
               }
             }
           }}
-          className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
+          className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)] transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20"
         />
         {value.trim() ? (
           <button
             type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-[11px] font-semibold text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
             onClick={() => {
               onChange('')
               setQuery('')
@@ -376,13 +376,13 @@ function CategoryPicker({
       </div>
       {open ? (
         <ul
-          className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg"
           role="listbox"
         >
           <li>
             <button
               type="button"
-              className="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
+              className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
               onClick={() => {
                 onChange('')
                 setQuery('')
@@ -399,7 +399,7 @@ function CategoryPicker({
                 <button
                   type="button"
                   className={`flex w-full items-center gap-1 py-2 text-left text-sm ${
-                    active ? 'bg-blue-50/70 text-slate-950' : 'text-slate-800 hover:bg-zinc-50/80'
+                    active ? 'bg-blue-50/70 text-[var(--color-fg)]' : 'text-[var(--color-fg)] hover:bg-zinc-50/80'
                   }`}
                   style={{ paddingLeft: `${12 + depth * 14}px`, paddingRight: '12px' }}
                   onClick={() => {
@@ -415,7 +415,7 @@ function CategoryPicker({
                   <span className="min-w-0 truncate">
                     <span className={depth === 0 ? 'font-semibold' : ''}>{node.name}</span>
                     {depth > 0 ? (
-                      <span className="ml-1 text-xs text-slate-400">({node.path})</span>
+                      <span className="ml-1 text-xs text-[var(--color-fg-subtle)]">({node.path})</span>
                     ) : null}
                   </span>
                 </button>
@@ -423,7 +423,7 @@ function CategoryPicker({
             )
           })}
           {flatFiltered.length === 0 && allPaths.length > 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">{t('requests.categoryPicker.nothingFound')}</li>
+            <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">{t('requests.categoryPicker.nothingFound')}</li>
           ) : null}
         </ul>
       ) : null}
@@ -533,7 +533,7 @@ function DonutDistribution({
 
   if (!normalizedItems.length || total <= 0) {
     return (
-      <p className="rounded-xl border border-dashed border-neutral-200/90 bg-neutral-50/60 px-4 py-8 text-center text-sm text-neutral-500">
+      <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-8 text-center text-sm text-[var(--color-fg-muted)]">
         {emptyText ?? t('requests.charts.noData')}
       </p>
     )
@@ -580,10 +580,10 @@ function DonutDistribution({
         </svg>
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-3 text-center" aria-live="polite">
           <div className={`flex w-full max-w-[7.5rem] flex-col items-center justify-center gap-0.5 ${compact ? 'min-h-[4.5rem]' : 'min-h-[5.25rem]'}`}>
-            <span className={`admin-stat-value leading-none tracking-tight text-neutral-950 ${compact ? 'text-[1.35rem]' : 'text-[1.65rem]'}`}>
+            <span className={`admin-stat-value leading-none tracking-tight text-[var(--color-fg)] ${compact ? 'text-[1.35rem]' : 'text-[1.65rem]'}`}>
               {total}
             </span>
-            <span className="text-[11px] font-medium text-neutral-500">{t('requests.charts.total')}</span>
+            <span className="text-[11px] font-medium text-[var(--color-fg-muted)]">{t('requests.charts.total')}</span>
           </div>
         </div>
       </div>
@@ -595,15 +595,15 @@ function DonutDistribution({
             <li
               key={row.name}
               className={`flex cursor-default items-center gap-3 rounded-lg px-1 py-1.5 text-sm transition-colors ${
-                hovered === i ? 'bg-neutral-50 ring-1 ring-neutral-200/70' : 'hover:bg-neutral-50'
+                hovered === i ? 'bg-[var(--color-surface-muted)] ring-1 ring-neutral-200/70' : 'hover:bg-[var(--color-surface-muted)]'
               }`}
               style={{ opacity: rowDim ? 0.55 : 1 }}
               onMouseEnter={() => setHovered(i)}
             >
               <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-sm shadow-sm ring-1 ring-neutral-200/60" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-              <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug text-neutral-700">{row.name}</span>
-              <span className="shrink-0 font-mono text-sm font-semibold text-neutral-900">{row.count}</span>
-              <span className="shrink-0 text-xs tabular-nums text-neutral-400">({pct}%)</span>
+              <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug text-[var(--color-fg-muted)]">{row.name}</span>
+              <span className="shrink-0 font-mono text-sm font-semibold text-[var(--color-fg)]">{row.count}</span>
+              <span className="shrink-0 text-xs tabular-nums text-[var(--color-fg-subtle)]">({pct}%)</span>
             </li>
           )
         })}
@@ -624,24 +624,24 @@ function HorizontalBars({
   const t = useT()
   if (!items.length || total <= 0) {
     return (
-      <div className="rounded-xl border border-dashed border-neutral-200/90 bg-neutral-50/60 px-4 py-6 text-center text-sm text-neutral-500">
+      <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-6 text-center text-sm text-[var(--color-fg-muted)]">
         {t('requests.charts.noData')}
       </div>
     )
   }
   return (
     <div>
-      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">{title}</div>
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{title}</div>
       <div className="space-y-2">
         {items.map((item, i) => {
           const pct = Math.max(2, Math.round((item.count / total) * 100))
           return (
             <div key={`${item.name}-${i}`} className="space-y-1">
               <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="min-w-0 truncate font-medium text-slate-700">{item.name}</span>
-                <span className="shrink-0 font-mono text-slate-900">{item.count}</span>
+                <span className="min-w-0 truncate font-medium text-[var(--color-fg)]">{item.name}</span>
+                <span className="shrink-0 font-mono text-[var(--color-fg)]">{item.count}</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface-muted)]">
                 <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-zinc-700" style={{ width: `${pct}%` }} />
               </div>
             </div>
@@ -677,11 +677,11 @@ function MiniStatCard({
   const ring =
     variant === 'danger' ? 'ring-blue-200/80' : 'ring-neutral-200/90'
   const iconBg =
-    variant === 'danger' ? 'bg-blue-50 text-slate-950' : 'bg-neutral-100 text-neutral-700'
+    variant === 'danger' ? 'bg-blue-50 text-[var(--color-fg)]' : 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]'
 
   return (
     <div
-      className={`rounded-xl border border-neutral-200/90 bg-white shadow-sm ring-1 ${ring} ${compact ? 'p-3' : 'p-4'}`}
+      className={`rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm ring-1 ${ring} ${compact ? 'p-3' : 'p-4'}`}
     >
       <div className={`flex items-start ${compact ? 'gap-2.5' : 'gap-3'}`}>
         <div
@@ -690,13 +690,13 @@ function MiniStatCard({
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-500">{label}</div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{label}</div>
           <div
-            className={`mt-0.5 font-[family-name:var(--font-display)] font-semibold tabular-nums tracking-tight text-neutral-950 ${compact ? 'text-xl' : 'text-2xl'}`}
+            className={`mt-0.5 font-[family-name:var(--font-display)] font-semibold tabular-nums tracking-tight text-[var(--color-fg)] ${compact ? 'text-xl' : 'text-2xl'}`}
           >
             {value}
           </div>
-          {sub ? <div className="mt-1 text-[11px] font-medium text-neutral-500">{sub}</div> : null}
+          {sub ? <div className="mt-1 text-[11px] font-medium text-[var(--color-fg-muted)]">{sub}</div> : null}
         </div>
       </div>
     </div>
@@ -746,7 +746,7 @@ function ComputerPicker({
     <div ref={boxRef} className={className ?? 'relative'}>
       <label
         className={
-          labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500'
+          labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]'
         }
       >
         {t('requests.computerPicker.label')}
@@ -771,13 +771,13 @@ function ComputerPicker({
           }}
           className={
             inputClassName ??
-            'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400'
+            'w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)]'
           }
         />
         {selected && (
           <button
             type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 text-xs text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
             onClick={() => {
               onChange('')
               setQuery('')
@@ -790,13 +790,13 @@ function ComputerPicker({
       </div>
       {open && (
         <ul
-          className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          className="absolute z-20 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg"
           role="listbox"
         >
           <li>
             <button
               type="button"
-              className="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
+              className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
               onClick={() => {
                 onChange('')
                 setQuery('')
@@ -810,7 +810,7 @@ function ComputerPicker({
             <li key={c.id}>
               <button
                 type="button"
-                className="w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-zinc-50/80"
+                className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg)] hover:bg-zinc-50/80"
                 onClick={() => {
                   onChange(String(c.id))
                   setQuery(c.hostname)
@@ -822,7 +822,7 @@ function ComputerPicker({
             </li>
           ))}
           {filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">{t('requests.computerPicker.nothingFound')}</li>
+            <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">{t('requests.computerPicker.nothingFound')}</li>
           ) : null}
         </ul>
       )}
@@ -891,7 +891,7 @@ function DirectoryRequesterPicker({
 
   return (
     <label className="block">
-      <span className={labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500'}>
+      <span className={labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]'}>
         {label}
       </span>
       <div className="relative">
@@ -939,18 +939,18 @@ function DirectoryRequesterPicker({
           autoComplete="off"
           className={
             inputClassName ??
-            'w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
+            'w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)] transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
           }
         />
         {open ? (
           <ul
-            className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+            className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg"
             role="listbox"
           >
             <li>
               <button
                 type="button"
-                className="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
+                className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   onChange('')
@@ -965,7 +965,7 @@ function DirectoryRequesterPicker({
               <li key={u.id}>
                 <button
                   type="button"
-                  className="w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-zinc-50/80"
+                  className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg)] hover:bg-zinc-50/80"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     const lab = userDirectoryLabel(u)
@@ -979,12 +979,12 @@ function DirectoryRequesterPicker({
               </li>
             ))}
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-slate-400">{t('requests.requesterPicker.noMatches')}</li>
+              <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">{t('requests.requesterPicker.noMatches')}</li>
             ) : null}
           </ul>
         ) : null}
       </div>
-      {hint != null && hint !== '' ? <p className="mt-1 text-[10px] text-slate-500">{hint}</p> : null}
+      {hint != null && hint !== '' ? <p className="mt-1 text-[10px] text-[var(--color-fg-muted)]">{hint}</p> : null}
     </label>
   )
 }
@@ -1041,13 +1041,13 @@ function DirectoryAssigneesPicker({
 
   const inputCls =
     inputClassName ??
-    'w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
+    'w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)] transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20'
 
   return (
     <div className={className ?? 'mb-3'}>
       <span
         className={
-          labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500'
+          labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]'
         }
       >
         {label ?? t('requests.assigneesPicker.label')}
@@ -1057,12 +1057,12 @@ function DirectoryAssigneesPicker({
           {selectedUsers.map((u) => (
             <span
               key={u.id}
-              className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800 ring-1 ring-slate-200/80"
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--color-surface-muted)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-fg)] ring-1 ring-slate-200/80"
             >
               <span className="truncate">{userDirectoryLabel(u)}</span>
               <button
                 type="button"
-                className="shrink-0 rounded-full px-1 leading-none text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                className="shrink-0 rounded-full px-1 leading-none text-[var(--color-fg-muted)] hover:bg-slate-200 hover:text-[var(--color-fg)]"
                 onClick={() => toggle(u.id)}
                 aria-label={t('requests.assigneesPicker.remove', { name: userDirectoryLabel(u) })}
               >
@@ -1087,14 +1087,14 @@ function DirectoryAssigneesPicker({
         />
         {open ? (
           <ul
-            className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+            className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg"
             role="listbox"
           >
             {selectedIds.length > 0 ? (
               <li>
                 <button
                   type="button"
-                  className="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50"
+                  className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     onChange([])
@@ -1111,7 +1111,7 @@ function DirectoryAssigneesPicker({
                 <li key={u.id}>
                   <button
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-zinc-50/80 ${sel ? 'bg-blue-50/40 font-semibold text-slate-950' : 'text-slate-800'}`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-zinc-50/80 ${sel ? 'bg-blue-50/40 font-semibold text-[var(--color-fg)]' : 'text-[var(--color-fg)]'}`}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => toggle(u.id)}
                   >
@@ -1122,14 +1122,14 @@ function DirectoryAssigneesPicker({
               )
             })}
             {users.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-slate-400">{t('requests.assigneesPicker.noUsers')}</li>
+              <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">{t('requests.assigneesPicker.noUsers')}</li>
             ) : filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm text-slate-400">{t('requests.assigneesPicker.noMatches')}</li>
+              <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">{t('requests.assigneesPicker.noMatches')}</li>
             ) : null}
           </ul>
         ) : null}
       </div>
-      {hint != null && hint !== '' ? <p className="mt-1 text-[10px] text-slate-500">{hint}</p> : null}
+      {hint != null && hint !== '' ? <p className="mt-1 text-[10px] text-[var(--color-fg-muted)]">{hint}</p> : null}
     </div>
   )
 }
@@ -1262,8 +1262,8 @@ export function ServiceRequestsPage() {
       // If only one key is provided (e.g. *_desc), show "↓" when active, otherwise "↕".
       if (!desc) return sortArrow(sortKey === asc)
       // If asc/desc pair is provided, show ↑ or ↓ depending on active key, otherwise ↕.
-      if (sortKey === asc) return <span className="ml-1 text-slate-600">↑</span>
-      if (sortKey === desc) return <span className="ml-1 text-slate-600">↓</span>
+      if (sortKey === asc) return <span className="ml-1 text-[var(--color-fg-muted)]">↑</span>
+      if (sortKey === desc) return <span className="ml-1 text-[var(--color-fg-muted)]">↓</span>
       return <span className="ml-1 text-slate-300">↕</span>
     },
     [sortKey],
@@ -1413,6 +1413,7 @@ export function ServiceRequestsPage() {
     const completionRate = total > 0 ? Math.round((done / total) * 100) : 0
     const overdueRate = total > 0 ? Math.round((overdue / total) * 100) : 0
     const closedDurations = statsRows
+      .filter((r) => r.status === 'done')
       .map((r) => {
         const opened = parseIsoToDate(r.opened_at ?? r.created_at)
         const closed = parseIsoToDate(r.closed_at ?? '')
@@ -2161,7 +2162,7 @@ export function ServiceRequestsPage() {
           {tab === 'create' ? (
             <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 py-2 sm:flex-row sm:items-start sm:gap-6 sm:py-4">
               {!summaryLoading && summary ? (
-                <aside className="flex w-full shrink-0 flex-row gap-2 sm:w-44 sm:flex-col sm:gap-2.5 lg:w-48">
+                <aside className="grid w-full shrink-0 grid-cols-2 gap-2 sm:flex sm:w-44 sm:flex-col sm:gap-2.5 lg:w-48">
                   <MiniStatCard
                     label={t('requests.create.total')}
                     value={summary.service_requests_total}
@@ -2200,7 +2201,7 @@ export function ServiceRequestsPage() {
                 <div className="space-y-2.5 p-4 sm:p-5">
               {editingRequestId == null ? (
               <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                   {t('requests.create.template')}
                 </span>
                 <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
@@ -2215,7 +2216,7 @@ export function ServiceRequestsPage() {
                       if (tpl) applyTemplateToForm(tpl)
                       setCreateTemplateSelect('')
                     }}
-                    className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[13px] font-medium text-slate-900 shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60"
+                    className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-[13px] font-medium text-[var(--color-fg)] shadow-sm transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-60"
                   >
                     <option value="">{t('requests.create.chooseTemplate')}</option>
                     {tplRows.map((tpl) => (
@@ -2225,7 +2226,7 @@ export function ServiceRequestsPage() {
                     ))}
                   </select>
                   {tplLoading ? (
-                    <span className="text-xs text-slate-500">{t('requests.create.loadingTemplates')}</span>
+                    <span className="text-xs text-[var(--color-fg-muted)]">{t('requests.create.loadingTemplates')}</span>
                   ) : tplRows.length === 0 ? (
                     <button
                       type="button"
@@ -2238,7 +2239,7 @@ export function ServiceRequestsPage() {
                     <button
                       type="button"
                       onClick={() => navigate('/requests/templates')}
-                      className="whitespace-nowrap text-left text-xs font-medium text-slate-600 hover:text-slate-900 hover:underline"
+                      className="whitespace-nowrap text-left text-xs font-medium text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:underline"
                     >
                       {t('requests.create.manageTemplates')}
                     </button>
@@ -2248,7 +2249,7 @@ export function ServiceRequestsPage() {
               ) : null}
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                   {t('requests.create.title')}
                 </span>
                 {recentTitles.length > 0 ? (
@@ -2256,11 +2257,11 @@ export function ServiceRequestsPage() {
                     {recentTitles.map((rt) => (
                       <span
                         key={rt}
-                        className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-slate-200/90 bg-slate-50/90 pl-2.5 shadow-sm ring-1 ring-slate-200/40"
+                        className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] pl-2.5 shadow-sm ring-1 ring-slate-200/40"
                       >
                         <button
                           type="button"
-                          className="max-w-[min(14rem,85vw)] truncate py-1 text-left text-xs font-medium text-slate-700 transition hover:text-neutral-800"
+                          className="max-w-[min(14rem,85vw)] truncate py-1 text-left text-xs font-medium text-[var(--color-fg)] transition hover:text-[var(--color-fg)]"
                           onClick={() => setTitle(rt)}
                           title={rt}
                         >
@@ -2268,7 +2269,7 @@ export function ServiceRequestsPage() {
                         </button>
                         <button
                           type="button"
-                          className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200/90 hover:text-slate-700"
+                          className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--color-fg-subtle)] transition hover:bg-slate-200/90 hover:text-[var(--color-fg)]"
                           aria-label={t('requests.create.removeRecent', { title: rt })}
                           onClick={() => {
                             removeRecentTitle(rt)
@@ -2303,7 +2304,7 @@ export function ServiceRequestsPage() {
               {!showDescription ? (
                 <button
                   type="button"
-                  className="text-xs font-medium text-blue-700 hover:text-neutral-800 hover:underline"
+                  className="text-xs font-medium text-blue-700 hover:text-[var(--color-fg)] hover:underline"
                   onClick={() => setShowDescription(true)}
                 >
                   {t('requests.create.addDescription')}
@@ -2395,7 +2396,7 @@ export function ServiceRequestsPage() {
                       <button
                         key={`plan-${p.minutes}`}
                         type="button"
-                        className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
+                        className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
                         title={t('requests.durations.fromOpenedTitle', {
                           label: durationPresetLabel(p.minutes),
                         })}
@@ -2409,7 +2410,7 @@ export function ServiceRequestsPage() {
                     ))}
                     <button
                       type="button"
-                      className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-zinc-50"
+                      className="rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-zinc-50"
                       onClick={() => setPlannedCloseLocal('')}
                       title={t('requests.durations.clearPlanned')}
                     >
@@ -2419,7 +2420,7 @@ export function ServiceRequestsPage() {
                 </label>
               </div>
 
-              <label className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-100 bg-slate-50/80 px-2 py-1.5">
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-1.5">
                 <input
                   type="checkbox"
                   className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
@@ -2435,7 +2436,7 @@ export function ServiceRequestsPage() {
                     }
                   }}
                 />
-                <span className="text-[11px] leading-snug text-slate-700">
+                <span className="text-[11px] leading-snug text-[var(--color-fg)]">
                   {t('requests.create.closedSameAsPlanned')}
                 </span>
               </label>
@@ -2458,7 +2459,7 @@ export function ServiceRequestsPage() {
                       <button
                         key={`close-${p.minutes}`}
                         type="button"
-                        className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
+                        className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
                         title={t('requests.durations.fromOpenedTitle', {
                           label: durationPresetLabel(p.minutes),
                         })}
@@ -2473,7 +2474,7 @@ export function ServiceRequestsPage() {
                     ))}
                     <button
                       type="button"
-                      className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-zinc-50"
+                      className="rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-zinc-50"
                       title={t('requests.durations.clearClosed')}
                       onClick={() => setClosedAtLocal('')}
                     >
@@ -2488,12 +2489,12 @@ export function ServiceRequestsPage() {
                   {createFormAssignees.map((u) => (
                     <span
                       key={u.id}
-                      className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-800 ring-1 ring-slate-200/80"
+                      className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-fg)] ring-1 ring-slate-200/80"
                     >
                       <span className="truncate">{userDirectoryLabel(u)}</span>
                       <button
                         type="button"
-                        className="shrink-0 rounded-full px-0.5 leading-none text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+                        className="shrink-0 rounded-full px-0.5 leading-none text-[var(--color-fg-muted)] hover:bg-slate-200 hover:text-[var(--color-fg)]"
                         onClick={() =>
                           setAssigneeIds((ids) => ids.filter((id) => id !== u.id))
                         }
@@ -2527,9 +2528,9 @@ export function ServiceRequestsPage() {
                 />
               </div>
 
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-3 py-3">
+              <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3">
                 <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.warehouseAction')}</span>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                <p className="mt-1 text-xs leading-relaxed text-[var(--color-fg-muted)]">
                   {t('requests.create.warehouseActionHint')}{' '}
                   <a href="/knowledge-base/warehouse" className="font-medium text-blue-700 underline decoration-blue-200">
                     {t('requests.create.warehouseLink')}
@@ -2559,7 +2560,7 @@ export function ServiceRequestsPage() {
                       type="button"
                       disabled={saving || editDeleting}
                       onClick={cancelEditing}
-                      className="w-full rounded-md border border-slate-200 bg-white py-2 text-[13px] font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+                      className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] py-2 text-[13px] font-semibold text-[var(--color-fg)] shadow-sm transition hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
                     >
                       {t('requests.create.cancel')}
                     </button>
@@ -2624,7 +2625,7 @@ export function ServiceRequestsPage() {
                   className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                     active
                       ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                      : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] ring-1 ring-slate-200 hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
                   }`}
                 >
                   {tab.label}
@@ -2634,7 +2635,7 @@ export function ServiceRequestsPage() {
             <button
               type="button"
               onClick={() => setDbShowAll((v) => !v)}
-              className="rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-900"
+              className="rounded-full bg-[var(--color-surface)] px-3.5 py-1.5 text-xs font-semibold text-[var(--color-fg-muted)] ring-1 ring-slate-200 transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
               title={dbShowAll ? t('requests.database.showLatest200Title') : t('requests.database.showAllTitle')}
             >
               {dbShowAll ? t('requests.database.showLatest200') : t('requests.database.showAll')}
@@ -2651,9 +2652,9 @@ export function ServiceRequestsPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('requests.database.searchPlaceholder')}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400"
+                className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)]"
               />
-              <div className="mt-1 text-[11px] font-medium text-slate-500">
+              <div className="mt-1 text-[11px] font-medium text-[var(--color-fg-muted)]">
                 {t('requests.database.searchHint')}
               </div>
             </div>
@@ -2662,7 +2663,7 @@ export function ServiceRequestsPage() {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm"
+                className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--color-fg)] shadow-sm"
                 aria-label={t('requests.database.categoryFilterAria')}
                 title={t('requests.database.categoryFilterTitle')}
               >
@@ -2678,7 +2679,7 @@ export function ServiceRequestsPage() {
                 <select
                   value={sortKey}
                   onChange={(e) => setSortKey(e.target.value as SortKey)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm"
+                  className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--color-fg)] shadow-sm"
                   aria-label={t('requests.database.sortAria')}
                 >
                   <option value="id_desc">{t('requests.database.sort.idDesc')}</option>
@@ -2691,7 +2692,7 @@ export function ServiceRequestsPage() {
                   type="button"
                   disabled={pdfBusy}
                   onClick={() => void downloadPdf()}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-neutral-900 shadow-sm transition hover:bg-neutral-50 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 text-xs font-semibold text-[var(--color-fg)] shadow-sm transition hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-blue-600" aria-hidden />
                   {pdfBusy ? 'PDF…' : 'PDF'}
@@ -2701,7 +2702,7 @@ export function ServiceRequestsPage() {
               <button
                 type="button"
                 onClick={() => setReportOpen(true)}
-                className="rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-neutral-800 shadow-sm transition hover:bg-neutral-50"
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 text-xs font-semibold text-[var(--color-fg)] shadow-sm transition hover:bg-[var(--color-surface-muted)]"
                 title={t('requests.database.reportTitle')}
               >
                 {t('requests.database.reportButton')}
@@ -2709,10 +2710,10 @@ export function ServiceRequestsPage() {
             </div>
           </div>
 
-          <h2 className="mb-3 text-sm font-semibold text-slate-800">
+          <h2 className="mb-3 text-sm font-semibold text-[var(--color-fg)]">
             {t('requests.database.list')}
             {!loading ? (
-              <span className="ml-2 font-normal text-slate-500">· {visibleRows.length}{visibleRows.length !== total ? ` из ${total}` : ''}</span>
+              <span className="ml-2 font-normal text-[var(--color-fg-muted)]">· {visibleRows.length}{visibleRows.length !== total ? ` из ${total}` : ''}</span>
             ) : null}
           </h2>
 
@@ -2727,11 +2728,11 @@ export function ServiceRequestsPage() {
                   if (e.target === e.currentTarget) setReportOpen(false)
                 }}
               >
-                <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-                  <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 bg-slate-50/70 px-4 py-3">
+                <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
+                  <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3">
                     <div>
-                      <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{t('requests.database.reportHeader')}</div>
-                      <div className="text-sm font-semibold text-slate-900">
+                      <div className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">{t('requests.database.reportHeader')}</div>
+                      <div className="text-sm font-semibold text-[var(--color-fg)]">
                         {t('requests.database.reportForCurrentList', {
                           visible: visibleRows.length,
                           suffix: visibleRows.length !== total ? ` / ${total}` : '',
@@ -2741,7 +2742,7 @@ export function ServiceRequestsPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
                         onClick={() => window.print()}
                         title={t('requests.database.printPdfTitle')}
                       >
@@ -2759,32 +2760,32 @@ export function ServiceRequestsPage() {
 
                   <div className="p-4 sm:p-5">
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.total')}</div>
-                        <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-slate-900">
+                      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.total')}</div>
+                        <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-fg)]">
                           {visibleRows.length}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{t('requests.database.totalSub')}</div>
+                        <div className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('requests.database.totalSub')}</div>
                       </div>
-                      <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.closed')}</div>
-                        <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-slate-900">
+                      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.closed')}</div>
+                        <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-fg)]">
                           {visibleRows.filter((r) => r.status === 'done').length}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{t('requests.database.closedSub')}</div>
+                        <div className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('requests.database.closedSub')}</div>
                       </div>
-                      <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.withDeadline')}</div>
-                        <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-slate-900">
+                      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.withDeadline')}</div>
+                        <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-fg)]">
                           {visibleRows.filter((r) => Boolean(r.planned_close_at)).length}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{t('requests.database.withDeadlineSub')}</div>
+                        <div className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('requests.database.withDeadlineSub')}</div>
                       </div>
                     </div>
 
                     <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.byStatus')}</div>
+                      <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.byStatus')}</div>
                         <div className="space-y-2">
                           {(() => {
                             const m = new Map<string, number>()
@@ -2796,12 +2797,12 @@ export function ServiceRequestsPage() {
                               return (
                                 <div key={x.k}>
                                   <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                                    <span className="font-medium text-slate-700">{requestStatusLabel(x.k)}</span>
-                                    <span className="font-mono text-xs font-semibold text-slate-800">
+                                    <span className="font-medium text-[var(--color-fg)]">{requestStatusLabel(x.k)}</span>
+                                    <span className="font-mono text-xs font-semibold text-[var(--color-fg)]">
                                       {x.v} ({pct}%)
                                     </span>
                                   </div>
-                                  <div className="h-2 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/60">
+                                  <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface-muted)] ring-1 ring-slate-200/60">
                                     <div
                                       className="h-full rounded-full bg-gradient-to-r from-neutral-800 to-blue-700"
                                       style={{ width: `${Math.max(3, Math.round((x.v / max) * 100))}%` }}
@@ -2814,8 +2815,8 @@ export function ServiceRequestsPage() {
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{t('requests.database.byPriority')}</div>
+                      <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
+                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.byPriority')}</div>
                         <div className="space-y-2">
                           {(() => {
                             const m = new Map<string, number>()
@@ -2827,12 +2828,12 @@ export function ServiceRequestsPage() {
                               return (
                                 <div key={x.k}>
                                   <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                                    <span className="font-medium text-slate-700">{requestPriorityLabel(x.k)}</span>
-                                    <span className="font-mono text-xs font-semibold text-slate-800">
+                                    <span className="font-medium text-[var(--color-fg)]">{requestPriorityLabel(x.k)}</span>
+                                    <span className="font-mono text-xs font-semibold text-[var(--color-fg)]">
                                       {x.v} ({pct}%)
                                     </span>
                                   </div>
-                                  <div className="h-2 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/60">
+                                  <div className="h-2 overflow-hidden rounded-full bg-[var(--color-surface-muted)] ring-1 ring-slate-200/60">
                                     <div
                                       className="h-full rounded-full bg-gradient-to-r from-slate-700 to-neutral-900"
                                       style={{ width: `${Math.max(3, Math.round((x.v / max) * 100))}%` }}
@@ -2846,7 +2847,7 @@ export function ServiceRequestsPage() {
                       </div>
                     </div>
 
-                    <p className="mt-3 text-xs text-slate-500">
+                    <p className="mt-3 text-xs text-[var(--color-fg-muted)]">
                       {t('requests.database.browserPrintNote')}
                     </p>
                   </div>
@@ -2855,11 +2856,11 @@ export function ServiceRequestsPage() {
             ) : null}
 
             {loading ? (
-              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
+              <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] py-14 text-center text-sm text-[var(--color-fg-muted)]">
                 {t('requests.database.loading')}
               </p>
             ) : visibleRows.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-14 text-center text-sm text-slate-500">
+              <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] py-14 text-center text-sm text-[var(--color-fg-muted)]">
                 {query.trim()
                   ? t('requests.database.noSearchResults')
                   : filterStatus
@@ -2867,31 +2868,31 @@ export function ServiceRequestsPage() {
                     : t('requests.database.empty')}
               </p>
             ) : (
-              <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/95 shadow-sm ring-1 ring-slate-200/25">
+              <div className="overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm ring-1 ring-slate-200/25">
                 <div className="overflow-x-auto">
-                  <table className="min-w-[980px] w-full border-collapse text-left text-sm">
-                    <thead className="sticky top-0 z-10 bg-slate-50">
-                      <tr className="border-b border-slate-200/70 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                  <table className="min-w-[980px] w-full max-sm:min-w-[36rem] border-collapse text-left text-sm">
+                    <thead className="sticky top-0 z-10 bg-[var(--color-surface-muted)]">
+                      <tr className="border-b border-[var(--color-border)] text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
                         <th
-                          className="cursor-pointer px-3 py-2.5"
+                          className="app-table-sticky-col cursor-pointer px-3 py-2.5"
                           onClick={() => setSortKey((prev) => (prev === 'id_asc' ? 'id_desc' : 'id_asc'))}
                           title={t('requests.database.table.sortById')}
                         >
                           ID{sortHint('id_asc', 'id_desc')}
                         </th>
                         <th className="px-3 py-2.5">{t('requests.database.table.title')}</th>
-                        <th className="px-3 py-2.5">{t('requests.database.table.requester')}</th>
-                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('opened_desc')} title={t('requests.database.table.sortByOpened')}>
+                        <th className="app-hide-xs px-3 py-2.5">{t('requests.database.table.requester')}</th>
+                        <th className="app-hide-xs cursor-pointer px-3 py-2.5" onClick={() => setSortKey('opened_desc')} title={t('requests.database.table.sortByOpened')}>
                           {t('requests.database.table.openedAt')}{sortHint('opened_desc')}
                         </th>
-                        <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('closed_desc')} title={t('requests.database.table.sortByClosed')}>
+                        <th className="app-hide-xs cursor-pointer px-3 py-2.5" onClick={() => setSortKey('closed_desc')} title={t('requests.database.table.sortByClosed')}>
                           {t('requests.database.table.closedAt')}{sortHint('closed_desc')}
                         </th>
                         <th className="px-3 py-2.5">{t('requests.database.table.status')}</th>
                         <th className="cursor-pointer px-3 py-2.5" onClick={() => setSortKey('priority_desc')} title={t('requests.database.table.sortByPriority')}>
                           {t('requests.database.table.priority')}{sortHint('priority_desc')}
                         </th>
-                        <th className="px-3 py-2.5">{t('requests.database.table.category')}</th>
+                        <th className="app-hide-xs px-3 py-2.5">{t('requests.database.table.category')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2899,15 +2900,15 @@ export function ServiceRequestsPage() {
                         <tr
                           key={row.id}
                           data-request-id={row.id}
-                          className="border-b border-slate-100/80 bg-white align-top transition hover:bg-zinc-50/60"
+                          className="border-b border-[var(--color-border)]/80 bg-[var(--color-surface)] align-top transition hover:bg-zinc-50/60"
                           onClick={() => openRequestForEdit(row)}
                           role="button"
                           title={t('requests.database.table.editTitle')}
                         >
-                              <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-700">
+                              <td className="app-table-sticky-col whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-[var(--color-fg)]">
                                 <button
                                   type="button"
-                                  className="rounded-md px-1.5 py-1 text-left hover:bg-slate-100"
+                                  className="rounded-md px-1.5 py-1 text-left hover:bg-[var(--color-surface-muted)]"
                                   title={t('requests.database.table.findById')}
                                   onClick={(e) => {
                                     e.stopPropagation()
@@ -2921,7 +2922,7 @@ export function ServiceRequestsPage() {
                               <td className="px-3 py-3">
                                 <div className="flex min-w-0 items-start gap-2">
                                   <div className="min-w-0 flex-1">
-                                    <div className="truncate font-semibold text-slate-900" title={row.title}>
+                                    <div className="truncate font-semibold text-[var(--color-fg)]" title={row.title}>
                                       <span className="mr-2">{row.title}</span>
                                       {row.external_source === 'bitrix24' ? (
                                         <span
@@ -2933,37 +2934,37 @@ export function ServiceRequestsPage() {
                                       ) : null}
                                     </div>
                                     {row.computer_hostname ? (
-                                      <div className="mt-0.5 truncate text-xs text-slate-500" title={row.computer_hostname}>
+                                      <div className="mt-0.5 truncate text-xs text-[var(--color-fg-muted)]" title={row.computer_hostname}>
                                         {t('requests.database.table.pc', { name: row.computer_hostname })}
                                       </div>
                                     ) : null}
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-3 py-3 text-xs text-slate-700">
+                              <td className="app-hide-xs px-3 py-3 text-xs text-[var(--color-fg)]">
                                 <span className="line-clamp-2">{row.requester_name || '—'}</span>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800">{fmtRuShortDateTime(row.opened_at ?? row.created_at, locale)}</span>
+                              <td className="app-hide-xs whitespace-nowrap px-3 py-3 text-xs text-[var(--color-fg-muted)]">
+                                <span className="font-medium text-[var(--color-fg)]">{fmtRuShortDateTime(row.opened_at ?? row.created_at, locale)}</span>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800">
+                              <td className="app-hide-xs whitespace-nowrap px-3 py-3 text-xs text-[var(--color-fg-muted)]">
+                                <span className="font-medium text-[var(--color-fg)]">
                                   {fmtRuShortDateTime(row.closed_at ?? row.planned_close_at, locale)}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs">
                                 <span
                                   className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                                    STATUS_PILL[row.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                                    STATUS_PILL[row.status] ?? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-1 ring-slate-200'
                                   }`}
                                 >
                                   {requestStatusLabel(row.status)}
                                 </span>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">
+                              <td className="whitespace-nowrap px-3 py-3 text-xs text-[var(--color-fg)]">
                                 {requestPriorityLabel(row.priority)}
                               </td>
-                              <td className="px-3 py-3 text-xs text-slate-700">
+                              <td className="app-hide-xs px-3 py-3 text-xs text-[var(--color-fg)]">
                                 <span className="line-clamp-2">{row.category || '—'}</span>
                               </td>
                         </tr>
@@ -2974,7 +2975,7 @@ export function ServiceRequestsPage() {
               </div>
             )}
             {!loading && visibleRows.length > DB_PAGE_SIZE ? (
-              <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-600">
+              <div className="mt-3 flex flex-col gap-2 text-sm text-[var(--color-fg-muted)] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <span>
                   {t('requests.database.pagination.shown', {
                     shown: dbRowsToRender.length,
@@ -2984,7 +2985,7 @@ export function ServiceRequestsPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                    className="min-h-11 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] disabled:opacity-40 sm:min-h-0"
                     onClick={() => setDbPage((p) => Math.max(1, p - 1))}
                     disabled={dbPage <= 1}
                   >
@@ -2998,7 +2999,7 @@ export function ServiceRequestsPage() {
                   </span>
                   <button
                     type="button"
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+                    className="min-h-11 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] disabled:opacity-40 sm:min-h-0"
                     onClick={() => setDbPage((p) => Math.min(dbPageCount, p + 1))}
                     disabled={dbPage >= dbPageCount}
                   >
@@ -3014,7 +3015,7 @@ export function ServiceRequestsPage() {
         {/* Статистика */}
         {tab === 'stats' ? (
           <div className="stats-report min-w-0 lg:col-span-12">
-            <div className="app-card mb-4 p-5 sm:p-6 print:mb-3 print:rounded-xl print:border print:border-slate-300 print:bg-white print:p-4 print:shadow-none">
+            <div className="app-card mb-4 p-5 sm:p-6 print:mb-3 print:rounded-xl print:border print:border-slate-300 print:bg-[var(--color-surface)] print:p-4 print:shadow-none">
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-border)] pb-4">
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">{t('requests.stats.analytics')}</div>
@@ -3217,10 +3218,10 @@ export function ServiceRequestsPage() {
 
             <div className="stats-report-grid grid gap-4 lg:grid-cols-12 print:gap-3">
               <div className="lg:col-span-4">
-                <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
-                  <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+                <div className="stats-report-card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
+                  <div className="mb-4 flex items-center gap-2 border-b border-[var(--color-border)] pb-3">
                     <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
-                    <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
+                    <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-[var(--color-fg)]">
                       {t('requests.stats.periodKpi')}
                     </h3>
                   </div>
@@ -3261,24 +3262,24 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="lg:col-span-8">
-                <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
-                  <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+                <div className="stats-report-card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
+                  <div className="mb-4 flex items-center gap-2 border-b border-[var(--color-border)] pb-3">
                     <span className="h-8 w-1 rounded-full bg-zinc-500/80" aria-hidden />
-                    <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
+                    <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-[var(--color-fg)]">
                       {t('requests.stats.dynamics')}
                     </h3>
                   </div>
 
                   {statsSeries.items.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-12 text-center text-sm text-slate-500">
+                    <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] py-12 text-center text-sm text-[var(--color-fg-muted)]">
                       {t('requests.stats.noDataForPeriod')}
                     </p>
                   ) : (
                     <div className="space-y-3">
-                      <div className="h-[280px] rounded-xl border border-slate-200/70 bg-white p-3 shadow-sm print:h-[260px] print:rounded-md print:border-slate-300 print:p-2 print:shadow-none">
+                      <div className="h-[280px] rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-sm print:h-[260px] print:rounded-md print:border-slate-300 print:p-2 print:shadow-none">
                         <Line data={statsLineChart.data} options={statsLineChart.options} />
                       </div>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-[var(--color-fg-muted)]">
                         Основание:{' '}
                         <span className="font-medium">
                           {statsBasis === 'opened'
@@ -3295,8 +3296,8 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="lg:col-span-6">
-                <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
-                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">{t('requests.stats.byCategoryTop')}</div>
+                <div className="stats-report-card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
+                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.stats.byCategoryTop')}</div>
                   <DonutDistribution
                     items={topNWithOther(
                       statsCategoryItems,
@@ -3310,8 +3311,8 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="lg:col-span-6">
-                <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
-                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-500">{t('requests.stats.byRequesterTop')}</div>
+                <div className="stats-report-card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
+                  <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.stats.byRequesterTop')}</div>
                   <DonutDistribution
                     items={topNWithOther(
                       statsRequesterItems,
@@ -3325,7 +3326,7 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="lg:col-span-6">
-                <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
+                <div className="stats-report-card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
                   <HorizontalBars
                     title={t('requests.stats.byStatuses')}
                     items={topNWithOther(statsStatusItems, 6, t('requests.statsData.otherStatuses'))}
@@ -3335,7 +3336,7 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="lg:col-span-6">
-                <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
+                <div className="stats-report-card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
                   <HorizontalBars
                     title={t('requests.stats.byPriorities')}
                     items={topNWithOther(statsPriorityItems, 6, t('requests.statsData.otherPriorities'))}
@@ -3345,7 +3346,7 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="lg:col-span-12">
-                <div className="stats-report-card rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
+                <div className="stats-report-card rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6 print:rounded-lg print:border-slate-300 print:p-3 print:shadow-none print:ring-0">
                   <HorizontalBars
                     title={t('requests.stats.assigneeLoadTop')}
                     items={topNWithOther(statsAssigneeItems, statsTopN, t('requests.statsData.otherAssignees'))}
@@ -3355,29 +3356,29 @@ export function ServiceRequestsPage() {
               </div>
 
               <div className="lg:col-span-12">
-                <div className="rounded-2xl border border-slate-200/70 bg-white/95 p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm ring-1 ring-slate-200/30 sm:p-6">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] pb-3">
                     <div className="flex items-center gap-2">
                       <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
-                      <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
+                      <h3 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-[var(--color-fg)]">
                         {t('requests.stats.requestsForPeriod')}
                       </h3>
                     </div>
-                    <span className="text-xs font-medium text-slate-500">
+                    <span className="text-xs font-medium text-[var(--color-fg-muted)]">
                       {statsRows.length}{' '}
                       {requestPluralLabel(statsRows.length)}
                     </span>
                   </div>
 
                   {statsRows.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-10 text-center text-sm text-slate-500">
+                    <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] py-10 text-center text-sm text-[var(--color-fg-muted)]">
                       {t('requests.stats.noRequestsForPeriod')}
                     </p>
                   ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-200/70 print:rounded-md print:border-slate-300">
+                    <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] print:rounded-md print:border-slate-300">
                       <table className="min-w-[880px] w-full border-collapse text-left text-sm print:min-w-0 print:text-xs">
-                        <thead className="bg-slate-50/95 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
-                          <tr className="border-b border-slate-200/70">
+                        <thead className="bg-[var(--color-surface-muted)]/95 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+                          <tr className="border-b border-[var(--color-border)]">
                             <th className="px-3 py-2.5">ID</th>
                             <th className="px-3 py-2.5">{t('requests.database.table.title')}</th>
                             <th className="px-3 py-2.5">{t('requests.database.table.status')}</th>
@@ -3393,44 +3394,44 @@ export function ServiceRequestsPage() {
                             <tr
                               key={row.id}
                               data-request-id={row.id}
-                              className="cursor-pointer border-b border-slate-100/80 bg-white align-top transition hover:bg-zinc-50/60"
+                              className="cursor-pointer border-b border-[var(--color-border)]/80 bg-[var(--color-surface)] align-top transition hover:bg-zinc-50/60"
                               onClick={() => openRequestForEdit(row)}
                               title={t('requests.database.table.editTitle')}
                             >
-                              <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-slate-700">
+                              <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold text-[var(--color-fg)]">
                                 {requestDisplayNo(row)}
                               </td>
                               <td className="max-w-[240px] px-3 py-3">
-                                <div className="truncate font-semibold text-slate-900" title={row.title}>
+                                <div className="truncate font-semibold text-[var(--color-fg)]" title={row.title}>
                                   {row.title}
                                 </div>
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 text-xs">
                                 <span
                                   className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                                    STATUS_PILL[row.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+                                    STATUS_PILL[row.status] ?? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-1 ring-slate-200'
                                   }`}
                                 >
                                   {requestStatusLabel(row.status)}
                                 </span>
                               </td>
-                              <td className="max-w-[140px] px-3 py-3 text-xs text-slate-700">
+                              <td className="max-w-[140px] px-3 py-3 text-xs text-[var(--color-fg)]">
                                 <span className="line-clamp-2">{row.requester_name || '—'}</span>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800">
+                              <td className="whitespace-nowrap px-3 py-3 text-xs text-[var(--color-fg-muted)]">
+                                <span className="font-medium text-[var(--color-fg)]">
                                   {fmtRuShortDateTime(row.opened_at ?? row.created_at, locale)}
                                 </span>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
-                                <span className="font-medium text-slate-800">
+                              <td className="whitespace-nowrap px-3 py-3 text-xs text-[var(--color-fg-muted)]">
+                                <span className="font-medium text-[var(--color-fg)]">
                                   {fmtRuShortDateTime(row.closed_at ?? row.planned_close_at, locale)}
                                 </span>
                               </td>
-                              <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-700">
+                              <td className="whitespace-nowrap px-3 py-3 text-xs text-[var(--color-fg)]">
                                 {requestPriorityLabel(row.priority)}
                               </td>
-                              <td className="max-w-[180px] px-3 py-3 text-xs text-slate-700">
+                              <td className="max-w-[180px] px-3 py-3 text-xs text-[var(--color-fg)]">
                                 <span className="line-clamp-2">{row.category || '—'}</span>
                               </td>
                             </tr>
@@ -3451,10 +3452,10 @@ export function ServiceRequestsPage() {
 
             <div className="grid gap-6 lg:grid-cols-12">
               <div className="lg:col-span-4">
-                <div className="app-card rounded-2xl border-slate-200/70 p-5 sm:p-6">
-                  <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3">
+                <div className="app-card rounded-2xl border-[var(--color-border)] p-5 sm:p-6">
+                  <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] pb-3">
                     <span className="h-8 w-1 rounded-full bg-blue-600/90" aria-hidden />
-                    <h2 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-slate-900">
+                    <h2 className="font-[family-name:var(--font-display)] text-base font-semibold tracking-tight text-[var(--color-fg)]">
                       {tplEditingId != null ? t('requests.templates.editTitle') : t('requests.templates.newTitle')}
                     </h2>
                     {tplEditingId != null ? (
@@ -3465,26 +3466,26 @@ export function ServiceRequestsPage() {
                   </div>
 
                   <label className="mb-3 block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                       {t('requests.templates.templateTitle')}
                     </span>
                     <input
                       value={tplTitle}
                       onChange={(e) => setTplTitle(e.target.value)}
-                      className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400"
+                      className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)]"
                       placeholder={t('requests.templates.templateTitlePlaceholder')}
                     />
                   </label>
 
                   <label className="mb-3 block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                       {t('requests.templates.description')}
                     </span>
                     <textarea
                       value={tplDescription}
                       onChange={(e) => setTplDescription(e.target.value)}
                       rows={3}
-                      className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400"
+                      className="w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)]"
                     />
                   </label>
 
@@ -3507,7 +3508,7 @@ export function ServiceRequestsPage() {
 
                   <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                         {t('requests.templates.statusDefault')}
                       </span>
                       <select
@@ -3516,7 +3517,7 @@ export function ServiceRequestsPage() {
                           const next = e.target.value
                           if (isRequestStatus(next)) setTplStatus(next)
                         }}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900"
+                        className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)]"
                       >
                         {REQUEST_STATUSES.map((status) => (
                           <option key={status} value={status}>
@@ -3526,7 +3527,7 @@ export function ServiceRequestsPage() {
                       </select>
                     </label>
                     <label className="block">
-                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                         {t('requests.templates.priorityDefault')}
                       </span>
                       <select
@@ -3535,7 +3536,7 @@ export function ServiceRequestsPage() {
                           const next = e.target.value
                           if (isRequestPriority(next)) setTplPriority(next)
                         }}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900"
+                        className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)]"
                       >
                         {REQUEST_PRIORITIES.map((p) => (
                           <option key={p} value={p}>
@@ -3548,32 +3549,32 @@ export function ServiceRequestsPage() {
 
                   <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                         {t('requests.templates.openedAt')}
                       </span>
                       <input
                         type="datetime-local"
                         value={tplOpenedAtLocal}
                         onChange={(e) => setTplOpenedAtLocal(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900"
+                        className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 text-sm text-[var(--color-fg)]"
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                         {t('requests.templates.plannedCloseAt')}
                       </span>
                       <input
                         type="datetime-local"
                         value={tplPlannedCloseLocal}
                         onChange={(e) => setTplPlannedCloseLocal(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900"
+                        className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 text-sm text-[var(--color-fg)]"
                       />
                   <div className="mt-2 flex flex-wrap gap-1">
                     {DURATION_PRESETS_MIN.map((p) => (
                       <button
                         key={`tpl-${p.minutes}`}
                         type="button"
-                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                        className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[11px] font-semibold text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)]"
                         title={t('requests.durations.fromTemplateOpenedTitle', {
                           label: durationPresetLabel(p.minutes),
                           hotkey: p.hotkey,
@@ -3588,10 +3589,10 @@ export function ServiceRequestsPage() {
                   </div>
 
                   <label className="mb-3 block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                       {t('requests.templates.closedAt')}
                     </span>
-                    <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-slate-100 bg-slate-50/80 px-2 py-1.5">
+                    <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-1.5">
                       <input
                         type="checkbox"
                         className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
@@ -3607,7 +3608,7 @@ export function ServiceRequestsPage() {
                           }
                         }}
                       />
-                      <span className="text-[11px] leading-snug text-slate-700">
+                      <span className="text-[11px] leading-snug text-[var(--color-fg)]">
                         {t('requests.templates.closedSameAsPlanned')}
                       </span>
                     </label>
@@ -3620,7 +3621,7 @@ export function ServiceRequestsPage() {
                           setTplClosedAtLocal(v)
                           if (v.trim()) setTplStatus((prev) => (prev === 'cancelled' ? 'cancelled' : 'done'))
                         }}
-                        className="w-full rounded-xl border border-slate-200/90 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm"
+                        className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 text-sm text-[var(--color-fg)] shadow-sm"
                       />
                     ) : null}
                   </label>
@@ -3629,7 +3630,7 @@ export function ServiceRequestsPage() {
                     users={userDir}
                     selectedIds={tplAssigneeIds}
                     onChange={setTplAssigneeIds}
-                    inputClassName="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/15"
+                    inputClassName="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)] transition focus:border-zinc-500 focus:ring-2 focus:ring-blue-500/15"
                     hint={t('requests.templates.assigneesHint')}
                   />
                   <div className="mb-4">
@@ -3642,7 +3643,7 @@ export function ServiceRequestsPage() {
                         type="button"
                         disabled={tplBusy}
                         onClick={() => resetTemplateForm()}
-                        className="w-full rounded-xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 sm:w-auto sm:min-w-[8rem]"
+                        className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-3 text-sm font-semibold text-[var(--color-fg)] shadow-sm transition hover:bg-[var(--color-surface-muted)] disabled:opacity-50 sm:w-auto sm:min-w-[8rem]"
                       >
                         {t('requests.templates.cancel')}
                       </button>
@@ -3725,7 +3726,7 @@ export function ServiceRequestsPage() {
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="font-semibold text-[var(--color-fg)]">{tpl.title}</h3>
                               <span
-                                className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS_PILL[tpl.status] ?? 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'}`}
+                                className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${STATUS_PILL[tpl.status] ?? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-1 ring-slate-200'}`}
                               >
                                 {requestStatusLabel(tpl.status)}
                               </span>

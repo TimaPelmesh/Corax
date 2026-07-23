@@ -102,6 +102,7 @@ docker ps
 
 curl -fsS http://127.0.0.1:3000/api/v1/health/ready
 # {"status":"ok","api":"v1","database":"up"}
+# при HTTPS: curl -fsSk https://127.0.0.1:3000/api/v1/health/ready
 ```
 
 Панель на сервере: `http://127.0.0.1:3000/`  
@@ -116,7 +117,7 @@ sudo ufw enable
 sudo ufw status
 
 # с другого ПК:
-curl -fsS http://<LAN-IP>:3000/api/v1/health
+curl -fsS http://<LAN-IP>:3000/api/v1/health/ready
 ```
 
 ### LAN для агентов и браузера (обязательно в офисе/лабе)
@@ -126,6 +127,7 @@ curl -fsS http://<LAN-IP>:3000/api/v1/health
 ```env
 CORAX_ADVERTISE_HOST=192.168.x.x
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.x.x:3000
+# При HTTPS добавьте: https://192.168.x.x:3000,https://localhost:3000
 ```
 
 Применить:
@@ -141,11 +143,11 @@ npm run docker:restart
 
 ---
 
-## Агенты (Win ZIP)
+## Агенты (EXE / ZIP)
 
 1. Войти в панель по **LAN-IP**.
 2. **Настройки → Сборка агента** (`/settings/agent-bundle`).
-3. Скачать ZIP (Win10/11 или Win7) — вшиваются URL сервера и токен.
+3. Скачать **EXE (C++, рекомендуется)** или ZIP (Win10/11 / Win7) — вшиваются URL сервера и токен; схема `http`/`https` — по режиму TLS.
 4. Раздать на ПК (шара / GPO / флешка), запустить.
 5. Проверить появление хоста в **Парк ПК**.
 
@@ -160,8 +162,8 @@ Authorization: Bearer <token>
 
 | Проверка | |
 |----------|--|
-| С ПК: `curl http://<LAN-IP>:3000/api/v1/health` | сеть / firewall |
-| URL в ZIP не `127.0.0.1` и не `172.x` | `CORAX_ADVERTISE_HOST` / открыть панель по LAN |
+| С ПК: `curl http://<LAN-IP>:3000/api/v1/health/ready` | сеть / firewall |
+| URL в сборке не `127.0.0.1` и не `172.x` | `CORAX_ADVERTISE_HOST` / открыть панель по LAN |
 | Токен не отозван | Настройки → Токены агентов |
 | Логи | `npm run docker:logs` / `docker logs corax-app-1` |
 
@@ -266,15 +268,38 @@ docker compose --env-file backend/.env logs -f
 | app в Restarting | `docker logs --tail 100 corax-app-1` |
 | Забыли пароль admin | `cat backend/.docker-credentials` |
 | Сменили `POSTGRES_PASSWORD`, БД не пускает | volume со старым паролем → `down -v` (потеря данных) или вернуть старый пароль в `.env` |
-| Агенты не достучались | UFW 3000; LAN-IP в ZIP; не localhost |
+| Агенты не достучались | UFW 3000; LAN-IP в EXE/ZIP; не localhost |
+| app unhealthy после HTTPS | нормально чинится healthcheck `https -k \|\| http`; иначе `docker logs corax-app-1` |
 
 ---
 
 ## HTTPS
 
-1. Стек по HTTP.
-2. Admin → **Настройки → HTTPS** → CA на админ-ПК → включить → `npm run docker:restart`.
-3. Или `./scripts/setup-https.sh <IP>` (файлы в volume `corax_data`).
+Один порт (`3000`) = одна схема. Режимы в **Настройки → HTTPS**:
+
+| Режим | Панель / агенты | Доверие |
+|-------|-----------------|--------|
+| **HTTP (LAN)** | `http://IP:3000` | не нужно |
+| **HTTPS + CORAX Local CA** | `https://…` | `ca.crt` на ПК (GPO / `scripts/install-corax-ca.bat /machine`) |
+| **HTTPS + корпоративный CA** | `https://…` | корень AD уже на машинах; импорт leaf+key в UI |
+
+После смены режима: `npm run docker:restart` (или `docker compose restart app`).  
+Пересоберите **EXE/ZIP** агента — схема берётся из статуса TLS (страница **Сборка агента**).  
+В `CORS_ORIGINS` добавьте `https://<LAN-IP>:3000` (и localhost при необходимости).
+
+**Healthcheck:** compose пробует `https://127.0.0.1:3000/.../ready` с `-k`, затем `http://…`.  
+С хоста после TLS:
+
+```bash
+curl -fsSk https://127.0.0.1:3000/api/v1/health/ready
+# или: CORAX_HEALTH_URL=https://127.0.0.1:3000/api/v1/health/ready ./update.sh
+```
+
+Файлы TLS в volume `corax_data` → `/data/tls` (не путать с хостовым `backend/data/tls` без bind-mount). Скачивайте CA из UI, а не с хоста.
+
+1. Стек по HTTP, либо создайте/импортируйте сертификат в UI.
+2. Включите нужный режим → restart.
+3. Или `./scripts/setup-https.sh <IP>` (для Docker лучше генерировать **внутри** контейнера / через UI).
 
 ---
 

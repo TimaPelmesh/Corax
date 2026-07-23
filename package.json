@@ -7,7 +7,7 @@
     "start": "concurrently -n api,web -c blue,magenta \"cross-env PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python run.py\" \"wait-on tcp:127.0.0.1:3001 -t 120000 && npm run dev --prefix frontend\"",
     "start:api-only": "cross-env PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python run.py",
     "start:api-only:noreload": "cross-env PYTHONUTF8=1 PYTHONIOENCODING=utf-8 RELOAD=0 python run.py",
-    "start:prod": "npm run build && cross-env RELOAD=0 python run.py",
+    "start:prod": "npm run build && cross-env ENVIRONMENT=production PORT=3000 HOST=0.0.0.0 RELOAD=0 PYTHONUTF8=1 PYTHONIOENCODING=utf-8 python run.py",
     "build": "npm run build --prefix frontend",
     "dev": "npm run dev --prefix frontend",
     "install:frontend": "npm install --prefix frontend",

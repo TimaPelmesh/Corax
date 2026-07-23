@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { api, type TlsStatus } from '../api'
+import { api, type TlsMode, type TlsStatus } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconLock } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
+
+const MODES: TlsMode[] = ['http', 'local_ca', 'enterprise']
 
 export function SettingsHttpsPage() {
   const t = useT()
@@ -13,6 +16,9 @@ export function SettingsHttpsPage() {
   const [status, setStatus] = useState<TlsStatus | null>(null)
   const [hostnames, setHostnames] = useState('')
   const [days, setDays] = useState(825)
+  const [pickMode, setPickMode] = useState<TlsMode>('http')
+  const [certPem, setCertPem] = useState('')
+  const [keyPem, setKeyPem] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -23,6 +29,7 @@ export function SettingsHttpsPage() {
     try {
       const [st, lan] = await Promise.all([api.tlsStatus(), api.agentBundleLanIp().catch(() => null)])
       setStatus(st)
+      setPickMode((st.mode as TlsMode) || (st.enabled ? 'local_ca' : 'http'))
       if (st.hostnames.length > 0) {
         setHostnames(st.hostnames.filter((h) => h !== 'localhost' && h !== '127.0.0.1').join('\n'))
       } else if (lan?.ip) {
@@ -55,6 +62,18 @@ export function SettingsHttpsPage() {
       .filter(Boolean)
   }
 
+  function modeLabel(m: TlsMode): string {
+    if (m === 'http') return t('settingsHttps.modeHttp')
+    if (m === 'enterprise') return t('settingsHttps.modeEnterprise')
+    return t('settingsHttps.modeLocalCa')
+  }
+
+  function modeHint(m: TlsMode): string {
+    if (m === 'http') return t('settingsHttps.modeHttpHint')
+    if (m === 'enterprise') return t('settingsHttps.modeEnterpriseHint')
+    return t('settingsHttps.modeLocalCaHint')
+  }
+
   async function generate(rotateCa: boolean) {
     const names = parseHostnames()
     if (names.length === 0) {
@@ -65,8 +84,23 @@ export function SettingsHttpsPage() {
     try {
       const st = await api.tlsGenerate({ hostnames: names, days, rotate_ca: rotateCa })
       setStatus(st)
+      setPickMode((st.mode as TlsMode) || 'local_ca')
       setLoadError(null)
       toast.ok(t('settingsHttps.generated'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function applyMode() {
+    setBusy(true)
+    try {
+      const st = await api.tlsSetMode(pickMode)
+      setStatus(st)
+      setPickMode((st.mode as TlsMode) || pickMode)
+      toast.ok(t('settingsHttps.modeApplied'))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
@@ -79,7 +113,27 @@ export function SettingsHttpsPage() {
     try {
       const st = await api.tlsEnable(enabled)
       setStatus(st)
+      setPickMode((st.mode as TlsMode) || (enabled ? 'local_ca' : 'http'))
       toast.ok(enabled ? t('settingsHttps.enabled') : t('settingsHttps.disabled'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function importEnterprise() {
+    if (!certPem.trim() || !keyPem.trim()) {
+      toast.error(t('settingsHttps.needImport'))
+      return
+    }
+    setBusy(true)
+    try {
+      const st = await api.tlsImport({ cert_pem: certPem.trim(), key_pem: keyPem.trim() })
+      setStatus(st)
+      setPickMode('enterprise')
+      setKeyPem('')
+      toast.ok(t('settingsHttps.imported'))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
@@ -106,20 +160,16 @@ export function SettingsHttpsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex min-w-0 items-start gap-3 sm:mb-8 sm:gap-4">
-        <div className="page-hero-icon mt-0.5 shrink-0">
-          <IconLock className="h-7 w-7" />
-        </div>
-        <div>
-          <h1 className="page-title">{t('titles.https')}</h1>
-          <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('pages.httpsSubtitle')}</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<IconLock className="h-7 w-7" />}
+        title={t('titles.https')}
+        subtitle={t('pages.httpsSubtitle')}
+      />
 
       {loading ? (
         <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
       ) : loadError || !status ? (
-        <div className="app-card space-y-3 p-4 sm:p-5">
+        <div className="app-card space-y-3 p-6 sm:p-7">
           <p className="text-sm text-[var(--color-fg)]">{loadError || t('common.error')}</p>
           <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsHttps.apiMissingHint')}</p>
           <button type="button" className="app-btn app-btn-primary" onClick={() => void load()}>
@@ -127,10 +177,73 @@ export function SettingsHttpsPage() {
           </button>
         </div>
       ) : (
-        <div className="space-y-6">
-          <section className="app-card space-y-3 p-4 sm:p-5">
+        <div className="max-w-3xl space-y-6">
+          {status.restart_required ? (
+            <div className="app-alert app-alert-warning text-sm" role="status">
+              <p className="font-medium">{t('settingsHttps.restartRequired')}</p>
+              <p className="mt-1 text-xs opacity-90">
+                {status.enabled && !status.active
+                  ? t('settingsHttps.restartBannerHttps')
+                  : t('settingsHttps.restartBannerHttp')}
+              </p>
+            </div>
+          ) : null}
+          {status.dev_blocked ? (
+            <div className="app-alert app-alert-warning text-sm">{t('settingsHttps.devBlocked')}</div>
+          ) : null}
+
+          <section className="app-card space-y-4 p-6 sm:p-7">
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.mode')}</h2>
+            <div className="space-y-2">
+              {MODES.map((m) => (
+                <label
+                  key={m}
+                  className={`flex cursor-pointer gap-3 rounded-xl border px-3 py-3 transition-colors ${
+                    pickMode === m
+                      ? 'border-[var(--color-primary)] bg-[var(--color-surface-muted)]'
+                      : 'border-[var(--color-border)] bg-[var(--color-surface)]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    className="mt-1"
+                    name="tls-mode"
+                    checked={pickMode === m}
+                    onChange={() => setPickMode(m)}
+                    disabled={busy}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-[var(--color-fg)]">{modeLabel(m)}</span>
+                    <span className="mt-0.5 block text-xs text-[var(--color-fg-muted)]">{modeHint(m)}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="app-btn app-btn-primary"
+              disabled={busy || pickMode === status.mode}
+              onClick={() => void applyMode()}
+            >
+              {t('settingsHttps.applyMode')}
+            </button>
+          </section>
+
+          <section className="app-card space-y-3 p-6 sm:p-7">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.status')}</h2>
             <dl className="grid gap-2 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-[var(--color-fg-subtle)]">{t('settingsHttps.mode')}</dt>
+                <dd className="font-medium text-[var(--color-fg)]">
+                  {modeLabel((status.mode as TlsMode) || 'http')}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[var(--color-fg-subtle)]">{t('settingsHttps.agentScheme')}</dt>
+                <dd className="font-mono font-medium text-[var(--color-fg)]">
+                  {(status.agent_scheme || 'http').toUpperCase()}
+                </dd>
+              </div>
               <div>
                 <dt className="text-[var(--color-fg-subtle)]">{t('settingsHttps.flag')}</dt>
                 <dd className="font-medium text-[var(--color-fg)]">
@@ -156,21 +269,12 @@ export function SettingsHttpsPage() {
                 </div>
               ) : null}
             </dl>
-            {status.restart_required ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                {t('settingsHttps.restartRequired')}
-              </div>
-            ) : null}
-            {status.dev_blocked ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                {t('settingsHttps.devBlocked')}
-              </div>
-            ) : null}
             {status.active ? (
               <p className="text-sm text-[var(--color-fg-muted)]">
                 {t('settingsHttps.openUrl', { host: primaryHost, port: window.location.port || '3000' })}
               </p>
             ) : null}
+            <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsHttps.agentsNote')}</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -183,7 +287,7 @@ export function SettingsHttpsPage() {
               <button
                 type="button"
                 className="app-btn app-btn-secondary"
-                disabled={busy || !status.enabled}
+                disabled={busy || (!status.enabled && status.mode === 'http')}
                 onClick={() => void setEnabled(false)}
               >
                 {t('settingsHttps.disable')}
@@ -191,7 +295,7 @@ export function SettingsHttpsPage() {
             </div>
           </section>
 
-          <section className="app-card space-y-3 p-4 sm:p-5">
+          <section className="app-card space-y-3 p-6 sm:p-7">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.create')}</h2>
             <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsHttps.createHint')}</p>
             <label className="block">
@@ -226,7 +330,7 @@ export function SettingsHttpsPage() {
                 disabled={busy}
                 onClick={() => void generate(false)}
               >
-                {status.files_ready ? t('settingsHttps.reissue') : t('settingsHttps.generate')}
+                {status.files_ready && status.ca_ready ? t('settingsHttps.reissue') : t('settingsHttps.generate')}
               </button>
               {status.ca_ready ? (
                 <button
@@ -241,7 +345,40 @@ export function SettingsHttpsPage() {
             </div>
           </section>
 
-          <section className="app-card space-y-3 p-4 sm:p-5">
+          <section className="app-card space-y-3 p-6 sm:p-7">
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.importTitle')}</h2>
+            <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsHttps.importHint')}</p>
+            <label className="block">
+              <span className="app-label">{t('settingsHttps.certPem')}</span>
+              <textarea
+                className="app-input min-h-[6rem] font-mono text-xs"
+                value={certPem}
+                onChange={(e) => setCertPem(e.target.value)}
+                disabled={busy}
+                spellCheck={false}
+              />
+            </label>
+            <label className="block">
+              <span className="app-label">{t('settingsHttps.keyPem')}</span>
+              <textarea
+                className="app-input min-h-[5rem] font-mono text-xs"
+                value={keyPem}
+                onChange={(e) => setKeyPem(e.target.value)}
+                disabled={busy}
+                spellCheck={false}
+              />
+            </label>
+            <button
+              type="button"
+              className="app-btn app-btn-primary"
+              disabled={busy}
+              onClick={() => void importEnterprise()}
+            >
+              {t('settingsHttps.importBtn')}
+            </button>
+          </section>
+
+          <section className="app-card space-y-3 p-6 sm:p-7">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.trustTitle')}</h2>
             <ol className="list-decimal space-y-2 pl-5 text-sm text-[var(--color-fg-muted)]">
               <li>{t('settingsHttps.trustStep1')}</li>
@@ -259,7 +396,6 @@ export function SettingsHttpsPage() {
             >
               {t('settingsHttps.downloadCa')}
             </button>
-            <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsHttps.agentsNote')}</p>
           </section>
         </div>
       )}

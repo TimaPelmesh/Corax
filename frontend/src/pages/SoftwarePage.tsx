@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type CatalogKind, type SoftwareCatalogRow } from '../api'
 import { IconSoftware } from '../components/icons'
+import { TableSkeleton } from '../components/Skeleton'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -114,7 +115,7 @@ export function SoftwarePage() {
         {loading ? <span className="text-sm text-[var(--color-fg-subtle)]">{t('software.refreshing')}</span> : null}
       </div>
 
-      <div className="grid items-start gap-6 lg:grid-cols-5">
+      <div key={`sw-${kind}`} className="app-fade-swap grid items-start gap-6 lg:grid-cols-5">
         <div className="app-card overflow-hidden !p-0 lg:col-span-3">
           <div className="-mx-0 overflow-x-auto overscroll-x-contain">
             <table className="app-table min-w-[min(100%,20rem)]">
@@ -142,8 +143,8 @@ export function SoftwarePage() {
                   </tr>
                 ) : loading && rows.length === 0 ? (
                   <tr>
-                    <td colSpan={2} className="app-table-cell py-12 text-center app-table-cell-muted">
-                      {t('common.loading')}
+                    <td colSpan={2} className="p-0">
+                      <TableSkeleton rows={8} cols={2} />
                     </td>
                   </tr>
                 ) : (

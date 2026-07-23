@@ -314,6 +314,8 @@ class DashboardSummary(BaseModel):
     snmp_printers_total: int = 0
     service_requests_total: int = 0
     service_requests_active: int = 0
+    service_requests_overdue: int = 0
+    service_requests_avg_close_hours: float | None = None
     service_requests_by_status: list[DashboardNameCount] = []
     by_os: list[DashboardNameCount]
     by_manufacturer: list[DashboardNameCount]

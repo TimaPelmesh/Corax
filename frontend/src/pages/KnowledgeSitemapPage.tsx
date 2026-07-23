@@ -252,12 +252,12 @@ function FloorPcMarkerPicker({
             setQuery(selected ? floorPcMarkerCaption(selected, pcDirectory).primary : '')
             setOpen(true)
           }}
-          className="h-9 w-full rounded-lg border border-neutral-200 bg-white py-2 pl-2.5 pr-14 text-sm text-neutral-900 outline-none transition placeholder:text-slate-400 focus:border-neutral-400 disabled:opacity-60"
+          className="h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-2 pl-2.5 pr-14 text-sm text-[var(--color-fg)] outline-none transition placeholder:text-[var(--color-fg-subtle)] focus:border-neutral-400 disabled:opacity-60"
         />
         {selected && !disabled ? (
           <button
             type="button"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 text-[11px] font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
             onClick={() => {
               onChange('')
               setQuery('')
@@ -270,13 +270,13 @@ function FloorPcMarkerPicker({
       </div>
       {open && !disabled ? (
         <ul
-          className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-neutral-200 bg-white py-1 shadow-[0_12px_32px_-12px_rgba(2,6,23,0.35)]"
+          className="absolute z-30 mt-1 max-h-52 w-full overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-[0_12px_32px_-12px_rgba(2,6,23,0.35)]"
           role="listbox"
         >
           <li>
             <button
               type="button"
-              className="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-neutral-50"
+              className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
               onClick={() => {
                 onChange('')
                 setQuery('')
@@ -292,23 +292,23 @@ function FloorPcMarkerPicker({
               <li key={pc.id}>
                 <button
                   type="button"
-                  className="w-full px-3 py-2 text-left hover:bg-neutral-50"
+                  className="w-full px-3 py-2 text-left hover:bg-[var(--color-surface-muted)]"
                   onClick={() => {
                     onChange(pc.id)
                     setQuery(cap.primary)
                     setOpen(false)
                   }}
                 >
-                  <div className="text-sm font-medium text-neutral-900">{cap.primary}</div>
-                  {cap.secondary ? <div className="text-xs text-slate-500">{cap.secondary}</div> : null}
+                  <div className="text-sm font-medium text-[var(--color-fg)]">{cap.primary}</div>
+                  {cap.secondary ? <div className="text-xs text-[var(--color-fg-muted)]">{cap.secondary}</div> : null}
                 </button>
               </li>
             )
           })}
           {pcMarkers.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">На этаже нет объектов «ПК»</li>
+            <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">На этаже нет объектов «ПК»</li>
           ) : filtered.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-400">Ничего не найдено</li>
+            <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">Ничего не найдено</li>
           ) : null}
         </ul>
       ) : null}
@@ -533,7 +533,7 @@ function EquipmentGlyph({ kind }: { kind: FloorIconKind }) {
 
 function EquipmentMenuIcon({ kind }: { kind: FloorIconKind }) {
   return (
-    <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-neutral-200 bg-neutral-50 text-neutral-700">
+    <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]">
       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
         {kind === 'pc' ? (
           <>
@@ -2455,9 +2455,9 @@ export function KnowledgeSitemapPage() {
               </label>
 
               {isOutletKind(selectedMarker.kind) ? (
-                <div className="rounded-lg border border-slate-200/90 bg-slate-50/60 px-2.5 py-2 space-y-2">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-2 space-y-2">
                   <label className="block">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
                       Номер розетки
                     </span>
                     <input
@@ -2467,13 +2467,13 @@ export function KnowledgeSitemapPage() {
                           meta: { ...selectedMarker.meta, outlet_number: e.target.value },
                         })
                       }
-                      className="mt-0.5 h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                      className="mt-0.5 h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                       placeholder="Например: 12-A"
                       disabled={!canEdit}
                     />
                   </label>
                   <div className="block">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
                       Кабель к ПК на карте
                     </span>
                     <FloorPcMarkerPicker
@@ -2491,7 +2491,7 @@ export function KnowledgeSitemapPage() {
                       }
                     />
                     {pcMarkersOnFloor.length === 0 ? (
-                      <p className="mt-1 text-[11px] text-slate-500">Сначала добавьте объект «ПК» на этот этаж.</p>
+                      <p className="mt-1 text-[11px] text-[var(--color-fg-muted)]">Сначала добавьте объект «ПК» на этот этаж.</p>
                     ) : null}
                   </div>
                 </div>
@@ -2499,13 +2499,13 @@ export function KnowledgeSitemapPage() {
 
               {selectedMarker.kind === 'pc' ? (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
                     {t('sitemap.pcParkLink')}
                   </span>
                   <div className="mt-0.5 flex flex-wrap gap-1.5">
                     <button
                       type="button"
-                      className="h-8 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-60"
+                      className="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] disabled:opacity-60"
                       onClick={() => setPcLinkDialogOpen(true)}
                       disabled={!canEdit}
                     >
@@ -2514,7 +2514,7 @@ export function KnowledgeSitemapPage() {
                     {selectedMarker.meta?.computer_id ? (
                       <button
                         type="button"
-                        className="h-8 rounded-lg border border-blue-200 bg-white px-2.5 text-xs font-medium text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
+                        className="h-8 rounded-lg border border-blue-200 bg-[var(--color-surface)] px-2.5 text-xs font-medium text-blue-700 transition hover:bg-blue-50 disabled:opacity-60"
                         onClick={() =>
                           updateMarker(selectedMarker.id, {
                             meta: {
@@ -2535,7 +2535,7 @@ export function KnowledgeSitemapPage() {
                     ) : null}
                   </div>
                   {selectedMarker.meta?.computer_id ? (
-                    <div className="mt-1.5 space-y-0.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] leading-snug text-slate-700">
+                    <div className="mt-1.5 space-y-0.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1.5 text-[11px] leading-snug text-[var(--color-fg)]">
                       <div>ПК: {selectedLinkedPc?.hostname || selectedMarker.meta.computer_id}</div>
                       <div>Внутренний номер: {selectedMarker.meta.employee_extension || '—'}</div>
                       <div>
@@ -2551,7 +2551,7 @@ export function KnowledgeSitemapPage() {
                       <div>Теги: {selectedLinkedPc?.tags?.map((t) => t.name).join(', ') || '—'}</div>
                       <button
                         type="button"
-                        className="mt-1.5 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                        className="mt-1.5 rounded-md border border-slate-300 bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
                         onClick={() => {
                           const pcId = Number(selectedMarker.meta?.computer_id)
                           if (!Number.isFinite(pcId) || pcId <= 0) return
@@ -2567,13 +2567,13 @@ export function KnowledgeSitemapPage() {
 
               {selectedMarker.kind === 'printer' ? (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
                     {t('sitemap.printerLink')}
                   </span>
                   <div className="mt-0.5 flex flex-wrap gap-1.5">
                     <button
                       type="button"
-                      className="h-8 rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-60"
+                      className="h-8 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] disabled:opacity-60"
                       onClick={() => setPrinterLinkDialogOpen(true)}
                       disabled={!canEdit}
                     >
@@ -2582,7 +2582,7 @@ export function KnowledgeSitemapPage() {
                     {selectedMarker.meta?.printer_id ? (
                       <button
                         type="button"
-                        className="h-8 rounded-lg border border-amber-200 bg-white px-2.5 text-xs font-medium text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
+                        className="h-8 rounded-lg border border-amber-200 bg-[var(--color-surface)] px-2.5 text-xs font-medium text-amber-800 transition hover:bg-amber-50 disabled:opacity-60"
                         onClick={() =>
                           updateMarker(selectedMarker.id, {
                             meta: {
@@ -2600,7 +2600,7 @@ export function KnowledgeSitemapPage() {
                     ) : null}
                   </div>
                   {selectedMarker.meta?.printer_id ? (
-                    <div className="mt-1.5 space-y-0.5 rounded-lg border border-amber-100 bg-amber-50/50 px-2.5 py-1.5 text-[11px] leading-snug text-slate-700">
+                    <div className="mt-1.5 space-y-0.5 rounded-lg border border-amber-100 bg-amber-50/50 px-2.5 py-1.5 text-[11px] leading-snug text-[var(--color-fg)]">
                       <div>
                         {selectedLinkedPrinter
                           ? printerDisplayName(selectedLinkedPrinter)
@@ -2632,7 +2632,7 @@ export function KnowledgeSitemapPage() {
                       </div>
                       <button
                         type="button"
-                        className="mt-1.5 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-100"
+                        className="mt-1.5 rounded-md border border-slate-300 bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
                         onClick={() => {
                           if (selectedLinkedPrinter) {
                             setPrinterDetail(selectedLinkedPrinter)
@@ -2659,7 +2659,7 @@ export function KnowledgeSitemapPage() {
 
               {selectedMarker.kind === 'pc' ? (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
                     Внутренний номер сотрудника
                   </span>
                   <input
@@ -2669,7 +2669,7 @@ export function KnowledgeSitemapPage() {
                         meta: { ...selectedMarker.meta, employee_extension: e.target.value },
                       })
                     }
-                    className="mt-0.5 h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                    className="mt-0.5 h-9 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                     placeholder="Например: 2431"
                     disabled={!canEdit}
                   />
@@ -2677,11 +2677,11 @@ export function KnowledgeSitemapPage() {
               ) : null}
 
               {selectedMarker.kind === 'pc' ? (
-                <div className="rounded-lg border border-slate-200/90 bg-slate-50/60 px-2.5 py-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Розетки</div>
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Розетки</div>
                   <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1.5">
                     <label className="block min-w-0">
-                      <span className="text-[11px] font-medium text-slate-500">Ethernet</span>
+                      <span className="text-[11px] font-medium text-[var(--color-fg-muted)]">Ethernet</span>
                       <input
                         value={selectedMarker.meta?.ethernet_outlet ?? ''}
                         onChange={(e) =>
@@ -2689,13 +2689,13 @@ export function KnowledgeSitemapPage() {
                             meta: { ...selectedMarker.meta, ethernet_outlet: e.target.value },
                           })
                         }
-                        className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                        className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                         placeholder="Напр. 12-A"
                         disabled={!canEdit}
                       />
                     </label>
                     <label className="block min-w-0">
-                      <span className="text-[11px] font-medium text-slate-500">Телефон</span>
+                      <span className="text-[11px] font-medium text-[var(--color-fg-muted)]">Телефон</span>
                       <input
                         value={selectedMarker.meta?.phone_outlet ?? ''}
                         onChange={(e) =>
@@ -2703,7 +2703,7 @@ export function KnowledgeSitemapPage() {
                             meta: { ...selectedMarker.meta, phone_outlet: e.target.value },
                           })
                         }
-                        className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                        className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                         placeholder="Напр. 08-B"
                         disabled={!canEdit}
                       />
@@ -2714,27 +2714,27 @@ export function KnowledgeSitemapPage() {
 
               <div className="grid grid-cols-3 gap-1.5">
                 <label className="block min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">X</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">X</span>
                   <input
                     type="number"
                     value={Math.round(selectedMarker.x)}
                     onChange={(e) => updateMarker(selectedMarker.id, { x: Number(e.target.value) || 0 })}
-                    className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                    className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                     disabled={!canEdit}
                   />
                 </label>
                 <label className="block min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Y</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Y</span>
                   <input
                     type="number"
                     value={Math.round(selectedMarker.y)}
                     onChange={(e) => updateMarker(selectedMarker.id, { y: Number(e.target.value) || 0 })}
-                    className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                    className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                     disabled={!canEdit}
                   />
                 </label>
                 <label className="block min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Размер</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Размер</span>
                   <input
                     type="number"
                     min={0.6}
@@ -2746,7 +2746,7 @@ export function KnowledgeSitemapPage() {
                       if (!Number.isFinite(v)) return
                       updateMarker(selectedMarker.id, { scale: Math.min(2.2, Math.max(0.6, v)) })
                     }}
-                    className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                    className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                     disabled={!canEdit}
                   />
                 </label>
@@ -2755,21 +2755,21 @@ export function KnowledgeSitemapPage() {
               {!isOutletKind(selectedMarker.kind) ? (
                 <div className="grid min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-2">
                   <label className="block min-w-0">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">IP</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">IP</span>
                     <input
                       value={selectedMarker.meta?.ip ?? ''}
                       onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, ip: e.target.value } })}
-                      className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                      className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                       placeholder="10.0.0.1"
                       disabled={!canEdit}
                     />
                   </label>
                   <label className="block min-w-0">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">MAC</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">MAC</span>
                     <input
                       value={selectedMarker.meta?.mac ?? ''}
                       onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, mac: e.target.value } })}
-                      className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2.5 font-mono text-[13px] leading-snug tracking-tight text-neutral-900 outline-none transition focus:border-neutral-400"
+                      className="mt-0.5 h-9 w-full min-w-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 font-mono text-[13px] leading-snug tracking-tight text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                       placeholder="AA:BB:CC:DD:EE:FF"
                       disabled={!canEdit}
                       spellCheck={false}
@@ -2787,13 +2787,13 @@ export function KnowledgeSitemapPage() {
                   }`}
                 >
                   <div className="relative z-40 mb-1 min-h-5 pr-6">
-                    <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
                       Фото с места установки
                     </span>
                     <span className="group/tooltip absolute right-0 top-0 inline-flex">
                       <button
                         type="button"
-                        className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-[10px] font-bold leading-none text-slate-600 outline-none transition hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1"
+                        className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-[var(--color-surface)] text-[10px] font-bold leading-none text-[var(--color-fg-muted)] outline-none transition hover:border-slate-400 hover:bg-[var(--color-surface-muted)] focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1"
                         aria-describedby={placePhotosHelpTipId}
                         aria-label="Справка: фото с места установки"
                       >
@@ -2802,7 +2802,7 @@ export function KnowledgeSitemapPage() {
                       <span
                         id={placePhotosHelpTipId}
                         role="tooltip"
-                        className="pointer-events-none absolute right-full top-1/2 z-40 mr-2 w-max max-w-[min(19rem,100%)] -translate-y-1/2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-left text-[11px] font-normal normal-case leading-snug tracking-normal text-slate-600 opacity-0 shadow-lg transition-opacity duration-150 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100"
+                        className="pointer-events-none absolute right-full top-1/2 z-40 mr-2 w-max max-w-[min(19rem,100%)] -translate-y-1/2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-left text-[11px] font-normal normal-case leading-snug tracking-normal text-[var(--color-fg-muted)] opacity-0 shadow-lg transition-opacity duration-150 group-hover/tooltip:opacity-100 group-focus-within/tooltip:opacity-100"
                       >
                         {placePhotosHelpText}
                       </span>
@@ -2818,7 +2818,7 @@ export function KnowledgeSitemapPage() {
                   />
                   <button
                     type="button"
-                    className="mt-1.5 h-8 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-800 transition hover:bg-neutral-50 disabled:opacity-60"
+                    className="mt-1.5 h-8 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] disabled:opacity-60"
                     onClick={() => placePhotoInputRef.current?.click()}
                     disabled={!canEdit || placePhotoBusy || selectedPlacePhotos.length >= MAX_PLACE_PHOTOS}
                   >
@@ -2851,13 +2851,13 @@ export function KnowledgeSitemapPage() {
                         <input
                           value={ph.caption}
                           onChange={(e) => setPlacePhotoCaption(ph.id, e.target.value)}
-                          className="mt-1 h-7 w-full rounded-md border border-neutral-200 bg-white px-1.5 text-[11px] text-neutral-900 outline-none focus:border-neutral-400"
+                          className="mt-1 h-7 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 text-[11px] text-[var(--color-fg)] outline-none focus:border-neutral-400"
                           placeholder="Подпись"
                           disabled={!canEdit}
                         />
                         <button
                           type="button"
-                          className="mt-1 w-full rounded-md border border-blue-100 bg-white py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                          className="mt-1 w-full rounded-md border border-blue-100 bg-[var(--color-surface)] py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                           onClick={() => removePlacePhoto(ph.id)}
                           disabled={!canEdit}
                         >
@@ -2869,11 +2869,11 @@ export function KnowledgeSitemapPage() {
                 </div>
 
                 <label className="block min-h-[8.5rem] min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Комментарий</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Комментарий</span>
                   <textarea
                     value={selectedMarker.meta?.notes ?? ''}
                     onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, notes: e.target.value } })}
-                    className="mt-0.5 min-h-[7.5rem] w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                    className="mt-0.5 min-h-[7.5rem] w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                     placeholder="Где смонтировано, как добраться, особенности доступа, ответственный…"
                     disabled={!canEdit}
                   />
@@ -2881,11 +2881,11 @@ export function KnowledgeSitemapPage() {
               </div>
               ) : (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Комментарий</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Комментарий</span>
                   <textarea
                     value={selectedMarker.meta?.notes ?? ''}
                     onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, notes: e.target.value } })}
-                    className="mt-0.5 min-h-[4.5rem] w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                    className="mt-0.5 min-h-[4.5rem] w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                     placeholder="Расположение в кабинете, шкаф, патч-панель…"
                     disabled={!canEdit}
                   />
@@ -2894,7 +2894,7 @@ export function KnowledgeSitemapPage() {
 
               <button
                 type="button"
-                className="w-full rounded-lg border border-blue-100 bg-white px-2.5 py-1.5 text-sm font-medium text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
+                className="w-full rounded-lg border border-blue-100 bg-[var(--color-surface)] px-2.5 py-1.5 text-sm font-medium text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
                 onClick={deleteSelected}
                 disabled={!canEdit}
               >
@@ -2912,7 +2912,7 @@ export function KnowledgeSitemapPage() {
         >
           <button
             type="button"
-            className="absolute right-4 top-4 rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-sm font-medium text-white backdrop-blur hover:bg-white/20"
+            className="absolute right-4 top-4 rounded-full border border-white/30 bg-[var(--color-surface)]/10 px-3 py-1.5 text-sm font-medium text-white backdrop-blur hover:bg-[var(--color-surface)]/20"
             onClick={() => setPhotoLightboxUrl(null)}
           >
             Закрыть
@@ -2927,15 +2927,15 @@ export function KnowledgeSitemapPage() {
       ) : null}
       {pcLinkDialogOpen && selectedMarker?.kind === 'pc' ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-neutral-200 bg-white shadow-[0_24px_70px_-24px_rgba(2,6,23,0.5)]">
-            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+          <div className="w-full max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_70px_-24px_rgba(2,6,23,0.5)]">
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-neutral-950">Привязка к парку ПК</div>
-                <div className="text-xs text-slate-500">Название объекта на карте не изменяется</div>
+                <div className="text-sm font-semibold text-[var(--color-fg)]">Привязка к парку ПК</div>
+                <div className="text-xs text-[var(--color-fg-muted)]">Название объекта на карте не изменяется</div>
               </div>
               <button
                 type="button"
-                className="rounded-lg border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
                 onClick={() => setPcLinkDialogOpen(false)}
               >
                 Закрыть
@@ -2945,7 +2945,7 @@ export function KnowledgeSitemapPage() {
               <input
                 value={pcLinkQuery}
                 onChange={(e) => setPcLinkQuery(e.target.value)}
-                className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                 placeholder="Введите начало: hostname / serial / model"
                 autoFocus
               />
@@ -2954,7 +2954,7 @@ export function KnowledgeSitemapPage() {
                   <button
                     key={pc.id}
                     type="button"
-                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm text-neutral-800 transition hover:bg-neutral-50"
+                    className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
                     onClick={() => {
                       updateMarker(selectedMarker.id, {
                         meta: {
@@ -2972,14 +2972,14 @@ export function KnowledgeSitemapPage() {
                     }}
                   >
                     <div className="font-semibold">{pc.hostname}</div>
-                    <div className="mt-0.5 text-xs text-slate-500">
+                    <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
                       {pc.os_name || 'OS —'} · RAM {pc.ram_gb != null ? `${pc.ram_gb} GB` : '—'} · SN {pc.serial_number || '—'}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500">Теги: {pc.tags?.map((t) => t.name).join(', ') || '—'}</div>
+                    <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">Теги: {pc.tags?.map((t) => t.name).join(', ') || '—'}</div>
                   </button>
                 ))}
                 {filteredPcDirectory.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                  <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-fg-muted)]">
                     Ничего не найдено
                   </div>
                 ) : null}
@@ -2990,15 +2990,15 @@ export function KnowledgeSitemapPage() {
       ) : null}
       {printerLinkDialogOpen && selectedMarker?.kind === 'printer' ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-neutral-200 bg-white shadow-[0_24px_70px_-24px_rgba(2,6,23,0.5)]">
-            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+          <div className="w-full max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_70px_-24px_rgba(2,6,23,0.5)]">
+            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
               <div>
-                <div className="text-sm font-semibold text-neutral-950">{t('sitemap.printerLink')}</div>
-                <div className="text-xs text-slate-500">{t('sitemap.printerLinkHint')}</div>
+                <div className="text-sm font-semibold text-[var(--color-fg)]">{t('sitemap.printerLink')}</div>
+                <div className="text-xs text-[var(--color-fg-muted)]">{t('sitemap.printerLinkHint')}</div>
               </div>
               <button
                 type="button"
-                className="rounded-lg border border-neutral-200 px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
                 onClick={() => setPrinterLinkDialogOpen(false)}
               >
                 Закрыть
@@ -3008,7 +3008,7 @@ export function KnowledgeSitemapPage() {
               <input
                 value={printerLinkQuery}
                 onChange={(e) => setPrinterLinkQuery(e.target.value)}
-                className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none transition focus:border-neutral-400"
+                className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
                 placeholder={t('sitemap.printerSearchPlaceholder')}
                 autoFocus
               />
@@ -3019,7 +3019,7 @@ export function KnowledgeSitemapPage() {
                     <button
                       key={printer.id}
                       type="button"
-                      className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm text-neutral-800 transition hover:bg-neutral-50"
+                      className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
                       onClick={() => {
                         updateMarker(selectedMarker.id, {
                           meta: {
@@ -3034,19 +3034,19 @@ export function KnowledgeSitemapPage() {
                       }}
                     >
                       <div className="font-semibold">{printerDisplayName(printer)}</div>
-                      <div className="mt-0.5 text-xs text-slate-500">
+                      <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
                         {printer.ip_address || 'IP —'}
                         {printer.page_count != null ? ` · ${printer.page_count} стр.` : ''}
                         {toner != null ? ` · тонер ${toner}%` : ''}
                       </div>
-                      <div className="mt-0.5 text-xs text-slate-500">
+                      <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
                         {printer.location || '—'} · {(printer.poll_status || 'unknown').toLowerCase()}
                       </div>
                     </button>
                   )
                 })}
                 {filteredPrinterDirectory.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                  <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-fg-muted)]">
                     {t('sitemap.printerNothingFound')}
                   </div>
                 ) : null}
