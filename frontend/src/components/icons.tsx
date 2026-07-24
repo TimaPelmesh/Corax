@@ -147,6 +147,34 @@ export function IconMoon({ className, title }: Props) {
   )
 }
 
+export function IconSearch({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <circle cx="10.5" cy="10.5" r="5.75" {...soft} />
+      <circle cx="10.5" cy="10.5" r="5.75" {...s} />
+      <path d="M15.2 15.2L20 20" {...s} />
+    </svg>
+  )
+}
+
+export function IconBell({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <path
+        d="M12 3.75c-2.9 0-5.25 2.2-5.25 4.9v2.1c0 .85-.28 1.68-.8 2.35l-.85 1.1c-.55.7-.05 1.7.85 1.7h12.1c.9 0 1.4-1 .85-1.7l-.85-1.1a3.9 3.9 0 0 1-.8-2.35v-2.1c0-2.7-2.35-4.9-5.25-4.9z"
+        {...soft}
+      />
+      <path
+        d="M12 3.75c-2.9 0-5.25 2.2-5.25 4.9v2.1c0 .85-.28 1.68-.8 2.35l-.85 1.1c-.55.7-.05 1.7.85 1.7h12.1c.9 0 1.4-1 .85-1.7l-.85-1.1a3.9 3.9 0 0 1-.8-2.35v-2.1c0-2.7-2.35-4.9-5.25-4.9z"
+        {...s}
+      />
+      <path d="M10.2 18.35a2 2 0 0 0 3.6 0" {...s} />
+    </svg>
+  )
+}
+
 export function IconClose({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
@@ -214,6 +242,63 @@ export function IconTicket({ className, title }: Props) {
         {...s}
       />
       <path d="M8 11.5v5" {...s} strokeWidth={sw * 0.9} opacity={0.85} strokeDasharray="2.2 2.4" />
+    </svg>
+  )
+}
+
+export function IconSignal({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <circle cx="12" cy="18" r="1.35" fill="currentColor" stroke="none" />
+      <path d="M8.2 14.4a5.4 5.4 0 0 1 7.6 0" {...s} />
+      <path d="M5.4 11.2a9.2 9.2 0 0 1 13.2 0" {...s} opacity={0.85} />
+      <path d="M2.9 8.1a13 13 0 0 1 18.2 0" {...s} opacity={0.55} />
+    </svg>
+  )
+}
+
+export function IconSignalOff({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <circle cx="12" cy="18" r="1.35" fill="currentColor" stroke="none" />
+      <path d="M8.2 14.4a5.4 5.4 0 0 1 7.6 0" {...s} opacity={0.45} />
+      <path d="M5.4 11.2a9.2 9.2 0 0 1 13.2 0" {...s} opacity={0.35} />
+      <path d="M4.5 5.25 19.5 19.5" {...s} />
+    </svg>
+  )
+}
+
+export function IconClock({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <circle cx="12" cy="12" r="8.25" {...soft} />
+      <circle cx="12" cy="12" r="8.25" {...s} />
+      <path d="M12 7.75v4.6l3.1 1.85" {...s} />
+    </svg>
+  )
+}
+
+export function IconCheckBadge({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <circle cx="12" cy="12" r="8.25" {...soft} />
+      <circle cx="12" cy="12" r="8.25" {...s} />
+      <path d="M8.4 12.15 11 14.7l4.7-5.2" {...s} />
+    </svg>
+  )
+}
+
+export function IconActivity({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.25" {...soft} />
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.25" {...s} />
+      <path d="M6.5 13.25 9.1 10.4l2.3 2.5 3.2-4.15L17.5 12.2" {...s} />
     </svg>
   )
 }

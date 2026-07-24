@@ -20,6 +20,9 @@ def test_service_requests_crud(client: TestClient, auth_headers: dict[str, str])
     assert created.status_code == 200, created.text
     req_id = created.json()["id"]
     assert created.json()["title"] == title
+    assert created.json().get("closed_at") in (None, "")
+    # Открытая заявка не обязана иметь план/факт закрытия.
+    assert created.json().get("planned_close_at") in (None, "")
 
     listed = client.get("/api/v1/service-requests", headers=auth_headers, params={"status": "open"})
     assert listed.status_code == 200
@@ -42,6 +45,38 @@ def test_service_requests_crud(client: TestClient, auth_headers: dict[str, str])
 
     deleted = client.post(f"/api/v1/service-requests/{req_id}/delete", headers=auth_headers)
     assert deleted.status_code == 200
+
+
+def test_service_request_open_with_assignees(client: TestClient, auth_headers: dict[str, str]):
+    username = unique_hostname("assignee")
+    user = client.post(
+        "/api/v1/users",
+        headers=auth_headers,
+        json={"username": username, "password": "Assignee1!", "role": "editor"},
+    )
+    assert user.status_code == 200, user.text
+    uid = user.json()["id"]
+
+    created = client.post(
+        "/api/v1/service-requests",
+        headers=auth_headers,
+        json={
+            "title": f"Assigned {unique_hostname('sr')}",
+            "status": "open",
+            "priority": "normal",
+            "assignee_ids": [uid],
+            "planned_close_at": None,
+            "closed_at": None,
+        },
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert uid in body["assignee_ids"]
+    assert body["status"] == "open"
+    assert body.get("closed_at") in (None, "")
+
+    client.post(f"/api/v1/service-requests/{body['id']}/delete", headers=auth_headers)
+    client.post(f"/api/v1/users/{uid}/delete", headers=auth_headers)
 
 
 def test_service_request_templates(client: TestClient, auth_headers: dict[str, str]):

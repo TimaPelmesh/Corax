@@ -1179,9 +1179,9 @@ export function ServiceRequestsPage() {
   const [priority, setPriority] = useState<RequestPriority>('normal')
   const [requestLocation, setRequestLocation] = useState('')
   const [openedAtLocal, setOpenedAtLocal] = useState(defaultOpenedLocal())
-  const [plannedCloseLocal, setPlannedCloseLocal] = useState(defaultPlannedCloseLocal())
+  const [plannedCloseLocal, setPlannedCloseLocal] = useState('')
   const [closedAtLocal, setClosedAtLocal] = useState('')
-  const [closedSameAsPlanned, setClosedSameAsPlanned] = useState(true)
+  const [closedSameAsPlanned, setClosedSameAsPlanned] = useState(false)
   const [assigneeIds, setAssigneeIds] = useState<number[]>([])
   const [computerId, setComputerId] = useState('')
   const [createTemplateSelect, setCreateTemplateSelect] = useState('')
@@ -1668,6 +1668,33 @@ export function ServiceRequestsPage() {
     })()
   }, [])
 
+  const myIdentityIds = useMemo(() => {
+    const ids: number[] = []
+    if (!user) return ids
+    if (user.linked_directory_user_id) ids.push(user.linked_directory_user_id)
+    else ids.push(user.id)
+    return ids
+  }, [user])
+
+  const myRequesterDefault = useMemo(() => {
+    if (!user) return ''
+    if (user.linked_directory_full_name?.trim()) return user.linked_directory_full_name.trim()
+    if (user.linked_directory_username?.trim()) return user.linked_directory_username.trim()
+    return (user.full_name || user.username || '').trim()
+  }, [user])
+
+  useEffect(() => {
+    if (tab !== 'create' || editingRequestId != null) return
+    if (assigneeIds.length === 0 && myIdentityIds.length > 0) {
+      setAssigneeIds(myIdentityIds)
+    }
+    if (!requesterName.trim() && myRequesterDefault) {
+      setRequesterName(myRequesterDefault)
+    }
+    // Only seed once identity is known; don't fight user edits after that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot defaults when identity arrives
+  }, [tab, editingRequestId, user?.id, user?.linked_directory_user_id, myRequesterDefault])
+
   useEffect(() => {
     if (tab !== 'templates' && tab !== 'create') return
     void loadTemplates()
@@ -1694,11 +1721,9 @@ export function ServiceRequestsPage() {
 
   useEffect(() => {
     if (!closedSameAsPlanned) return
+    if (createStatus !== 'done' && createStatus !== 'cancelled') return
     setClosedAtLocal(plannedCloseLocal)
-    if (plannedCloseLocal.trim()) {
-      setCreateStatus((prev) => (prev === 'cancelled' ? 'cancelled' : 'done'))
-    }
-  }, [closedSameAsPlanned, plannedCloseLocal])
+  }, [closedSameAsPlanned, plannedCloseLocal, createStatus])
 
   useEffect(() => {
     if (!tplClosedSameAsPlanned) return
@@ -1713,12 +1738,12 @@ export function ServiceRequestsPage() {
     setPriority('normal')
     setRequestLocation('')
     setOpenedAtLocal(defaultOpenedLocal())
-    setPlannedCloseLocal(defaultPlannedCloseLocal())
+    setPlannedCloseLocal('')
     setClosedAtLocal('')
-    setClosedSameAsPlanned(true)
-    setAssigneeIds([])
+    setClosedSameAsPlanned(false)
+    setAssigneeIds(myIdentityIds.length ? [...myIdentityIds] : [])
     setComputerId('')
-    setRequesterName('')
+    setRequesterName(myRequesterDefault)
     setCategory('')
     setShowDescription(false)
     setEditingRequestId(null)
@@ -1733,7 +1758,8 @@ export function ServiceRequestsPage() {
     setRequesterName((t.requester_name ?? '').trim())
     setCategory((t.category ?? '').trim())
     setRequestLocation((t.location ?? '').trim())
-    setCreateStatus(isRequestStatus(t.status) ? t.status : 'open')
+    const status = isRequestStatus(t.status) ? t.status : 'open'
+    setCreateStatus(status)
     setPriority(isRequestPriority(t.priority) ? t.priority : 'normal')
     setAssigneeIds(Array.isArray(t.assignee_ids) ? [...t.assignee_ids] : [])
     setComputerId(t.computer_id != null ? String(t.computer_id) : '')
@@ -1746,10 +1772,11 @@ export function ServiceRequestsPage() {
     )
     const planned = t.planned_close_at ? toDatetimeLocalValue(t.planned_close_at) : ''
     const closed = t.closed_at ? toDatetimeLocalValue(t.closed_at) : ''
-    setPlannedCloseLocal(planned)
-    setClosedAtLocal(closed)
+    setPlannedCloseLocal(status === 'open' ? '' : planned)
+    setClosedAtLocal(status === 'done' || status === 'cancelled' ? closed : '')
     setClosedSameAsPlanned(
-      (!closed && !planned) || (!closed && Boolean(planned)) || Boolean(closed && planned && closed === planned),
+      (status === 'done' || status === 'cancelled') &&
+        Boolean(closed && planned && closed === planned),
     )
   }
 
@@ -1784,18 +1811,31 @@ export function ServiceRequestsPage() {
   async function onSubmitRequest(e: FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
+    if (!openedAtLocal.trim()) {
+      toast.error(t('requests.errors.openedRequired'))
+      return
+    }
     setSaving(true)
     try {
-      const closedLocalValue = closedSameAsPlanned ? plannedCloseLocal : closedAtLocal
+      const isOpenLike = createStatus === 'open' || createStatus === 'in_progress'
+      const isClosedLike = createStatus === 'done' || createStatus === 'cancelled'
+      const plannedValue =
+        createStatus === 'open' ? '' : plannedCloseLocal.trim()
+      const closedLocalValue = isClosedLike
+        ? closedSameAsPlanned
+          ? plannedCloseLocal
+          : closedAtLocal
+        : ''
       const closedParsed = closedLocalValue.trim() ? fromDatetimeLocalValue(closedLocalValue) : null
-      let effectiveStatus = createStatus
-      if (closedParsed) {
-        effectiveStatus = createStatus === 'cancelled' ? 'cancelled' : 'done'
+      if (isClosedLike && !closedParsed) {
+        toast.error(t('requests.errors.closedRequired'))
+        setSaving(false)
+        return
       }
       const body = {
         title: title.trim(),
         description: description.trim() || null,
-        status: effectiveStatus,
+        status: createStatus,
         priority,
         location: requestLocation.trim() || null,
         requester_name: requesterName.trim() || null,
@@ -1803,14 +1843,14 @@ export function ServiceRequestsPage() {
         computer_id: computerId ? Number(computerId) : null,
         assignee_ids: assigneeIds,
         opened_at: fromDatetimeLocalValue(openedAtLocal),
-        planned_close_at: plannedCloseLocal.trim() ? fromDatetimeLocalValue(plannedCloseLocal) : null,
-        closed_at: closedParsed ?? undefined,
+        planned_close_at: plannedValue ? fromDatetimeLocalValue(plannedValue) : null,
+        closed_at: isOpenLike ? null : closedParsed,
       }
 
       if (editingRequestId != null) {
         const updated = await api.updateServiceRequest(editingRequestId, {
           ...body,
-          closed_at: closedParsed,
+          closed_at: body.closed_at,
         })
         const returnPath = editingReturnPath
         setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
@@ -1819,6 +1859,7 @@ export function ServiceRequestsPage() {
         resetCreateFormAfterSubmit()
         toast.ok(t('requests.messages.saved'))
         void refreshSummary()
+        window.dispatchEvent(new Event('corax:assignee-notifications'))
         if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath)
       } else {
         await api.createServiceRequest(body)
@@ -1830,6 +1871,7 @@ export function ServiceRequestsPage() {
         toast.ok(t('requests.messages.created'))
         await load()
         void refreshSummary()
+        window.dispatchEvent(new Event('corax:assignee-notifications'))
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
@@ -2343,7 +2385,22 @@ export function ServiceRequestsPage() {
                     value={createStatus}
                     onChange={(e) => {
                       const next = e.target.value
-                      if (isRequestStatus(next)) setCreateStatus(next)
+                      if (!isRequestStatus(next)) return
+                      setCreateStatus(next)
+                      if (next === 'open') {
+                        setPlannedCloseLocal('')
+                        setClosedAtLocal('')
+                        setClosedSameAsPlanned(false)
+                      } else if (next === 'in_progress') {
+                        setClosedAtLocal('')
+                        setClosedSameAsPlanned(false)
+                        if (!plannedCloseLocal.trim()) {
+                          setPlannedCloseLocal(defaultPlannedCloseLocal())
+                        }
+                      } else if ((next === 'done' || next === 'cancelled') && !closedAtLocal.trim()) {
+                        setClosedSameAsPlanned(false)
+                        setClosedAtLocal(defaultOpenedLocal())
+                      }
                     }}
                     className={CREATE_FORM_INPUT_CLS}
                   >
@@ -2373,115 +2430,117 @@ export function ServiceRequestsPage() {
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div
+                className={`grid grid-cols-1 gap-2 ${
+                  createStatus === 'open' ? '' : 'sm:grid-cols-2'
+                }`}
+              >
                 <label className="block">
                   <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.openedAt')}</span>
                   <input
                     type="datetime-local"
                     value={openedAtLocal}
                     onChange={(e) => setOpenedAtLocal(e.target.value)}
+                    required
                     className={CREATE_FORM_INPUT_CLS}
                   />
                 </label>
-                <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.plannedCloseAt')}</span>
-                  <input
-                    type="datetime-local"
-                    value={plannedCloseLocal}
-                    onChange={(e) => setPlannedCloseLocal(e.target.value)}
-                    className={CREATE_FORM_INPUT_CLS}
-                  />
-                  <div className="mt-1 flex flex-wrap gap-0.5">
-                    {DURATION_PRESETS_MIN.map((p) => (
+                {createStatus !== 'open' ? (
+                  <label className="block">
+                    <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.plannedCloseAt')}</span>
+                    <input
+                      type="datetime-local"
+                      value={plannedCloseLocal}
+                      onChange={(e) => setPlannedCloseLocal(e.target.value)}
+                      className={CREATE_FORM_INPUT_CLS}
+                    />
+                    <div className="mt-1 flex flex-wrap gap-0.5">
+                      {DURATION_PRESETS_MIN.map((p) => (
+                        <button
+                          key={`plan-${p.minutes}`}
+                          type="button"
+                          className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
+                          title={t('requests.durations.fromOpenedTitle', {
+                            label: durationPresetLabel(p.minutes),
+                          })}
+                          onClick={() => {
+                            const v = addMinutesToLocalDatetimeValue(openedAtLocal, p.minutes)
+                            if (v) setPlannedCloseLocal(v)
+                          }}
+                        >
+                          +{durationPresetLabel(p.minutes)}
+                        </button>
+                      ))}
                       <button
-                        key={`plan-${p.minutes}`}
                         type="button"
-                        className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
-                        title={t('requests.durations.fromOpenedTitle', {
-                          label: durationPresetLabel(p.minutes),
-                        })}
-                        onClick={() => {
-                          const v = addMinutesToLocalDatetimeValue(openedAtLocal, p.minutes)
-                          if (v) setPlannedCloseLocal(v)
-                        }}
+                        className="rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-zinc-50"
+                        onClick={() => setPlannedCloseLocal('')}
+                        title={t('requests.durations.clearPlanned')}
                       >
-                        +{durationPresetLabel(p.minutes)}
+                        {t('requests.categoryPicker.reset')}
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-zinc-50"
-                      onClick={() => setPlannedCloseLocal('')}
-                      title={t('requests.durations.clearPlanned')}
-                    >
-                      {t('requests.categoryPicker.reset')}
-                    </button>
-                  </div>
-                </label>
+                    </div>
+                  </label>
+                ) : null}
               </div>
 
-              <label className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-1.5">
-                <input
-                  type="checkbox"
-                  className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
-                  checked={closedSameAsPlanned}
-                  onChange={(e) => {
-                    const on = e.target.checked
-                    setClosedSameAsPlanned(on)
-                    if (on) {
-                      setClosedAtLocal(plannedCloseLocal)
-                      if (plannedCloseLocal.trim()) {
-                        setCreateStatus((prev) => (prev === 'cancelled' ? 'cancelled' : 'done'))
-                      }
-                    }
-                  }}
-                />
-                <span className="text-[11px] leading-snug text-[var(--color-fg)]">
-                  {t('requests.create.closedSameAsPlanned')}
-                </span>
-              </label>
+              {createStatus === 'done' || createStatus === 'cancelled' ? (
+                <>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-1.5">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                      checked={closedSameAsPlanned}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        setClosedSameAsPlanned(on)
+                        if (on) setClosedAtLocal(plannedCloseLocal)
+                      }}
+                    />
+                    <span className="text-[11px] leading-snug text-[var(--color-fg)]">
+                      {t('requests.create.closedSameAsPlanned')}
+                    </span>
+                  </label>
 
-              {!closedSameAsPlanned ? (
-                <label className="block">
-                  <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.closedAt')}</span>
-                  <input
-                    type="datetime-local"
-                    value={closedAtLocal}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setClosedAtLocal(v)
-                      if (v.trim()) setCreateStatus((prev) => (prev === 'cancelled' ? 'cancelled' : 'done'))
-                    }}
-                    className={CREATE_FORM_INPUT_CLS}
-                  />
-                  <div className="mt-1 flex flex-wrap gap-0.5">
-                    {DURATION_PRESETS_MIN.map((p) => (
-                      <button
-                        key={`close-${p.minutes}`}
-                        type="button"
-                        className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
-                        title={t('requests.durations.fromOpenedTitle', {
-                          label: durationPresetLabel(p.minutes),
-                        })}
-                        onClick={() => {
-                          const v = addMinutesToLocalDatetimeValue(openedAtLocal, p.minutes)
-                          setClosedAtLocal(v)
-                          if (v.trim()) setCreateStatus('done')
-                        }}
-                      >
-                        +{durationPresetLabel(p.minutes)}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-zinc-50"
-                      title={t('requests.durations.clearClosed')}
-                      onClick={() => setClosedAtLocal('')}
-                    >
-                      {t('requests.categoryPicker.reset')}
-                    </button>
-                  </div>
-                </label>
+                  {!closedSameAsPlanned ? (
+                    <label className="block">
+                      <span className={CREATE_FORM_LABEL_CLS}>{t('requests.create.closedAt')}</span>
+                      <input
+                        type="datetime-local"
+                        value={closedAtLocal}
+                        onChange={(e) => setClosedAtLocal(e.target.value)}
+                        required
+                        className={CREATE_FORM_INPUT_CLS}
+                      />
+                      <div className="mt-1 flex flex-wrap gap-0.5">
+                        {DURATION_PRESETS_MIN.map((p) => (
+                          <button
+                            key={`close-${p.minutes}`}
+                            type="button"
+                            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"
+                            title={t('requests.durations.fromOpenedTitle', {
+                              label: durationPresetLabel(p.minutes),
+                            })}
+                            onClick={() => {
+                              const v = addMinutesToLocalDatetimeValue(openedAtLocal, p.minutes)
+                              setClosedAtLocal(v)
+                            }}
+                          >
+                            +{durationPresetLabel(p.minutes)}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          className="rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-fg)] hover:bg-zinc-50"
+                          title={t('requests.durations.clearClosed')}
+                          onClick={() => setClosedAtLocal('')}
+                        >
+                          {t('requests.categoryPicker.reset')}
+                        </button>
+                      </div>
+                    </label>
+                  ) : null}
+                </>
               ) : null}
 
               {createFormAssignees.length > 0 ? (

@@ -3,6 +3,7 @@ import { api } from '../api'
 import { useAuth } from '../AuthContext'
 import { useLocale, type MessageKey } from '../i18n/LocaleContext'
 import { useTheme } from '../ThemeContext'
+import { readNotificationPrefs, writeNotificationPrefs } from '../lib/notificationPrefs'
 import { IconClose, IconMoon, IconSun } from './icons'
 import { fileToAvatarDataUrl, UserAvatar } from './UserAvatar'
 
@@ -55,6 +56,7 @@ export function UserPrefsPanel({
   const [avatarBusy, setAvatarBusy] = useState(false)
   const [avatarErr, setAvatarErr] = useState<string | null>(null)
   const [draftAvatar, setDraftAvatar] = useState<string | null>(null)
+  const [notifyEnabled, setNotifyEnabled] = useState(true)
 
   const canEditAvatar = Boolean(user && !user.is_ldap && user.role !== 'directory')
   const previewAvatar = draftAvatar ?? user?.avatar_data ?? null
@@ -63,13 +65,14 @@ export function UserPrefsPanel({
     if (!open) return
     setAvatarErr(null)
     setDraftAvatar(user?.avatar_data ?? null)
+    if (user) setNotifyEnabled(readNotificationPrefs(user.id).enabled)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- init only on open
-  }, [open, onClose])
+  }, [open, onClose, user?.id])
 
   const uniqueItems = useMemo(() => {
     const seen = new Set<string>()
@@ -292,6 +295,29 @@ export function UserPrefsPanel({
                       {t('prefs.themeDark')}
                     </button>
                   </div>
+                </div>
+                <div className="h-px bg-[var(--color-border)]" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm text-[var(--color-fg-muted)]">{t('prefs.notifications')}</div>
+                    <p className="mt-0.5 text-[11px] text-[var(--color-fg-subtle)]">{t('prefs.notificationsHint')}</p>
+                  </div>
+                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-[var(--color-border)]"
+                      checked={notifyEnabled}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        setNotifyEnabled(on)
+                        if (!user) return
+                        const prev = readNotificationPrefs(user.id)
+                        writeNotificationPrefs(user.id, { ...prev, enabled: on })
+                        window.dispatchEvent(new Event('corax:notify-prefs'))
+                        window.dispatchEvent(new Event('corax:assignee-notifications'))
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
             </section>

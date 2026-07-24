@@ -109,6 +109,23 @@ async def dashboard_summary(
     db: AsyncSession = Depends(get_db),
 ):
     computers_total = int(await db.scalar(select(func.count()).select_from(Computer)) or 0)
+    computers_online = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(Computer)
+            .where(func.lower(func.coalesce(Computer.ping_status, "")) == "online")
+        )
+        or 0
+    )
+    computers_offline = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(Computer)
+            .where(func.lower(func.coalesce(Computer.ping_status, "")) == "offline")
+        )
+        or 0
+    )
+    computers_unknown = max(0, computers_total - computers_online - computers_offline)
     software_installations_total = int(
         await db.scalar(
             select(func.count())
@@ -151,6 +168,29 @@ async def dashboard_summary(
         )
         or 0
     )
+    closed_with_plan = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ServiceRequest)
+            .where(ServiceRequest.closed_at.is_not(None))
+            .where(ServiceRequest.planned_close_at.is_not(None))
+        )
+        or 0
+    )
+    if closed_with_plan > 0:
+        on_time = int(
+            await db.scalar(
+                select(func.count())
+                .select_from(ServiceRequest)
+                .where(ServiceRequest.closed_at.is_not(None))
+                .where(ServiceRequest.planned_close_at.is_not(None))
+                .where(ServiceRequest.closed_at <= ServiceRequest.planned_close_at)
+            )
+            or 0
+        )
+        service_requests_on_time_pct = int(round((on_time / closed_with_plan) * 100))
+    else:
+        service_requests_on_time_pct = None
     # Average close time: arithmetic mean of (closed_at - coalesce(opened_at, created_at))
     # only for status=done with a positive duration (bad/backdated timestamps excluded).
     _opened = func.coalesce(ServiceRequest.opened_at, ServiceRequest.created_at)
@@ -361,6 +401,9 @@ async def dashboard_summary(
 
     return DashboardSummary(
         computers_total=computers_total,
+        computers_online=computers_online,
+        computers_offline=computers_offline,
+        computers_unknown=computers_unknown,
         software_installations_total=software_installations_total,
         software_unique_titles=software_unique_titles,
         tags_in_directory=tags_in_directory,
@@ -368,6 +411,7 @@ async def dashboard_summary(
         service_requests_total=service_requests_total,
         service_requests_active=service_requests_active,
         service_requests_overdue=service_requests_overdue,
+        service_requests_on_time_pct=service_requests_on_time_pct,
         service_requests_avg_close_hours=service_requests_avg_close_hours,
         service_requests_by_status=service_requests_by_status,
         by_os=by_os,

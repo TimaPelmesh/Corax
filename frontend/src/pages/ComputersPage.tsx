@@ -264,6 +264,13 @@ export function ComputersPage() {
   }
 
   useEffect(() => {
+    const ping = (searchParams.get('ping') || '').trim().toLowerCase()
+    if (ping === 'online' || ping === 'offline' || ping === 'unknown') {
+      setPingFilter(ping)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
     const idRaw = searchParams.get('computer')
     if (!idRaw) return
     const id = Number.parseInt(idRaw, 10)

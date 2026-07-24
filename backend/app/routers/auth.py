@@ -81,8 +81,29 @@ async def login_json(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user)):
-    return user
+async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    linked_username = None
+    linked_full_name = None
+    if user.linked_directory_user_id:
+        linked = await db.get(User, user.linked_directory_user_id)
+        if linked is not None:
+            linked_username = linked.username
+            linked_full_name = linked.full_name
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        avatar_data=user.avatar_data,
+        is_active=user.is_active,
+        is_superuser=user.is_superuser,
+        is_ldap=bool(user.is_ldap),
+        role=(user.role or "observer"),
+        created_at=user.created_at,
+        linked_directory_user_id=user.linked_directory_user_id,
+        linked_directory_username=linked_username,
+        linked_directory_full_name=linked_full_name,
+    )
 
 
 @router.post("/logout")

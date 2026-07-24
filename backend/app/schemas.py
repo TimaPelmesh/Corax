@@ -52,12 +52,14 @@ class UserProfilePatch(BaseModel):
 
 class UserServiceAccountPatch(UserProfilePatch):
     password: str | None = Field(default=None, min_length=6, max_length=128)
+    linked_directory_user_id: int | None = None
 
 
 class UserCreate(UserBase):
     password: str = Field(min_length=6, max_length=128)
     is_superuser: bool = False
     role: str = Field(default="observer", pattern="^(observer|editor)$")
+    linked_directory_user_id: int | None = None
 
 
 class UserOut(UserBase):
@@ -67,6 +69,9 @@ class UserOut(UserBase):
     is_ldap: bool
     role: str
     created_at: datetime
+    linked_directory_user_id: int | None = None
+    linked_directory_username: str | None = None
+    linked_directory_full_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -75,6 +80,9 @@ class UserDirectoryItem(BaseModel):
     id: int
     username: str
     full_name: str | None = None
+    is_ldap: bool = False
+    role: str = "directory"
+    linked_from_user_id: int | None = None
 
 
 _TAG_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -308,6 +316,9 @@ class SoftwareInstallHosts(BaseModel):
 
 class DashboardSummary(BaseModel):
     computers_total: int
+    computers_online: int = 0
+    computers_offline: int = 0
+    computers_unknown: int = 0
     software_installations_total: int
     software_unique_titles: int
     tags_in_directory: int
@@ -315,6 +326,8 @@ class DashboardSummary(BaseModel):
     service_requests_total: int = 0
     service_requests_active: int = 0
     service_requests_overdue: int = 0
+    # Share of closed-with-plan tickets where closed_at <= planned_close_at (0–100).
+    service_requests_on_time_pct: int | None = None
     service_requests_avg_close_hours: float | None = None
     service_requests_by_status: list[DashboardNameCount] = []
     by_os: list[DashboardNameCount]

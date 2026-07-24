@@ -8,13 +8,14 @@ type DashboardChartsMode = 'donut' | 'bars'
 
 type DashboardWidgetId =
   | 'stat.computers_total'
+  | 'stat.computers_online'
+  | 'stat.computers_offline'
   | 'stat.software_unique_titles'
   | 'stat.tags_in_directory'
   | 'stat.snmp_printers_total'
   | 'stat.physical_disks_total'
   | 'stat.requests_total'
   | 'stat.requests_active'
-  | 'stat.requests_overdue'
   | 'stat.requests_done'
   | 'stat.requests_avg_close'
   | 'dist.by_os'
@@ -28,6 +29,7 @@ type DashboardWidgetId =
   | 'list.top_software'
   | 'list.peripheral_kinds'
   | 'list.top_peripherals'
+  | 'list.top_users'
 
 type WidgetVisibility = Record<DashboardWidgetId, boolean>
 
@@ -53,13 +55,14 @@ function writeMode(m: DashboardChartsMode) {
 
 const DEFAULT_WIDGETS: WidgetVisibility = {
   'stat.computers_total': true,
+  'stat.computers_online': true,
+  'stat.computers_offline': true,
   'stat.software_unique_titles': true,
-  'stat.tags_in_directory': true,
+  'stat.tags_in_directory': false,
   'stat.snmp_printers_total': true,
   'stat.physical_disks_total': true,
   'stat.requests_total': true,
   'stat.requests_active': true,
-  'stat.requests_overdue': true,
   'stat.requests_done': true,
   'stat.requests_avg_close': true,
   'dist.by_os': true,
@@ -73,6 +76,7 @@ const DEFAULT_WIDGETS: WidgetVisibility = {
   'list.top_software': true,
   'list.peripheral_kinds': true,
   'list.top_peripherals': true,
+  'list.top_users': true,
 }
 
 function readWidgets(): WidgetVisibility {
@@ -122,14 +126,15 @@ export function SettingsDashboardPage() {
     () =>
       [
         { id: 'stat.computers_total', label: 'Плашка: Рабочих станций' },
+        { id: 'stat.computers_online', label: 'Плашка: ПК в сети' },
+        { id: 'stat.computers_offline', label: 'Плашка: ПК не в сети' },
         { id: 'stat.software_unique_titles', label: 'Плашка: Названий ПО' },
         { id: 'stat.tags_in_directory', label: 'Плашка: Тегов' },
         { id: 'stat.snmp_printers_total', label: 'Плашка: Принтеры (SNMP)' },
         { id: 'stat.physical_disks_total', label: 'Плашка: Физические диски (всего + SSD/HDD)' },
         { id: 'stat.requests_total', label: 'Плашка: Заявок (всего)' },
         { id: 'stat.requests_active', label: 'Плашка: Заявки в работе' },
-        { id: 'stat.requests_overdue', label: 'Плашка: Просроченные заявки' },
-        { id: 'stat.requests_done', label: 'Плашка: Закрытые заявки (done)' },
+        { id: 'stat.requests_done', label: 'Плашка: Закрыто вовремя (%)' },
         { id: 'stat.requests_avg_close', label: 'Плашка: Среднее время закрытия' },
         { id: 'dist.by_os', label: 'Диаграмма: Операционные системы' },
         { id: 'dist.by_manufacturer', label: 'Диаграмма: Производители (OEM)' },
@@ -140,6 +145,7 @@ export function SettingsDashboardPage() {
         { id: 'dist.physical_disks', label: 'Диаграмма: Физические диски (SSD 240 ГБ, HDD …)' },
         { id: 'list.top_disk_devices', label: 'Список: Локальные диски' },
         { id: 'list.top_software', label: 'Список: Топ установленного ПО' },
+        { id: 'list.top_users', label: 'Список: Топ закреплённых пользователей' },
         { id: 'list.peripheral_kinds', label: 'Список: Периферия по категориям' },
         { id: 'list.top_peripherals', label: 'Список: Частые устройства (PnP)' },
       ] as const,

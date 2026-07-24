@@ -28,6 +28,10 @@ class User(Base):
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
     role: Mapped[str] = mapped_column(String(16), default="observer")
     is_ldap: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Локальная учётка CORAX → человек из справочника (LDAP/импорт) для заявок и уведомлений.
+    linked_directory_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

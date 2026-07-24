@@ -27,6 +27,78 @@ def _is_directory_user(user: User) -> bool:
     return bool(user.is_ldap) or _normalized_role(user) == "directory"
 
 
+def _to_user_out(user: User, linked: User | None = None) -> UserOut:
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        avatar_data=user.avatar_data,
+        is_active=user.is_active,
+        is_superuser=user.is_superuser,
+        is_ldap=bool(user.is_ldap),
+        role=_normalized_role(user),
+        created_at=user.created_at,
+        linked_directory_user_id=user.linked_directory_user_id,
+        linked_directory_username=(linked.username if linked else None),
+        linked_directory_full_name=(linked.full_name if linked else None),
+    )
+
+
+async def _linked_map(db: AsyncSession, users: list[User]) -> dict[int, User]:
+    ids = {u.linked_directory_user_id for u in users if u.linked_directory_user_id}
+    if not ids:
+        return {}
+    r = await db.execute(select(User).where(User.id.in_(ids)))
+    return {row.id: row for row in r.scalars().all()}
+
+
+async def _users_out(db: AsyncSession, users: list[User]) -> list[UserOut]:
+    linked = await _linked_map(db, users)
+    return [_to_user_out(u, linked.get(u.linked_directory_user_id or -1)) for u in users]
+
+
+async def _user_out(db: AsyncSession, user: User) -> UserOut:
+    linked = None
+    if user.linked_directory_user_id:
+        linked = await db.get(User, user.linked_directory_user_id)
+    return _to_user_out(user, linked)
+
+
+async def _resolve_directory_link(
+    db: AsyncSession,
+    *,
+    panel_user_id: int | None,
+    linked_directory_user_id: int | None,
+) -> int | None:
+    """Validate soft-link target: must be an active directory person, unique link."""
+    if linked_directory_user_id is None:
+        return None
+    target = await db.get(User, linked_directory_user_id)
+    if target is None or not target.is_active:
+        raise HTTPException(status_code=400, detail="Человек из справочника не найден")
+    if not _is_directory_user(target):
+        raise HTTPException(
+            status_code=400,
+            detail="Связывать можно только с записью справочника (LDAP/импорт), не с учёткой CORAX",
+        )
+    if panel_user_id is not None and target.id == panel_user_id:
+        raise HTTPException(status_code=400, detail="Нельзя связать учётку саму с собой")
+    q = select(User).where(
+        User.linked_directory_user_id == target.id,
+        User.is_active == True,  # noqa: E712
+    )
+    if panel_user_id is not None:
+        q = q.where(User.id != panel_user_id)
+    other = (await db.execute(q)).scalar_one_or_none()
+    if other is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Этот человек из справочника уже связан с учёткой «{other.username}»",
+        )
+    return target.id
+
+
 async def _ensure_unique_username(db: AsyncSession, username: str, exclude_id: int) -> None:
     name = username.strip()
     if not name:
@@ -44,7 +116,7 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
 ):
     r = await db.execute(select(User).order_by(User.id))
-    return list(r.scalars().all())
+    return await _users_out(db, list(r.scalars().all()))
 
 
 @router.post("", response_model=UserOut)
@@ -69,6 +141,9 @@ async def create_user(
         else:
             detail = "Пользователь с таким именем уже есть"
         raise HTTPException(status_code=400, detail=detail)
+    linked_id = await _resolve_directory_link(
+        db, panel_user_id=None, linked_directory_user_id=body.linked_directory_user_id
+    )
     u = User(
         username=body.username,
         email=body.email,
@@ -78,11 +153,12 @@ async def create_user(
         role=("editor" if body.is_superuser else body.role),
         is_active=True,
         is_ldap=False,
+        linked_directory_user_id=linked_id,
     )
     db.add(u)
     await db.commit()
     await db.refresh(u)
-    return u
+    return await _user_out(db, u)
 
 
 class UserAdminPatch(BaseModel):
@@ -122,7 +198,7 @@ async def update_my_profile(
             current.avatar_bg = None
     await db.commit()
     await db.refresh(current)
-    return current
+    return await _user_out(db, current)
 
 
 @router.patch("/{user_id}", response_model=UserOut)
@@ -154,9 +230,15 @@ async def update_service_account(
         if len(pwd) < 6 or len(pwd) > 128:
             raise HTTPException(status_code=400, detail="Пароль: 6..128 символов")
         u.hashed_password = hash_password(pwd)
+    if "linked_directory_user_id" in body.model_fields_set:
+        u.linked_directory_user_id = await _resolve_directory_link(
+            db,
+            panel_user_id=u.id,
+            linked_directory_user_id=body.linked_directory_user_id,
+        )
     await db.commit()
     await db.refresh(u)
-    return u
+    return await _user_out(db, u)
 
 
 @router.patch("/{user_id}/admin", response_model=UserOut)
@@ -178,7 +260,7 @@ async def set_user_admin(
         u.role = "editor"
     await db.commit()
     await db.refresh(u)
-    return u
+    return await _user_out(db, u)
 
 
 @router.patch("/{user_id}/role", response_model=UserOut)
@@ -201,7 +283,7 @@ async def set_user_role(
     u.role = role
     await db.commit()
     await db.refresh(u)
-    return u
+    return await _user_out(db, u)
 
 
 @router.post("/me/change-password")
@@ -245,8 +327,14 @@ async def delete_user(
     u.is_superuser = False
     u.role = "observer"
     u.is_active = False
+    u.linked_directory_user_id = None
 
     # 2) Очистить привязки (где возможно) и связи many-to-many.
+    await db.execute(
+        update(User)
+        .where(User.linked_directory_user_id == user_id)
+        .values(linked_directory_user_id=None)
+    )
     await db.execute(update(Computer).where(Computer.assigned_user_id == user_id).values(assigned_user_id=None))
     await db.execute(update(Monitor).where(Monitor.assigned_user_id == user_id).values(assigned_user_id=None))
     await db.execute(delete(service_request_assignees).where(service_request_assignees.c.user_id == user_id))
@@ -263,11 +351,26 @@ async def users_directory(
 ):
     # Справочник для ответственных и инициатора: все активные учётки в БД (локальные и импорт из LDAP).
     r = await db.execute(
-        select(User.id, User.username, User.full_name)
+        select(User)
         .where(User.is_active == True)  # noqa: E712
         .order_by(User.username.asc())
     )
-    return [UserDirectoryItem(id=int(row[0]), username=str(row[1]), full_name=row[2]) for row in r.all()]
+    users = list(r.scalars().all())
+    linked_from: dict[int, int] = {}
+    for u in users:
+        if u.linked_directory_user_id:
+            linked_from[u.linked_directory_user_id] = u.id
+    return [
+        UserDirectoryItem(
+            id=u.id,
+            username=u.username,
+            full_name=u.full_name,
+            is_ldap=bool(u.is_ldap),
+            role=_normalized_role(u),
+            linked_from_user_id=linked_from.get(u.id),
+        )
+        for u in users
+    ]
 
 
 @router.get("/admin/ldap/status")

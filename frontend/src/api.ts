@@ -125,12 +125,18 @@ export type User = {
   is_ldap: boolean
   role: 'observer' | 'editor' | 'directory'
   created_at: string
+  linked_directory_user_id?: number | null
+  linked_directory_username?: string | null
+  linked_directory_full_name?: string | null
 }
 
 export type UserDirectoryItem = {
   id: number
   username: string
   full_name: string | null
+  is_ldap?: boolean
+  role?: string
+  linked_from_user_id?: number | null
 }
 
 export type Monitor = {
@@ -482,6 +488,9 @@ export type DashboardSegmentComputers = {
 
 export type DashboardSummary = {
   computers_total: number
+  computers_online?: number
+  computers_offline?: number
+  computers_unknown?: number
   software_installations_total: number
   software_unique_titles: number
   tags_in_directory: number
@@ -491,6 +500,8 @@ export type DashboardSummary = {
   service_requests_total: number
   service_requests_active: number
   service_requests_overdue: number
+  /** 0–100, share of closed-with-plan tickets closed on or before planned date */
+  service_requests_on_time_pct?: number | null
   service_requests_avg_close_hours: number | null
   service_requests_by_status: DashboardNameCount[]
   by_os: DashboardNameCount[]
@@ -612,8 +623,14 @@ export type DatabaseRestoreResult = {
 
 /** Защита от устаревшего/обрезанного JSON: без этого React падает с белым экраном при undefined[].map */
 function normalizeDashboardSummary(raw: DashboardSummary): DashboardSummary {
+  const total = raw.computers_total ?? 0
+  const online = raw.computers_online ?? 0
+  const offline = raw.computers_offline ?? 0
   return {
-    computers_total: raw.computers_total ?? 0,
+    computers_total: total,
+    computers_online: online,
+    computers_offline: offline,
+    computers_unknown: raw.computers_unknown ?? Math.max(0, total - online - offline),
     software_installations_total: raw.software_installations_total ?? 0,
     software_unique_titles: raw.software_unique_titles ?? 0,
     tags_in_directory: raw.tags_in_directory ?? 0,
@@ -621,6 +638,10 @@ function normalizeDashboardSummary(raw: DashboardSummary): DashboardSummary {
     service_requests_total: raw.service_requests_total ?? 0,
     service_requests_active: raw.service_requests_active ?? 0,
     service_requests_overdue: raw.service_requests_overdue ?? 0,
+    service_requests_on_time_pct:
+      raw.service_requests_on_time_pct == null || Number.isNaN(Number(raw.service_requests_on_time_pct))
+        ? null
+        : Math.max(0, Math.min(100, Math.round(Number(raw.service_requests_on_time_pct)))),
     service_requests_avg_close_hours:
       raw.service_requests_avg_close_hours == null || Number.isNaN(Number(raw.service_requests_avg_close_hours))
         ? null
@@ -1281,6 +1302,7 @@ export const api = {
     full_name?: string | null
     is_superuser?: boolean
     role?: 'observer' | 'editor'
+    linked_directory_user_id?: number | null
   }) => request<User>(`${API_PREFIX}/users`, { method: 'POST', json: body }),
 
   changeMyPassword: (body: { current_password: string; new_password: string }) =>
@@ -1295,7 +1317,13 @@ export const api = {
 
   updateUser: (
     id: number,
-    body: { username?: string; full_name?: string | null; email?: string | null; password?: string },
+    body: {
+      username?: string
+      full_name?: string | null
+      email?: string | null
+      password?: string
+      linked_directory_user_id?: number | null
+    },
   ) => request<User>(`${API_PREFIX}/users/${id}`, { method: 'PATCH', json: body }),
 
   agentTokens: () => request<AgentTokenRow[]>(`${API_PREFIX}/agent-tokens`),

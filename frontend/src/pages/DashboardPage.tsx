@@ -2,7 +2,20 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link } from 'react-router-dom'
 import { api, type DashboardDiskDeviceRank, type DashboardSegmentKind, type DashboardSummary } from '../api'
 import { DashboardDrilldownPanel, type DashboardDrilldownSelection } from '../components/DashboardDrilldown'
-import { IconDashboard, IconDisk, IconPcs, IconPrinter, IconSoftware, IconTag, IconTicket } from '../components/icons'
+import {
+  IconActivity,
+  IconCheckBadge,
+  IconClock,
+  IconDashboard,
+  IconDisk,
+  IconPcs,
+  IconPrinter,
+  IconSignal,
+  IconSignalOff,
+  IconSoftware,
+  IconTag,
+  IconTicket,
+} from '../components/icons'
 import { Skeleton, StatRowSkeleton } from '../components/Skeleton'
 import { donutColorsForTheme } from '../chartColors'
 import { useT } from '../i18n/LocaleContext'
@@ -31,13 +44,14 @@ const DASHBOARD_WIDGETS_KEY = 'dashboard.widgets.v1'
 
 type DashboardWidgetId =
   | 'stat.computers_total'
+  | 'stat.computers_online'
+  | 'stat.computers_offline'
   | 'stat.software_unique_titles'
   | 'stat.tags_in_directory'
   | 'stat.snmp_printers_total'
   | 'stat.physical_disks_total'
   | 'stat.requests_total'
   | 'stat.requests_active'
-  | 'stat.requests_overdue'
   | 'stat.requests_done'
   | 'stat.requests_avg_close'
   | 'dist.by_os'
@@ -51,18 +65,20 @@ type DashboardWidgetId =
   | 'list.top_software'
   | 'list.peripheral_kinds'
   | 'list.top_peripherals'
+  | 'list.top_users'
 
 type WidgetVisibility = Record<DashboardWidgetId, boolean>
 
 const DEFAULT_WIDGETS: WidgetVisibility = {
   'stat.computers_total': true,
+  'stat.computers_online': true,
+  'stat.computers_offline': true,
   'stat.software_unique_titles': true,
-  'stat.tags_in_directory': true,
+  'stat.tags_in_directory': false,
   'stat.snmp_printers_total': true,
   'stat.physical_disks_total': true,
   'stat.requests_total': true,
   'stat.requests_active': true,
-  'stat.requests_overdue': true,
   'stat.requests_done': true,
   'stat.requests_avg_close': true,
   'dist.by_os': true,
@@ -76,6 +92,7 @@ const DEFAULT_WIDGETS: WidgetVisibility = {
   'list.top_software': true,
   'list.peripheral_kinds': true,
   'list.top_peripherals': true,
+  'list.top_users': true,
 }
 
 function readChartsMode(): DashboardChartsMode {
@@ -618,16 +635,11 @@ function formatAvgCloseHours(hours: number | null, t: TranslateFn): string {
   return t('dashboard.stats.requestsAvgClose.hours', { h: String(h) })
 }
 
-function ticketStatusCount(rows: { name: string; count: number }[], status: string): number {
-  return rows.find((x) => x.name.trim().toLowerCase() === status)?.count ?? 0
-}
-
 function MiniStatCard({
   label,
   value,
   sub,
   icon,
-  accent,
   className = '',
   to,
 }: {
@@ -635,33 +647,26 @@ function MiniStatCard({
   value: string | number
   sub?: ReactNode
   icon: ReactNode
-  accent: 'neutral' | 'brand' | 'warn'
   className?: string
   to?: string
 }) {
-  const isBrand = accent === 'brand'
-  const isWarn = accent === 'warn'
-  const iconWrap = isWarn
-    ? 'border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-fg)]'
-    : isBrand
-      ? 'border border-[var(--color-border)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
-      : 'border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]'
-
   const body = (
-    <div className={`app-panel !p-3 transition-colors hover:border-[var(--color-border-strong)] sm:!p-4 ${className}`}>
-      <div className="flex items-start gap-3 sm:gap-4">
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10 ${iconWrap}`}>{icon}</div>
-        <div className="min-w-0 flex-1 pt-0.5">
-          <div className="text-[10px] font-semibold leading-snug text-[var(--color-fg-subtle)] sm:text-[11px]">{label}</div>
-          <div className="admin-stat-value mt-2 text-[1.35rem] leading-none text-[var(--color-fg)] sm:mt-3 sm:text-[1.7rem]">{value}</div>
-          {sub ? <div className="mt-1.5 text-[10px] font-medium leading-snug text-[var(--color-fg-subtle)] sm:mt-2 sm:text-[11px]">{sub}</div> : null}
+    <div className={`app-panel h-full !rounded-xl !p-3 transition-colors hover:border-[var(--color-border-strong)] ${className}`}>
+      <div className="flex items-start gap-2.5">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-surface))] text-[var(--color-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-subtle)]">{label}</div>
+          <div className="mt-1 text-[1.35rem] font-semibold leading-none tabular-nums text-[var(--color-fg)]">{value}</div>
+          {sub ? <div className="mt-1 text-[10px] font-medium leading-snug text-[var(--color-fg-subtle)]">{sub}</div> : null}
         </div>
       </div>
     </div>
   )
   if (to) {
     return (
-      <Link to={to} className="block rounded-[inherit] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]">
+      <Link to={to} className="block h-full rounded-[inherit] no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]">
         {body}
       </Link>
     )
@@ -768,37 +773,57 @@ export function DashboardPage() {
 
   return (
     <div>
-      <div className="app-panel mb-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
-          <div className="page-hero-icon [&_svg]:!h-6 [&_svg]:!w-6">
-            <IconDashboard className="h-6 w-6" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="page-title !text-xl sm:!text-[1.4rem]">{t('titles.dashboard')}</h1>
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
-              {t('pages.dashboardSubtitle')}
-            </p>
-          </div>
+      <div className="mb-5 flex min-w-0 items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary-muted)] text-[var(--color-primary)]">
+          <IconDashboard className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="page-title !text-xl sm:!text-[1.35rem]">{t('titles.dashboard')}</h1>
+          <p className="mt-0.5 text-[12px] text-[var(--color-fg-muted)]">{t('pages.dashboardSubtitle')}</p>
         </div>
       </div>
 
       {loading ? (
         <DashboardSkeleton />
       ) : data ? (
-        <div className="dashboard-enter space-y-5">
+        <div className="dashboard-enter space-y-4">
           {widgets['stat.computers_total'] ||
+          widgets['stat.computers_online'] ||
+          widgets['stat.computers_offline'] ||
           widgets['stat.software_unique_titles'] ||
           widgets['stat.tags_in_directory'] ||
           widgets['stat.snmp_printers_total'] ||
-          widgets['stat.physical_disks_total'] ? (
-            <div className="dashboard-stagger grid grid-cols-2 app-stack-3 sm:grid-cols-3 lg:grid-cols-5">
+          widgets['stat.physical_disks_total'] ||
+          widgets['stat.requests_total'] ||
+          widgets['stat.requests_active'] ||
+          widgets['stat.requests_done'] ||
+          widgets['stat.requests_avg_close'] ? (
+            <div className="dashboard-stagger grid grid-cols-2 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
               {widgets['stat.computers_total'] ? (
                 <MiniStatCard
                   label={t('dashboard.stats.computers.label')}
                   value={data.computers_total}
                   sub={t('dashboard.stats.computers.sub')}
                   icon={<IconPcs className="h-[18px] w-[18px]" />}
-                  accent="brand"
+                  to="/computers"
+                />
+              ) : null}
+              {widgets['stat.computers_online'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.computersOnline.label')}
+                  value={data.computers_online ?? 0}
+                  sub={t('dashboard.stats.computersOnline.sub')}
+                  icon={<IconSignal className="h-[18px] w-[18px]" />}
+                  to="/computers?ping=online"
+                />
+              ) : null}
+              {widgets['stat.computers_offline'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.computersOffline.label')}
+                  value={data.computers_offline ?? 0}
+                  sub={t('dashboard.stats.computersOffline.sub')}
+                  icon={<IconSignalOff className="h-[18px] w-[18px]" />}
+                  to="/computers?ping=offline"
                 />
               ) : null}
               {widgets['stat.software_unique_titles'] ? (
@@ -807,16 +832,7 @@ export function DashboardPage() {
                   value={data.software_unique_titles}
                   sub={t('dashboard.stats.softwareTitles.sub')}
                   icon={<IconSoftware className="h-[18px] w-[18px]" />}
-                  accent="neutral"
-                />
-              ) : null}
-              {widgets['stat.tags_in_directory'] ? (
-                <MiniStatCard
-                  label={t('dashboard.stats.tags.label')}
-                  value={data.tags_in_directory}
-                  sub={t('dashboard.stats.tags.sub')}
-                  icon={<IconTag className="h-[18px] w-[18px]" />}
-                  accent="neutral"
+                  to="/software"
                 />
               ) : null}
               {widgets['stat.snmp_printers_total'] ? (
@@ -825,14 +841,22 @@ export function DashboardPage() {
                   value={data.snmp_printers_total}
                   sub={t('dashboard.stats.printers.sub')}
                   icon={<IconPrinter className="h-[18px] w-[18px]" />}
-                  accent="neutral"
+                  to="/printers"
+                />
+              ) : null}
+              {widgets['stat.tags_in_directory'] ? (
+                <MiniStatCard
+                  label={t('dashboard.stats.tags.label')}
+                  value={data.tags_in_directory}
+                  sub={t('dashboard.stats.tags.sub')}
+                  icon={<IconTag className="h-[18px] w-[18px]" />}
                 />
               ) : null}
               {widgets['stat.physical_disks_total'] ? (() => {
                 const disksBreakdown = physicalDisksStatSub(data.physical_disks_by_media, t)
                 return (
                   <MiniStatCard
-                    label={t('common.total')}
+                    label={t('dashboard.stats.physicalDisks.label')}
                     value={data.physical_disks_total}
                     sub={
                       <>
@@ -841,26 +865,16 @@ export function DashboardPage() {
                       </>
                     }
                     icon={<IconDisk className="h-[18px] w-[18px]" />}
-                    accent="neutral"
                   />
                 )
               })() : null}
-            </div>
-          ) : null}
-
-          {widgets['stat.requests_total'] ||
-          widgets['stat.requests_active'] ||
-          widgets['stat.requests_overdue'] ||
-          widgets['stat.requests_done'] ||
-          widgets['stat.requests_avg_close'] ? (
-            <div className="dashboard-stagger grid grid-cols-2 app-stack-3 sm:grid-cols-3 lg:grid-cols-5">
               {widgets['stat.requests_total'] ? (
                 <MiniStatCard
                   label={t('dashboard.stats.requestsTotal.label')}
                   value={data.service_requests_total}
                   sub={t('dashboard.stats.requestsTotal.sub')}
                   icon={<IconTicket className="h-[18px] w-[18px]" />}
-                  accent="neutral"
+                  to="/requests/database"
                 />
               ) : null}
               {widgets['stat.requests_active'] ? (
@@ -868,26 +882,21 @@ export function DashboardPage() {
                   label={t('dashboard.stats.requestsActive.label')}
                   value={data.service_requests_active}
                   sub={t('dashboard.stats.requestsActive.sub')}
-                  icon={<IconTicket className="h-[18px] w-[18px]" />}
-                  accent="neutral"
-                />
-              ) : null}
-              {widgets['stat.requests_overdue'] ? (
-                <MiniStatCard
-                  label={t('dashboard.stats.requestsOverdue.label')}
-                  value={data.service_requests_overdue}
-                  sub={t('dashboard.stats.requestsOverdue.sub')}
-                  icon={<IconTicket className="h-[18px] w-[18px]" />}
-                  accent="warn"
+                  icon={<IconActivity className="h-[18px] w-[18px]" />}
+                  to="/requests/database"
                 />
               ) : null}
               {widgets['stat.requests_done'] ? (
                 <MiniStatCard
                   label={t('dashboard.stats.requestsDone.label')}
-                  value={ticketStatusCount(data.service_requests_by_status, 'done')}
+                  value={
+                    data.service_requests_on_time_pct == null
+                      ? t('dashboard.stats.requestsDone.empty')
+                      : `${data.service_requests_on_time_pct}%`
+                  }
                   sub={t('dashboard.stats.requestsDone.sub')}
-                  icon={<IconTicket className="h-[18px] w-[18px]" />}
-                  accent="neutral"
+                  icon={<IconCheckBadge className="h-[18px] w-[18px]" />}
+                  to="/requests/database"
                 />
               ) : null}
               {widgets['stat.requests_avg_close'] ? (
@@ -895,8 +904,7 @@ export function DashboardPage() {
                   label={t('dashboard.stats.requestsAvgClose.label')}
                   value={formatAvgCloseHours(data.service_requests_avg_close_hours, t)}
                   sub={t('dashboard.stats.requestsAvgClose.sub')}
-                  icon={<IconTicket className="h-[18px] w-[18px]" />}
-                  accent="neutral"
+                  icon={<IconClock className="h-[18px] w-[18px]" />}
                 />
               ) : null}
             </div>
@@ -1049,8 +1057,8 @@ export function DashboardPage() {
                 </div>
               ) : null}
 
-              {widgets['list.top_disk_devices'] || widgets['list.top_software'] ? (
-                <div className="grid items-stretch gap-4 lg:grid-cols-2">
+              {widgets['list.top_disk_devices'] || widgets['list.top_software'] || widgets['list.top_users'] ? (
+                <div className="grid items-stretch gap-4 lg:grid-cols-2 xl:grid-cols-3">
                   {widgets['list.top_disk_devices'] ? (
                     <SectionCard
                       title={t('dashboard.sections.localDisks.title')}
@@ -1087,6 +1095,21 @@ export function DashboardPage() {
                         items={data.top_software}
                         emptyText={t('dashboard.sections.topSoftware.empty')}
                         {...drillChart('software', t('dashboard.sections.topSoftware.title'))}
+                      />
+                    </SectionCard>
+                  ) : null}
+
+                  {widgets['list.top_users'] ? (
+                    <SectionCard
+                      title={t('dashboard.sections.topUsers.title')}
+                      description={t('dashboard.sections.topUsers.description')}
+                      dense
+                      className="flex h-full flex-col"
+                      bodyClassName="flex-1"
+                    >
+                      <RankedMetricList
+                        items={data.top_users ?? []}
+                        emptyText={t('dashboard.sections.topUsers.empty')}
                       />
                     </SectionCard>
                   ) : null}

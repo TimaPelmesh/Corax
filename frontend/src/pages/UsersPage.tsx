@@ -14,6 +14,135 @@ function isServiceAccount(u: User) {
   return u.is_active && !isDirectoryUser(u)
 }
 
+function personSortKey(u: User): string {
+  return `${(u.full_name || '').trim()} ${u.username}`.trim().toLocaleLowerCase('ru')
+}
+
+function directoryLabel(u: User) {
+  return u.full_name ? `${u.full_name} (${u.username})` : u.username
+}
+
+function sortPeople(a: User, b: User) {
+  return personSortKey(a).localeCompare(personSortKey(b), 'ru', { sensitivity: 'base' })
+}
+
+/** Поиск AD/LDAP-учётки по ФИО/логину, список по алфавиту. */
+function AdAccountPicker({
+  people,
+  value,
+  onChange,
+  label,
+  hint,
+  noneLabel,
+  placeholder,
+}: {
+  people: User[]
+  value: number | null
+  onChange: (id: number | null) => void
+  label: string
+  hint: string
+  noneLabel: string
+  placeholder: string
+}) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const selected = useMemo(() => people.find((p) => p.id === value) ?? null, [people, value])
+
+  useEffect(() => {
+    if (!open) setQuery(selected ? directoryLabel(selected) : '')
+  }, [selected, open, value])
+
+  const filtered = useMemo(() => {
+    const sorted = [...people].sort(sortPeople)
+    const q = query.trim().toLowerCase()
+    if (!q || (selected && directoryLabel(selected).toLowerCase() === q)) return sorted
+    return sorted.filter(
+      (u) =>
+        u.username.toLowerCase().includes(q) ||
+        (u.full_name ?? '').toLowerCase().includes(q) ||
+        directoryLabel(u).toLowerCase().includes(q),
+    )
+  }, [people, query, selected])
+
+  return (
+    <div>
+      <label className="app-label">{label}</label>
+      <div className="relative">
+        <input
+          className="app-input"
+          value={query}
+          placeholder={placeholder}
+          autoComplete="off"
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => {
+            setOpen(true)
+            setQuery('')
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              setOpen(false)
+              setQuery(selected ? directoryLabel(selected) : '')
+            }, 160)
+          }}
+        />
+        {open ? (
+          <ul
+            className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-lg"
+            role="listbox"
+          >
+            <li>
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onChange(null)
+                  setQuery('')
+                  setOpen(false)
+                }}
+              >
+                {noneLabel}
+              </button>
+            </li>
+            {filtered.map((u) => (
+              <li key={u.id}>
+                <button
+                  type="button"
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-muted)] ${
+                    value === u.id ? 'bg-[var(--color-primary-muted)] font-medium text-[var(--color-fg)]' : 'text-[var(--color-fg)]'
+                  }`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onChange(u.id)
+                    setQuery(directoryLabel(u))
+                    setOpen(false)
+                  }}
+                >
+                  <span className="block truncate">{u.full_name?.trim() || u.username}</span>
+                  {u.full_name?.trim() ? (
+                    <span className="mt-0.5 block truncate font-mono text-[11px] text-[var(--color-fg-subtle)]">
+                      {u.username}
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+            {filtered.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-[var(--color-fg-subtle)]">{t('common.nothingFound')}</li>
+            ) : null}
+          </ul>
+        ) : null}
+      </div>
+      <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{hint}</p>
+    </div>
+  )
+}
+
 export function UsersPage() {
   const t = useT()
   const toast = useToast()
@@ -39,6 +168,8 @@ export function UsersPage() {
   const [editFullName, setEditFullName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editPassword, setEditPassword] = useState('')
+  const [editLinkedId, setEditLinkedId] = useState<number | null>(null)
+  const [linkedDirectoryId, setLinkedDirectoryId] = useState<number | null>(null)
   const [section, setSection] = useState<'profile' | 'accounts' | 'directory'>('accounts')
 
   const load = useCallback(async () => {
@@ -64,18 +195,25 @@ export function UsersPage() {
     setMyEmail(user.email ?? '')
   }, [user])
 
-  if (!user?.is_superuser) {
-    return <Navigate to="/" replace />
-  }
-
   const serviceRows = useMemo(
     () => rows.filter(isServiceAccount).sort((a, b) => a.username.localeCompare(b.username)),
     [rows],
   )
   const directoryRows = useMemo(
-    () => rows.filter((u) => u.is_active && isDirectoryUser(u)).sort((a, b) => a.username.localeCompare(b.username)),
+    () => rows.filter((u) => u.is_active && isDirectoryUser(u)).sort(sortPeople),
     [rows],
   )
+  const linkTakenBy = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const u of serviceRows) {
+      if (u.linked_directory_user_id) map.set(u.linked_directory_user_id, u.username)
+    }
+    return map
+  }, [serviceRows])
+
+  if (!user?.is_superuser) {
+    return <Navigate to="/" replace />
+  }
 
   function openEdit(u: User) {
     setEditId(u.id)
@@ -83,6 +221,20 @@ export function UsersPage() {
     setEditFullName(u.full_name ?? '')
     setEditEmail(u.email ?? '')
     setEditPassword('')
+    setEditLinkedId(u.linked_directory_user_id ?? null)
+    setSection('accounts')
+  }
+
+  function startGrantAccess(dir: User) {
+    const base = dir.username.trim()
+    const exists = rows.some((u) => u.is_active && u.username.toLowerCase() === base.toLowerCase())
+    setUsername(exists ? `${base}.corax` : base)
+    setFullName(dir.full_name ?? '')
+    setPassword('')
+    setIsSuper(false)
+    setRole('observer')
+    setLinkedDirectoryId(dir.id)
+    setEditId(null)
     setSection('accounts')
   }
 
@@ -95,12 +247,14 @@ export function UsersPage() {
         full_name: fullName || null,
         is_superuser: isSuper,
         role,
+        linked_directory_user_id: linkedDirectoryId,
       })
       setUsername('')
       setPassword('')
       setFullName('')
       setIsSuper(false)
       setRole('observer')
+      setLinkedDirectoryId(null)
       toast.ok(t('users.createdOk'))
       void load()
     } catch (err) {
@@ -150,6 +304,7 @@ export function UsersPage() {
         full_name: editFullName.trim() || null,
         email: editEmail.trim() || null,
         password: editPassword.trim() || undefined,
+        linked_directory_user_id: editLinkedId,
       })
       setEditId(null)
       toast.ok(t('users.accountUpdated'))
@@ -157,6 +312,13 @@ export function UsersPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'))
     }
+  }
+
+  function availableAdPeople(currentLinkedId: number | null) {
+    return directoryRows.filter((d) => {
+      const taken = linkTakenBy.get(d.id)
+      return !taken || d.id === currentLinkedId
+    })
   }
 
   return (
@@ -280,6 +442,15 @@ export function UsersPage() {
                 <label className="app-label">{t('users.fullNameOptional')}</label>
                 <input className="app-input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
               </div>
+              <AdAccountPicker
+                people={availableAdPeople(linkedDirectoryId)}
+                value={linkedDirectoryId}
+                onChange={setLinkedDirectoryId}
+                label={t('users.linkDirectory')}
+                hint={t('users.linkDirectoryHint')}
+                noneLabel={t('users.linkNone')}
+                placeholder={t('users.linkSearchPlaceholder')}
+              />
               <label className="flex items-center gap-2 text-sm text-[var(--color-fg)]">
                 <input type="checkbox" checked={isSuper} onChange={(e) => setIsSuper(e.target.checked)} />
                 {t('users.administrator')}
@@ -340,6 +511,15 @@ export function UsersPage() {
                     onChange={(e) => setEditEmail(e.target.value)}
                   />
                 </div>
+                <AdAccountPicker
+                  people={availableAdPeople(editLinkedId)}
+                  value={editLinkedId}
+                  onChange={setEditLinkedId}
+                  label={t('users.linkDirectory')}
+                  hint={t('users.linkDirectoryHint')}
+                  noneLabel={t('users.linkNone')}
+                  placeholder={t('users.linkSearchPlaceholder')}
+                />
                 <div className="flex gap-2">
                   <button type="submit" className="app-btn app-btn-primary">
                     {t('common.save')}
@@ -364,11 +544,12 @@ export function UsersPage() {
               <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.coraxAccountsHint')}</p>
             </div>
             <div className="overflow-x-auto overscroll-x-contain">
-              <table className="min-w-[760px] w-full text-left text-sm">
+              <table className="min-w-[860px] w-full text-left text-sm">
                 <thead className="app-table-head">
                   <tr>
                     <th className="app-table-sticky-col px-4 py-3">{t('users.username')}</th>
                     <th className="px-4 py-3">{t('users.fullName')}</th>
+                    <th className="app-hide-xs px-4 py-3">{t('users.linkColumn')}</th>
                     <th className="app-hide-xs px-4 py-3">{t('users.role')}</th>
                     <th className="px-4 py-3">{t('common.actions')}</th>
                   </tr>
@@ -376,13 +557,13 @@ export function UsersPage() {
                 <tbody className="divide-y divide-[var(--color-border)]">
                   {loading ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
+                      <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                         {t('common.loading')}
                       </td>
                     </tr>
                   ) : serviceRows.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
+                      <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                         {t('users.noLocalAccounts')}
                       </td>
                     </tr>
@@ -391,6 +572,17 @@ export function UsersPage() {
                       <tr key={u.id} className="app-table-row">
                         <td className="app-table-sticky-col px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
                         <td className="px-4 py-3 text-[var(--color-fg-muted)]">{u.full_name ?? '—'}</td>
+                        <td className="app-hide-xs px-4 py-3 text-[var(--color-fg-muted)]">
+                          {u.linked_directory_username ? (
+                            <span className="text-[var(--color-fg)]">
+                              {u.linked_directory_full_name
+                                ? `${u.linked_directory_full_name} (${u.linked_directory_username})`
+                                : u.linked_directory_username}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className="app-hide-xs px-4 py-3">
                           {u.is_superuser ? (
                             <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-fg)]">
@@ -481,45 +673,65 @@ export function UsersPage() {
             <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.directoryHint')}</p>
           </div>
           <div className="overflow-x-auto overscroll-x-contain">
-            <table className="min-w-[640px] w-full text-left text-sm">
+            <table className="min-w-[720px] w-full text-left text-sm">
               <thead className="app-table-head">
                 <tr>
                   <th className="app-table-sticky-col px-4 py-3">{t('users.username')}</th>
                   <th className="px-4 py-3">{t('users.source')}</th>
                   <th className="px-4 py-3">{t('users.fullName')}</th>
+                  <th className="px-4 py-3">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
                 {loading ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
+                    <td colSpan={4} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                       {t('common.loading')}
                     </td>
                   </tr>
                 ) : directoryRows.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
+                    <td colSpan={4} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                       {t('users.directoryEmpty')}
                     </td>
                   </tr>
                 ) : (
-                  directoryRows.map((u) => (
-                    <tr key={u.id} className="app-table-row">
-                      <td className="app-table-sticky-col px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
-                      <td className="px-4 py-3 text-[var(--color-fg-muted)]">
-                        {u.is_ldap ? (
-                          <span className="rounded-full bg-[var(--color-info-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-info-fg)]">
-                            LDAP
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-[var(--color-primary-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-primary)]">
-                            {t('users.importBadge')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-[var(--color-fg-muted)]">{u.full_name ?? '—'}</td>
-                    </tr>
-                  ))
+                  directoryRows.map((u) => {
+                    const linkedLogin = linkTakenBy.get(u.id)
+                    return (
+                      <tr key={u.id} className="app-table-row">
+                        <td className="app-table-sticky-col px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
+                        <td className="px-4 py-3 text-[var(--color-fg-muted)]">
+                          {u.is_ldap ? (
+                            <span className="rounded-full bg-[var(--color-info-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-info-fg)]">
+                              LDAP
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-[var(--color-primary-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-primary)]">
+                              {t('users.importBadge')}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--color-fg-muted)]">{u.full_name ?? '—'}</td>
+                        <td className="px-4 py-3">
+                          {linkedLogin ? (
+                            <span className="text-xs text-[var(--color-fg-subtle)]">
+                              {t('users.alreadyLinked')}: {linkedLogin}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 !text-xs"
+                              title={t('users.grantAccessHint')}
+                              onClick={() => startGrantAccess(u)}
+                            >
+                              {t('users.grantAccess')}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

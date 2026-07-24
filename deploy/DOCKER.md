@@ -270,6 +270,7 @@ docker compose --env-file backend/.env logs -f
 | Сменили `POSTGRES_PASSWORD`, БД не пускает | volume со старым паролем → `down -v` (потеря данных) или вернуть старый пароль в `.env` |
 | Агенты не достучались | UFW 3000; LAN-IP в EXE/ZIP; не localhost |
 | app unhealthy после HTTPS | нормально чинится healthcheck `https -k \|\| http`; иначе `docker logs corax-app-1` |
+| Вход не работает после смены HTTP↔HTTPS; в консоли «кука Secure уже существует» | Браузер держит старые `Secure`-куки `access_token`/`csrf_token`. Открывать той же схемой, что сервер, **или** очистить куки для этого origin и войти снова. См. [README](../README.md#важно-куки-после-смены-http--https) |
 
 ---
 

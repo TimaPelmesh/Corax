@@ -13,6 +13,9 @@ def test_dashboard_summary(client: TestClient, auth_headers: dict[str, str], age
     body = r.json()
     for key in (
         "computers_total",
+        "computers_online",
+        "computers_offline",
+        "service_requests_on_time_pct",
         "by_os",
         "ram_buckets",
         "by_manufacturer",
@@ -20,6 +23,9 @@ def test_dashboard_summary(client: TestClient, auth_headers: dict[str, str], age
         "peripheral_kinds",
     ):
         assert key in body
+    assert isinstance(body["computers_online"], int)
+    assert isinstance(body["computers_offline"], int)
+    assert body["service_requests_on_time_pct"] is None or isinstance(body["service_requests_on_time_pct"], int)
 
     catalog = client.get(
         "/api/v1/dashboard/software-catalog",

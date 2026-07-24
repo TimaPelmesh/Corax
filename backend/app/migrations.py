@@ -176,6 +176,41 @@ def _migrate_users_avatar_data(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE users ADD COLUMN avatar_data TEXT"))
 
 
+def _migrate_users_linked_directory(sync_conn) -> None:
+    cols = _column_names(sync_conn, "users")
+    if "linked_directory_user_id" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE users ADD COLUMN linked_directory_user_id INTEGER")
+        )
+    # FK + index — best-effort (SQLite/Postgres).
+    try:
+        sync_conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_users_linked_directory_user_id "
+                "ON users (linked_directory_user_id)"
+            )
+        )
+    except Exception:
+        pass
+    if sync_conn.dialect.name == "postgresql":
+        try:
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE users DROP CONSTRAINT IF EXISTS "
+                    "fk_users_linked_directory_user_id"
+                )
+            )
+            sync_conn.execute(
+                text(
+                    "ALTER TABLE users ADD CONSTRAINT fk_users_linked_directory_user_id "
+                    "FOREIGN KEY (linked_directory_user_id) REFERENCES users(id) "
+                    "ON DELETE SET NULL"
+                )
+            )
+        except Exception:
+            pass
+
+
 def _migrate_monitors_table(sync_conn) -> None:
     if "monitors" in _table_names(sync_conn):
         return
@@ -661,6 +696,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-06-15_purge_orphan_computer_children", _migrate_purge_orphan_computer_children),
     ("2026-07-13_users_avatar", _migrate_users_avatar_columns),
     ("2026-07-13_users_avatar_data", _migrate_users_avatar_data),
+    ("2026-07-24_users_linked_directory", _migrate_users_linked_directory),
     ("2026-07-15_network_devices", _migrate_network_tables),
     ("2026-07-15_network_extras_json", _migrate_network_extras_json),
     ("2026-07-16_wake_on_lan_config", _migrate_wake_on_lan_config),
