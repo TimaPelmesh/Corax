@@ -1,0 +1,13 @@
+[Unit]
+Description=CORAX inventory agent (Linux)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/corax-agent
+ExecStart=/bin/sh -c '. /opt/corax-agent/agent_env.sh; exec /bin/sh /opt/corax-agent/inventory_agent.sh'
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

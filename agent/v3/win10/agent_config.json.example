@@ -1,0 +1,33 @@
+{
+  "agent_version": "3.0.1",
+  "profile": "full",
+  "modules": {
+    "patches": true,
+    "network": true,
+    "domain_sessions": true,
+    "bitlocker": true,
+    "tpm_secureboot": true,
+    "antivirus": true,
+    "startup": true,
+    "services": true,
+    "storage_health": true,
+    "battery": true,
+    "windows_features": true,
+    "office": true,
+    "usb_history": true,
+    "docker_wsl": true
+  },
+  "limits": {
+    "software_max": 12000,
+    "services_max": 120,
+    "patches_max": 500,
+    "usb_max": 200
+  },
+  "schedule": {
+    "enabled": false,
+    "mode": "WEEKLY",
+    "time": "09:00",
+    "weekday": "MON",
+    "task_name": "CORAX-Agent"
+  }
+}

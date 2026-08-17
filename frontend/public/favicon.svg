@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="CORAX">
+  <defs>
+    <linearGradient id="g" x1="6" y1="5" x2="26" y2="27" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#93C5FD"/>
+      <stop offset="0.45" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1E40AF"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0B1220"/>
+  <!-- Clean angular C -->
+  <path
+    fill="url(#g)"
+    fill-rule="evenodd"
+    d="M10.5 6.5h11L25 10l-3.2 3.2H13.8v5.6h8L25 22l-3.5 3.5h-11L6.5 21.5v-11L10.5 6.5Zm3.3 4.7h5.4l.9.9-.9.9h-7.1v6.8h7.1l.9.9-.9.9h-5.4l-2.2-2.2v-6.8l2.2-2.2Z"
+  />
+</svg>

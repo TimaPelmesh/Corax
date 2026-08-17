@@ -1,0 +1,21 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+sqlalchemy==2.0.36
+greenlet>=3.0.0
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+python-multipart==0.0.17
+pydantic-settings==2.6.1
+asyncpg==0.30.0
+ldap3
+fpdf2==2.8.2
+httpx==0.28.1
+pypdf==5.1.0
+puresnmp>=2.0.0
+psutil==6.1.0
+requests==2.32.3
+cairosvg==2.7.1
+slowapi==0.1.9
+# Тесты (CI и npm run test:backend)
+pytest==8.3.4
+pytest-asyncio==0.24.0

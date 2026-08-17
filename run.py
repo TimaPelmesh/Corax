@@ -1,0 +1,76 @@
+"""
+Запуск из корня репозитория (Docker entrypoint и e2e):
+
+  python run.py
+
+Канон для сервера: npm run docker:up (UI+API на :3000).
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+_BACKEND = os.path.join(_ROOT, "backend")
+
+
+def main() -> None:
+    if _BACKEND not in sys.path:
+        sys.path.insert(0, _BACKEND)
+
+    _scripts = os.path.join(_ROOT, "scripts")
+    if _scripts not in sys.path:
+        sys.path.insert(0, _scripts)
+
+    # In Docker/compose Postgres is a sibling service — skip local Windows/Linux install helpers.
+    skip_ensure = (os.environ.get("SKIP_ENSURE_POSTGRES") or os.environ.get("CORAX_DOCKER") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not skip_ensure:
+        from ensure_postgres import ensure_postgres
+
+        ensure_postgres()
+
+    os.chdir(_BACKEND)
+
+    import uvicorn
+
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "3001"))
+    # Windows: uvicorn --reload + mass SNMP UDP sockets can hit select() FD limits (~512).
+    reload_default = "0" if os.name == "nt" else "1"
+    reload = os.environ.get("RELOAD", reload_default).strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+    kw: dict = {"host": host, "port": port, "reload": reload}
+    if reload:
+        kw["reload_dirs"] = [_BACKEND]
+
+    # HTTPS from admin panel (local CA under backend/data/tls). Env override wins.
+    ssl_cert = (os.environ.get("SSL_CERTFILE") or "").strip()
+    ssl_key = (os.environ.get("SSL_KEYFILE") or "").strip()
+    if ssl_cert and ssl_key:
+        kw["ssl_certfile"] = ssl_cert
+        kw["ssl_keyfile"] = ssl_key
+        os.environ["CORAX_TLS_LISTENING"] = "1"
+    else:
+        try:
+            from app.tls_certs import mark_process_listening_https, runtime_ssl
+
+            tls = runtime_ssl()
+            if tls.enabled and tls.certfile and tls.keyfile:
+                kw["ssl_certfile"] = str(tls.certfile)
+                kw["ssl_keyfile"] = str(tls.keyfile)
+                mark_process_listening_https()
+        except Exception:
+            pass
+
+    uvicorn.run("app.main:app", **kw)
+
+
+if __name__ == "__main__":
+    main()

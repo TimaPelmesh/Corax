@@ -1,0 +1,4 @@
+# Shell scripts must use LF in containers (CRLF breaks shebang on Linux).
+deploy/docker/entrypoint.sh text eol=lf
+scripts/*.sh text eol=lf
+*.sh text eol=lf

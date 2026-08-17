@@ -1,0 +1,221 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Path filters
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - '.github/workflows/ci.yml'
+              - 'backend/**'
+              - 'run.py'
+              - 'pyproject.toml'
+            frontend:
+              - '.github/workflows/ci.yml'
+              - 'frontend/**'
+            e2e:
+              - '.github/workflows/ci.yml'
+              - 'backend/**'
+              - 'frontend/**'
+              - 'e2e/**'
+              - 'playwright.config.*'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'run.py'
+            docker:
+              - '.github/workflows/ci.yml'
+              - 'Dockerfile'
+              - 'docker-compose.yml'
+              - '.dockerignore'
+              - 'deploy/docker/**'
+              - 'frontend/package-lock.json'
+              - 'frontend/package.json'
+              - 'backend/requirements.txt'
+
+  pytest:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: inventory
+          POSTGRES_PASSWORD: inventory
+          POSTGRES_DB: inventory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inventory -d inventory"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
+      DIAGRAMS_DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
+      WAREHOUSE_DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
+      ENVIRONMENT: test
+      CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system libs (cairosvg)
+        run: sudo apt-get update && sudo apt-get install -y libcairo2
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Backend tests
+        run: python -m pytest -q backend/tests
+
+  vitest:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+
+      - name: Frontend tests
+        run: npm run test --prefix frontend
+
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: inventory
+          POSTGRES_PASSWORD: inventory
+          POSTGRES_DB: inventory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inventory -d inventory"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
+      DIAGRAMS_DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
+      WAREHOUSE_DATABASE_URL: postgresql+asyncpg://inventory:inventory@localhost:5432/inventory
+      ENVIRONMENT: test
+      CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system libs (cairosvg, Playwright)
+        run: sudo apt-get update && sudo apt-get install -y libcairo2
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install root and frontend deps
+        run: |
+          npm ci
+          npm ci --prefix frontend
+
+      - name: Build frontend (E2E)
+        run: npm run build
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E tests
+        run: npm run test:e2e
+        env:
+          PORT: "3000"
+          SECRET_KEY: ci-e2e-secret-key-min-32-chars-long
+          AGENT_TOKEN: ci-e2e-agent-token
+          AGENT_TOKEN_PEPPER: ci-e2e-agent-pepper
+
+  docker:
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate compose file
+        run: docker compose -f docker-compose.yml config --quiet
+        env:
+          SECRET_KEY: ci-docker-secret-key-min-32-chars-longxx
+          AGENT_TOKEN: ci-docker-agent-token
+          AGENT_TOKEN_PEPPER: ci-docker-agent-pepper-min-32xxxx
+          BOOTSTRAP_ADMIN_PASSWORD: ci-docker-admin-password-strong
+          POSTGRES_USER: inventory
+          POSTGRES_PASSWORD: ci-docker-db-password
+          POSTGRES_DB: inventory
+
+      - name: Build app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: corax:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
