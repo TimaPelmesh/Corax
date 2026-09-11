@@ -39,11 +39,18 @@ CORAX_FILENAME_TO_TABLE: dict[str, str] = {
     "CORAX_железо.md": "hardware",
     "CORAX_ПО.md": "software",
     "CORAX_ПО_статистика.md": "software_stats",
+    "CORAX_статистика.md": "park_stats",
+    "CORAX_дашборд.md": "dashboard",
     "CORAX_принтеры.md": "printers",
     "CORAX_сеть.md": "network",
     "CORAX_заявки.md": "tickets",
     "CORAX_пользователи.md": "users",
     "CORAX_теги.md": "tags",
+    "CORAX_zabbix.md": "zabbix",
+    "CORAX_риски.md": "risks",
+    "CORAX_склад.md": "warehouse",
+    "CORAX_мониторы.md": "monitors",
+    "CORAX_заметки.md": "notes",
     # legacy CSV names (если остались на диске до очистки)
     "CORAX_компьютеры.csv": "computers",
     "CORAX_теги_пк.csv": "tags",
@@ -57,7 +64,8 @@ CORAX_FILENAME_TO_TABLE: dict[str, str] = {
 
 _SNAPSHOT_RE = re.compile(r"снимок\s+(\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2})", re.IGNORECASE)
 _CORAX_MD_HEADING_RE = re.compile(
-    r"^##\s+(?P<title>.+?)(?:\s*\((?:computer_id|printer_id|user_id|request_id|network_id)=(?P<id>\d+)\))?\s*$",
+    r"^##\s+(?P<title>.+?)(?:\s*\((?:computer_id|printer_id|user_id|request_id|network_id|"
+    r"monitor_id|stock_id|room_id|note_id|finding_id)=(?P<id>\d+)\))?\s*$",
     re.MULTILINE,
 )
 

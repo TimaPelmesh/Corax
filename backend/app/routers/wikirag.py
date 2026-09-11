@@ -86,7 +86,14 @@ from app.wikirag_index import (
     retrieve_relevant_chunks,
 )
 from app.wikirag_index_queue import wikirag_index_queue
-from app.wikirag_options import get_auto_index, get_embed_model, set_auto_index, set_embed_model
+from app.wikirag_options import (
+    get_auto_index,
+    get_embed_model,
+    get_lm_context_tokens,
+    set_auto_index,
+    set_embed_model,
+    set_lm_context_tokens,
+)
 from app.wikirag_tools import run_wikirag_tools
 from app.wikirag_lm import (
     build_messages,
@@ -97,6 +104,7 @@ from app.wikirag_lm import (
     is_small_talk,
     llm_provider_label,
     normalize_lm_base_url,
+    ollama_num_ctx,
     rewrite_lm_base_url_for_runtime,
     sanitize_chat_history,
     lm_studio_chat,
@@ -1224,9 +1232,19 @@ async def export_index(
     )
 
 
+def _index_settings_out() -> WikiRagIndexSettingsOut:
+    configured = get_lm_context_tokens()
+    return WikiRagIndexSettingsOut(
+        auto_index=get_auto_index(),
+        embed_model=get_embed_model(),
+        lm_context_tokens=configured,
+        effective_lm_context_tokens=ollama_num_ctx(),
+    )
+
+
 @router.get("/index-settings", response_model=WikiRagIndexSettingsOut)
 async def get_index_settings(_: User = Depends(get_current_user)):
-    return WikiRagIndexSettingsOut(auto_index=get_auto_index(), embed_model=get_embed_model())
+    return _index_settings_out()
 
 
 @router.get("/index-status", response_model=WikiRagIndexStatusOut)
@@ -1278,7 +1296,9 @@ async def patch_index_settings(
         set_auto_index(bool(body.auto_index))
     if body.embed_model is not None:
         set_embed_model(body.embed_model)
-    return WikiRagIndexSettingsOut(auto_index=get_auto_index(), embed_model=get_embed_model())
+    if body.lm_context_tokens is not None:
+        set_lm_context_tokens(body.lm_context_tokens)
+    return _index_settings_out()
 
 
 @router.post("/import-index", response_model=WikiRagIndexImportOut)

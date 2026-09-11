@@ -17,6 +17,8 @@ import { useToast } from '../ToastContext'
 
 const PANEL = 'rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]'
 
+const CTX_PRESETS = [0, 4096, 8192, 16384, 32768] as const
+
 export function SettingsLlmPage() {
   const t = useT()
   const toast = useToast()
@@ -26,6 +28,9 @@ export function SettingsLlmPage() {
   const [checking, setChecking] = useState(false)
   const [embedModel, setEmbedModel] = useState('bge-m3')
   const [savingEmbed, setSavingEmbed] = useState(false)
+  const [lmContextTokens, setLmContextTokens] = useState(0)
+  const [effectiveLmContext, setEffectiveLmContext] = useState(16384)
+  const [savingContext, setSavingContext] = useState(false)
   const settingsRef = useRef(settings)
   settingsRef.current = settings
 
@@ -43,7 +48,13 @@ export function SettingsLlmPage() {
   useEffect(() => {
     void api
       .wikiRagIndexSettings()
-      .then((s) => setEmbedModel((s.embed_model || 'bge-m3').trim() || 'bge-m3'))
+      .then((s) => {
+        setEmbedModel((s.embed_model || 'bge-m3').trim() || 'bge-m3')
+        setLmContextTokens(Number.isFinite(s.lm_context_tokens) ? s.lm_context_tokens : 0)
+        setEffectiveLmContext(
+          Number.isFinite(s.effective_lm_context_tokens) ? s.effective_lm_context_tokens : 16384,
+        )
+      })
       .catch(() => undefined)
   }, [])
 
@@ -106,6 +117,22 @@ export function SettingsLlmPage() {
       toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
     } finally {
       setSavingEmbed(false)
+    }
+  }
+
+  async function onSaveLmContext(next: number) {
+    const cleaned = Number.isFinite(next) ? Math.max(0, Math.min(32768, Math.round(next))) : 0
+    setLmContextTokens(cleaned)
+    setSavingContext(true)
+    try {
+      const res = await api.updateWikiRagIndexSettings({ lm_context_tokens: cleaned })
+      setLmContextTokens(res.lm_context_tokens)
+      setEffectiveLmContext(res.effective_lm_context_tokens)
+      toast.ok(t('settingsLlm.contextSaved'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
+    } finally {
+      setSavingContext(false)
     }
   }
 
@@ -266,6 +293,32 @@ export function SettingsLlmPage() {
               )}
             </select>
             <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.embedModelHint')}</p>
+          </label>
+
+          <label className="block">
+            <span className="app-label">{t('settingsLlm.contextTokens')}</span>
+            <select
+              id="settings-llm-context"
+              value={String(lmContextTokens)}
+              disabled={savingContext}
+              onChange={(e) => void onSaveLmContext(Number(e.target.value))}
+              className="app-input mt-1 !min-h-9 text-sm"
+            >
+              {(CTX_PRESETS.includes(lmContextTokens as (typeof CTX_PRESETS)[number])
+                ? CTX_PRESETS
+                : [lmContextTokens, ...CTX_PRESETS]
+              ).map((n) => (
+                <option key={n} value={n}>
+                  {n === 0 ? t('settingsLlm.contextAuto') : String(n)}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.contextTokensHint')}</p>
+            {lmContextTokens === 0 ? (
+              <p className="mt-1 text-[11px] text-[var(--color-fg-muted)]">
+                {t('settingsLlm.contextEffective', { n: effectiveLmContext })}
+              </p>
+            ) : null}
           </label>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-0.5">

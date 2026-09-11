@@ -248,6 +248,12 @@ export const en: MessageTree = {
     embedModelHint:
       'Separate from chat. Use an embedding model (e.g. bge-m3). After changing — run “Reindex all”.',
     embedModelSaved: 'Indexing model saved',
+    contextTokens: 'Model context (tokens)',
+    contextTokensHint:
+      'How many tokens the model keeps in its window. Auto uses the model maximum (up to 32768). Lower values use less VRAM. For Ollama this is num_ctx; in LM Studio set the same Context Length on Local Server.',
+    contextAuto: 'Auto (model maximum)',
+    contextSaved: 'Model context saved',
+    contextEffective: 'Currently using: {{n}} tokens',
     ollamaSetupTitle: 'Ollama on the server',
     ollamaStep1: 'Install Ollama on the PC/server that will host the model.',
     ollamaStep2: 'Pull a model: ollama pull llama3.2 (or another).',

@@ -2376,13 +2376,17 @@ export const api = {
     }),
 
   wikiRagIndexSettings: () =>
-    request<{ auto_index: boolean; embed_model: string }>(`${API_PREFIX}/wiki-rag/index-settings`),
+    request<WikiRagIndexSettings>(`${API_PREFIX}/wiki-rag/index-settings`),
 
   wikiRagIndexStatus: () =>
     request<WikiRagIndexStatus>(`${API_PREFIX}/wiki-rag/index-status`),
 
-  updateWikiRagIndexSettings: (body: { auto_index?: boolean; embed_model?: string }) =>
-    request<{ auto_index: boolean; embed_model: string }>(`${API_PREFIX}/wiki-rag/index-settings`, {
+  updateWikiRagIndexSettings: (body: {
+    auto_index?: boolean
+    embed_model?: string
+    lm_context_tokens?: number
+  }) =>
+    request<WikiRagIndexSettings>(`${API_PREFIX}/wiki-rag/index-settings`, {
       method: 'PATCH',
       json: body,
     }),
@@ -2775,6 +2779,13 @@ export const api = {
     request<NetworkPollConfig>(`${API_PREFIX}/network/poll-config`, { method: 'PUT', json: body }),
 
   networkTopology: () => request<NetworkTopology>(`${API_PREFIX}/network/topology`),
+}
+
+export type WikiRagIndexSettings = {
+  auto_index: boolean
+  embed_model: string
+  lm_context_tokens: number
+  effective_lm_context_tokens: number
 }
 
 export type WikiRagIndexStatus = {

@@ -46,8 +46,10 @@ _AUTO_CTX_HARD_MAX = 32768
 
 
 def ollama_num_ctx() -> int:
-    """Активный num_ctx: ручной из .env или последний авто-детект / fallback."""
-    configured = int(getattr(settings, "wiki_rag_lm_context_tokens", None) or 0)
+    """Активный num_ctx: UI / .env или последний авто-детект / fallback."""
+    from app.wikirag_options import get_lm_context_tokens
+
+    configured = get_lm_context_tokens()
     if configured > 0:
         return max(2048, min(configured, _AUTO_CTX_HARD_MAX))
     # Берём самый свежий кэш (любая модель) — обычно одна LLM на инстанс.
@@ -127,8 +129,10 @@ def _parse_model_context_length(payload: dict[str, Any]) -> int | None:
 
 
 async def ensure_model_num_ctx(*, base_url: str | None, model: str | None) -> int:
-    """0 в WIKI_RAG_LM_CONTEXT_TOKENS → спросить у Ollama максимум модели и закэшировать."""
-    configured = int(getattr(settings, "wiki_rag_lm_context_tokens", None) or 0)
+    """0 в настройках / WIKI_RAG_LM_CONTEXT_TOKENS → спросить у Ollama максимум модели и закэшировать."""
+    from app.wikirag_options import get_lm_context_tokens
+
+    configured = get_lm_context_tokens()
     if configured > 0:
         ctx = max(2048, min(configured, _AUTO_CTX_HARD_MAX))
         return ctx

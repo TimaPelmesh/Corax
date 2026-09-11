@@ -245,6 +245,12 @@ export const ru = {
     embedModelHint:
       'Отдельно от чата. Нужна embedding-модель (например bge-m3). После смены — «Переиндексировать все».',
     embedModelSaved: 'Модель индексации сохранена',
+    contextTokens: 'Контекст модели (токены)',
+    contextTokensHint:
+      'Сколько токенов модель держит в окне. Авто — максимум модели (до 32768). Меньше — меньше VRAM. Для Ollama это num_ctx; в LM Studio выставьте тот же Context Length в Local Server.',
+    contextAuto: 'Авто (максимум модели)',
+    contextSaved: 'Контекст модели сохранён',
+    contextEffective: 'Сейчас используется: {{n}} токенов',
     ollamaSetupTitle: 'Ollama на сервере',
     ollamaStep1: 'Установите Ollama на ПК/сервер, где будет крутиться модель.',
     ollamaStep2: 'Скачайте модель: ollama pull llama3.2 (или другую).',

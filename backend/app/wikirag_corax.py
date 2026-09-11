@@ -3,22 +3,26 @@
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
+import logging
 import re
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import (
     Computer,
     DiskVolume,
+    Monitor,
     NetworkDevice,
     NetworkLink,
+    Note,
     Printer,
     ServiceRequest,
     ServiceRequestCategory,
@@ -27,7 +31,12 @@ from app.models import (
     User,
 )
 from app.network_classify import infer_network_role
+from app.os_normalize import normalize_os_display
+from app.printer_cleanup import is_noise_printer_name
 from app.request_category_tree import build_category_tree, collect_category_paths
+from app.software_families import classify_software_name
+
+_LOG = logging.getLogger(__name__)
 
 CORAX_FOLDER = "corax-inventory"
 CORAX_FILE_PREFIX = "CORAX_"
@@ -51,20 +60,30 @@ CORAX_TICKETS_MD = f"{CORAX_FOLDER}/CORAX_заявки.md"
 CORAX_USERS_MD = f"{CORAX_FOLDER}/CORAX_пользователи.md"
 CORAX_TAGS_MD = f"{CORAX_FOLDER}/CORAX_теги.md"
 CORAX_ZABBIX_MD = f"{CORAX_FOLDER}/CORAX_zabbix.md"
+CORAX_DASHBOARD_MD = f"{CORAX_FOLDER}/CORAX_дашборд.md"
+CORAX_RISKS_MD = f"{CORAX_FOLDER}/CORAX_риски.md"
+CORAX_WAREHOUSE_MD = f"{CORAX_FOLDER}/CORAX_склад.md"
+CORAX_MONITORS_MD = f"{CORAX_FOLDER}/CORAX_мониторы.md"
+CORAX_NOTES_MD = f"{CORAX_FOLDER}/CORAX_заметки.md"
 
 CORAX_FILE_COMMENTS: dict[str, str] = {
     CORAX_INDEX_FILENAME: "[CORAX] Системный индекс (корень): что где лежит в corax-inventory",
-    CORAX_COMPUTERS_MD: "[CORAX] ПК: hostname / ОС / IP / локация / ответственный",
+    CORAX_DASHBOARD_MD: "[CORAX] Дашборд: обработанная сводка всех вкладок (сигналы, срезы)",
+    CORAX_COMPUTERS_MD: "[CORAX] ПК: hostname / ОС / IP / ping / локация / ответственный",
     CORAX_HARDWARE_MD: "[CORAX] Железо: CPU, RAM, GPU, диски, периферия по ПК",
     CORAX_SOFTWARE_MD: "[CORAX] Установленное ПО по hostname",
     CORAX_SOFTWARE_STATS_MD: "[CORAX] Статистика ПО: программа → число ПК / список хостов",
     CORAX_PARK_STATS_MD: "[CORAX] Сводка парка: ОС/CPU/RAM, сеть (шлюзы/DNS), принтеры, теги",
-    CORAX_PRINTERS_MD: "[CORAX] Принтеры (сеть / привязка к ПК)",
-    CORAX_NETWORK_MD: "[CORAX] Сетевое оборудование (свитчи, роутеры, шлюзы, DNS, SNMP)",
+    CORAX_PRINTERS_MD: "[CORAX] Принтеры: SNMP, расходники, тонер, привязка к ПК",
+    CORAX_NETWORK_MD: "[CORAX] Сетевое оборудование: свитчи, роутеры, шлюзы, DNS, интерфейсы, LLDP",
     CORAX_TICKETS_MD: "[CORAX] Сервисные заявки",
     CORAX_USERS_MD: "[CORAX] Пользователи + закреплённые ПК и ПО",
     CORAX_TAGS_MD: "[CORAX] Теги и привязка к ПК",
     CORAX_ZABBIX_MD: "[CORAX] Zabbix: сводка интеграции (версия / хосты / проблемы)",
+    CORAX_RISKS_MD: "[CORAX] Центр рисков: здоровье парка, находки, рекомендации",
+    CORAX_WAREHOUSE_MD: "[CORAX] Склад ТМЦ: помещения, остатки, движения",
+    CORAX_MONITORS_MD: "[CORAX] Мониторы (инвентарь)",
+    CORAX_NOTES_MD: "[CORAX] Заметки и планы (текст без HTML)",
 }
 
 # Старые плоские снимки / CSV — удаляем при импорте/sync.
@@ -96,6 +115,7 @@ def corax_file_comment(filename: str) -> str:
 
 CORAX_BUNDLE_FILENAMES = (
     CORAX_INDEX_FILENAME,
+    CORAX_DASHBOARD_MD,
     CORAX_COMPUTERS_MD,
     CORAX_HARDWARE_MD,
     CORAX_SOFTWARE_MD,
@@ -106,6 +126,10 @@ CORAX_BUNDLE_FILENAMES = (
     CORAX_TICKETS_MD,
     CORAX_USERS_MD,
     CORAX_TAGS_MD,
+    CORAX_MONITORS_MD,
+    CORAX_WAREHOUSE_MD,
+    CORAX_RISKS_MD,
+    CORAX_NOTES_MD,
     CORAX_ZABBIX_MD,
 )
 
@@ -114,6 +138,7 @@ _STATUS_LABELS = {
     "in_progress": "в работе",
     "closed": "закрыта",
     "cancelled": "отменена",
+    "done": "выполнена",
 }
 _PRIORITY_LABELS = {
     "low": "низкий",
@@ -121,6 +146,24 @@ _PRIORITY_LABELS = {
     "high": "высокий",
     "urgent": "срочный",
 }
+_PING_LABELS = {
+    "online": "онлайн",
+    "offline": "офлайн",
+    "unknown": "неизвестно",
+}
+_PRINTER_KIND_LABELS = {
+    "laser": "лазерный",
+    "inkjet": "струйный",
+    "label": "этикеточный",
+    "mfp": "МФУ",
+    "unknown": "неизвестно",
+}
+_OPEN_TICKET_STATUSES = frozenset({"open", "in_progress"})
+_EXTRAS_SECRET_KEYS = frozenset(
+    {"community", "password", "secret", "token", "api_token", "key", "snmp_community"}
+)
+_TONER_SKIP_RE = re.compile(r"waste|battery|батаре|fuser|печь|drum|барабан|kit|maintenance", re.I)
+_TONER_PREFER_RE = re.compile(r"toner|тонер|cartridge|картридж|ribbon|лента|ink|чернил", re.I)
 
 
 def _fmt_dt(v: datetime | None) -> str:
@@ -163,6 +206,131 @@ def _parse_disks_json(raw: str | None) -> list[dict[str, Any]]:
         return []
 
 
+def _parse_json_list(raw: str | None) -> list[Any]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+
+def _parse_json_dict(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _html_to_text(raw: str | None, *, limit: int = 4000) -> str:
+    if not raw:
+        return ""
+    s = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", raw)
+    s = re.sub(r"(?i)<br\s*/?>", "\n", s)
+    s = re.sub(r"(?i)</(p|div|li|h[1-6]|tr)>", "\n", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = html.unescape(s)
+    s = re.sub(r"[ \t]+\n", "\n", s)
+    s = re.sub(r"[ \t]{2,}", " ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    s = s.strip()
+    if limit and len(s) > limit:
+        return s[: limit - 1].rstrip() + "…"
+    return s
+
+
+def _parse_printer_supplies(raw: str | None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in _parse_json_list(raw):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        out.append(
+            {
+                "name": name,
+                "level_percent": item.get("level_percent"),
+                "level_raw": item.get("level_raw"),
+                "max_capacity": item.get("max_capacity"),
+            }
+        )
+    return out
+
+
+def _toner_min_percent(supplies: list[dict[str, Any]]) -> int | None:
+    preferred: list[int] = []
+    other: list[int] = []
+    for s in supplies:
+        pct = s.get("level_percent")
+        if pct is None:
+            continue
+        try:
+            val = int(pct)
+        except (TypeError, ValueError):
+            continue
+        name = str(s.get("name") or "")
+        if _TONER_SKIP_RE.search(name):
+            continue
+        if _TONER_PREFER_RE.search(name):
+            preferred.append(val)
+        else:
+            other.append(val)
+    vals = preferred or other
+    return int(min(vals)) if vals else None
+
+
+def _net_title(dev: NetworkDevice) -> str:
+    return (dev.hostname or dev.sys_name or dev.ip_address or f"net-{dev.id}").strip()
+
+
+def _safe_extras(raw: str | None) -> dict[str, Any]:
+    extras = _parse_json_dict(raw)
+    if not extras:
+        return {}
+    out: dict[str, Any] = {}
+    for key, val in extras.items():
+        lk = str(key).strip().lower()
+        if lk in _EXTRAS_SECRET_KEYS or any(tok in lk for tok in ("password", "secret", "token", "community")):
+            continue
+        out[str(key)] = val
+    return out
+
+
+def _endpoint_label(
+    etype: str,
+    eid: int,
+    *,
+    pc_by_id: dict[int, Computer],
+    net_by_id: dict[int, NetworkDevice],
+    printer_by_id: dict[int, Printer],
+) -> str:
+    et = (etype or "").strip().lower()
+    if et in ("computer", "pc"):
+        pc = pc_by_id.get(eid)
+        return ((pc.hostname if pc else "") or f"pc-{eid}").strip()
+    if et in ("network_device", "network", "device"):
+        dev = net_by_id.get(eid)
+        return _net_title(dev) if dev else f"net-{eid}"
+    if et == "printer":
+        pr = printer_by_id.get(eid)
+        return ((pr.name if pr else "") or f"printer-{eid}").strip()
+    return f"{etype}:{eid}"
+
+
+def _hosts_line(hosts: list[str], *, limit: int | None = None) -> str:
+    uniq = sorted({h for h in hosts if h}, key=str.lower)
+    if not uniq:
+        return "(нет)"
+    if limit is None or len(uniq) <= limit:
+        return ", ".join(uniq)
+    return ", ".join(uniq[:limit]) + f" … ещё {len(uniq) - limit}"
+
+
 async def _load_snapshot(db: AsyncSession) -> dict[str, Any]:
     users_r = await db.execute(select(User).order_by(User.username))
     users = {u.id: u for u in users_r.scalars().all()}
@@ -195,8 +363,24 @@ async def _load_snapshot(db: AsyncSession) -> dict[str, Any]:
     links_r = await db.execute(select(NetworkLink))
     network_links = list(links_r.scalars().all())
 
-    reqs_r = await db.execute(select(ServiceRequest).order_by(ServiceRequest.id.desc()).limit(500))
-    requests = list(reqs_r.scalars().all())
+    open_reqs_r = await db.execute(
+        select(ServiceRequest)
+        .where(ServiceRequest.status.in_(tuple(_OPEN_TICKET_STATUSES)))
+        .order_by(ServiceRequest.id.desc())
+    )
+    closed_reqs_r = await db.execute(
+        select(ServiceRequest)
+        .where(or_(ServiceRequest.status.is_(None), ServiceRequest.status.notin_(tuple(_OPEN_TICKET_STATUSES))))
+        .order_by(ServiceRequest.id.desc())
+        .limit(2000)
+    )
+    seen_req: set[int] = set()
+    requests: list[ServiceRequest] = []
+    for req in list(open_reqs_r.scalars().all()) + list(closed_reqs_r.scalars().all()):
+        if req.id in seen_req:
+            continue
+        seen_req.add(req.id)
+        requests.append(req)
 
     tpl_r = await db.execute(select(ServiceRequestTemplate).order_by(ServiceRequestTemplate.title))
     templates = list(tpl_r.scalars().all())
@@ -205,6 +389,12 @@ async def _load_snapshot(db: AsyncSession) -> dict[str, Any]:
         select(ServiceRequestCategory).order_by(ServiceRequestCategory.sort_order, ServiceRequestCategory.name)
     )
     categories = collect_category_paths(build_category_tree(list(cat_r.scalars().all())))
+
+    monitors_r = await db.execute(select(Monitor).order_by(Monitor.name))
+    monitors = list(monitors_r.scalars().all())
+
+    notes_r = await db.execute(select(Note).order_by(Note.updated_at.desc()))
+    notes = list(notes_r.scalars().all())
 
     pc_by_id = {c.id: c for c in computers}
 
@@ -219,7 +409,14 @@ async def _load_snapshot(db: AsyncSession) -> dict[str, Any]:
         "requests": requests,
         "templates": templates,
         "categories": categories,
+        "monitors": monitors,
+        "notes": notes,
         "pc_by_id": pc_by_id,
+        "warehouse_rooms": [],
+        "warehouse_items": [],
+        "warehouse_movements": [],
+        "risk_overview": None,
+        "zabbix_md": None,
     }
 
 
@@ -255,6 +452,56 @@ def _device_role(dev: NetworkDevice) -> str:
         sys_name=dev.sys_name,
         device_type=dev.device_type,
         source=dev.source,
+    )
+
+
+def _ram_bucket(ram: Any) -> str:
+    try:
+        gb = float(ram)
+    except (TypeError, ValueError):
+        return "неизвестно"
+    if gb < 4:
+        return "< 4 ГБ"
+    if gb < 8:
+        return "4–7 ГБ"
+    if gb < 16:
+        return "8–15 ГБ"
+    if gb < 32:
+        return "16–31 ГБ"
+    return "32+ ГБ"
+
+
+def _stale_cutoff() -> datetime:
+    return datetime.now(timezone.utc) - timedelta(days=14)
+
+
+def _is_stale_report(pc: Computer, *, cutoff: datetime | None = None) -> bool:
+    ts = getattr(pc, "last_report_at", None)
+    if ts is None:
+        return True
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts < (cutoff or _stale_cutoff())
+
+
+def _warehouse_preset_name(key: str | None) -> str:
+    k = (key or "custom").strip() or "custom"
+    try:
+        from app.routers.warehouse import PRESET_BY_KEY
+
+        p = PRESET_BY_KEY.get(k)
+        if p and p.get("name"):
+            return str(p["name"])
+    except Exception:
+        pass
+    return k
+
+
+def _build_zabbix_placeholder(*, generated_at: str) -> str:
+    return (
+        f"# Zabbix (CORAX интеграция) (снимок {generated_at})\n\n"
+        "Интеграция не подключена или последняя проверка неуспешна. "
+        "Секреты API **не включены**.\n"
     )
 
 
@@ -480,7 +727,50 @@ def _build_park_stats_md(data: dict[str, Any], *, generated_at: str) -> str:
         "",
         *(_counter_lines(ticket_prio_c) if requests else ["- (заявок нет)"]),
         "",
+        "## Сигналы (обработанные)",
+        "",
     ]
+
+    cutoff = _stale_cutoff()
+    offline_hosts = [
+        (pc.hostname or f"id-{pc.id}")
+        for pc in computers
+        if (getattr(pc, "ping_status", None) or "").strip().lower() == "offline"
+    ]
+    stale_hosts = [(pc.hostname or f"id-{pc.id}") for pc in computers if _is_stale_report(pc, cutoff=cutoff)]
+    full_disks: list[str] = []
+    for pc in computers:
+        for d in disks_by_pc.get(pc.id) or []:
+            if d.used_percent is not None and int(d.used_percent) >= 90:
+                full_disks.append(f"{pc.hostname} {d.mount or '?'} ({d.used_percent}%)")
+    low_toner: list[str] = []
+    for p in printers:
+        supplies = _parse_printer_supplies(getattr(p, "supplies_json", None))
+        toner = _toner_min_percent(supplies)
+        if toner is not None and toner <= 15:
+            low_toner.append(f"{p.name} — {toner}%")
+    snmp_down = [
+        _net_title(d)
+        for d in network_devices
+        if (d.snmp_status or "").strip().lower() in ("error", "fail", "failed", "timeout")
+    ]
+    parts += [
+        f"- Офлайн ПК: **{len(offline_hosts)}**" + (f" — {_hosts_line(offline_hosts, limit=40)}" if offline_hosts else ""),
+        f"- Нет свежего отчёта агента (>14 дн. / никогда): **{len(stale_hosts)}**"
+        + (f" — {_hosts_line(stale_hosts, limit=40)}" if stale_hosts else ""),
+        f"- Тома ≥90% занято: **{len(full_disks)}**",
+    ]
+    if full_disks:
+        parts.extend(f"  - {x}" for x in full_disks[:40])
+        if len(full_disks) > 40:
+            parts.append(f"  - … ещё {len(full_disks) - 40}")
+    parts.append(f"- Принтеры с тонером ≤15%: **{len(low_toner)}**")
+    if low_toner:
+        parts.extend(f"  - {x}" for x in low_toner[:40])
+    parts.append(f"- Сеть SNMP ошибка: **{len(snmp_down)}**")
+    if snmp_down:
+        parts.append("  - " + _hosts_line(snmp_down, limit=40))
+    parts.append("")
     return "\n".join(parts).strip() + "\n"
 
 
@@ -510,25 +800,33 @@ def _build_readme(data: dict[str, Any], *, generated_at: str) -> str:
         f"- Установок ПО: **{sw_installs}**",
         f"- Принтеры: **{len(printers)}**",
         f"- Сетевые устройства: **{len(network_devices)}**",
+        f"- Мониторы: **{len(data.get('monitors') or [])}**",
         f"- Пользователи панели: **{len(users)}**",
         f"- Теги: **{len(tags)}**",
         f"- Заявки в снимке: **{len(requests)}**",
+        f"- Заметки: **{len(data.get('notes') or [])}**",
         "",
         "## Карта файлов",
         "",
         "| Файл | Назначение | Типичные вопросы |",
         "|------|------------|------------------|",
         f"| `00_system_index.md` (корень) | Этот индекс | что где лежит |",
+        f"| `{CORAX_FOLDER}/CORAX_дашборд.md` | Обработанная сводка всех вкладок | состояние парка, сигналы |",
         f"| `{CORAX_FOLDER}/CORAX_статистика.md` | Сводная статистика парка / сети / принтеров | сколько шлюзов, DNS, Win10 |",
-        f"| `{CORAX_FOLDER}/CORAX_компьютеры.md` | Карточки ПК (ОС, IP, локация) | сколько ПК, кто где |",
+        f"| `{CORAX_FOLDER}/CORAX_компьютеры.md` | Карточки ПК (ОС, IP, ping, локация) | сколько ПК, кто где |",
         f"| `{CORAX_FOLDER}/CORAX_железо.md` | CPU / RAM / GPU / диски | слабые ПК, апгрейд |",
         f"| `{CORAX_FOLDER}/CORAX_ПО.md` | ПО по каждому hostname | что стоит на HOST |",
         f"| `{CORAX_FOLDER}/CORAX_ПО_статистика.md` | Программа → число ПК / список | у кого Chrome / 1С |",
         f"| `{CORAX_FOLDER}/CORAX_пользователи.md` | Сотрудник → ПК → ПО | у Ивана какое ПО |",
-        f"| `{CORAX_FOLDER}/CORAX_принтеры.md` | Принтеры + сводка | IP принтера, привязка |",
-        f"| `{CORAX_FOLDER}/CORAX_сеть.md` | Свитчи / роутеры / шлюзы / DNS | сетевое оборудование |",
+        f"| `{CORAX_FOLDER}/CORAX_принтеры.md` | Принтеры + расходники + тонер | IP принтера, картридж |",
+        f"| `{CORAX_FOLDER}/CORAX_сеть.md` | Свитчи / роутеры / шлюзы / DNS / LLDP | сетевое оборудование |",
+        f"| `{CORAX_FOLDER}/CORAX_мониторы.md` | Инвентарь мониторов | какой монитор у кого |",
+        f"| `{CORAX_FOLDER}/CORAX_склад.md` | Склад ТМЦ | сколько ОЗУ на складе |",
+        f"| `{CORAX_FOLDER}/CORAX_риски.md` | Центр рисков | кто без антивируса |",
         f"| `{CORAX_FOLDER}/CORAX_теги.md` | Теги ↔ hostname | ПК в группе |",
         f"| `{CORAX_FOLDER}/CORAX_заявки.md` | Сервисные заявки | открытые тикеты |",
+        f"| `{CORAX_FOLDER}/CORAX_заметки.md` | Заметки и планы | что запланировано |",
+        f"| `{CORAX_FOLDER}/CORAX_zabbix.md` | Zabbix (если подключён) | проблемы мониторинга |",
         "",
         "Секреты интеграций (Bitrix, LDAP, токены) **не включены**.",
         "",
@@ -546,6 +844,459 @@ def _build_readme(data: dict[str, Any], *, generated_at: str) -> str:
             lines.append(f"- {tpl.title}" + (f" ({tpl.category})" if tpl.category else ""))
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+def _build_dashboard_md(data: dict[str, Any], *, generated_at: str) -> str:
+    """Обработанная сводка всех вкладок — основной аналитический корпус."""
+    users: dict[int, User] = data["users"]
+    computers: list[Computer] = data["computers"]
+    printers: list[Printer] = data["printers"]
+    network_devices: list[NetworkDevice] = data.get("network_devices") or []
+    requests: list[ServiceRequest] = data["requests"]
+    disks_by_pc: dict[int, list[DiskVolume]] = data["disks_by_pc"]
+    monitors: list[Any] = data.get("monitors") or []
+    notes: list[Any] = data.get("notes") or []
+    tags: list[Tag] = data["tags"]
+    warehouse_items: list[Any] = data.get("warehouse_items") or []
+
+    ping_c: Counter[str] = Counter()
+    os_c: Counter[str] = Counter()
+    ram_c: Counter[str] = Counter()
+    browser_c: Counter[str] = Counter()
+    office_c: Counter[str] = Counter()
+    sw_unique: set[str] = set()
+    sw_installs = 0
+    cutoff = _stale_cutoff()
+    offline: list[str] = []
+    stale: list[str] = []
+    low_ram: list[str] = []
+    full_disks: list[str] = []
+
+    for pc in computers:
+        host = (pc.hostname or f"id-{pc.id}").strip()
+        ping = (getattr(pc, "ping_status", None) or "unknown").strip().lower() or "unknown"
+        ping_c[_PING_LABELS.get(ping, ping)] += 1
+        if ping == "offline":
+            offline.append(host)
+        if _is_stale_report(pc, cutoff=cutoff):
+            stale.append(host)
+        os_c[normalize_os_display(pc.os_name) if (pc.os_name or "").strip() else "неизвестно"] += 1
+        ram_c[_ram_bucket(pc.ram_gb)] += 1
+        ram_v = None
+        try:
+            ram_v = float(pc.ram_gb) if pc.ram_gb is not None else None
+        except (TypeError, ValueError):
+            ram_v = None
+        if ram_v is not None and ram_v < 8:
+            low_ram.append(f"{host} ({ram_v:g} ГБ)")
+        for d in disks_by_pc.get(pc.id) or []:
+            if d.used_percent is not None and int(d.used_percent) >= 90:
+                full_disks.append(f"{host} {d.mount or '?'} — {d.used_percent}%")
+        seen_fam: set[str] = set()
+        for s in pc.software or []:
+            name = (s.name or "").strip()
+            if not name:
+                continue
+            sw_installs += 1
+            sw_unique.add(name.lower())
+            fam = classify_software_name(name)
+            if fam and fam.name not in seen_fam:
+                seen_fam.add(fam.name)
+                if fam.category == "browser":
+                    browser_c[fam.name] += 1
+                elif fam.category == "office":
+                    office_c[fam.name] += 1
+
+    real_printers = [p for p in printers if not is_noise_printer_name(p.name or "")]
+    low_toner: list[str] = []
+    for p in real_printers:
+        toner = _toner_min_percent(_parse_printer_supplies(getattr(p, "supplies_json", None)))
+        if toner is not None and toner <= 15:
+            low_toner.append(f"{p.name} — {toner}%")
+    snmp_down = [
+        _net_title(d)
+        for d in network_devices
+        if (d.snmp_status or "").strip().lower() in ("error", "fail", "failed", "timeout")
+    ]
+    open_n = sum(1 for r in requests if (r.status or "").strip().lower() in _OPEN_TICKET_STATUSES)
+    overdue = 0
+    now = datetime.now(timezone.utc)
+    for r in requests:
+        plan = getattr(r, "planned_close_at", None)
+        if not plan or r.closed_at:
+            continue
+        if (r.status or "").strip().lower() in ("closed", "cancelled", "done"):
+            continue
+        if plan.tzinfo is None:
+            plan = plan.replace(tzinfo=timezone.utc)
+        if plan < now:
+            overdue += 1
+
+    risk = data.get("risk_overview")
+    risk_line = ""
+    if risk is not None:
+        try:
+            risk_line = (
+                f"- Здоровье парка (Risk Center): **{risk.fleet_health_score}/100**, "
+                f"критичных ПК: {risk.computers_critical}, открытых находок: {risk.findings_open}"
+            )
+        except Exception:
+            risk_line = ""
+
+    stock_qty = 0
+    for it in warehouse_items:
+        try:
+            stock_qty += int(getattr(it, "quantity_available", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+
+    parts = [
+        f"# Дашборд CORAX (снимок {generated_at})",
+        "",
+        "Обработанная сводка **всех вкладок** панели: парк, ПО, принтеры, сеть, заявки, склад, риски. "
+        "Цифры уже агрегированы — опирайся на них в ответах.",
+        "",
+        "## Состояние парка",
+        "",
+        f"- ПК: **{len(computers)}**",
+        *_counter_lines(ping_c),
+        f"- Уникальных программ: **{len(sw_unique)}**, установок: **{sw_installs}**",
+        f"- Принтеры (реальные): **{len(real_printers)}**",
+        f"- Сетевые устройства: **{len(network_devices)}**",
+        f"- Мониторы: **{len(monitors)}**",
+        f"- Пользователи панели: **{len(users)}**",
+        f"- Теги: **{len(tags)}**",
+        f"- Заявки в снимке: **{len(requests)}** (открытых: {open_n}, просроченных: {overdue})",
+        f"- Заметки: **{len(notes)}**",
+        f"- Склад: позиций **{len(warehouse_items)}**, доступно единиц: **{stock_qty}**",
+    ]
+    if risk_line:
+        parts.append(risk_line)
+    parts += [
+        "",
+        "## Сигналы (требуют внимания)",
+        "",
+        f"- Офлайн: **{len(offline)}**" + (f" — {_hosts_line(offline, limit=50)}" if offline else ""),
+        f"- Нет свежего отчёта агента (>14 дн. / никогда): **{len(stale)}**"
+        + (f" — {_hosts_line(stale, limit=40)}" if stale else ""),
+        f"- ОЗУ < 8 ГБ: **{len(low_ram)}**",
+    ]
+    if low_ram:
+        parts.extend(f"  - {x}" for x in low_ram[:40])
+    parts.append(f"- Диски ≥90% занято: **{len(full_disks)}**")
+    if full_disks:
+        parts.extend(f"  - {x}" for x in full_disks[:40])
+    parts.append(f"- Тонер ≤15%: **{len(low_toner)}**")
+    if low_toner:
+        parts.extend(f"  - {x}" for x in low_toner[:30])
+    parts.append(f"- Сеть SNMP ошибка: **{len(snmp_down)}**")
+    if snmp_down:
+        parts.append("  - " + _hosts_line(snmp_down, limit=30))
+    parts += [
+        "",
+        "## ОС (нормализовано)",
+        "",
+        *_counter_lines(os_c),
+        "",
+        "## ОЗУ",
+        "",
+        *_counter_lines(ram_c),
+        "",
+        "## Браузеры",
+        "",
+        *(_counter_lines(browser_c) or ["- (не распознаны)"]),
+        "",
+        "## Офисные пакеты",
+        "",
+        *(_counter_lines(office_c) or ["- (не распознаны)"]),
+        "",
+        "## Заявки: статусы",
+        "",
+        *(_counter_lines(Counter(_label(_STATUS_LABELS, r.status) for r in requests)) or ["- (нет)"]),
+        "",
+        "## Сеть: роли",
+        "",
+        *(
+            _counter_lines(Counter(_device_role(d) for d in network_devices))
+            if network_devices
+            else ["- (сетевых устройств нет)"]
+        ),
+        "",
+        "## Принтеры: типы",
+        "",
+        *(
+            _counter_lines(
+                Counter(
+                    _PRINTER_KIND_LABELS.get(
+                        (getattr(p, "printer_kind", None) or "unknown").strip().lower(),
+                        getattr(p, "printer_kind", None) or "unknown",
+                    )
+                    for p in real_printers
+                )
+            )
+            if real_printers
+            else ["- (принтеров нет)"]
+        ),
+        "",
+        "Детальные карточки — в остальных файлах `CORAX_*.md` той же папки.",
+        "",
+    ]
+    return "\n".join(parts).strip() + "\n"
+
+
+def _build_monitors_md(data: dict[str, Any], *, generated_at: str) -> str:
+    users: dict[int, User] = data["users"]
+    monitors: list[Any] = data.get("monitors") or []
+    parts = [
+        f"# Мониторы CORAX (снимок {generated_at})",
+        "",
+        f"Инвентарь мониторов. Всего: **{len(monitors)}**.",
+        "",
+    ]
+    mfr_c: Counter[str] = Counter((getattr(m, "manufacturer", None) or "неизвестно").strip() or "неизвестно" for m in monitors)
+    if monitors:
+        parts += ["## Производители", "", *_counter_lines(mfr_c, top=30), ""]
+    if not monitors:
+        parts += ["(мониторов в базе нет)", ""]
+        return "\n".join(parts).strip() + "\n"
+    for m in monitors:
+        title = (getattr(m, "name", None) or f"monitor-{getattr(m, 'id', '?')}").strip()
+        parts.append(f"## {title} (monitor_id={m.id})")
+        parts.append("")
+        for item in (
+            _line("Производитель", getattr(m, "manufacturer", None)),
+            _line("Модель", getattr(m, "model", None)),
+            _line("Серийный номер", getattr(m, "serial_number", None)),
+            _line("Инв. номер", getattr(m, "inventory_number", None)),
+            _line("Организация", getattr(m, "organization", None)),
+            _line("Ответственный", _user_label(users, getattr(m, "assigned_user_id", None))),
+            _line("Контакт GLPI", getattr(m, "glpi_contact_raw", None)),
+            _line("Обновлён в GLPI", _fmt_dt(getattr(m, "glpi_updated_at", None))),
+        ):
+            if item:
+                parts.append(item)
+        parts.append("")
+    return "\n".join(parts).strip() + "\n"
+
+
+def _build_warehouse_md(data: dict[str, Any], *, generated_at: str) -> str:
+    rooms: list[Any] = data.get("warehouse_rooms") or []
+    items: list[Any] = data.get("warehouse_items") or []
+    movements: list[Any] = data.get("warehouse_movements") or []
+    pc_by_id: dict[int, Computer] = data.get("pc_by_id") or {}
+    room_by_id = {r.id: r for r in rooms if getattr(r, "id", None) is not None}
+
+    status_c: Counter[str] = Counter((getattr(it, "status", None) or "unknown") for it in items)
+    preset_c: Counter[str] = Counter(_warehouse_preset_name(getattr(it, "preset_key", None)) for it in items)
+    avail = 0
+    for it in items:
+        try:
+            avail += int(getattr(it, "quantity_available", 0) or 0)
+        except (TypeError, ValueError):
+            pass
+
+    parts = [
+        f"# Склад ТМЦ CORAX (снимок {generated_at})",
+        "",
+        "Обработанный справочник вкладки «Склад»: помещения, остатки, журнал движений.",
+        "",
+        f"- Помещений: **{len(rooms)}**",
+        f"- Позиций: **{len(items)}**",
+        f"- Доступно единиц: **{avail}**",
+        "",
+        "## По статусам",
+        "",
+        *(_counter_lines(status_c) or ["- (позиций нет)"]),
+        "",
+        "## По типам (пресеты)",
+        "",
+        *(_counter_lines(preset_c) or ["- (нет)"]),
+        "",
+    ]
+    if rooms:
+        parts += ["## Помещения", ""]
+        for room in rooms:
+            title = (getattr(room, "title", None) or f"room-{room.id}").strip()
+            parts.append(f"## {title} (room_id={room.id})")
+            parts.append("")
+            n_items = sum(1 for it in items if getattr(it, "room_id", None) == room.id)
+            parts.append(f"- **Позиций в помещении:** {n_items}")
+            if getattr(room, "notes", None):
+                parts.append(f"- **Заметки:** {(room.notes or '').strip()[:400]}")
+            parts.append("")
+    if not items:
+        parts += ["(позиций на складе нет)", ""]
+    for it in items:
+        title = (getattr(it, "name", None) or f"item-{it.id}").strip()
+        room = room_by_id.get(getattr(it, "room_id", None))
+        room_title = (getattr(room, "title", None) if room else "") or ""
+        parts.append(f"## {title} (stock_id={it.id})")
+        parts.append("")
+        for item in (
+            _line("Помещение", room_title),
+            _line("Тип", _warehouse_preset_name(getattr(it, "preset_key", None))),
+            _line("Учёт", getattr(it, "tracking_mode", None)),
+            _line("Количество", getattr(it, "quantity", None)),
+            _line("Доступно", getattr(it, "quantity_available", None)),
+            _line("Статус", getattr(it, "status", None)),
+            _line("Состояние", getattr(it, "condition", None)),
+            _line("Производитель", getattr(it, "manufacturer", None)),
+            _line("Серийный номер", getattr(it, "serial_number", None)),
+            _line("Партия", getattr(it, "batch_label", None)),
+            _line("Код", getattr(it, "internal_code", None)),
+            _line("Заметки", (getattr(it, "notes", None) or "").strip()[:400] or None),
+        ):
+            if item:
+                parts.append(item)
+        attrs = _parse_json_dict(getattr(it, "attributes_json", None))
+        if attrs:
+            safe_attrs = {k: v for k, v in attrs.items() if str(k).lower() not in _EXTRAS_SECRET_KEYS}
+            if safe_attrs:
+                bits = [f"{k}={v}" for k, v in list(safe_attrs.items())[:12]]
+                parts.append("- **Атрибуты:** " + ", ".join(bits))
+        parts.append("")
+
+    if movements:
+        parts += ["## Последние движения", ""]
+        for mv in movements[:120]:
+            kind = getattr(mv, "movement_kind", None) or "move"
+            qty = getattr(mv, "quantity", None)
+            host = ""
+            cid = getattr(mv, "computer_id", None)
+            if cid and cid in pc_by_id:
+                host = pc_by_id[cid].hostname or ""
+            comment = (getattr(mv, "comment", None) or "").strip()[:160]
+            bit = f"- {kind} ×{qty}" if qty is not None else f"- {kind}"
+            if host:
+                bit += f" → {host}"
+            if comment:
+                bit += f" ({comment})"
+            parts.append(bit)
+        if len(movements) > 120:
+            parts.append(f"- … ещё {len(movements) - 120}")
+        parts.append("")
+    return "\n".join(parts).strip() + "\n"
+
+
+def _build_risks_md(data: dict[str, Any], *, generated_at: str) -> str:
+    overview = data.get("risk_overview")
+    parts = [
+        f"# Центр рисков CORAX (снимок {generated_at})",
+        "",
+        "Обработанные находки Risk Center: здоровье парка, группы проблем, рекомендации. Без сырого dump.",
+        "",
+    ]
+    if overview is None:
+        parts += ["(снимок рисков недоступен — проверьте вкладку «Риски» в панели.)", ""]
+        return "\n".join(parts).strip() + "\n"
+
+    parts += [
+        "## Сводка",
+        "",
+        f"- Здоровье парка: **{overview.fleet_health_score}/100**",
+        f"- Средний риск: **{overview.average_risk_score}**",
+        f"- ПК всего: **{overview.computers_total}**",
+        f"- Критичные: **{overview.computers_critical}**, высокие: **{overview.computers_high}**, "
+        f"средние: **{overview.computers_medium}**, здоровые: **{overview.computers_healthy}**",
+        f"- Антивирус: защищены {overview.antivirus_protected}, внимание {overview.antivirus_attention}, "
+        f"неизвестно {overview.antivirus_unknown}",
+        f"- Находки: всего {overview.findings_total} (открытых {overview.findings_open}, "
+        f"ack {overview.findings_acknowledged}, ignore {overview.findings_ignored})",
+        "",
+        "## Категории",
+        "",
+    ]
+    for cat in overview.categories or []:
+        parts.append(
+            f"- **{cat.label}**: {cat.finding_count} находок, {cat.affected_computers} ПК, "
+            f"{cat.risk_points} баллов"
+        )
+    if not overview.categories:
+        parts.append("- (категорий нет)")
+    parts += ["", "## Группы проблем", ""]
+    groups = overview.problem_groups or []
+    if not groups:
+        parts.append("- (проблемных групп нет)")
+        parts.append("")
+    for g in groups:
+        hosts = [c.hostname for c in (g.computers or []) if getattr(c, "hostname", None)]
+        parts.append(f"## {g.title} (finding_id={g.finding_id})")
+        parts.append("")
+        for item in (
+            _line("Правило", g.rule),
+            _line("Категория", g.category),
+            _line("Критичность", g.severity),
+            _line("Баллы", g.score),
+            _line("Статус", g.status),
+            _line("Затронуто ПК", g.affected_computers),
+            _line("Описание", g.description),
+            _line("Рекомендация", g.recommendation),
+            _line("Хосты", _hosts_line(hosts) if hosts else None),
+        ):
+            if item:
+                parts.append(item)
+        parts.append("")
+
+    risky = [c for c in (overview.computers or []) if getattr(c, "risk_score", 0)]
+    parts += ["## ПК с ненулевым риском", ""]
+    if not risky:
+        parts.append("- (нет)")
+        parts.append("")
+    for c in risky:
+        parts.append(f"## {c.hostname} (computer_id={c.id})")
+        parts.append("")
+        for item in (
+            _line("IP", c.ip_address),
+            _line("ОС", c.os_name),
+            _line("Риск", c.risk_score),
+            _line("Уровень", c.level),
+            _line("Антивирус", c.antivirus_status),
+            _line("Находок", c.finding_count),
+            _line("Последний отчёт", _fmt_dt(c.last_report_at)),
+        ):
+            if item:
+                parts.append(item)
+        for f in c.top_findings or []:
+            parts.append(f"- [{f.severity}] {f.title}: {(f.recommendation or '')[:240]}")
+        parts.append("")
+    return "\n".join(parts).strip() + "\n"
+
+
+def _build_notes_md(data: dict[str, Any], *, generated_at: str) -> str:
+    users: dict[int, User] = data["users"]
+    notes: list[Any] = data.get("notes") or []
+    parts = [
+        f"# Заметки CORAX (снимок {generated_at})",
+        "",
+        "Планы и заметки вкладки Knowledge. HTML снят, секреты интеграций не включаются.",
+        "",
+        f"Всего: **{len(notes)}**.",
+        "",
+    ]
+    if not notes:
+        parts += ["(заметок нет)", ""]
+        return "\n".join(parts).strip() + "\n"
+    for n in notes:
+        title = (getattr(n, "title", None) or f"Заметка {n.id}").strip()
+        parts.append(f"## {title} (note_id={n.id})")
+        parts.append("")
+        start = getattr(n, "plan_start", None)
+        end = getattr(n, "plan_end", None)
+        for item in (
+            _line("Владелец", _user_label(users, getattr(n, "owner_user_id", None))),
+            _line("План с", str(start) if start else None),
+            _line("План по", str(end) if end else None),
+            _line("Метка", getattr(n, "color", None)),
+            _line("Обновлена", _fmt_dt(getattr(n, "updated_at", None))),
+        ):
+            if item:
+                parts.append(item)
+        body = _html_to_text(getattr(n, "body_html", None), limit=4000)
+        if body:
+            parts.append("")
+            parts.append(body)
+        parts.append("")
+    return "\n".join(parts).strip() + "\n"
 
 
 def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str, str]:
@@ -595,14 +1346,17 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
             _line("Локация", pc.location),
             _line("Ответственный", assignee),
             _line("IP", getattr(pc, "ip_address", None)),
+            _line("Ping", _PING_LABELS.get((getattr(pc, "ping_status", None) or "").strip().lower(), getattr(pc, "ping_status", None))),
+            _line("Последний ping", _fmt_dt(getattr(pc, "last_ping_at", None))),
             _line("Производитель", pc.manufacturer),
             _line("Модель", pc.model),
             _line("Серийный номер", pc.serial_number),
             _line("MAC", pc.mac_primary),
             _line("ОС", " ".join(x for x in (pc.os_name or "", pc.os_version or "") if x).strip()),
+            _line("ОС (нормализовано)", normalize_os_display(pc.os_name) if (pc.os_name or "").strip() else None),
             _line("Теги", ", ".join(tag_names)),
             _line("Последний отчёт", _fmt_dt(pc.last_report_at)),
-            _line("Заметки", (pc.notes or "").strip()[:500] or None),
+            _line("Заметки", (pc.notes or "").strip()[:800] or None),
         ):
             if item:
                 computers_parts.append(item)
@@ -700,47 +1454,130 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
             tags_parts.append(f"- {t.name}" + (f" (id={t.id})" if t.id else ""))
         tags_parts.append("")
 
+    real_printers = [p for p in printers if not is_noise_printer_name(p.name or "")]
+    noise_printers = [p for p in printers if is_noise_printer_name(p.name or "")]
     printers_parts = [
         f"# Принтеры CORAX (снимок {generated_at})",
         "",
-        f"Всего: **{len(printers)}**.",
+        "Обработанный справочник вкладки «Принтеры»: SNMP-модель, расходники, тонер, привязка к ПК.",
+        "",
+        f"Всего записей: **{len(printers)}** (реальные: {len(real_printers)}, служебные/виртуальные: {len(noise_printers)}).",
         "",
         "## Сводка",
         "",
-        f"- Сетевые: **{sum(1 for p in printers if p.is_network)}**",
-        f"- Локальные / привязанные к ПК: **{sum(1 for p in printers if not p.is_network)}**",
+        f"- Сетевые: **{sum(1 for p in real_printers if p.is_network)}**",
+        f"- Локальные / привязанные к ПК: **{sum(1 for p in real_printers if not p.is_network)}**",
+        f"- Общие (shared): **{sum(1 for p in real_printers if getattr(p, 'is_shared', False))}**",
+        f"- По умолчанию на ПК: **{sum(1 for p in real_printers if getattr(p, 'is_default', False))}**",
         "",
     ]
-    pr_by_loc: Counter[str] = Counter((p.location or "").strip() or "без локации" for p in printers)
-    if printers:
+    pr_by_loc: Counter[str] = Counter((p.location or "").strip() or "без локации" for p in real_printers)
+    pr_kind_c: Counter[str] = Counter(
+        _PRINTER_KIND_LABELS.get((getattr(p, "printer_kind", None) or "unknown").strip().lower(), getattr(p, "printer_kind", None) or "unknown")
+        for p in real_printers
+    )
+    pr_snmp_c: Counter[str] = Counter((getattr(p, "snmp_status", None) or "нет SNMP").strip() or "нет SNMP" for p in real_printers)
+    if real_printers:
         printers_parts.append("### По локациям")
         printers_parts.append("")
         printers_parts.extend(_counter_lines(pr_by_loc))
         printers_parts.append("")
-    for pr in printers:
+        printers_parts.append("### По типу")
+        printers_parts.append("")
+        printers_parts.extend(_counter_lines(pr_kind_c))
+        printers_parts.append("")
+        printers_parts.append("### SNMP-статус")
+        printers_parts.append("")
+        printers_parts.extend(_counter_lines(pr_snmp_c))
+        printers_parts.append("")
+
+    low_toner_alerts: list[str] = []
+    offline_pr: list[str] = []
+    for p in real_printers:
+        supplies = _parse_printer_supplies(getattr(p, "supplies_json", None))
+        toner = _toner_min_percent(supplies)
+        if toner is not None and toner <= 15:
+            low_toner_alerts.append(f"{p.name} — тонер {toner}%")
+        if getattr(p, "work_offline", None) or (getattr(p, "poll_status", None) or "").lower() in ("offline", "down"):
+            offline_pr.append(p.name)
+    printers_parts += [
+        "## Сигналы",
+        "",
+        f"- Тонер / чернила ≤15%: **{len(low_toner_alerts)}**",
+    ]
+    printers_parts.extend(f"- {x}" for x in low_toner_alerts)
+    printers_parts.append(f"- Офлайн / work_offline: **{len(offline_pr)}**")
+    printers_parts.extend(f"- {x}" for x in offline_pr)
+    printers_parts.append("")
+
+    for pr in real_printers + noise_printers:
         host = pc_by_id.get(pr.computer_id).hostname if pr.computer_id and pr.computer_id in pc_by_id else ""
         title = (pr.name or f"printer-{pr.id}").strip()
+        supplies = _parse_printer_supplies(getattr(pr, "supplies_json", None))
+        toner = _toner_min_percent(supplies)
+        kind = getattr(pr, "printer_kind", None)
         printers_parts.append(f"## {title} (printer_id={pr.id})")
         printers_parts.append("")
+        if is_noise_printer_name(title):
+            printers_parts.append("- **Служебный / виртуальный:** да (PDF/XPS/remote)")
         for item in (
             _line("Hostname ПК", host),
             _line("computer_id", pr.computer_id),
             _line("IP", pr.ip_address),
+            _line("Порт", getattr(pr, "port_name", None)),
             _line("Локация", pr.location),
             _line("Драйвер", pr.driver_name),
-            _line("Модель SNMP", pr.snmp_model),
+            _line("Модель SNMP", getattr(pr, "snmp_model", None)),
+            _line("sysName", getattr(pr, "snmp_sys_name", None)),
+            _line("Тип", _PRINTER_KIND_LABELS.get((kind or "").strip().lower(), kind) if kind else None),
+            _line("Серийный номер", getattr(pr, "serial_number", None)),
             _line("Сетевой", "да" if pr.is_network else "нет"),
+            _line("Общий", "да" if getattr(pr, "is_shared", False) else None),
+            _line("По умолчанию", "да" if getattr(pr, "is_default", False) else None),
+            _line("Источник", getattr(pr, "source", None)),
+            _line("Статус агента", getattr(pr, "agent_status", None)),
+            _line("Work offline", "да" if getattr(pr, "work_offline", None) else None),
+            _line("Опрос", getattr(pr, "poll_status", None)),
+            _line("SNMP", getattr(pr, "snmp_status", None)),
+            _line("Ошибка SNMP", (getattr(pr, "snmp_error", None) or "").strip()[:200] or None),
             _line("Счётчик страниц", getattr(pr, "page_count", None)),
-            _line("Заметки", (pr.notes or "").strip()[:300] or None),
+            _line("Мин. тонер, %", toner),
+            _line("Последний SNMP", _fmt_dt(getattr(pr, "last_snmp_at", None))),
+            _line("Последний опрос", _fmt_dt(getattr(pr, "last_poll_at", None))),
+            _line("Последний раз видели", _fmt_dt(getattr(pr, "last_seen_at", None))),
+            _line("Заметки", (pr.notes or "").strip()[:500] or None),
         ):
             if item:
                 printers_parts.append(item)
+        if supplies:
+            printers_parts.append("- **Расходники:**")
+            for s in supplies:
+                bits = [s["name"]]
+                if s.get("level_percent") is not None:
+                    bits.append(f"{s['level_percent']}%")
+                if s.get("level_raw") is not None and s.get("max_capacity") is not None:
+                    bits.append(f"{s['level_raw']}/{s['max_capacity']}")
+                printers_parts.append("  - " + ", ".join(bits))
         printers_parts.append("")
 
+    open_reqs = [r for r in requests if (r.status or "").strip().lower() in _OPEN_TICKET_STATUSES]
     tickets_parts = [
         f"# Заявки CORAX (снимок {generated_at})",
         "",
-        f"Показаны последние **{len(requests)}** заявок.",
+        f"В снимке **{len(requests)}** заявок (открытых: {len(open_reqs)}). "
+        "Открытые — полностью, закрытые — до 2000 последних.",
+        "",
+        "## Сводка",
+        "",
+        *_counter_lines(Counter(_label(_STATUS_LABELS, r.status) for r in requests)),
+        "",
+        "### Приоритеты открытых",
+        "",
+        *(_counter_lines(Counter(_label(_PRIORITY_LABELS, r.priority) for r in open_reqs)) or ["- (нет открытых)"]),
+        "",
+        "### Категории (все в снимке)",
+        "",
+        *(_counter_lines(Counter((r.category or "без категории").strip() or "без категории" for r in requests), top=40) or ["- (нет)"]),
         "",
     ]
     for req in requests:
@@ -751,7 +1588,7 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
         )
         title = (req.title or f"Заявка {req.id}").strip()
         ticket_no = req.ticket_no or req.id
-        tickets_parts.append(f"## #{ticket_no} — {title}")
+        tickets_parts.append(f"## #{ticket_no} — {title} (request_id={req.id})")
         tickets_parts.append("")
         for item in (
             _line("request_id", req.id),
@@ -762,9 +1599,12 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
             _line("Категория", req.category),
             _line("Заявитель", req.requester_name),
             _line("Локация", req.location),
+            _line("Источник", getattr(req, "external_source", None)),
+            _line("GLPI статус", getattr(req, "glpi_status", None)),
             _line("Открыта", _fmt_dt(req.opened_at or req.created_at)),
-            _line("Закрыта / план", _fmt_dt(req.closed_at or req.planned_close_at)),
-            _line("Описание", (req.description or "").strip()[:800] or None),
+            _line("План закрытия", _fmt_dt(req.planned_close_at)),
+            _line("Закрыта", _fmt_dt(req.closed_at)),
+            _line("Описание", (req.description or "").strip()[:2000] or None),
         ):
             if item:
                 tickets_parts.append(item)
@@ -807,9 +1647,9 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
                 if sw_list:
                     preview = ", ".join(
                         (s.name + (f" {s.version}" if (s.version or "").strip() else "")).strip()
-                        for s in sw_list[:25]
+                        for s in sw_list[:80]
                     )
-                    more = f" … ещё {len(sw_list) - 25}" if len(sw_list) > 25 else ""
+                    more = f" … ещё {len(sw_list) - 80}" if len(sw_list) > 80 else ""
                     users_parts.append(f"    - ПО ({len(sw_list)}): {preview}{more}")
         else:
             users_parts.append("- **ПК в ответственности:** нет")
@@ -818,9 +1658,12 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
     # --- Статистика ПО: программа → хосты (удобно для аналитики «у кого стоит») ---
     app_hosts: dict[str, list[str]] = defaultdict(list)
     app_versions: dict[str, Counter[str]] = defaultdict(Counter)
+    browser_c: Counter[str] = Counter()
+    office_c: Counter[str] = Counter()
     for pc in computers:
         host = (pc.hostname or f"id-{pc.id}").strip()
         seen_on_pc: set[str] = set()
+        seen_fam: set[str] = set()
         for s in pc.software or []:
             name = (s.name or "").strip()
             if not name or name.lower() in seen_on_pc:
@@ -829,14 +1672,29 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
             app_hosts[name].append(host)
             ver = (s.version or "").strip() or "неизвестно"
             app_versions[name][ver] += 1
+            fam = classify_software_name(name)
+            if fam and fam.name not in seen_fam:
+                seen_fam.add(fam.name)
+                if fam.category == "browser":
+                    browser_c[fam.name] += 1
+                elif fam.category == "office":
+                    office_c[fam.name] += 1
 
     stats_parts = [
         f"# Статистика установленного ПО CORAX (снимок {generated_at})",
         "",
-        "Каждая секция — одна программа: число ПК и список hostname. "
+        "Каждая секция — одна программа: число ПК и полный список hostname. "
         "Используй для вопросов «у кого стоит / не стоит».",
         "",
         f"Уникальных программ: **{len(app_hosts)}**.",
+        "",
+        "## Браузеры (семейства)",
+        "",
+        *(_counter_lines(browser_c) or ["- (не распознаны)"]),
+        "",
+        "## Офисные пакеты (семейства)",
+        "",
+        *(_counter_lines(office_c) or ["- (не распознаны)"]),
         "",
     ]
     for app_name in sorted(app_hosts.keys(), key=lambda n: (-len(app_hosts[n]), n.lower())):
@@ -846,24 +1704,31 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
         stats_parts.append(f"- Установок (ПК): **{len(hosts)}**")
         vers = app_versions.get(app_name) or Counter()
         if vers:
-            top = ", ".join(f"{v} ({c})" for v, c in vers.most_common(8))
+            top = ", ".join(f"{v} ({c})" for v, c in vers.most_common(12))
             stats_parts.append(f"- Версии: {top}")
-        # Не раздувать чанк тысячами хостов — режем с пометкой
-        show = hosts[:80]
-        stats_parts.append("- ПК: " + ", ".join(show) + (f" … ещё {len(hosts) - 80}" if len(hosts) > 80 else ""))
+        stats_parts.append("- ПК: " + ", ".join(hosts))
         stats_parts.append("")
 
     # --- Сеть ---
     network_devices: list[NetworkDevice] = data.get("network_devices") or []
     network_links: list[NetworkLink] = data.get("network_links") or []
+    net_by_id = {d.id: d for d in network_devices}
+    printer_by_id = {p.id: p for p in printers}
     role_c: Counter[str] = Counter()
     type_c: Counter[str] = Counter()
     for dev in network_devices:
         role_c[_device_role(dev)] += 1
         type_c[(dev.device_type or "unknown").strip() or "unknown"] += 1
 
+    snmp_bad = [
+        _net_title(d)
+        for d in network_devices
+        if (d.snmp_status or "").strip().lower() in ("error", "fail", "failed", "timeout")
+    ]
     network_parts = [
         f"# Сетевое оборудование CORAX (снимок {generated_at})",
+        "",
+        "Обработанный справочник вкладки «Сеть»: роли, SNMP, интерфейсы, LLDP-соседи, карта связей.",
         "",
         f"Всего устройств: **{len(network_devices)}**. Связей на карте: **{len(network_links)}**.",
         "",
@@ -875,9 +1740,15 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
         "",
         *(_counter_lines(type_c) if network_devices else ["- (нет)"]),
         "",
+        "## Сигналы",
+        "",
+        f"- SNMP ошибка / timeout: **{len(snmp_bad)}**",
     ]
+    if snmp_bad:
+        network_parts.append("- " + _hosts_line(snmp_bad))
+    network_parts.append("")
     # Группы шлюз / DNS в начале файла — удобно для RAG
-    for role_key, role_title in (("gateway", "Шлюзы (gateway)"), ("dns", "DNS-серверы")):
+    for role_key, role_title in (("gateway", "Шлюзы (gateway)"), ("dns", "DNS-серверы"), ("firewall", "Межсетевые экраны")):
         group = [d for d in network_devices if _device_role(d) == role_key]
         network_parts.append(f"## {role_title}")
         network_parts.append("")
@@ -886,10 +1757,11 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
             network_parts.append("")
             continue
         for dev in group:
-            title = (dev.hostname or dev.sys_name or dev.ip_address or f"net-{dev.id}").strip()
+            title = _net_title(dev)
             network_parts.append(
                 f"- **{title}** — IP `{dev.ip_address or '—'}`"
                 + (f", vendor {dev.vendor}" if (dev.vendor or "").strip() else "")
+                + (f", SNMP {dev.snmp_status}" if (dev.snmp_status or "").strip() else "")
             )
         network_parts.append("")
 
@@ -897,53 +1769,98 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
         network_parts.append("(карточек устройств нет)")
         network_parts.append("")
     for dev in network_devices:
-        title = (dev.hostname or dev.sys_name or dev.ip_address or f"net-{dev.id}").strip()
+        title = _net_title(dev)
         role = _device_role(dev)
+        extras = _safe_extras(getattr(dev, "extras_json", None))
         network_parts.append(f"## {title} (network_id={dev.id})")
         network_parts.append("")
         for item in (
             _line("IP", dev.ip_address),
             _line("Hostname", dev.hostname),
             _line("sysName", dev.sys_name),
+            _line("sysObjectID", getattr(dev, "sys_object_id", None)),
             _line("Роль", role),
             _line("Тип", dev.device_type),
             _line("Vendor", dev.vendor),
+            _line("Модель", extras.get("model")),
+            _line("Серийный номер", extras.get("serial_number")),
             _line("Локация", dev.location),
             _line("SNMP", dev.snmp_status),
+            _line("Ошибка SNMP", (getattr(dev, "snmp_error", None) or "").strip()[:240] or None),
             _line("Источник", dev.source),
-            _line("Последний опрос", _fmt_dt(dev.last_snmp_at or dev.last_seen_at)),
-            _line("Описание", (dev.sys_descr or "").strip()[:400] or None),
-            _line("Заметки", (dev.notes or "").strip()[:300] or None),
+            _line("Последний SNMP", _fmt_dt(dev.last_snmp_at)),
+            _line("Последний раз видели", _fmt_dt(dev.last_seen_at)),
+            _line("Описание", (dev.sys_descr or "").strip()[:600] or None),
+            _line("Заметки", (dev.notes or "").strip()[:500] or None),
         ):
             if item:
                 network_parts.append(item)
-        # Краткая структура интерфейсов / соседей без раздувания
-        try:
-            raw_ifaces = getattr(dev, "interfaces_json", None)
-            ifaces = json.loads(raw_ifaces) if raw_ifaces else []
-        except (TypeError, json.JSONDecodeError):
-            ifaces = []
-        if isinstance(ifaces, list) and ifaces:
-            network_parts.append(f"- **Интерфейсов (SNMP):** {len(ifaces)}")
-            preview = []
-            for iface in ifaces[:12]:
+        extra_ips = extras.get("ip_addresses")
+        if isinstance(extra_ips, list) and extra_ips:
+            network_parts.append("- **Доп. IP:** " + ", ".join(str(x) for x in extra_ips[:24]))
+        ifaces = _parse_json_list(getattr(dev, "interfaces_json", None))
+        if ifaces:
+            up_n = 0
+            down_n = 0
+            iface_lines: list[str] = []
+            for iface in ifaces:
                 if not isinstance(iface, dict):
                     continue
-                name = str(iface.get("name") or iface.get("ifDescr") or iface.get("ifName") or "").strip()
-                status = str(iface.get("oper_status") or iface.get("status") or "").strip()
-                bit = name or "?"
+                name = str(
+                    iface.get("name") or iface.get("ifName") or iface.get("ifDescr") or ""
+                ).strip() or "?"
+                status = str(iface.get("oper_status") or iface.get("status") or "").strip().lower()
+                speed = iface.get("speed") or iface.get("ifSpeed") or iface.get("speed_mbps")
+                mac = str(iface.get("mac") or iface.get("ifPhysAddress") or "").strip()
+                bit = name
                 if status:
                     bit += f" [{status}]"
-                preview.append(bit)
-            if preview:
-                network_parts.append("- Интерфейсы (фрагмент): " + ", ".join(preview))
-        try:
-            raw_neigh = getattr(dev, "neighbors_json", None)
-            neigh = json.loads(raw_neigh) if raw_neigh else []
-        except (TypeError, json.JSONDecodeError):
-            neigh = []
-        if isinstance(neigh, list) and neigh:
+                    if status in ("up", "1", "online"):
+                        up_n += 1
+                    elif status in ("down", "2", "offline"):
+                        down_n += 1
+                if speed not in (None, "", 0, "0"):
+                    bit += f" {speed}"
+                if mac:
+                    bit += f" mac={mac}"
+                iface_lines.append(bit)
+            network_parts.append(f"- **Интерфейсов (SNMP):** {len(ifaces)} (up={up_n}, down={down_n})")
+            for bit in iface_lines[:48]:
+                network_parts.append(f"  - {bit}")
+            if len(iface_lines) > 48:
+                network_parts.append(f"  - … ещё {len(iface_lines) - 48}")
+        neigh = _parse_json_list(getattr(dev, "neighbors_json", None))
+        if neigh:
             network_parts.append(f"- **Соседей (LLDP/CDP):** {len(neigh)}")
+            for n in neigh[:40]:
+                if not isinstance(n, dict):
+                    continue
+                nname = str(n.get("remote_name") or n.get("sys_name") or n.get("name") or "").strip()
+                nip = str(n.get("remote_ip") or n.get("ip") or "").strip()
+                lport = str(n.get("local_port") or n.get("local_if") or "").strip()
+                rport = str(n.get("remote_port") or n.get("remote_if") or "").strip()
+                bit = nname or nip or "?"
+                if nip and nip not in bit:
+                    bit += f" ({nip})"
+                if lport or rport:
+                    bit += f" {lport or '?'}↔{rport or '?'}"
+                network_parts.append(f"  - {bit}")
+            if len(neigh) > 40:
+                network_parts.append(f"  - … ещё {len(neigh) - 40}")
+        fdb = _parse_json_list(getattr(dev, "fdb_json", None))
+        if fdb:
+            network_parts.append(f"- **FDB записей:** {len(fdb)}")
+            sample: list[str] = []
+            for row in fdb[:20]:
+                if isinstance(row, dict):
+                    mac = str(row.get("mac") or "").strip()
+                    port = str(row.get("port") or row.get("if_name") or "").strip()
+                    if mac:
+                        sample.append(mac + (f"@{port}" if port else ""))
+                elif row:
+                    sample.append(str(row))
+            if sample:
+                network_parts.append("- FDB (фрагмент): " + ", ".join(sample))
         network_parts.append("")
 
     if network_links:
@@ -954,18 +1871,27 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
         )
         network_parts.extend(_counter_lines(link_type_c))
         network_parts.append("")
-        for ln in network_links[:120]:
-            network_parts.append(
-                f"- {ln.from_type}:{ln.from_id} → {ln.to_type}:{ln.to_id}"
-                f" ({ln.link_type or 'link'}"
-                + (f", {ln.local_port}↔{ln.remote_port}" if ln.local_port or ln.remote_port else "")
-                + ")"
+        for ln in network_links:
+            left = _endpoint_label(
+                ln.from_type, ln.from_id, pc_by_id=pc_by_id, net_by_id=net_by_id, printer_by_id=printer_by_id
             )
-        if len(network_links) > 120:
-            network_parts.append(f"- … ещё {len(network_links) - 120} связей")
+            right = _endpoint_label(
+                ln.to_type, ln.to_id, pc_by_id=pc_by_id, net_by_id=net_by_id, printer_by_id=printer_by_id
+            )
+            ports = ""
+            if ln.local_port or ln.remote_port:
+                ports = f", {ln.local_port or '?'}↔{ln.remote_port or '?'}"
+            conf = ""
+            try:
+                if ln.confidence is not None and float(ln.confidence) < 0.99:
+                    conf = f", conf={ln.confidence:g}"
+            except (TypeError, ValueError):
+                pass
+            network_parts.append(f"- {left} → {right} ({ln.link_type or 'link'}{ports}{conf})")
         network_parts.append("")
 
     return {
+        CORAX_DASHBOARD_MD: _build_dashboard_md(data, generated_at=generated_at),
         CORAX_COMPUTERS_MD: "\n".join(computers_parts).strip() + "\n",
         CORAX_HARDWARE_MD: "\n".join(hardware_parts).strip() + "\n",
         CORAX_SOFTWARE_MD: "\n".join(software_parts).strip() + "\n",
@@ -976,6 +1902,11 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
         CORAX_TICKETS_MD: "\n".join(tickets_parts).strip() + "\n",
         CORAX_USERS_MD: "\n".join(users_parts).strip() + "\n",
         CORAX_TAGS_MD: "\n".join(tags_parts).strip() + "\n",
+        CORAX_MONITORS_MD: _build_monitors_md(data, generated_at=generated_at),
+        CORAX_WAREHOUSE_MD: _build_warehouse_md(data, generated_at=generated_at),
+        CORAX_RISKS_MD: _build_risks_md(data, generated_at=generated_at),
+        CORAX_NOTES_MD: _build_notes_md(data, generated_at=generated_at),
+        CORAX_ZABBIX_MD: (data.get("zabbix_md") or _build_zabbix_placeholder(generated_at=generated_at)),
     }
 
 
@@ -1616,67 +2547,103 @@ def build_corax_context_from_data(
     return text
 
 
-async def build_corax_knowledge_bundle(db: AsyncSession) -> tuple[dict[str, str], dict[str, int]]:
-    data = await _load_snapshot(db)
-    bundle = build_corax_file_bundle(data)
-    # Scope A Zabbix: optional summary MD when integration is enabled and last probe OK.
+async def _load_warehouse_snapshot() -> tuple[list[Any], list[Any], list[Any]]:
+    try:
+        from app.database import WarehouseSessionLocal
+        from app.warehouse_models import StockItem, StockMovement, WarehouseRoom
+
+        async with WarehouseSessionLocal() as wdb:
+            rooms = list((await wdb.execute(select(WarehouseRoom).order_by(WarehouseRoom.sort_order, WarehouseRoom.id))).scalars().all())
+            items = list((await wdb.execute(select(StockItem).order_by(StockItem.name))).scalars().all())
+            moves = list(
+                (
+                    await wdb.execute(select(StockMovement).order_by(StockMovement.id.desc()).limit(200))
+                ).scalars().all()
+            )
+            return rooms, items, moves
+    except Exception:
+        _LOG.exception("warehouse wiki snapshot skipped")
+        return [], [], []
+
+
+async def _load_risk_overview(db: AsyncSession) -> Any | None:
+    try:
+        from app.risk_engine import build_risk_overview
+
+        return await build_risk_overview(db)
+    except Exception:
+        _LOG.exception("risk wiki snapshot skipped")
+        return None
+
+
+async def _load_zabbix_md(db: AsyncSession) -> str | None:
     try:
         from app.models import ZabbixConfig
         from app.zabbix_client import build_zabbix_wiki_markdown
 
         zbx = await db.get(ZabbixConfig, 1)
-        if zbx is not None and bool(zbx.enabled) and zbx.last_test_ok is True:
-            sample_hosts: list[str] = []
-            sample_problems: list[str] = []
-            hosts_total = zbx.last_hosts_total
-            problems_total = zbx.last_problems_total
-            version = zbx.last_version or None
-            try:
-                from app.zabbix_service import get_overview_payload
+        if zbx is None or not bool(zbx.enabled):
+            return None
+        sample_hosts: list[str] = []
+        sample_problems: list[str] = []
+        hosts_total = zbx.last_hosts_total
+        problems_total = zbx.last_problems_total
+        version = zbx.last_version or None
+        try:
+            from app.zabbix_service import get_overview_payload
 
-                overview = await get_overview_payload(db)
-                if overview.get("available"):
-                    hosts_total = overview.get("hosts_total", hosts_total)
-                    problems_total = overview.get("problems_total", problems_total)
-                    version = overview.get("version") or version
-                    for p in overview.get("problems") or []:
-                        if isinstance(p, dict) and (p.get("name") or "").strip():
-                            host_bit = ""
-                            hosts = p.get("hosts") or []
-                            if isinstance(hosts, list) and hosts:
-                                host_bit = f" ({hosts[0]})"
-                            sample_problems.append(f"{p['name'].strip()}{host_bit}")
-            except Exception:
-                pass
-            try:
-                from app.zabbix_service import get_hosts_payload
+            overview = await get_overview_payload(db)
+            if overview.get("available"):
+                hosts_total = overview.get("hosts_total", hosts_total)
+                problems_total = overview.get("problems_total", problems_total)
+                version = overview.get("version") or version
+                for p in overview.get("problems") or []:
+                    if isinstance(p, dict) and (p.get("name") or "").strip():
+                        host_bit = ""
+                        hosts = p.get("hosts") or []
+                        if isinstance(hosts, list) and hosts:
+                            host_bit = f" ({hosts[0]})"
+                        sample_problems.append(f"{p['name'].strip()}{host_bit}")
+        except Exception:
+            pass
+        try:
+            from app.zabbix_service import get_hosts_payload
 
-                hosts_payload = await get_hosts_payload(db, limit=15)
-                if hosts_payload.get("available"):
-                    for h in hosts_payload.get("items") or []:
-                        if not isinstance(h, dict):
-                            continue
-                        label = (h.get("name") or h.get("host") or "").strip()
-                        if label:
-                            sample_hosts.append(label)
-            except Exception:
-                pass
-            md = build_zabbix_wiki_markdown(
-                enabled=True,
-                base_url=zbx.base_url or "",
-                version=version,
-                hosts_total=hosts_total,
-                problems_total=problems_total,
-                last_ok=zbx.last_test_ok,
-                last_message=zbx.last_test_message or None,
-                sample_hosts=sample_hosts or None,
-                sample_problems=sample_problems or None,
-            )
-            if md:
-                bundle[CORAX_ZABBIX_MD] = md
+            hosts_payload = await get_hosts_payload(db, limit=40)
+            if hosts_payload.get("available"):
+                for h in hosts_payload.get("items") or []:
+                    if not isinstance(h, dict):
+                        continue
+                    label = (h.get("name") or h.get("host") or "").strip()
+                    if label:
+                        sample_hosts.append(label)
+        except Exception:
+            pass
+        return build_zabbix_wiki_markdown(
+            enabled=True,
+            base_url=zbx.base_url or "",
+            version=version,
+            hosts_total=hosts_total,
+            problems_total=problems_total,
+            last_ok=zbx.last_test_ok,
+            last_message=zbx.last_test_message or None,
+            sample_hosts=sample_hosts or None,
+            sample_problems=sample_problems or None,
+        )
     except Exception:
-        logger = __import__("logging").getLogger(__name__)
-        logger.exception("zabbix wiki snapshot skipped")
+        _LOG.exception("zabbix wiki snapshot skipped")
+        return None
+
+
+async def build_corax_knowledge_bundle(db: AsyncSession) -> tuple[dict[str, str], dict[str, int]]:
+    data = await _load_snapshot(db)
+    rooms, items, moves = await _load_warehouse_snapshot()
+    data["warehouse_rooms"] = rooms
+    data["warehouse_items"] = items
+    data["warehouse_movements"] = moves
+    data["risk_overview"] = await _load_risk_overview(db)
+    data["zabbix_md"] = await _load_zabbix_md(db)
+    bundle = build_corax_file_bundle(data)
 
     total_chars = sum(len(v) for v in bundle.values())
     stats = {
@@ -1685,6 +2652,8 @@ async def build_corax_knowledge_bundle(db: AsyncSession) -> tuple[dict[str, str]
         "tags": len(data["tags"]),
         "printers": len(data["printers"]),
         "network_devices": len(data.get("network_devices") or []),
+        "monitors": len(data.get("monitors") or []),
+        "warehouse_items": len(items),
         "files": len(bundle),
         "chars": total_chars,
     }
@@ -1700,8 +2669,6 @@ async def build_corax_knowledge_markdown(db: AsyncSession) -> tuple[str, dict[st
             continue
         if name in bundle:
             parts.append(f"# Документ: {name}\n\n{bundle[name].strip()}\n")
-    if CORAX_ZABBIX_MD in bundle:
-        parts.append(f"# Документ: {CORAX_ZABBIX_MD}\n\n{bundle[CORAX_ZABBIX_MD].strip()}\n")
     return "\n".join(parts).strip() + "\n", stats
 
 

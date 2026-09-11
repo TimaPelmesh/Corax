@@ -886,11 +886,15 @@ class WikiRagIndexImportOut(BaseModel):
 class WikiRagIndexSettingsOut(BaseModel):
     auto_index: bool = False
     embed_model: str = "bge-m3"
+    # 0 = авто (макс. модели). Ручной override из веб-морды / .env.
+    lm_context_tokens: int = 0
+    effective_lm_context_tokens: int = 16384
 
 
 class WikiRagIndexSettingsUpdate(BaseModel):
     auto_index: bool | None = None
     embed_model: str | None = Field(default=None, max_length=256)
+    lm_context_tokens: int | None = Field(default=None, ge=0, le=32768)
 
 
 class WikiRagIndexStatusOut(BaseModel):

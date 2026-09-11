@@ -70,9 +70,9 @@ def human_lm_studio_error(
 
     if is_context_overflow_error(d):
         ctx_hint = (
-            "увеличьте параметр num_ctx у модели Ollama (например ≥ 20480)."
+            "увеличьте контекст в Настройки → LLM (например 16384 / 32768) или num_ctx у Ollama."
             if provider == "ollama"
-            else "в LM Studio выставьте Context Length ≥ 20480."
+            else "увеличьте контекст в Настройки → LLM и Context Length в LM Studio (например ≥ 16384)."
         )
         return (
             "Запрос не влез в контекст модели. В CORAX лимит промпта ~20 000 токенов — "

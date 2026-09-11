@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     lm_studio_max_tokens: int = 4096
     # Лимит контекста промпта + Ollama num_ctx. 0 = авто (макс. модели, до 32768).
     # Вручную: 8192/16384 на слабой GPU, 32768 если VRAM позволяет.
+    # Веб-морда (Настройки → LLM) перекрывает это значение через wiki_rag_options.json.
     wiki_rag_lm_context_tokens: int = 0
     # WikiRAG semantic index — aligned with fast Ollama RAG script (bge-m3 + 1500/300 + k=45).
     # Empty base URL → same as lm_studio_base_url.

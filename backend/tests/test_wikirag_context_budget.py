@@ -20,6 +20,7 @@ def test_context_overflow_detection():
     assert "контекст" in msg.lower() or "20" in msg
     ollama_msg = human_lm_studio_error(400, err, provider="ollama")
     assert "ollama" in ollama_msg.lower() or "num_ctx" in ollama_msg.lower()
+    assert "настройки" in ollama_msg.lower() or "llm" in ollama_msg.lower()
 
 
 def test_human_error_status_zero_no_http_zero():

@@ -69,3 +69,35 @@ def set_embed_model(model: str | None) -> str:
         data.pop("embed_model", None)
     _write_options(data)
     return get_embed_model()
+
+
+_CTX_HARD_MAX = 32768
+
+
+def clamp_lm_context_tokens(value: Any) -> int:
+    """0 = авто. Иначе 2048…32768."""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return 0
+    if n <= 0:
+        return 0
+    return max(2048, min(n, _CTX_HARD_MAX))
+
+
+def get_lm_context_tokens() -> int:
+    """Лимит контекста чата / Ollama num_ctx. UI override бьёт .env. 0 = авто."""
+    data = _read_options()
+    if "lm_context_tokens" in data:
+        return clamp_lm_context_tokens(data.get("lm_context_tokens"))
+    return clamp_lm_context_tokens(getattr(settings, "wiki_rag_lm_context_tokens", None) or 0)
+
+
+def set_lm_context_tokens(value: int | None) -> int:
+    data = _read_options()
+    if value is None:
+        data.pop("lm_context_tokens", None)
+    else:
+        data["lm_context_tokens"] = clamp_lm_context_tokens(value)
+    _write_options(data)
+    return get_lm_context_tokens()

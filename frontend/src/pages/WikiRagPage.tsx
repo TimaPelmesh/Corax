@@ -255,7 +255,12 @@ export function WikiRagPage() {
       const [list, folderRes, indexSettings] = await Promise.all([
         api.wikiRagDocuments(),
         api.wikiRagFolders().catch(() => ({ folders: [] as string[] })),
-        api.wikiRagIndexSettings().catch(() => ({ auto_index: false, embed_model: 'bge-m3' })),
+        api.wikiRagIndexSettings().catch(() => ({
+          auto_index: false,
+          embed_model: 'bge-m3',
+          lm_context_tokens: 0,
+          effective_lm_context_tokens: 16384,
+        })),
       ])
       setRows(list)
       setFolders(folderRes.folders || [])
