@@ -1262,13 +1262,6 @@ export type SearchResponse = {
   items: SearchResult[]
 }
 
-export type SelfServiceContext = {
-  hostname: string
-  computer_id: number
-  location: string | null
-  categories: string[]
-}
-
 export const api = {
   login: (username: string, password: string) =>
     request<{ ok: boolean; access_token: string | null }>(`${API_PREFIX}/auth/login/json`, {
@@ -1279,21 +1272,6 @@ export const api = {
   logout: () => request<{ ok: boolean }>(`${API_PREFIX}/auth/logout`, { method: 'POST' }),
 
   me: () => request<User>(`${API_PREFIX}/auth/me`),
-
-  selfServiceContext: (hostname: string) =>
-    request<SelfServiceContext>(`${API_PREFIX}/self-service/context?hostname=${encodeURIComponent(hostname)}`),
-
-  createSelfServiceRequest: (body: {
-    hostname: string
-    title: string
-    description?: string
-    category?: string
-    planned_close_at?: string
-  }) =>
-    request<{ ok: boolean; request_id: number; ticket_no: number | null }>(`${API_PREFIX}/self-service/requests`, {
-      method: 'POST',
-      json: body,
-    }),
 
   searchCatalog: (q: string, opts?: { types?: string[]; limit?: number }) => {
     const p = new URLSearchParams({ q })

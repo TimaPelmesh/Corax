@@ -26,6 +26,8 @@ echo Keeping agent_env.bat
 xcopy /E /Y /I "%SRC%\win10" "%DST%win10\" >NUL
 xcopy /E /Y /I "%SRC%\win7" "%DST%win7\" >NUL
 copy /Y "%SRC%\corax_send.bat" "%DST%corax_send.bat" >NUL
+if exist "%SRC%\corax_send_silent.vbs" copy /Y "%SRC%\corax_send_silent.vbs" "%DST%corax_send_silent.vbs" >NUL
+if exist "%SRC%\install_schedule.bat" copy /Y "%SRC%\install_schedule.bat" "%DST%install_schedule.bat" >NUL
 if exist "%SRC%\register_scheduled_task.ps1" copy /Y "%SRC%\register_scheduled_task.ps1" "%DST%register_scheduled_task.ps1" >NUL
 if exist "%SRC%\README_DEPLOY.txt" copy /Y "%SRC%\README_DEPLOY.txt" "%DST%README_DEPLOY.txt" >NUL
 if exist "%SRC%\update_scripts.bat" copy /Y "%SRC%\update_scripts.bat" "%DST%update_scripts.bat" >NUL

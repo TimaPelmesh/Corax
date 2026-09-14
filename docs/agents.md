@@ -21,13 +21,14 @@ CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://192.168.x.x:3000
 
 После правки `.env`: `npm run docker:restart`.
 
-## Три пакета
+## Два пакета на панели
 
 | Кнопка на панели | Файл | Куда ставить |
 |------------------|------|----------------|
-| **ZIP PowerShell Windows (рекомендуется)** | `corax-agent-windows-*.zip` | Отдельная папка, **не** каталог сервера CORAX. Один архив на Win7/10/11. |
-| **Нативный EXE (не 1:1 с PowerShell)** | `CORAX-Agent-*.exe` | Любая папка на ПК. Состав инвентаря пока не совпадает с PowerShell. |
+| **ZIP PowerShell Windows** | `corax-agent-windows-*.zip` | Отдельная папка, **не** каталог сервера CORAX. Один архив на Win7/10/11. |
 | **ZIP Linux (bash)** | `corax-agent-linux-*.zip` | Только `/opt/corax-agent`. |
+
+C++ EXE в репозитории (`agent/cpp`) пока **не предлагается с панели**. Позже — единый агент.
 
 Исходники в git (`agent/…`) — **не для запуска на проде**. Это шаблоны без URL/токена. Рабочий пакет — только скачанный с панели.
 
@@ -44,28 +45,20 @@ Linux ZIP: `/opt/corax-agent`. Сервер остаётся в `/opt/corax`.
 
 ## Токены
 
-Каждая сборка с панели создаёт **новый** токен (`public_id.secret`). В БД хранится только HMAC. Полный секрет вшит в EXE / `agent_env.bat` / `agent_env.sh`.
+Каждая сборка с панели создаёт **новый** токен (`public_id.secret`). В БД хранится только HMAC. Полный секрет вшит в `agent_env.bat` / `agent_env.sh`.
 
 - Список и отзыв: **Настройки → Токены агентов**.
-- Один ZIP/EXE можно раскатать на много ПК.
+- Один ZIP можно раскатать на много ПК.
 - Пересборка = другой токен; старый живёт, пока не отзовёте.
-- Не публикуйте ZIP/EXE и не коммитьте `agent_env.*`.
-
-## EXE C++ (не основной)
-
-Состав полей пока **не 1:1** с PowerShell-агентом. Для продакшена Windows берите ZIP.
-
-1. Скачайте EXE с панели.
-2. На ПК: двойной клик — отправка.
-3. Планировщик: `CORAX-Agent.exe --silent`.
-4. После смены HTTP↔HTTPS — **скачайте EXE заново**.
+- Не публикуйте ZIP и не коммитьте `agent_env.*`.
 
 ## ZIP Windows — первый запуск
 
 Внутри один архив:
 
 ```
-corax_send.bat          ← запускать ЭТО (сам выберет Win7 или 10/11)
+corax_send_silent.vbs   ← запуск без окна (рекомендуется)
+corax_send.bat          ← автовыбор Win7 или 10/11; по умолчанию прячется
 agent_env.bat           ← URL + токен (не затирать при обновлении)
 agent_config.json
 update_scripts.bat
@@ -78,20 +71,20 @@ win7\                   ← Windows 7 / старый PowerShell
 ```bat
 :: на ПК или с шары
 cd /d %ProgramData%\CORAX\agent
-corax_send.bat
-:: без паузы (планировщик):
-corax_send.bat nopause
+corax_send_silent.vbs
+:: с консолью (отладка):
+corax_send.bat visible
 ```
 
 Проверка: **Компьютеры** — появился hostname, обновилось «последний отчёт».
 
-Окно cmd больше не должно закрываться само: splash-анимация **выключена** (старый splash ронял conhost). Включить: `set CORAX_SPLASH=1`.
+Окна cmd нет: и ручной запуск, и задача Планировщика идут через `corax_send_silent.vbs` (WindowStyle 0). Splash-анимация **выключена**.
 
 На рабочем столе появляется ярлык **Оставить заявку** → `{LAN-IP сервера}/h#pc=ИМЯ-ПК` (не localhost). Ярлыки со старыми именами удаляются при следующем запуске.
 
 Ручной полный аудит (не для GPO): `agent/audit-win/corax_audit.bat` — тот же POST, максимум полей, тот же ярлык.
 
-Расписание: если при сборке включили автозапуск, в ZIP будет `install_schedule.bat` — один раз **от администратора**. Задача называется `CORAX-Agent` и всегда стартует корневой `corax_send.bat` (ОС определяется каждый раз).
+Расписание: если при сборке включили автозапуск, в ZIP будет `install_schedule.bat` — один раз **от администратора**. Задача называется `CORAX-Agent`, идёт от SYSTEM через `corax_send_silent.vbs` и **не показывает окно** пользователю.
 
 ## ZIP Windows — обновление скриптов
 
@@ -107,7 +100,7 @@ cd /d %ProgramData%\CORAX\agent
 update_scripts.bat C:\temp\corax-agent-new
 ```
 
-`agent_env.bat` останется. Можно вручную копировать только `win10\`, `win7\`, `corax_send.bat` — `agent_env.bat` не трогать.
+`agent_env.bat` останется. Можно вручную копировать только `win10\`, `win7\`, `corax_send.bat`, `corax_send_silent.vbs` — `agent_env.bat` не трогать.
 
 ## ZIP Linux — первый запуск
 

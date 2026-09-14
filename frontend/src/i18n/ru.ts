@@ -169,6 +169,7 @@ export const ru = {
     requestTemplates: 'Шаблоны заявок',
     requestStats: 'Статистика заявок',
     requestHandler: 'Обработчик заявок',
+    helpForm: 'Оставить заявку',
     sitemap: 'Карта здания',
     guide: 'Руководство',
     wikirag: 'Wiki / Ассистент',
@@ -217,7 +218,7 @@ export const ru = {
     zabbixSubtitle: 'Подключение Zabbix (чтение API)',
     zabbixDataSubtitle: 'Хосты и проблемы из Zabbix (только чтение).',
     agentTokensSubtitle: 'Токены для агентов инвентаризации',
-    agentBundleSubtitle: 'Windows: PowerShell ZIP (рекомендуется). EXE — пока не 1:1 с PowerShell.',
+    agentBundleSubtitle: 'Windows: ZIP PowerShell (Win 7/10/11). Linux: ZIP bash.',
     wolSubtitle:
       'Кому разрешено включать ПК для обслуживания. Кнопка — в карточке ПК, только если машина не в сети.',
     httpsSubtitle:
@@ -363,6 +364,28 @@ export const ru = {
     priorityLow: 'Низкий',
     statusNew: 'Новая',
     refresh: 'Обновить метрики',
+    helpForm: {
+      greetMorning: 'Доброго утра',
+      greetAfternoon: 'Доброго дня',
+      greetEvening: 'Доброго вечера',
+      greetNight: 'Доброй ночи',
+      lead: 'Опишите проблему своими словами.',
+      detecting: 'Уточняем, с какого компьютера заявка…',
+      fromPc: 'Заявка уйдёт с компьютера',
+      titleLabel: 'Что требуется',
+      titlePlaceholder: 'Например: поменять картридж в принтере',
+      detailsLabel: 'Подробности',
+      detailsOptional: 'по желанию',
+      detailsPlaceholder: 'Когда началось, что уже пробовали, номер кабинета',
+      submit: 'Отправить заявку',
+      sending: 'Отправляем…',
+      accepted: 'Заявка принята',
+      acceptedWithNo: 'Заявка принята, {ticket}',
+      errDisabled: 'Сервис помощи сейчас выключен. Напишите в IT или попробуйте чуть позже.',
+      errLan: 'Форму нужно открыть с рабочего компьютера в офисной сети.',
+      errNetwork: 'Не удалось связаться с сервером. Проверьте сеть и попробуйте снова.',
+      errGeneric: 'Что-то пошло не так. Попробуйте ещё раз.',
+    },
   },
   settingsHttps: {
     status: 'Состояние',
@@ -2437,7 +2460,7 @@ export const ru = {
     win7Notice:
       'Базовый профиль: WMI, реестр ПО, PnP-периферия. Расширенные модули (патчи, BitLocker, Docker и т.д.) доступны только в сборке для Windows 10/11.',
     windowsZipNotice:
-      'Канонический агент для Windows. corax_send.bat сам выбирает Win7 или 10/11. Анимация splash по умолчанию выключена (из‑за неё окно cmd пропадало). После запуска на рабочем столе появляется ярлык «Оставить заявку» на /h с уже вписанным именем ПК (LAN-IP сервера, не localhost). Обновление: update_scripts.bat — agent_env.bat не затирается.',
+      'Канонический агент для Windows. Запуск без окна: corax_send_silent.vbs (или corax_send.bat — сам уходит в фон). По расписанию задача SYSTEM через тот же VBS. После запуска на рабочем столе появляется ярлык «Оставить заявку» на /h с уже вписанным именем ПК (LAN-IP сервера, не localhost). Отладка: corax_send.bat visible. Обновление: update_scripts.bat — agent_env.bat не затирается.',
     collectionLevel: 'Уровень сбора',
     levelFull: 'Полный',
     levelFullHint: 'Все модули: сеть, патчи, безопасность, Office, Docker/WSL и т.д.',
@@ -2449,7 +2472,7 @@ export const ru = {
     tokenIntroBefore: 'При скачивании сервер генерирует пару',
     tokenIntroMiddle: ', сохраняет хеш в базе (раздел',
     tokenIntroLink: 'Токены агентов',
-    tokenIntroAfter: ') и кладёт полный токен только в закрытый файл первичной выдачи. В нативный EXE токен больше не вшивается.',
+    tokenIntroAfter: ') и кладёт полный токен только в agent_env.bat / agent_env.sh.',
     tokenParagraph2:
       'Повторная сборка - другой токен; старый остаётся в базе, пока не отзовёте. Один ZIP можно раскатать на много ПК.',
     tokenParagraph3:
@@ -2457,7 +2480,7 @@ export const ru = {
     tokenLabelAdmin: 'Подпись токена в админке (необязательно)',
     scheduleEnable: 'Добавить автозапуск по расписанию',
     scheduleHint:
-      'В архив попадёт install_schedule.bat. Запустите его от имени администратора на каждом ПК один раз - создастся задача в Планировщике Windows. Само по себе в систему не встраивается, пока bat не выполнен.',
+      'В архив попадёт install_schedule.bat. Запустите его от имени администратора один раз: в Планировщике появится фоновая задача SYSTEM без окна cmd. Само по себе в систему не встраивается, пока bat не выполнен.',
     scheduleModeLabel: 'Режим',
     scheduleDaily: 'Ежедневно',
     scheduleWeekly: 'Еженедельно (пн)',
@@ -2475,7 +2498,7 @@ export const ru = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'Нет',
     summaryArchiveWin10:
-      'В архиве: corax_send.bat (автовыбор ОС), win10/ (PowerShell 5+), win7/, agent_env.bat, agent_config.json, update_scripts.bat. Ярлык заявки на рабочий стол: /h#pc=ИМЯ-ПК.',
+      'В архиве: corax_send_silent.vbs (без окна), corax_send.bat, win10/, win7/, agent_env.bat, agent_config.json, update_scripts.bat. Ярлык «Оставить заявку» на рабочий стол: /h#pc=ИМЯ-ПК.',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
     summaryArchiveCpp:
@@ -2496,7 +2519,7 @@ export const ru = {
     deployStep2LinuxBefore: 'На хосте выполните',
     deployStep2LinuxAfter: '— отчёт уйдёт на {serverUrl}.',
     deployStep3Win10:
-      'Расписание: от администратора — install_schedule.bat. Обновление: update_scripts.bat (не затирает agent_env.bat). Ярлык «Оставить заявку» на рабочем столе открывает /h с именем этого ПК.',
+      'Расписание: от администратора — install_schedule.bat (фон, SYSTEM, без окна). Ярлык «Оставить заявку» появится на рабочем столе после первого запуска. Обновление: update_scripts.bat (не затирает agent_env.bat).',
     deployStep3Win7:
       'Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.',
     deployStep3Cpp:

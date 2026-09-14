@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { titleForPath } from './documentTitle'
 import { useLocale } from './i18n/LocaleContext'
+import { legacySelfServiceLocation } from './lib/helpdeskRedirect'
 import { LoginPage } from './pages/LoginPage'
 
 const ForceChangePasswordPage = lazy(() =>
@@ -83,9 +84,6 @@ const PrintersPage = lazy(() =>
 const NetworkPage = lazy(() =>
   import('./pages/NetworkPage').then((module) => ({ default: module.NetworkPage })),
 )
-const SelfServicePage = lazy(() =>
-  import('./pages/SelfServicePage').then((module) => ({ default: module.SelfServicePage })),
-)
 const TicketHandlerClientPage = lazy(() =>
   import('./pages/TicketHandlerClientPage').then((module) => ({ default: module.TicketHandlerClientPage })),
 )
@@ -114,6 +112,11 @@ function Protected({ children }: { children: React.ReactNode }) {
   return children
 }
 
+function LegacySelfServiceRedirect() {
+  const { hash } = useLocation()
+  return <Navigate to={legacySelfServiceLocation(hash)} replace />
+}
+
 function PageLoader() {
   const { t } = useLocale()
   return (
@@ -134,7 +137,7 @@ export default function App() {
       <Suspense fallback={<PageLoader />}>
       <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/r" element={<SelfServicePage />} />
+      <Route path="/r" element={<LegacySelfServiceRedirect />} />
       <Route path="/h" element={<TicketHandlerClientPage />} />
       <Route
         path="/"

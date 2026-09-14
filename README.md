@@ -38,7 +38,7 @@ CORAX is a self-hosted panel for a local network: agents report PCs, the UI trac
 
 | Layer | What it does |
 |------|----------------|
-| Collection | Windows agents (C++ EXE or one ZIP for 7/10/11) and Linux bash ZIP |
+| Collection | Windows PowerShell ZIP (7/10/11) and Linux bash ZIP |
 | Panel | Dashboard, computers, tickets, floor map, warehouse, SNMP printers, network topology |
 | Integrations | LDAP directory, Bitrix24, WikiRAG, GLPI CSV import |
 

@@ -137,8 +137,8 @@ export function AgentBundlePage() {
     }
   }, [authLoading, t, toast, user?.is_superuser])
 
-  const showModules = (platform === 'win10' || platform === 'cpp' || platform === 'linux') && level === 'custom'
-  const showExtended = platform === 'win10' || platform === 'cpp' || platform === 'linux'
+  const showModules = (platform === 'win10' || platform === 'linux') && level === 'custom'
+  const showExtended = platform === 'win10' || platform === 'linux'
   const moduleList = useMemo(() => [...MODULE_KEYS], [])
   const enabledModuleCount = useMemo(
     () => Object.values(modules).filter(Boolean).length,
@@ -171,11 +171,7 @@ export function AgentBundlePage() {
     try {
       const label =
         tokenLabel.trim() ||
-        (platform === 'cpp'
-          ? t('agentBundle.defaultTokenLabelCpp')
-          : platform === 'linux'
-            ? t('agentBundle.defaultTokenLabelLinux')
-            : t('agentBundle.defaultTokenLabelWin10'))
+        (platform === 'linux' ? t('agentBundle.defaultTokenLabelLinux') : t('agentBundle.defaultTokenLabelWin10'))
       const server = buildAgentServerUrl(serverHost, serverPort, urlScheme)
       const filename = await api.downloadAgentBundle({
             server_url: server,
@@ -218,7 +214,6 @@ export function AgentBundlePage() {
             {(
               [
                 ['win10', 'agentBundle.platformWin10'],
-                ['cpp', 'agentBundle.platformCpp'],
                 ['linux', 'agentBundle.platformLinux'],
               ] as const
             ).map(([id, key]) => (
@@ -326,31 +321,6 @@ export function AgentBundlePage() {
           {platform === 'linux' ? (
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
               {t('agentBundle.linuxNotice')}
-            </div>
-          ) : null}
-
-          {platform === 'cpp' ? (
-            <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 p-4">
-              <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">
-                {t('agentBundle.cppNotice')}
-              </p>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {(
-                  [
-                    'agentBundle.immutableBinary',
-                    'agentBundle.dpapiCredential',
-                    'agentBundle.hashedServerSide',
-                  ] as const
-                ).map((key) => (
-                  <div
-                    key={key}
-                    className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-fg)]"
-                  >
-                    <span className="mr-2 text-emerald-500">●</span>
-                    {t(key)}
-                  </div>
-                ))}
-              </div>
             </div>
           ) : null}
 
@@ -513,17 +483,13 @@ export function AgentBundlePage() {
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryPlatform')}</dt>
                 <dd className="text-right font-medium text-[var(--color-fg)]">
-                  {platform === 'cpp'
-                    ? t('agentBundle.platformCpp')
-                    : platform === 'linux'
-                      ? t('agentBundle.platformLinux')
-                      : t('agentBundle.platformWin10')}
+                  {platform === 'linux' ? t('agentBundle.platformLinux') : t('agentBundle.platformWin10')}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryFormat')}</dt>
                 <dd className="text-right font-medium text-[var(--color-fg)]">
-                  {platform === 'cpp' ? t('agentBundle.formatCpp') : 'ZIP'}
+                  ZIP
                 </dd>
               </div>
               {showExtended ? (
@@ -558,9 +524,7 @@ export function AgentBundlePage() {
               ) : null}
             </dl>
             <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">
-              {platform === 'cpp' ? (
-                <>{t('agentBundle.summaryArchiveCpp')}</>
-              ) : platform === 'linux' ? (
+              {platform === 'linux' ? (
                 <>{t('agentBundle.summaryArchiveLinux')}</>
               ) : (
                 <>{t('agentBundle.summaryArchiveWin10')}</>
@@ -571,11 +535,7 @@ export function AgentBundlePage() {
               className="app-btn app-btn-primary w-full"
               disabled={busy || lanLoading || !serverHost.trim()}
             >
-              {busy
-                ? t('agentBundle.building')
-                : platform === 'cpp'
-                  ? t('agentBundle.downloadCpp')
-                  : t('agentBundle.downloadZip')}
+              {busy ? t('agentBundle.building') : t('agentBundle.downloadZip')}
             </button>
           </div>
 
@@ -588,13 +548,7 @@ export function AgentBundlePage() {
                 {platform === 'linux' ? t('agentBundle.deployStep1Linux') : t('agentBundle.deployStep1')}
               </li>
               <li>
-                {platform === 'cpp' ? (
-                  <>
-                    {t('agentBundle.deployStep2CppBefore')}{' '}
-                    <code className="text-xs">CORAX-Agent.exe</code>{' '}
-                    {t('agentBundle.deployStep2CppAfter', { serverUrl })}
-                  </>
-                ) : platform === 'linux' ? (
+                {platform === 'linux' ? (
                   <>
                     {t('agentBundle.deployStep2LinuxBefore')}{' '}
                     <code className="text-xs">./run_console.sh</code>{' '}
@@ -603,14 +557,12 @@ export function AgentBundlePage() {
                 ) : (
                   <>
                     {t('agentBundle.deployStep2Before')}{' '}
-                    <code className="text-xs">corax_send.bat</code>{' '}
+                    <code className="text-xs">corax_send_silent.vbs</code>{' '}
                     {t('agentBundle.deployStep2After', { serverUrl })}
                   </>
                 )}
               </li>
-              {platform === 'cpp' ? (
-                <li>{t('agentBundle.deployStep3Cpp')}</li>
-              ) : platform === 'linux' ? (
+              {platform === 'linux' ? (
                 <li>{t('agentBundle.deployStep3Linux')}</li>
               ) : (
                 <li>{t('agentBundle.deployStep3Win10')}</li>

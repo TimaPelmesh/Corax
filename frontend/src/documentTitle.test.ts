@@ -25,6 +25,12 @@ describe('titleForPath', () => {
     expect(titleForPath('/knowledge-base/zabbix', 'en')).toMatch(/Zabbix/i)
   })
 
+  it('resolves the public helpdesk /h (and legacy /r redirect target title)', () => {
+    expect(titleForPath('/h', 'ru')).toMatch(/заяв/i)
+    expect(titleForPath('/r', 'ru')).toMatch(/заяв/i)
+    expect(titleForPath('/h', 'en')).toMatch(/ticket|request|handler/i)
+  })
+
   it('strips trailing slash and falls back', () => {
     expect(titleForPath('/computers/', 'en')).toMatch(/Computer/i)
     expect(titleForPath('/unknown-route-xyz', 'ru')).toBe('CORAX')

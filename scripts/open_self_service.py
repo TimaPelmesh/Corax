@@ -12,7 +12,7 @@ def main() -> None:
     hostname = (os.environ.get("COMPUTERNAME") or "").strip()
     if not hostname:
         raise SystemExit("COMPUTERNAME is not available")
-    webbrowser.open(f"{base_url}/r#pc={urllib.parse.quote(hostname)}")
+    webbrowser.open(f"{base_url}/h#pc={urllib.parse.quote(hostname)}")
 
 
 if __name__ == "__main__":

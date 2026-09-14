@@ -59,8 +59,7 @@ Details: [docs/docker.md](docs/docker.md).
 
 PCs appear under Computers only after an agent report. Build the package **from the panel on the LAN IP**: Settings → Agent build.
 
-- **C++ EXE** — one file, detects Win7/10/11.
-- **Windows ZIP** — one archive for 7 and 10/11: run `corax_send.bat`. Install into `%ProgramData%\CORAX\agent`, not the server tree.
+- **Windows ZIP** — one archive for 7 and 10/11: run `corax_send_silent.vbs` (no window). Install into `%ProgramData%\CORAX\agent`, not the server tree. A desktop shortcut **Оставить заявку** opens `/h`.
 - **Linux ZIP** — `/opt/corax-agent` only, not `/opt/corax`.
 
 Never unzip a new agent over a live folder (that wipes the token). Windows: `update_scripts.bat`. Linux: `update_scripts.sh`.

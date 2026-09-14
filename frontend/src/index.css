@@ -2396,9 +2396,16 @@ body {
 }
 
 .help-card-head {
+  position: relative;
   padding: 1.45rem 1.75rem 1.2rem;
   text-align: center;
   border-bottom: 1px solid #eef2f7;
+}
+
+.help-lang {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
 }
 
 .help-brand {

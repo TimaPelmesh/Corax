@@ -4,6 +4,8 @@ import type { Locale } from './i18n/types'
 
 /** Browser tab title by route (aligned with app menu). */
 const ROUTE_TITLES: Array<{ path: string; key: MessageKey; end?: boolean }> = [
+  { path: '/h', key: 'titles.helpForm' },
+  { path: '/r', key: 'titles.helpForm' },
   { path: '/login', key: 'titles.login' },
   { path: '/requests/database', key: 'titles.requestList' },
   { path: '/requests/templates', key: 'titles.requestTemplates' },

@@ -6,14 +6,34 @@ REM CORAX Windows agent dispatcher (ASCII-only: Win7 cmd).
 REM Never call PATH powershell.exe: the WindowsApps stub opens a new
 REM minimized window and this console looks like it vanished.
 
+if /i "%~1"=="visible" set "CORAX_VISIBLE=1"
+if /i "%~2"=="visible" set "CORAX_VISIBLE=1"
+if /i "%~3"=="visible" set "CORAX_VISIBLE=1"
+if /i "%~1"=="hidden" set "CORAX_HIDDEN=1"
+if /i "%~2"=="hidden" set "CORAX_HIDDEN=1"
+if /i "%~1"=="nopause" set "INV_NOPAUSE=1"
+if /i "%~2"=="nopause" set "INV_NOPAUSE=1"
+if defined CORAX_HIDDEN set "INV_NOPAUSE=1"
+
+REM Default: no console. Double-click and Task Scheduler stay invisible.
+REM Debug: corax_send.bat visible
+if not defined CORAX_VISIBLE if not defined CORAX_HIDDEN (
+  if exist "%~dp0corax_send_silent.vbs" (
+    start "" wscript.exe //B //Nologo "%~dp0corax_send_silent.vbs"
+    exit /b 0
+  )
+)
+
 set "INV_SCRIPT_DIR=%~dp0"
 set "INV_SELF=%~f0"
 set "INV_MAP_DRIVE="
 set "INV_UNC_DIR="
 
-echo.
-echo   CORAX Agent
-echo.
+if not defined CORAX_HIDDEN (
+  echo.
+  echo   CORAX Agent
+  echo.
+)
 
 echo %INV_SCRIPT_DIR% | findstr /B "\\\\">NUL
 if "%ERRORLEVEL%"=="0" set "INV_UNC_DIR=%INV_SCRIPT_DIR%"
@@ -53,8 +73,9 @@ if defined INV_MAP_DRIVE (
 )
 
 if /i "%~1"=="nopause" set "INV_NOPAUSE=1"
+if defined CORAX_HIDDEN set "INV_NOPAUSE=1"
 
-title CORAX AGENT
+if not defined CORAX_HIDDEN title CORAX AGENT
 
 if not "%CORAX_AGENT_ALLOW_IN_SOURCE%"=="1" (
   if exist "%~dp0docker-compose.yml" goto :refuse_tree
@@ -101,11 +122,13 @@ if not errorlevel 1 set "CORAX_FLAVOR=win10"
 reg query "HKLM\SOFTWARE\Wow6432Node\Microsoft\PowerShell\3" >NUL 2>&1
 if not errorlevel 1 set "CORAX_FLAVOR=win10"
 
-echo   OS       Windows  -^> %CORAX_FLAVOR%
-echo   TARGET   %INVENTORY_SERVER%
-echo   START    %DATE% %TIME%
-echo   folder   %CD%
-echo.
+if not defined CORAX_HIDDEN (
+  echo   OS       Windows  -^> %CORAX_FLAVOR%
+  echo   TARGET   %INVENTORY_SERVER%
+  echo   START    %DATE% %TIME%
+  echo   folder   %CD%
+  echo.
+)
 
 set "CORAX_INNER=1"
 if "%CORAX_FLAVOR%"=="win10" (

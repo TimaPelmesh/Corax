@@ -1,21 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { dayPartGreeting, helpGreeting } from './helpGreeting'
+import { dayPartGreetingKey, helpGreeting } from './helpGreeting'
 
-describe('dayPartGreeting', () => {
+describe('dayPartGreetingKey', () => {
   it('maps office hours', () => {
-    expect(dayPartGreeting(new Date(2026, 0, 1, 8))).toBe('Доброго утра')
-    expect(dayPartGreeting(new Date(2026, 0, 1, 14))).toBe('Доброго дня')
-    expect(dayPartGreeting(new Date(2026, 0, 1, 19))).toBe('Доброго вечера')
-    expect(dayPartGreeting(new Date(2026, 0, 1, 1))).toBe('Доброй ночи')
+    expect(dayPartGreetingKey(new Date(2026, 0, 1, 8))).toBe('ticketHandler.helpForm.greetMorning')
+    expect(dayPartGreetingKey(new Date(2026, 0, 1, 14))).toBe('ticketHandler.helpForm.greetAfternoon')
+    expect(dayPartGreetingKey(new Date(2026, 0, 1, 19))).toBe('ticketHandler.helpForm.greetEvening')
+    expect(dayPartGreetingKey(new Date(2026, 0, 1, 1))).toBe('ticketHandler.helpForm.greetNight')
   })
 })
 
 describe('helpGreeting', () => {
   it('appends the AD display name', () => {
-    expect(helpGreeting('Иван Иванов', new Date(2026, 0, 1, 14))).toBe('Доброго дня, Иван Иванов')
+    expect(helpGreeting('Иван Иванов', 'Доброго дня')).toBe('Доброго дня, Иван Иванов')
   })
 
   it('works without a name', () => {
-    expect(helpGreeting('  ', new Date(2026, 0, 1, 9))).toBe('Доброго утра')
+    expect(helpGreeting('  ', 'Доброго утра')).toBe('Доброго утра')
   })
 })

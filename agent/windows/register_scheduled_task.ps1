@@ -12,15 +12,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$bat = Join-Path $AgentRoot 'corax_send.bat'
-if (-not (Test-Path -LiteralPath $bat)) {
-    throw "corax_send.bat not found: $bat"
+$vbs = Join-Path $AgentRoot 'corax_send_silent.vbs'
+if (-not (Test-Path -LiteralPath $vbs)) {
+    throw "corax_send_silent.vbs not found: $vbs"
 }
-$batFull = (Resolve-Path -LiteralPath $bat).Path
-$taskRun = "cmd.exe /c `"$batFull`" nopause"
+$vbsFull = (Resolve-Path -LiteralPath $vbs).Path
+$taskRun = "wscript.exe //B //Nologo `"$vbsFull`""
 $sch = Join-Path $env:SystemRoot 'System32\schtasks.exe'
 & $sch /Delete /TN $TaskName /F 2>$null
-$args = @('/Create', '/TN', $TaskName, '/TR', $taskRun, '/F', '/RL', 'HIGHEST')
+$args = @('/Create', '/TN', $TaskName, '/TR', $taskRun, '/F', '/RL', 'HIGHEST', '/RU', 'SYSTEM', '/NP')
 switch ($Schedule) {
     'MONTHLY' { $args += '/SC', 'MONTHLY', '/D', "$DayOfMonth", '/ST', $StartTime }
     'WEEKLY'  { $args += '/SC', 'WEEKLY', '/D', $WeekDay, '/ST', $StartTime }
@@ -29,4 +29,4 @@ switch ($Schedule) {
 Write-Host "Creating task: $TaskName"
 & $sch @args
 if ($LASTEXITCODE -ne 0) { throw "schtasks exit $LASTEXITCODE" }
-Write-Host 'Done. Task runs corax_send.bat which picks Win7 or Win10/11.'
+Write-Host 'Done. Hidden SYSTEM task: wscript runs corax_send.bat nopause with no window. OS is picked each run.'

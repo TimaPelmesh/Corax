@@ -120,3 +120,16 @@ test('warehouse: create and delete room when editor', async ({ page }) => {
   await page.getByRole('button', { name: /Удалить|Delete/i }).click()
   await expect(page.getByText(name, { exact: true })).toHaveCount(0, { timeout: 15_000 })
 })
+
+test('public helpdesk is /h and /r redirects there', async ({ page }) => {
+  await page.goto('/h')
+  await expect(page.getByText(/Опишите проблему|What do you need|Что требуется/i).first()).toBeVisible({
+    timeout: 20_000,
+  })
+
+  await page.goto('/r#pc=E2E-PC')
+  await expect(page).toHaveURL(/\/h/, { timeout: 15_000 })
+  await expect(page.getByText(/Опишите проблему|What do you need|Что требуется/i).first()).toBeVisible({
+    timeout: 15_000,
+  })
+})

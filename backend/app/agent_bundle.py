@@ -241,7 +241,7 @@ def _write_agent_env_bat(server_url: str, agent_token: str) -> str:
 
 
 def _write_install_schedule_bat(schedule: AgentBundleSchedule) -> str:
-    """cmd + schtasks — works on Win7 and Win10 (no PowerShell 5.1)."""
+    """cmd + schtasks — Win7+. SYSTEM + hidden VBS: no cmd window on the user desktop."""
     hhmm = schedule.time or "09:00"
     mode = (schedule.mode or "WEEKLY").upper()
     weekday = schedule.weekday or "MON"
@@ -254,14 +254,19 @@ def _write_install_schedule_bat(schedule: AgentBundleSchedule) -> str:
         extra = f"/SC WEEKLY /D {weekday}"
     return (
         "@echo off\r\n"
-        "REM Run as Administrator once. Task always starts root corax_send.bat\r\n"
-        "REM (that script picks Win7 vs Win10/11).\r\n"
+        "REM Run as Administrator once. Task is a background SYSTEM job:\r\n"
+        "REM corax_send_silent.vbs starts corax_send.bat nopause with no window.\r\n"
         "cd /d \"%~dp0\"\r\n"
         f'set "TASKNAME={schedule.task_name}"\r\n'
-        "set \"BAT=%~dp0corax_send.bat\"\r\n"
+        "set \"VBS=%~dp0corax_send_silent.vbs\"\r\n"
+        "if not exist \"%VBS%\" (\r\n"
+        "  echo ERROR: corax_send_silent.vbs missing\r\n"
+        "  pause\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
         "\"%SystemRoot%\\System32\\schtasks.exe\" /Delete /TN \"%TASKNAME%\" /F >NUL 2>&1\r\n"
         f"\"%SystemRoot%\\System32\\schtasks.exe\" /Create /TN \"%TASKNAME%\" "
-        f"/TR \"\\\"%BAT%\\\" nopause\" /F /RL HIGHEST {extra} /ST {hhmm}\r\n"
+        f"/TR \"wscript.exe //B //Nologo \\\"%VBS%\\\"\" /F /RL HIGHEST /RU SYSTEM /NP {extra} /ST {hhmm}\r\n"
         "if errorlevel 1 pause\r\n"
     )
 

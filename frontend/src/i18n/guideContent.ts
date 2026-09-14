@@ -123,15 +123,15 @@ const GUIDE_RU: GuideCopy = {
       id: 'agent',
       title: 'Агент инвентаризации',
       summary:
-        'ПК сами не появляются в панели. Их присылает агент. Сборка только с панели по LAN-IP. Windows: канонический пакет — ZIP PowerShell (7/10/11). EXE пока не 1:1 с PowerShell.',
+        'ПК сами не появляются в панели. Их присылает агент. Сборка только с панели по LAN-IP. Windows: ZIP PowerShell (7/10/11). Linux: ZIP bash.',
       steps: [
         {
           title: 'Зачем агент',
           body: 'Без агента список «Компьютеры» пустой. Агент на каждом ПК собирает hostname, серийник, CPU/RAM, диски, NIC/IP/MAC, ОС, установленное ПО и периферию, затем шлёт отчёт на сервер. Повторяется по расписанию. Исходники в git (папка agent/) — шаблоны без URL и токена; на проде их не запускают.',
         },
         {
-          title: 'Три пакета на панели',
-          body: 'Настройки → Сборка агента.\n• ZIP PowerShell Windows (рекомендуется) — один архив на 7/10/11; запускайте корневой corax_send.bat. После отправки на рабочем столе появляется ярлык заявки /h#pc=ИМЯ-ПК.\n• Нативный EXE — состав инвентаря пока не 1:1 с PowerShell, для продакшена не основной.\n• ZIP Linux (bash) — отдельный раздел ниже.',
+          title: 'Два пакета на панели',
+          body: 'Настройки → Сборка агента.\n• ZIP PowerShell Windows — один архив на 7/10/11; запускайте corax_send_silent.vbs (без окна). После отправки на рабочем столе появляется ярлык «Оставить заявку» на /h#pc=ИМЯ-ПК.\n• ZIP Linux (bash) — отдельный раздел ниже.\nC++ EXE с панели пока не собирается.',
         },
         {
           title: 'Перед сборкой — LAN-IP',
@@ -139,35 +139,31 @@ const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'Сборка',
-          body: 'Войдите как админ → Настройки → Сборка агента. Проверьте URL, выберите пакет, скачайте. URL сервера и токен вшиваются в файл автоматически — руками ничего вставлять не нужно. Каждая сборка создаёт новый токен. Один скачанный ZIP/EXE можно раскатать на много ПК.',
+          body: 'Войдите как админ → Настройки → Сборка агента. Проверьте URL, выберите пакет, скачайте. URL сервера и токен вшиваются в файл автоматически — руками ничего вставлять не нужно. Каждая сборка создаёт новый токен. Один скачанный ZIP можно раскатать на много ПК.',
         },
         {
           title: 'Токены',
-          body: 'Формат: public_id.secret. В базе хранится только HMAC, полный секрет — в EXE / agent_env.bat / agent_env.sh. Список и отзыв: Настройки → Токены агентов. Пересборка не отзывает старый токен, пока вы сами его не отзовёте. ZIP и agent_env.* не публикуйте и не коммитьте. Если секрет светили — отзовите токен и смените пароль admin.',
+          body: 'Формат: public_id.secret. В базе хранится только HMAC, полный секрет — в agent_env.bat / agent_env.sh. Список и отзыв: Настройки → Токены агентов. Пересборка не отзывает старый токен, пока вы сами его не отзовёте. ZIP и agent_env.* не публикуйте и не коммитьте. Если секрет светили — отзовите токен и смените пароль admin.',
         },
         {
           title: 'Куда нельзя класть агент',
           body: 'Не запускайте скрипты из дерева сервера CORAX: рядом с docker-compose.yml, backend\\.env, run.py или из /opt/corax/agent/…. Там плейсхолдеры __INVENTORY_SERVER__, отчёт уходит «в никуда», на проде кажется, что «всё упало».\nWindows: распакуйте ZIP в %ProgramData%\\CORAX\\agent или на шару \\\\fileserver\\corax\\agent.\nLinux: только /opt/corax-agent (сервер остаётся в /opt/corax).',
         },
         {
-          title: 'EXE C++ (не основной)',
-          body: 'Состав полей пока не совпадает с PowerShell-агентом. Если всё же нужен EXE: двойной клик, для планировщика CORAX-Agent.exe --silent. После смены HTTP↔HTTPS скачайте пакет заново.',
-        },
-        {
           title: 'ZIP Windows — что внутри',
-          body: 'corax_send.bat — всегда запускайте его (автовыбор Win7 или 10/11).\nagent_env.bat — URL и токен; при обновлении скриптов не затирать.\nagent_config.json — модули сбора.\nupdate_scripts.bat — безопасное обновление.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / старый PowerShell.\nREADME_DEPLOY.txt — краткая шпаргалка в архиве.',
+          body: 'corax_send_silent.vbs — запуск без окна (рекомендуется).\ncorax_send.bat — автовыбор Win7 или 10/11; по умолчанию прячется. Отладка: corax_send.bat visible.\nagent_env.bat — URL и токен; при обновлении скриптов не затирать.\nagent_config.json — модули сбора.\nupdate_scripts.bat — безопасное обновление.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / старый PowerShell.\nREADME_DEPLOY.txt — краткая шпаргалка в архиве.',
         },
         {
           title: 'ZIP Windows — первый запуск',
-          body: 'Распакуйте архив в %ProgramData%\\CORAX\\agent (не в каталог сервера).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send.bat\nОкно не должно закрываться само: splash-анимация выключена (CORAX_SPLASH=1 только если нужна).\nНа рабочем столе появится ярлык «Оставить заявку» на http://LAN-IP:3000/h#pc=ИМЯ-ПК (не localhost).\nДля планировщика: corax_send.bat nopause\nПроверка: «Компьютеры» — hostname и «последний отчёт».',
+          body: 'Распакуйте архив в %ProgramData%\\CORAX\\agent (не в каталог сервера).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send_silent.vbs\nОкна cmd нет. На рабочем столе появится ярлык «Оставить заявку» на http://LAN-IP:3000/h#pc=ИМЯ-ПК (не localhost).\nРасписание — только install_schedule.bat (фон, без окна). Не ставьте в планировщик голый corax_send.bat.\nПроверка: «Компьютеры» — hostname и «последний отчёт».',
         },
         {
           title: 'ZIP Windows — расписание',
-          body: 'Если при сборке включили автозапуск, в ZIP будет install_schedule.bat — один раз запустите от администратора. Задача называется CORAX-Agent и всегда стартует корневой corax_send.bat (ОС определяется каждый раз). Можно вручную: register_scheduled_task.ps1 из того же архива (PowerShell 2.0+).',
+          body: 'Если при сборке включили автозапуск, в ZIP будет install_schedule.bat — один раз запустите от администратора. Задача CORAX-Agent работает как фоновый процесс SYSTEM: окно cmd не всплывает. Запуск через corax_send_silent.vbs. Можно вручную: register_scheduled_task.ps1 из того же архива.',
         },
         {
           title: 'ZIP Windows — обновление без потери токена',
-          body: 'Нельзя распаковать новый ZIP поверх живой папки («с заменой» / unzip -o). Затрётся agent_env.bat — URL и токен пропадут, агент перестанет слать отчёты.\nПравильно:\n1. Новый ZIP с панели распаковать во временную папку, например C:\\temp\\corax-agent-new.\n2. Из живой папки:\ncd /d %ProgramData%\\CORAX\\agent\nupdate_scripts.bat C:\\temp\\corax-agent-new\nagent_env.bat останется. Можно копировать вручную только win10\\, win7\\, corax_send.bat — agent_env.bat не трогать.',
+          body: 'Нельзя распаковать новый ZIP поверх живой папки («с заменой» / unzip -o). Затрётся agent_env.bat — URL и токен пропадут, агент перестанет слать отчёты.\nПравильно:\n1. Новый ZIP с панели распаковать во временную папку, например C:\\temp\\corax-agent-new.\n2. Из живой папки:\ncd /d %ProgramData%\\CORAX\\agent\nupdate_scripts.bat C:\\temp\\corax-agent-new\nagent_env.bat останется. Можно копировать вручную только win10\\, win7\\, corax_send.bat, corax_send_silent.vbs — agent_env.bat не трогать.',
         },
         {
           title: 'Что присылает и как проверить',
@@ -179,7 +175,7 @@ const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'Типичные ошибки (Windows)',
-          body: 'Запуск из git сервера → отчёт никуда не уходит. Кладите ZIP в %ProgramData%\\CORAX\\agent.\nURL 127.0.0.1 или Docker 172.x → собирайте, открыв панель по LAN-IP.\nРаспаковка нового ZIP поверх живой папки → пропал токен. Только update_scripts.bat.\nОкно cmd пропало на «анимации» → старый splash. Обновите ZIP с панели (splash больше не запускается).\nСменили HTTP↔HTTPS — скачайте пакет заново.',
+          body: 'Запуск из git сервера → отчёт никуда не уходит. Кладите ZIP в %ProgramData%\\CORAX\\agent.\nURL 127.0.0.1 или Docker 172.x → собирайте, открыв панель по LAN-IP.\nРаспаковка нового ZIP поверх живой папки → пропал токен. Только update_scripts.bat.\nВидно окно cmd — запускайте corax_send_silent.vbs или скачайте свежий ZIP (bat сам прячется). Отладка: corax_send.bat visible.\nСменили HTTP↔HTTPS — скачайте пакет заново.',
         },
       ],
       links: [
@@ -348,16 +344,12 @@ const GUIDE_RU: GuideCopy = {
     },
     {
       id: 'shortcuts',
-      title: 'Ярлыки /r и /h',
-      summary: 'Короткие страницы для пользователей без полного входа в панель.',
+      title: 'Ярлык заявок /h',
+      summary: 'Короткая страница для пользователей без входа в панель.',
       steps: [
         {
-          title: '/r — самообслуживание',
-          body: 'Классическая форма: ПК должен уже быть в CORAX. Заявка создаётся сразу, без AI. Удобно как ярлык на рабочем столе.',
-        },
-        {
-          title: '/h — быстрый приём',
-          body: 'Заявка создаётся сразу; AI в фоне ставит категорию и предлагает тему ассистенту. Форма /h должна быть включена в конфигурации сервера.',
+          title: '/h — оставить заявку',
+          body: 'Единственная публичная форма. Заявка создаётся сразу; AI в фоне ставит категорию и предлагает тему. Включается в настройках обработчика. Старый адрес /r только перенаправляет сюда.',
         },
         {
           title: 'Ярлык на рабочем столе',
@@ -641,15 +633,15 @@ const GUIDE_EN: GuideCopy = {
       id: 'agent',
       title: 'Inventory agent',
       summary:
-        'PCs do not appear by themselves. The agent reports them. Build only from the panel on the LAN IP. Windows: the canonical package is the PowerShell ZIP (7/10/11). EXE is not 1:1 with PowerShell yet.',
+        'PCs do not appear by themselves. The agent reports them. Build only from the panel on the LAN IP. Windows: PowerShell ZIP (7/10/11). Linux: bash ZIP.',
       steps: [
         {
           title: 'Why you need an agent',
           body: 'Without an agent, Computers stays empty. On each PC the agent collects hostname, serial, CPU/RAM, disks, NIC/IP/MAC, OS, installed software and peripherals, then POSTs a report. It repeats on a schedule. Git sources under agent/ are templates with no URL or token — do not run them in production.',
         },
         {
-          title: 'Three packages on the panel',
-          body: 'Settings → Agent build.\n• ZIP PowerShell Windows (recommended) — one archive for 7/10/11; run the root corax_send.bat. After send, a desktop shortcut opens /h#pc=HOSTNAME.\n• Native EXE — inventory is not 1:1 with PowerShell yet; not the production default.\n• ZIP Linux (bash) — see the Linux section below.',
+          title: 'Two packages on the panel',
+          body: 'Settings → Agent build.\n• ZIP PowerShell Windows — one archive for 7/10/11; run corax_send_silent.vbs (no window). After send, a “Оставить заявку” desktop shortcut opens /h#pc=HOSTNAME.\n• ZIP Linux (bash) — see the Linux section below.\nThe C++ EXE is not offered from the panel for now.',
         },
         {
           title: 'Before you build — LAN IP',
@@ -657,35 +649,31 @@ const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Build',
-          body: 'Sign in as admin → Settings → Agent build. Check the URL, pick a package, download. Server URL and token are stamped into the file — you do not paste them by hand. Each build creates a new token. One downloaded ZIP/EXE can be rolled out to many PCs.',
+          body: 'Sign in as admin → Settings → Agent build. Check the URL, pick a package, download. Server URL and token are stamped into the file — you do not paste them by hand. Each build creates a new token. One downloaded ZIP can be rolled out to many PCs.',
         },
         {
           title: 'Tokens',
-          body: 'Format: public_id.secret. The DB stores HMAC only; the full secret lives in the EXE / agent_env.bat / agent_env.sh. List and revoke: Settings → Agent tokens. Rebuilding does not revoke the old token until you revoke it. Do not publish ZIPs or commit agent_env.*. If a secret leaked — revoke the token and change the admin password.',
+          body: 'Format: public_id.secret. The DB stores HMAC only; the full secret lives in agent_env.bat / agent_env.sh. List and revoke: Settings → Agent tokens. Rebuilding does not revoke the old token until you revoke it. Do not publish ZIPs or commit agent_env.*. If a secret leaked — revoke the token and change the admin password.',
         },
         {
           title: 'Where not to put the agent',
           body: 'Do not run scripts from the CORAX server tree: next to docker-compose.yml, backend\\.env, run.py, or from /opt/corax/agent/…. Those copies have __INVENTORY_SERVER__ placeholders; reports go nowhere and production looks “down”.\nWindows: unpack the ZIP to %ProgramData%\\CORAX\\agent or a share \\\\fileserver\\corax\\agent.\nLinux: only /opt/corax-agent (the server stays in /opt/corax).',
         },
         {
-          title: 'EXE C++ (not the default)',
-          body: 'Field coverage is not yet 1:1 with the PowerShell agent. If you still need the EXE: double-click to send; Task Scheduler: CORAX-Agent.exe --silent. After switching HTTP↔HTTPS, download a fresh bundle.',
-        },
-        {
           title: 'ZIP Windows — contents',
-          body: 'corax_send.bat — always run this (auto-picks Win7 or 10/11).\nagent_env.bat — URL and token; do not overwrite on script updates.\nagent_config.json — collection modules.\nupdate_scripts.bat — safe update.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / old PowerShell.\nREADME_DEPLOY.txt — short cheat sheet inside the archive.',
+          body: 'corax_send_silent.vbs — run with no window (recommended).\ncorax_send.bat — auto-picks Win7 or 10/11; hides itself by default. Debug: corax_send.bat visible.\nagent_env.bat — URL and token; do not overwrite on script updates.\nagent_config.json — collection modules.\nupdate_scripts.bat — safe update.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / old PowerShell.\nREADME_DEPLOY.txt — short cheat sheet inside the archive.',
         },
         {
           title: 'ZIP Windows — first run',
-          body: 'Unpack to %ProgramData%\\CORAX\\agent (not the server tree).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send.bat\nThe window must stay open: splash animation is off (set CORAX_SPLASH=1 only if you want it).\nA “Оставить заявку” shortcut appears on the desktop: http://LAN-IP:3000/h#pc=HOSTNAME (not localhost).\nScheduler: corax_send.bat nopause\nCheck: Computers — hostname and “last report”.',
+          body: 'Unpack to %ProgramData%\\CORAX\\agent (not the server tree).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send_silent.vbs\nNo cmd window. A “Оставить заявку” shortcut appears on the desktop: http://LAN-IP:3000/h#pc=HOSTNAME (not localhost).\nSchedule only via install_schedule.bat (background, no window). Do not put a bare corax_send.bat into Task Scheduler.\nCheck: Computers — hostname and “last report”.',
         },
         {
           title: 'ZIP Windows — schedule',
-          body: 'If auto-start was enabled at build time, the ZIP includes install_schedule.bat — run once as Administrator. The task is named CORAX-Agent and always starts the root corax_send.bat (OS is detected every run). Or use register_scheduled_task.ps1 from the same archive (PowerShell 2.0+).',
+          body: 'If auto-start was enabled at build time, the ZIP includes install_schedule.bat — run once as Administrator. The CORAX-Agent task is a background SYSTEM process: no cmd window. It starts via corax_send_silent.vbs. Or use register_scheduled_task.ps1 from the same archive.',
         },
         {
           title: 'ZIP Windows — update without wiping the token',
-          body: 'Do not extract a new ZIP over a live folder (“replace” / unzip -o). That overwrites agent_env.bat — URL and token vanish, reports stop.\nDo this:\n1. Extract the new panel ZIP to a temp folder, e.g. C:\\temp\\corax-agent-new.\n2. From the live folder:\ncd /d %ProgramData%\\CORAX\\agent\nupdate_scripts.bat C:\\temp\\corax-agent-new\nagent_env.bat stays. Or copy only win10\\, win7\\, corax_send.bat — leave agent_env.bat alone.',
+          body: 'Do not extract a new ZIP over a live folder (“replace” / unzip -o). That overwrites agent_env.bat — URL and token vanish, reports stop.\nDo this:\n1. Extract the new panel ZIP to a temp folder, e.g. C:\\temp\\corax-agent-new.\n2. From the live folder:\ncd /d %ProgramData%\\CORAX\\agent\nupdate_scripts.bat C:\\temp\\corax-agent-new\nagent_env.bat stays. Or copy only win10\\, win7\\, corax_send.bat, corax_send_silent.vbs — leave agent_env.bat alone.',
         },
         {
           title: 'What it sends and how to verify',
@@ -697,7 +685,7 @@ const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Typical Windows mistakes',
-          body: 'Running from the server git tree sends reports nowhere. Put the ZIP in %ProgramData%\\CORAX\\agent.\nURL 127.0.0.1 or Docker 172.x — build with the panel open on the LAN IP.\nExtracting a new ZIP over a live folder wipes the token. Use update_scripts.bat.\nCmd window vanished during the “animation” — old splash. Download a fresh ZIP (splash no longer runs).\nSwitched HTTP↔HTTPS — download a fresh bundle.',
+          body: 'Running from the server git tree sends reports nowhere. Put the ZIP in %ProgramData%\\CORAX\\agent.\nURL 127.0.0.1 or Docker 172.x — build with the panel open on the LAN IP.\nExtracting a new ZIP over a live folder wipes the token. Use update_scripts.bat.\nA cmd window appears — run corax_send_silent.vbs or download a fresh ZIP (the bat hides itself). Debug: corax_send.bat visible.\nSwitched HTTP↔HTTPS — download a fresh bundle.',
         },
       ],
       links: [
@@ -866,16 +854,12 @@ const GUIDE_EN: GuideCopy = {
     },
     {
       id: 'shortcuts',
-      title: 'Shortcuts /r and /h',
-      summary: 'Short pages for end users without full panel login.',
+      title: 'Helpdesk shortcut /h',
+      summary: 'A short page for end users without a full panel login.',
       steps: [
         {
-          title: '/r — self-service',
-          body: 'Classic form: PC must already exist in CORAX. Ticket is created immediately, no AI.',
-        },
-        {
-          title: '/h — quick intake',
-          body: 'Ticket is created immediately; AI later sets category and suggests a title. The /h form must be enabled in server configuration.',
+          title: '/h — leave a ticket',
+          body: 'The only public form. The ticket is created immediately; AI later sets the category and suggests a title. Enable it in ticket-handler settings. The old /r URL only redirects here.',
         },
         {
           title: 'Desktop shortcut',

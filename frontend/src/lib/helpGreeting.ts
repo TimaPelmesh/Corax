@@ -1,16 +1,17 @@
-/** Time-of-day greeting for the public /h form (office hours, Russian). */
+/** Time-of-day greeting keys for the public /h form. */
 
-export function dayPartGreeting(date: Date = new Date()): string {
+import type { MessageKey } from '../i18n/LocaleContext'
+
+export function dayPartGreetingKey(date: Date = new Date()): MessageKey {
   const h = date.getHours()
-  if (h >= 5 && h < 12) return 'Доброго утра'
-  if (h >= 12 && h < 18) return 'Доброго дня'
-  if (h >= 18 && h < 23) return 'Доброго вечера'
-  return 'Доброй ночи'
+  if (h >= 5 && h < 12) return 'ticketHandler.helpForm.greetMorning'
+  if (h >= 12 && h < 18) return 'ticketHandler.helpForm.greetAfternoon'
+  if (h >= 18 && h < 23) return 'ticketHandler.helpForm.greetEvening'
+  return 'ticketHandler.helpForm.greetNight'
 }
 
-/** «Доброго дня, Иван Иванов» — без учётки в скобках. */
-export function helpGreeting(person: string, date: Date = new Date()): string {
-  const hi = dayPartGreeting(date)
+/** «Good afternoon, Jane Doe» — display name only, no account in parentheses. */
+export function helpGreeting(person: string, hi: string): string {
   const name = person.trim()
   return name ? `${hi}, ${name}` : hi
 }

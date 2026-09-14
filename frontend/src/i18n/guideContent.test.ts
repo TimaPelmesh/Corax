@@ -119,6 +119,16 @@ describe('guideCopy', () => {
     }
   })
 
+  it('documents /h as the only public helpdesk and /r as a redirect', () => {
+    for (const locale of ['ru', 'en'] as const) {
+      const text = allGuideText(locale)
+      expect(text).not.toMatch(/\/r —/)
+      expect(text).toMatch(/\/h/)
+      expect(text).toMatch(/перенаправ|redirect/i)
+      expect(text).toMatch(/corax_send_silent\.vbs/)
+    }
+  })
+
   it('documents the full-audit agent path', () => {
     const ru = allGuideText('ru')
     const en = allGuideText('en')

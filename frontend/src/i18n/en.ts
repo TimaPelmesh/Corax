@@ -172,6 +172,7 @@ export const en: MessageTree = {
     requestTemplates: 'Ticket templates',
     requestStats: 'Ticket statistics',
     requestHandler: 'Ticket handler',
+    helpForm: 'Submit a request',
     sitemap: 'Building map',
     guide: 'Guide',
     wikirag: 'Wiki / Assistant',
@@ -220,7 +221,7 @@ export const en: MessageTree = {
     zabbixSubtitle: 'Zabbix API connection (read-only)',
     zabbixDataSubtitle: 'Hosts and problems from Zabbix (read-only).',
     agentTokensSubtitle: 'Tokens for inventory agents',
-    agentBundleSubtitle: 'Windows: PowerShell ZIP is the standard. EXE is not 1:1 with PowerShell yet.',
+    agentBundleSubtitle: 'Windows: PowerShell ZIP (Win 7/10/11). Linux: bash ZIP.',
     wolSubtitle:
       'Who may wake PCs for maintenance. The button is on the PC card and only appears when the host is offline.',
     httpsSubtitle:
@@ -366,6 +367,28 @@ export const en: MessageTree = {
     priorityLow: 'Low',
     statusNew: 'New',
     refresh: 'Refresh metrics',
+    helpForm: {
+      greetMorning: 'Good morning',
+      greetAfternoon: 'Good afternoon',
+      greetEvening: 'Good evening',
+      greetNight: 'Good night',
+      lead: 'Describe the problem in your own words.',
+      detecting: 'Checking which computer this request is from…',
+      fromPc: 'This request will be sent from',
+      titleLabel: 'What do you need',
+      titlePlaceholder: 'For example: replace the printer cartridge',
+      detailsLabel: 'Details',
+      detailsOptional: 'optional',
+      detailsPlaceholder: 'When it started, what you already tried, room number',
+      submit: 'Submit request',
+      sending: 'Sending…',
+      accepted: 'Request accepted',
+      acceptedWithNo: 'Request accepted, {ticket}',
+      errDisabled: 'Help is turned off right now. Contact IT or try again later.',
+      errLan: 'Open this form from a work computer on the office network.',
+      errNetwork: 'Could not reach the server. Check the network and try again.',
+      errGeneric: 'Something went wrong. Please try again.',
+    },
   },
   settingsHttps: {
     status: 'Status',
@@ -2442,7 +2465,7 @@ export const en: MessageTree = {
     win7Notice:
       'Base profile: WMI, software registry, PnP peripherals. Extended modules (patches, BitLocker, Docker, etc.) are available only in the Windows 10/11 build.',
     windowsZipNotice:
-      'The canonical Windows agent. corax_send.bat picks Win7 vs 10/11. Splash animation is off by default (it used to close the cmd window). After a run, an “Оставить заявку” desktop shortcut opens /h with this PC name already filled in (server LAN IP, not localhost). Updates: update_scripts.bat — keeps agent_env.bat.',
+      'The canonical Windows agent. Run with no window: corax_send_silent.vbs (or corax_send.bat — it hides itself). The scheduled task is a SYSTEM job via the same VBS. After a run, an “Оставить заявку” desktop shortcut opens /h with this PC name already filled in (server LAN IP, not localhost). Debug: corax_send.bat visible. Updates: update_scripts.bat — keeps agent_env.bat.',
     collectionLevel: 'Collection level',
     levelFull: 'Full',
     levelFullHint: 'All modules: network, patches, security, Office, Docker/WSL, and more.',
@@ -2454,7 +2477,7 @@ export const en: MessageTree = {
     tokenIntroBefore: 'On download the server generates a',
     tokenIntroMiddle: 'pair, stores its hash in the database (section',
     tokenIntroLink: 'Agent tokens',
-    tokenIntroAfter: '), and adds the full token only to the private provisioning file. It is never injected into the native EXE.',
+    tokenIntroAfter: '), and puts the full token only into agent_env.bat / agent_env.sh.',
     tokenParagraph2:
       'A rebuild means a different token; the old one stays in the database until you revoke it. One ZIP can be rolled out to many PCs.',
     tokenParagraph3:
@@ -2462,7 +2485,7 @@ export const en: MessageTree = {
     tokenLabelAdmin: 'Token label in admin UI (optional)',
     scheduleEnable: 'Add scheduled autorun',
     scheduleHint:
-      'The archive will include install_schedule.bat. Run it once as administrator on each PC to create a Windows Task Scheduler task. Nothing is installed automatically until the bat file is executed.',
+      'The archive will include install_schedule.bat. Run it once as administrator: Task Scheduler gets a background SYSTEM job with no cmd window. Nothing is installed automatically until the bat file is executed.',
     scheduleModeLabel: 'Mode',
     scheduleDaily: 'Daily',
     scheduleWeekly: 'Weekly (Mon)',
@@ -2480,7 +2503,7 @@ export const en: MessageTree = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'No',
     summaryArchiveWin10:
-      'Inside the archive: corax_send.bat (OS auto-detect), win10/ (PowerShell 5+), win7/, agent_env.bat, agent_config.json, update_scripts.bat. Desktop ticket shortcut: /h#pc=HOSTNAME.',
+      'Inside the archive: corax_send_silent.vbs (no window), corax_send.bat, win10/, win7/, agent_env.bat, agent_config.json, update_scripts.bat. Desktop “Оставить заявку” shortcut: /h#pc=HOSTNAME.',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
     summaryArchiveCpp:
@@ -2501,7 +2524,7 @@ export const en: MessageTree = {
     deployStep2LinuxBefore: 'On the host, run',
     deployStep2LinuxAfter: '— the report will be sent to {serverUrl}.',
     deployStep3Win10:
-      'Scheduling: run install_schedule.bat as administrator. Updates: update_scripts.bat (keeps agent_env.bat). The desktop “Оставить заявку” shortcut opens /h with this PC name.',
+      'Scheduling: run install_schedule.bat as administrator (background SYSTEM job, no window). The “Оставить заявку” desktop shortcut appears after the first run. Updates: update_scripts.bat (keeps agent_env.bat).',
     deployStep3Win7:
       'Scheduling: create a Windows Task Scheduler task to run the bat manually or through GPO.',
     deployStep3Cpp:

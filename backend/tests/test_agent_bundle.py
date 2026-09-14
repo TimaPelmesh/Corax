@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 from app.agent_bundle import _build_windows_zip, _build_win10_zip
-from app.schemas import AgentBundleCreate
+from app.schemas import AgentBundleCreate, AgentBundleSchedule
 
 _STOP_JOB_FORCE = re.compile(r"Stop-Job\s+.+\s-Force\b", re.IGNORECASE)
 
@@ -37,10 +37,18 @@ def test_windows_bundle_unifies_win7_and_win10():
         assert "win10\\corax_send.bat" in dispatcher
         assert "Microsoft\\PowerShell\\3" in dispatcher
         assert "for /f %%P in ('powershell" not in dispatcher
+        assert "CORAX_HIDDEN" in dispatcher
+        assert "CORAX_VISIBLE" in dispatcher
+        assert "corax_send_silent.vbs" in dispatcher
+        assert "wscript.exe" in dispatcher
+        assert "start \"\" wscript.exe" in dispatcher
         win10_bat = zf.read("win10/corax_send.bat").decode("utf-8", errors="replace")
         assert r"System32\WindowsPowerShell\v1.0\powershell.exe" in win10_bat
         assert "powershell.exe -NoProfile" not in win10_bat
         assert "WindowStyle Normal" in win10_bat
+        assert "WindowStyle Hidden" in win10_bat
+        assert "if defined INV_NOPAUSE" in win10_bat
+        assert "if defined CORAX_HIDDEN" in win10_bat
         assert "if defined CORAX_SPLASH" not in win10_bat
         assert "start /wait" not in win10_bat.lower()
         common = zf.read("win10/lib/Agent-Common.ps1").decode("utf-8-sig")
@@ -67,7 +75,9 @@ def test_windows_bundle_unifies_win7_and_win10():
         assert first_shortcut != -1
         assert first_shortcut < core_post
         assert "/h#pc=" in common
-        assert "CORAX-ticket.url" in common
+        assert "Оставить заявку.url" in common
+        assert "CORAX-ticket" in common
+        assert "/r#" not in common
         assert "WScript.Shell" in common
         assert "OneDrive" in common
         splash = zf.read("win10/corax_splash.ps1").decode("utf-8-sig")
@@ -75,8 +85,11 @@ def test_windows_bundle_unifies_win7_and_win10():
         assert "CursorVisible" not in splash
         win7_bat = zf.read("win7/inventory_send_win7.bat").decode("utf-8", errors="replace")
         assert "if defined CORAX_SPLASH" not in win7_bat
+        assert "WindowStyle Hidden" in win7_bat
+        assert "if defined INV_NOPAUSE" in win7_bat
         win7_client = zf.read("win7/InventoryClient_win7.ps1").decode("utf-8-sig")
         assert "/h#pc=" in win7_client
+        assert "Оставить заявку.url" in win7_client
         assert "CORAX-ticket.url" in win7_client
         post = zf.read("win10/lib/Invoke-Post.ps1").decode("utf-8-sig")
         assert "ConvertTo-AgentJson" in post
@@ -111,6 +124,39 @@ def test_win10_target_alias_builds_unified_zip():
     assert name.startswith("corax-agent-windows-")
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         assert "win7/inventory_send_win7.bat" in zf.namelist()
+        assert "corax_send_silent.vbs" in zf.namelist()
+        silent = zf.read("corax_send_silent.vbs").decode("utf-8", errors="replace")
+        assert "WindowStyle 0" in silent or ", 0, True" in silent
+        assert "nopause" in silent
+        assert "CORAX_HIDDEN" in silent
+        assert "hidden" in silent
+        assert "/r#" not in silent
+
+
+def test_windows_bundle_schedule_runs_hidden_as_system():
+    body = AgentBundleCreate(
+        server_url="http://192.168.1.10:3000",
+        create_token=False,
+        existing_token="test-token-for-bundle",
+        target="win10",
+        schedule=AgentBundleSchedule(enabled=True, mode="WEEKLY", time="09:00", task_name="CORAX-Agent"),
+    )
+    data, _name = _build_windows_zip(body, body.server_url, "test-token-for-bundle")
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        names = zf.namelist()
+        assert "install_schedule.bat" in names
+        assert "corax_send_silent.vbs" in names
+        bat = zf.read("install_schedule.bat").decode("utf-8", errors="replace")
+        tr_line = next(ln for ln in bat.splitlines() if "/TR" in ln)
+        assert "wscript.exe" in tr_line
+        assert "corax_send.bat" not in tr_line
+        assert "cmd.exe" not in tr_line
+        assert "/RU SYSTEM" in bat
+        assert "/NP" in bat
+        ps = zf.read("register_scheduled_task.ps1").decode("utf-8-sig", errors="replace")
+        assert "wscript.exe" in ps
+        assert "/RU" in ps and "SYSTEM" in ps
+        assert "cmd.exe /c" not in ps
 
 
 def test_dockerfile_copies_windows_agent_wrapper():

@@ -2,24 +2,25 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { api, type TicketHandlerIntakeResult, type TicketHandlerPublicContext } from '../api'
 import { CoraxLogo } from '../components/CoraxLogo'
-import { helpGreeting } from '../lib/helpGreeting'
+import { useLocale, type MessageKey } from '../i18n/LocaleContext'
+import { dayPartGreetingKey, helpGreeting } from '../lib/helpGreeting'
 
 function hashParams() {
   return new URLSearchParams(window.location.hash.replace(/^#/, ''))
 }
 
-function friendlyError(raw: string): string {
+function friendlyError(raw: string, t: (key: MessageKey) => string): string {
   const s = (raw || '').toLowerCase()
   if (s.includes('выключен') || s.includes('disabled') || s.includes('404')) {
-    return 'Сервис помощи сейчас выключен. Напишите в IT или попробуйте чуть позже.'
+    return t('ticketHandler.helpForm.errDisabled')
   }
   if (s.includes('локальной сети') || s.includes('секрет') || s.includes('403')) {
-    return 'Форму нужно открыть с рабочего компьютера в офисной сети.'
+    return t('ticketHandler.helpForm.errLan')
   }
   if (s.includes('failed to fetch') || s.includes('network') || s.includes('нет связи')) {
-    return 'Не удалось связаться с сервером. Проверьте сеть и попробуйте снова.'
+    return t('ticketHandler.helpForm.errNetwork')
   }
-  return raw || 'Что-то пошло не так. Попробуйте ещё раз.'
+  return raw || t('ticketHandler.helpForm.errGeneric')
 }
 
 function displayName(hint: string) {
@@ -35,6 +36,7 @@ function shortPcName(name: string) {
 }
 
 export function TicketHandlerClientPage() {
+  const { t, locale, setLocale } = useLocale()
   const params = useMemo(() => hashParams(), [])
   const hintedHost = params.get('pc')?.trim() ?? ''
   const secret = params.get('secret')?.trim() || params.get('k')?.trim() || undefined
@@ -58,7 +60,7 @@ export function TicketHandlerClientPage() {
         }
       })
       .catch((e) => {
-        if (!cancelled) setError(friendlyError(e instanceof Error ? e.message : String(e)))
+        if (!cancelled) setError(friendlyError(e instanceof Error ? e.message : String(e), t))
       })
       .finally(() => {
         if (!cancelled) setDetecting(false)
@@ -66,7 +68,7 @@ export function TicketHandlerClientPage() {
     return () => {
       cancelled = true
     }
-  }, [hintedHost, secret])
+  }, [hintedHost, secret, t])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -86,7 +88,7 @@ export function TicketHandlerClientPage() {
       setTitleDraft('')
       form.reset()
     } catch (e) {
-      setError(friendlyError(e instanceof Error ? e.message : String(e)))
+      setError(friendlyError(e instanceof Error ? e.message : String(e), t))
     } finally {
       setSending(false)
     }
@@ -103,7 +105,7 @@ export function TicketHandlerClientPage() {
   const pcName = shortPcName(context?.hostname || hintedHost)
   const place = (context?.location || '').trim()
   const blocked = Boolean(error && !context)
-  const hello = helpGreeting(person)
+  const hello = helpGreeting(person, t(dayPartGreetingKey()))
 
   return (
     <main className="help-page">
@@ -114,17 +116,35 @@ export function TicketHandlerClientPage() {
       </div>
       <section className="help-card">
         <header className="help-card-head">
+          <div className="help-lang login-seg" role="group" aria-label={t('prefs.language')}>
+            <button
+              type="button"
+              onClick={() => setLocale('ru')}
+              aria-pressed={locale === 'ru'}
+              className={`login-seg-btn ${locale === 'ru' ? 'login-seg-btn-on' : ''}`}
+            >
+              RU
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocale('en')}
+              aria-pressed={locale === 'en'}
+              className={`login-seg-btn ${locale === 'en' ? 'login-seg-btn-on' : ''}`}
+            >
+              EN
+            </button>
+          </div>
           <div className="help-brand">
             <CoraxLogo variant="wordmark" alt="Corax" className="help-wordmark" />
           </div>
           <h1 className="help-title">{hello}</h1>
-          <p className="help-lead">Опишите проблему своими словами.</p>
+          <p className="help-lead">{t('ticketHandler.helpForm.lead')}</p>
           {detecting && !pcName ? (
-            <p className="help-device is-wait">Уточняем, с какого компьютера заявка…</p>
+            <p className="help-device is-wait">{t('ticketHandler.helpForm.detecting')}</p>
           ) : null}
           {pcName ? (
             <p className="help-device">
-              Заявка уйдёт с компьютера <strong>{pcName}</strong>
+              {t('ticketHandler.helpForm.fromPc')} <strong>{pcName}</strong>
               {place ? <span> · {place}</span> : null}
             </p>
           ) : null}
@@ -139,7 +159,11 @@ export function TicketHandlerClientPage() {
 
           {result && !blocked ? (
             <div className="help-success help-success-banner" role="status">
-              <p className="help-success-title">{ticketLabel ? `Заявка принята, ${ticketLabel}` : 'Заявка принята'}</p>
+              <p className="help-success-title">
+                {ticketLabel
+                  ? t('ticketHandler.helpForm.acceptedWithNo', { ticket: ticketLabel })
+                  : t('ticketHandler.helpForm.accepted')}
+              </p>
             </div>
           ) : null}
 
@@ -152,14 +176,14 @@ export function TicketHandlerClientPage() {
               ) : null}
 
               <label className="help-field">
-                <span>Что требуется</span>
+                <span>{t('ticketHandler.helpForm.titleLabel')}</span>
                 <input
                   required
                   minLength={3}
                   name="title"
                   value={titleDraft}
                   onChange={(e) => setTitleDraft(e.target.value)}
-                  placeholder="Например: поменять картридж в принтере"
+                  placeholder={t('ticketHandler.helpForm.titlePlaceholder')}
                   autoComplete="off"
                   autoFocus
                 />
@@ -167,11 +191,12 @@ export function TicketHandlerClientPage() {
 
               <label className="help-field help-field-quiet">
                 <span>
-                  Подробности <em>по желанию</em>
+                  {t('ticketHandler.helpForm.detailsLabel')}{' '}
+                  <em>{t('ticketHandler.helpForm.detailsOptional')}</em>
                 </span>
                 <textarea
                   name="description"
-                  placeholder="Когда началось, что уже пробовали, номер кабинета"
+                  placeholder={t('ticketHandler.helpForm.detailsPlaceholder')}
                   rows={4}
                 />
               </label>
@@ -180,10 +205,10 @@ export function TicketHandlerClientPage() {
                 {sending ? (
                   <>
                     <span className="help-spinner" aria-hidden />
-                    Отправляем…
+                    {t('ticketHandler.helpForm.sending')}
                   </>
                 ) : (
-                  'Отправить заявку'
+                  t('ticketHandler.helpForm.submit')
                 )}
               </button>
             </form>

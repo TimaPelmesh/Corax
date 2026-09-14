@@ -170,13 +170,12 @@ def test_dashboard_calendar_includes_plans_and_open_scheduled_requests(
     response = client.get("/api/v1/dashboard/calendar?month=2031-06-01", headers=auth_headers)
     assert response.status_code == 200, response.text
     items = response.json()
-    assert {
-        "id": plan.json()["id"],
-        "kind": "plan",
-        "title": "Dashboard calendar plan",
-        "start_date": "2031-06-01",
-        "end_date": "2031-06-03",
-    } in items
+    plan_row = next(item for item in items if item["kind"] == "plan" and item["id"] == plan.json()["id"])
+    assert plan_row["title"] == "Dashboard calendar plan"
+    assert plan_row["start_date"] == "2031-06-01"
+    assert plan_row["end_date"] == "2031-06-03"
+    assert "color" in plan_row
+    assert "mark" in plan_row
     assert any(
         item["id"] == open_request.json()["id"]
         and item["kind"] == "request"

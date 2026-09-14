@@ -49,8 +49,9 @@ if defined INV_MAP_DRIVE (
 )
 
 if /i "%~1"=="nopause" set "INV_NOPAUSE=1"
+if defined CORAX_HIDDEN set "INV_NOPAUSE=1"
 
-title INVENTORY AGENT :: WIN7 UPLINK
+if not defined CORAX_HIDDEN title INVENTORY AGENT :: WIN7 UPLINK
 set "CORAX_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%CORAX_PS%" set "CORAX_PS=%SystemRoot%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
 
@@ -131,17 +132,19 @@ if not defined AGENT_TOKEN (
   goto :done
 )
 
-echo.
-echo  // SESSION ------------------------------------------------
-echo  // START     %DATE% %TIME%
-echo  // CWD       %CD%
-if defined INV_UNC_HOST echo  // UNC HOST  %INV_UNC_HOST%
-if defined INV_UNC_SHARE echo  // UNC SHARE %INV_UNC_SHARE%
-if defined INV_MAP_DRIVE echo  // UNC MAP   %INV_MAP_DRIVE%
-echo  // TARGET    %INVENTORY_SERVER%
-echo  // LOG       %LOG_FILE%
-echo  // ---------------------------------------------------------
-echo.
+if not defined CORAX_HIDDEN (
+  echo.
+  echo  // SESSION ------------------------------------------------
+  echo  // START     %DATE% %TIME%
+  echo  // CWD       %CD%
+  if defined INV_UNC_HOST echo  // UNC HOST  %INV_UNC_HOST%
+  if defined INV_UNC_SHARE echo  // UNC SHARE %INV_UNC_SHARE%
+  if defined INV_MAP_DRIVE echo  // UNC MAP   %INV_MAP_DRIVE%
+  echo  // TARGET    %INVENTORY_SERVER%
+  echo  // LOG       %LOG_FILE%
+  echo  // ---------------------------------------------------------
+  echo.
+)
 
 if not exist "%~dp0InventoryClient_win7.ps1" (
   echo  [FAIL] InventoryClient_win7.ps1 not found:
@@ -150,9 +153,11 @@ if not exist "%~dp0InventoryClient_win7.ps1" (
   goto :done
 )
 
-echo  [RUN]  InventoryClient_win7.ps1
-echo  [RUN]  WMI + registry ^> JSON ^> POST
-echo.
+if not defined CORAX_HIDDEN (
+  echo  [RUN]  InventoryClient_win7.ps1
+  echo  [RUN]  WMI + registry ^> JSON ^> POST
+  echo.
+)
 
 echo ============================================================>>"%LOG_FILE%"
 echo [%DATE% %TIME%] start: %~f0>>"%LOG_FILE%"
@@ -161,18 +166,24 @@ echo [%DATE% %TIME%] INVENTORY_SERVER=%INVENTORY_SERVER%>>"%LOG_FILE%"
 echo [%DATE% %TIME%] INV_DEBUG=%INV_DEBUG%>>"%LOG_FILE%"
 echo ============================================================>>"%LOG_FILE%"
 
-"%CORAX_PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0InventoryClient_win7.ps1" 1>>"%LOG_FILE%" 2>>&1
+if defined INV_NOPAUSE (
+  "%CORAX_PS%" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0InventoryClient_win7.ps1" 1>>"%LOG_FILE%" 2>>&1
+) else (
+  "%CORAX_PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0InventoryClient_win7.ps1" 1>>"%LOG_FILE%" 2>>&1
+)
 set "ERR=%ERRORLEVEL%"
 
-echo.
-echo  // EXIT CODE  %ERR%
-echo  // FINISHED   %DATE% %TIME%
-if "%ERR%"=="0" (
-  echo  // STATUS     UPLINK OK
-) else (
-  echo  // STATUS     UPLINK FAILED
+if not defined CORAX_HIDDEN (
   echo.
-  echo  [FAIL] See log: %LOG_FILE%
+  echo  // EXIT CODE  %ERR%
+  echo  // FINISHED   %DATE% %TIME%
+  if "%ERR%"=="0" (
+    echo  // STATUS     UPLINK OK
+  ) else (
+    echo  // STATUS     UPLINK FAILED
+    echo.
+    echo  [FAIL] See log: %LOG_FILE%
+  )
 )
 
 :done
