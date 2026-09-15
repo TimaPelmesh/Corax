@@ -674,6 +674,10 @@ export function ComputersPage() {
         preview={detailComputerId != null ? rows.find((r) => r.id === detailComputerId) ?? null : null}
         onClose={closeDetail}
         onChanged={() => void load()}
+        onDeleted={(id) => {
+          setRows((prev) => prev.filter((row) => row.id !== id))
+          setTotal((n) => Math.max(0, n - 1))
+        }}
       />
     </div>
   )

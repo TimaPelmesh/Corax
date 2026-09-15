@@ -32,7 +32,7 @@ from app.schemas import (
     SoftwareItem,
     TagBrief,
 )
-from app.search_index import delete_search_document, sync_computer
+from app.search_index import delete_computer_search, sync_computer
 from app.text_sanitize import like_contains
 from app.wol import format_mac, normalize_mac, send_wake
 from app.wol_config import (
@@ -1095,13 +1095,14 @@ async def delete_computer(
     r = await db.execute(select(Computer.id).where(Computer.id == computer_id))
     if r.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="ПК не найден")
-    await delete_search_document(db, "computer", computer_id)
+    await delete_computer_search(db, computer_id)
     await db.execute(
-        text(
-            "DELETE FROM search_documents "
-            "WHERE entity_type = 'software' AND metadata_json ->> 'computer_id' = :computer_id"
-        ),
-        {"computer_id": str(computer_id)},
+        text("UPDATE service_requests SET computer_id = NULL WHERE computer_id = :id"),
+        {"id": computer_id},
+    )
+    await db.execute(
+        text("UPDATE service_request_templates SET computer_id = NULL WHERE computer_id = :id"),
+        {"id": computer_id},
     )
     await db.execute(delete(Computer).where(Computer.id == computer_id))
     await db.commit()

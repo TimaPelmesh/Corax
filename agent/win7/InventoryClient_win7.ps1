@@ -9,6 +9,33 @@ function Log([string]$Msg) {
     Write-Host ("[{0}] {1}" -f $ts, $Msg)
 }
 
+function Write-CoraxLastRun {
+    param([string]$Result, [string]$Detail)
+    $here = $script:CoraxWin7Dir
+    if (-not $here) {
+        try { $here = Split-Path -Parent $MyInvocation.ScriptName } catch { }
+    }
+    if (-not $here) { $here = (Get-Location).Path }
+    $root = Split-Path -Parent $here
+    if (-not $root) { $root = $here }
+    $path = Join-Path $root 'corax-last-run.txt'
+    $lines = @(
+        'CORAX agent',
+        ('status:  ' + $Result),
+        ('time:    ' + (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')),
+        ('host:    ' + $env:COMPUTERNAME),
+        ('server:  ' + [string]$env:INVENTORY_SERVER),
+        ('log:     %TEMP%\inventory_agent_win7.log')
+    )
+    if ($Detail) { $lines += ('detail:  ' + $Detail) }
+    $lines += 'OK = PC is in the panel (Computers) and desktop shortcut should exist.'
+    try {
+        $sw = New-Object System.IO.StreamWriter($path, $false, [System.Text.Encoding]::UTF8)
+        foreach ($ln in $lines) { $sw.WriteLine($ln) }
+        $sw.Close()
+    } catch { }
+}
+
 function Get-CoraxPrimaryIPv4Win7 {
     try {
         $nic = @(Get-WmiObject Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue | Where-Object { $_.IPEnabled -and $_.DefaultIPGateway })
@@ -652,9 +679,12 @@ function Post-Json([string]$Uri, [string]$Token, [string]$Json) {
 }
 
 Log "=== Inventory client (Win7): start ==="
+$script:CoraxWin7Dir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Write-CoraxLastRun -Result 'RUNNING' -Detail 'Collecting inventory'
 
 $base = $env:INVENTORY_SERVER
 if (-not $base -or $base.Trim().Length -eq 0) {
+    Write-CoraxLastRun -Result 'FAILED' -Detail 'INVENTORY_SERVER is not set'
     throw 'INVENTORY_SERVER is not set. Configure agent_env.bat or set the environment variable.'
 }
 $base = $base.TrimEnd('/')
@@ -813,6 +843,7 @@ foreach ($p in $ports) {
             Log ("HTTP: working endpoint = " + $uri)
             try { Install-CoraxHelpdeskShortcut -ServerUrl $base -Hostname $hostname } catch { }
             Log "=== Inventory client (Win7): done ==="
+            Write-CoraxLastRun -Result 'OK' -Detail 'Report sent'
             exit 0
         } catch {
             $lastErr = $_.Exception
@@ -822,6 +853,7 @@ foreach ($p in $ports) {
 }
 
 Log "=== Inventory client (Win7): FAILED ==="
+Write-CoraxLastRun -Result 'FAILED' -Detail 'Upload failed'
 if ($lastErr -and $lastErr.InnerException) {
     Log ("Inner: " + $lastErr.InnerException.Message)
 }

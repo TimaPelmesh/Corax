@@ -12,4 +12,6 @@ If Not fso.FileExists(bat) Then
 End If
 sh.CurrentDirectory = here
 sh.Environment("Process")("CORAX_HIDDEN") = "1"
-sh.Run """" & bat & """ nopause hidden", 0, True
+Dim code
+code = sh.Run("""" & bat & """ nopause hidden", 0, True)
+WScript.Quit code

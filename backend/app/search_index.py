@@ -78,6 +78,21 @@ async def delete_search_document(db: AsyncSession, entity_type: str, entity_id: 
     )
 
 
+async def delete_computer_search(db: AsyncSession, computer_id: int) -> None:
+    """Drop computer + installed-software search rows by PK, not JSON seq-scan."""
+    await delete_search_document(db, "computer", computer_id)
+    await db.execute(
+        text(
+            """
+            DELETE FROM search_documents
+            WHERE entity_type = 'software'
+              AND entity_id IN (SELECT id FROM installed_software WHERE computer_id = :computer_id)
+            """
+        ),
+        {"computer_id": computer_id},
+    )
+
+
 async def index_computer(db: AsyncSession, computer: Computer) -> None:
     await upsert_search_document(
         db,

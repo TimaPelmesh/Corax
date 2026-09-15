@@ -15,12 +15,28 @@ if /i "%~1"=="nopause" set "INV_NOPAUSE=1"
 if /i "%~2"=="nopause" set "INV_NOPAUSE=1"
 if defined CORAX_HIDDEN set "INV_NOPAUSE=1"
 
-REM Default: no console. Double-click and Task Scheduler stay invisible.
-REM Debug: corax_send.bat visible
+REM Manual double-click: wait until inventory finishes, then show last-run status.
+REM Scheduled / VBS (CORAX_HIDDEN): no window at all.
+REM Debug with a full console: corax_send.bat visible
 if not defined CORAX_VISIBLE if not defined CORAX_HIDDEN (
   if exist "%~dp0corax_send_silent.vbs" (
-    start "" wscript.exe //B //Nologo "%~dp0corax_send_silent.vbs"
-    exit /b 0
+    echo.
+    echo   CORAX Agent
+    echo   Collecting inventory. This window closes when finished.
+    echo   Later scheduled runs stay hidden.
+    echo.
+    wscript.exe //B //Nologo "%~dp0corax_send_silent.vbs"
+    set "ERR=!ERRORLEVEL!"
+    echo.
+    if exist "%~dp0corax-last-run.txt" (
+      type "%~dp0corax-last-run.txt"
+    ) else (
+      echo   No corax-last-run.txt yet — collection did not start.
+      echo   See corax-agent.log in this folder and %%TEMP%%\corax-agent.log
+    )
+    echo.
+    if not defined INV_NOPAUSE timeout /t 8 /nobreak >NUL
+    exit /b !ERR!
   )
 )
 

@@ -15,6 +15,38 @@ function Log([string]$Msg) {
     }
 }
 
+function Get-CoraxLastRunPath {
+    $dir = $global:CoraxAgentLogDir
+    if (-not $dir) { $dir = $PSScriptRoot }
+    $leaf = Split-Path -Leaf $dir
+    if ($leaf -eq 'win10' -or $leaf -eq 'win7') {
+        $parent = Split-Path -Parent $dir
+        if ($parent) { $dir = $parent }
+    }
+    return (Join-Path $dir 'corax-last-run.txt')
+}
+
+function Write-CoraxLastRun {
+    param(
+        [Parameter(Mandatory = $true)][string]$Result,
+        [string]$Detail = ''
+    )
+    $path = Get-CoraxLastRunPath
+    $lines = @(
+        'CORAX agent'
+        ('status:  ' + $Result)
+        ('time:    ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
+        ('host:    ' + $env:COMPUTERNAME)
+        ('server:  ' + [string]$env:INVENTORY_SERVER)
+        ('log:     corax-agent.log')
+    )
+    if ($Detail) { $lines += ('detail:  ' + $Detail) }
+    $lines += 'OK = PC is in the panel (Computers) and desktop shortcut should exist.'
+    try {
+        [System.IO.File]::WriteAllLines($path, [string[]]$lines)
+    } catch { }
+}
+
 function Set-AgentProgress {
     param([string]$Status, [int]$Percent)
     $pct = [Math]::Max(0, [Math]::Min(100, $Percent))

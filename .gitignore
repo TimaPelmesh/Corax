@@ -104,6 +104,8 @@ OPS.local.md
 
 # Local agent dumps / accidental outputs
 /agent.json
+agent/desktop/bin/agent.json
+agent/desktop/bin/corax-last-run.txt
 backend/--no-gui
 
 # One-off remote ops helpers (SSH/paramiko) — never ship in release

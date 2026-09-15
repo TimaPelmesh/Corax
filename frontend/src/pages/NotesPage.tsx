@@ -58,13 +58,14 @@ export function NotesPage() {
   const [saveLabel, setSaveLabel] = useState<string | null>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<number | null>(null)
-  const skipNextBodySync = useRef(false)
   const titleRef = useRef(title)
   const planStartRef = useRef(planStart)
   const planEndRef = useRef(planEnd)
   const colorRef = useRef(color)
   const markRef = useRef(mark)
   const noteRef = useRef(note)
+  const bodyHtmlRef = useRef('')
+  const persistNowRef = useRef<() => Promise<void>>(async () => {})
 
   titleRef.current = title
   planStartRef.current = planStart
@@ -98,14 +99,56 @@ export function NotesPage() {
     }
   }, [t, toast])
 
-  useEffect(() => {
-    if (!selectedId) {
-      setNote(null)
-      return
-    }
+  const persistNow = useCallback(async () => {
+    const row = noteRef.current
+    if (!row?.can_edit) return
+    const id = row.id
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current)
       saveTimer.current = null
+    }
+    const body_html = editorRef.current?.innerHTML ?? bodyHtmlRef.current
+    bodyHtmlRef.current = body_html
+    setSaving(true)
+    try {
+      const updated = await api.updateNote(id, {
+        title: titleRef.current,
+        body_html,
+        plan_start: planStartRef.current || null,
+        plan_end: planEndRef.current || null,
+        color: colorRef.current,
+        mark: markRef.current,
+      })
+      if (noteRef.current?.id === id) {
+        setNote(updated)
+        setSaveLabel(t('notes.saved'))
+      }
+      setCalendarTick((n) => n + 1)
+      await reloadList()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('notes.saveFailed'))
+    } finally {
+      setSaving(false)
+      window.setTimeout(() => setSaveLabel(null), 2000)
+    }
+  }, [reloadList, t, toast])
+
+  persistNowRef.current = persistNow
+
+  /** Debounced save; reads latest title/dates/body from refs so onChange does not race setState. */
+  const scheduleSave = useCallback(() => {
+    if (!noteRef.current?.can_edit) return
+    if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    saveTimer.current = window.setTimeout(() => {
+      void persistNowRef.current()
+    }, 450)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedId) {
+      setNote(null)
+      bodyHtmlRef.current = ''
+      return
     }
     let cancelled = false
     void (async () => {
@@ -122,8 +165,8 @@ export function NotesPage() {
         setColor(row.color ?? null)
         setMark(row.mark ?? null)
         setShareDraft(row.shares.map((s) => ({ user_id: s.user_id, can_edit: s.can_edit })))
-        skipNextBodySync.current = true
-        if (editorRef.current) editorRef.current.innerHTML = row.body_html || ''
+        bodyHtmlRef.current = row.body_html || ''
+        if (editorRef.current) editorRef.current.innerHTML = bodyHtmlRef.current
       } catch (e) {
         if (!cancelled) {
           toast.error(e instanceof Error ? e.message : t('notes.loadFailed'))
@@ -133,49 +176,26 @@ export function NotesPage() {
     })()
     return () => {
       cancelled = true
+      void persistNowRef.current()
     }
-  }, [selectedId, setSearchParams, t, toast])
+  }, [selectedId, setSearchParams])
 
   const canEdit = Boolean(note?.can_edit)
   const isOwner = Boolean(note?.is_owner)
 
-  /** Debounced save; reads latest title/dates from refs so onChange does not race setState. */
-  const scheduleSave = useCallback(() => {
-    const current = noteRef.current
-    if (!current?.can_edit) return
-    if (saveTimer.current) window.clearTimeout(saveTimer.current)
-    saveTimer.current = window.setTimeout(() => {
-      void (async () => {
-        const row = noteRef.current
-        if (!row?.can_edit) return
-        setSaving(true)
-        try {
-          const body_html = editorRef.current?.innerHTML ?? row.body_html
-          const updated = await api.updateNote(row.id, {
-            title: titleRef.current,
-            body_html,
-            plan_start: planStartRef.current || null,
-            plan_end: planEndRef.current || null,
-            color: colorRef.current,
-            mark: markRef.current,
-          })
-          setNote(updated)
-          setSaveLabel(t('notes.saved'))
-          setCalendarTick((n) => n + 1)
-          await reloadList()
-        } catch (e) {
-          toast.error(e instanceof Error ? e.message : t('notes.saveFailed'))
-        } finally {
-          setSaving(false)
-          window.setTimeout(() => setSaveLabel(null), 2000)
-        }
-      })()
-    }, 450)
-  }, [reloadList, t, toast])
-
   useEffect(() => {
+    const flush = () => {
+      void persistNowRef.current()
+    }
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onHide)
     return () => {
-      if (saveTimer.current) window.clearTimeout(saveTimer.current)
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onHide)
+      flush()
     }
   }, [])
 
@@ -435,6 +455,7 @@ export function NotesPage() {
                       onMouseDown={(e) => {
                         e.preventDefault()
                         fn()
+                        bodyHtmlRef.current = editorRef.current?.innerHTML ?? bodyHtmlRef.current
                         scheduleSave()
                       }}
                     >
@@ -454,11 +475,12 @@ export function NotesPage() {
                 contentEditable={canEdit}
                 suppressContentEditableWarning
                 onInput={() => {
-                  if (skipNextBodySync.current) {
-                    skipNextBodySync.current = false
-                    return
-                  }
+                  bodyHtmlRef.current = editorRef.current?.innerHTML ?? ''
                   scheduleSave()
+                }}
+                onBlur={() => {
+                  bodyHtmlRef.current = editorRef.current?.innerHTML ?? bodyHtmlRef.current
+                  void persistNowRef.current()
                 }}
               />
 

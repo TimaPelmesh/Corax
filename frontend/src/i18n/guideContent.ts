@@ -151,15 +151,15 @@ const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'ZIP Windows — что внутри',
-          body: 'corax_send_silent.vbs — запуск без окна (рекомендуется).\ncorax_send.bat — автовыбор Win7 или 10/11; по умолчанию прячется. Отладка: corax_send.bat visible.\nagent_env.bat — URL и токен; при обновлении скриптов не затирать.\nagent_config.json — модули сбора.\nupdate_scripts.bat — безопасное обновление.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / старый PowerShell.\nREADME_DEPLOY.txt — краткая шпаргалка в архиве.',
+          body: 'corax_send.bat — ручной запуск: ждёт конца сбора и показывает status.\ncorax_send_silent.vbs — без окна (Планировщик).\ncorax-last-run.txt — status OK/FAILED после запуска.\nagent_env.bat — URL и токен; при обновлении скриптов не затирать.\nagent_config.json — модули сбора.\nupdate_scripts.bat — безопасное обновление.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / старый PowerShell.\nREADME_DEPLOY.txt — краткая шпаргалка в архиве.',
         },
         {
           title: 'ZIP Windows — первый запуск',
-          body: 'Распакуйте архив в %ProgramData%\\CORAX\\agent (не в каталог сервера).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send_silent.vbs\nОкна cmd нет. На рабочем столе появится ярлык «Оставить заявку» на http://LAN-IP:3000/h#pc=ИМЯ-ПК (не localhost).\nРасписание — только install_schedule.bat (фон, без окна). Не ставьте в планировщик голый corax_send.bat.\nПроверка: «Компьютеры» — hostname и «последний отчёт».',
+          body: 'Распакуйте архив в %ProgramData%\\CORAX\\agent (не в каталог сервера).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send.bat\nОкно пишет Collecting inventory и само закроется, когда отчёт уйдёт (обычно до минуты). В конце — status OK/FAILED, тот же текст в corax-last-run.txt.\nБез окна: corax_send_silent.vbs.\nНа рабочем столе — ярлык «Оставить заявку» на http://LAN-IP:3000/h#pc=ИМЯ-ПК.\nПроверка: «Компьютеры» — hostname и «последний отчёт».',
         },
         {
           title: 'ZIP Windows — расписание',
-          body: 'Если при сборке включили автозапуск, в ZIP будет install_schedule.bat — один раз запустите от администратора. Задача CORAX-Agent работает как фоновый процесс SYSTEM: окно cmd не всплывает. Запуск через corax_send_silent.vbs. Можно вручную: register_scheduled_task.ps1 из того же архива.',
+          body: 'Если при сборке включили автозапуск, в ZIP будет install_schedule.bat — один раз от администратора. Он ставит задачу CORAX-Agent (SYSTEM, без окна у пользователя) и сразу запускает первый отчёт. Дальше только по таймеру, через corax_send_silent.vbs. Не ставьте в планировщик голый corax_send.bat.',
         },
         {
           title: 'ZIP Windows — обновление без потери токена',
@@ -661,15 +661,15 @@ const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'ZIP Windows — contents',
-          body: 'corax_send_silent.vbs — run with no window (recommended).\ncorax_send.bat — auto-picks Win7 or 10/11; hides itself by default. Debug: corax_send.bat visible.\nagent_env.bat — URL and token; do not overwrite on script updates.\nagent_config.json — collection modules.\nupdate_scripts.bat — safe update.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / old PowerShell.\nREADME_DEPLOY.txt — short cheat sheet inside the archive.',
+          body: 'corax_send.bat — manual run: waits until collection finishes and shows status.\ncorax_send_silent.vbs — no window (Task Scheduler).\ncorax-last-run.txt — OK/FAILED after a run.\nagent_env.bat — URL and token; do not overwrite on script updates.\nagent_config.json — collection modules.\nupdate_scripts.bat — safe update.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / old PowerShell.\nREADME_DEPLOY.txt — short cheat sheet inside the archive.',
         },
         {
           title: 'ZIP Windows — first run',
-          body: 'Unpack to %ProgramData%\\CORAX\\agent (not the server tree).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send_silent.vbs\nNo cmd window. A “Оставить заявку” shortcut appears on the desktop: http://LAN-IP:3000/h#pc=HOSTNAME (not localhost).\nSchedule only via install_schedule.bat (background, no window). Do not put a bare corax_send.bat into Task Scheduler.\nCheck: Computers — hostname and “last report”.',
+          body: 'Unpack to %ProgramData%\\CORAX\\agent (not the server tree).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send.bat\nThe window says Collecting inventory and closes when the report is sent (usually under a minute). Status OK/FAILED is shown and written to corax-last-run.txt.\nNo window: corax_send_silent.vbs.\nA “Оставить заявку” shortcut appears: http://LAN-IP:3000/h#pc=HOSTNAME.\nCheck: Computers — hostname and “last report”.',
         },
         {
           title: 'ZIP Windows — schedule',
-          body: 'If auto-start was enabled at build time, the ZIP includes install_schedule.bat — run once as Administrator. The CORAX-Agent task is a background SYSTEM process: no cmd window. It starts via corax_send_silent.vbs. Or use register_scheduled_task.ps1 from the same archive.',
+          body: 'If auto-start was enabled at build time, the ZIP includes install_schedule.bat — run once as Administrator. It registers the CORAX-Agent SYSTEM task (no window for users) and starts the first report immediately. Later runs are on the timer via corax_send_silent.vbs. Do not put a bare corax_send.bat into Task Scheduler.',
         },
         {
           title: 'ZIP Windows — update without wiping the token',

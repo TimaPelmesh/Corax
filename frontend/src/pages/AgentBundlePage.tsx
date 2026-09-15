@@ -159,11 +159,11 @@ export function AgentBundlePage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!serverHost.trim()) {
+    if (platform !== 'desktop' && !serverHost.trim()) {
       toast.error(t('agentBundle.serverHostRequired'))
       return
     }
-    if (isDockerBridgeIp(serverHost)) {
+    if (platform !== 'desktop' && isDockerBridgeIp(serverHost)) {
       toast.error(t('agentBundle.dockerBridgeIp'))
       return
     }
@@ -171,8 +171,15 @@ export function AgentBundlePage() {
     try {
       const label =
         tokenLabel.trim() ||
-        (platform === 'linux' ? t('agentBundle.defaultTokenLabelLinux') : t('agentBundle.defaultTokenLabelWin10'))
-      const server = buildAgentServerUrl(serverHost, serverPort, urlScheme)
+        (platform === 'linux'
+          ? t('agentBundle.defaultTokenLabelLinux')
+          : platform === 'desktop'
+            ? t('agentBundle.defaultTokenLabelDesktop')
+            : t('agentBundle.defaultTokenLabelWin10'))
+      const server =
+        platform === 'desktop'
+          ? ''
+          : buildAgentServerUrl(serverHost, serverPort, urlScheme)
       const filename = await api.downloadAgentBundle({
             server_url: server,
             target: platform,
@@ -214,6 +221,7 @@ export function AgentBundlePage() {
             {(
               [
                 ['win10', 'agentBundle.platformWin10'],
+                ['desktop', 'agentBundle.platformDesktop'],
                 ['linux', 'agentBundle.platformLinux'],
               ] as const
             ).map(([id, key]) => (
@@ -243,6 +251,8 @@ export function AgentBundlePage() {
             {t('agentBundle.parametersTitle')}
           </h2>
 
+          {platform !== 'desktop' ? (
+            <>
           <div className="grid gap-3 sm:grid-cols-[1fr_7rem_6.5rem]">
             <div>
               <label className="app-label">{t('agentBundle.serverIpLabel')}</label>
@@ -309,6 +319,12 @@ export function AgentBundlePage() {
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               {t('agentBundle.secureTransport')}
+            </div>
+          )}
+            </>
+          ) : (
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
+              {t('agentBundle.desktopNotice')}
             </div>
           )}
 
@@ -407,6 +423,19 @@ export function AgentBundlePage() {
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/60 p-4">
             <div className="text-sm font-semibold text-[var(--color-fg)]">{t('agentBundle.tokenTitle')}</div>
             <div className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+              {platform === 'desktop' ? (
+                <>
+                  <p>{t('agentBundle.tokenDesktopSeal')}</p>
+                  <p>
+                    {t('agentBundle.tokenDesktopRevokeBefore')}{' '}
+                    <Link to="/settings/agent-tokens" className="font-medium text-[var(--color-primary)] underline-offset-2 hover:underline">
+                      {t('agentBundle.tokenIntroLink')}
+                    </Link>
+                    {t('agentBundle.tokenDesktopRevokeAfter')}
+                  </p>
+                </>
+              ) : (
+                <>
               <p>
                 <strong>{t('agentBundle.tokenNewEachBuild')}</strong> {t('agentBundle.tokenIntroBefore')}{' '}
                 <code className="text-[11px]">public_id.secret</code> {t('agentBundle.tokenIntroMiddle')}{' '}
@@ -419,6 +448,8 @@ export function AgentBundlePage() {
                 {t('agentBundle.tokenParagraph2')}
               </p>
               <p>{t('agentBundle.tokenParagraph3')}</p>
+                </>
+              )}
             </div>
             <div className="mt-3">
               <label className="app-label">{t('agentBundle.tokenLabelAdmin')}</label>
@@ -477,13 +508,17 @@ export function AgentBundlePage() {
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryServer')}</dt>
                 <dd className="max-w-[58%] truncate text-right font-mono text-xs text-[var(--color-fg)]" title={serverUrl}>
-                  {serverUrl}
+                  {platform === 'desktop' ? t('agentBundle.summaryServerAtInstall') : serverUrl}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryPlatform')}</dt>
                 <dd className="text-right font-medium text-[var(--color-fg)]">
-                  {platform === 'linux' ? t('agentBundle.platformLinux') : t('agentBundle.platformWin10')}
+                  {platform === 'linux'
+                    ? t('agentBundle.platformLinux')
+                    : platform === 'desktop'
+                      ? t('agentBundle.platformDesktop')
+                      : t('agentBundle.platformWin10')}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
@@ -526,6 +561,8 @@ export function AgentBundlePage() {
             <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">
               {platform === 'linux' ? (
                 <>{t('agentBundle.summaryArchiveLinux')}</>
+              ) : platform === 'desktop' ? (
+                <>{t('agentBundle.summaryArchiveDesktop')}</>
               ) : (
                 <>{t('agentBundle.summaryArchiveWin10')}</>
               )}
@@ -533,9 +570,9 @@ export function AgentBundlePage() {
             <button
               type="submit"
               className="app-btn app-btn-primary w-full"
-              disabled={busy || lanLoading || !serverHost.trim()}
+              disabled={busy || (platform !== 'desktop' && (lanLoading || !serverHost.trim()))}
             >
-              {busy ? t('agentBundle.building') : t('agentBundle.downloadZip')}
+              {busy ? t('agentBundle.building') : platform === 'desktop' ? t('agentBundle.downloadDesktop') : t('agentBundle.downloadZip')}
             </button>
           </div>
 
@@ -545,7 +582,11 @@ export function AgentBundlePage() {
             </p>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">
               <li>
-                {platform === 'linux' ? t('agentBundle.deployStep1Linux') : t('agentBundle.deployStep1')}
+                {platform === 'linux'
+                  ? t('agentBundle.deployStep1Linux')
+                  : platform === 'desktop'
+                    ? t('agentBundle.deployStep1Desktop')
+                    : t('agentBundle.deployStep1')}
               </li>
               <li>
                 {platform === 'linux' ? (
@@ -554,16 +595,20 @@ export function AgentBundlePage() {
                     <code className="text-xs">./run_console.sh</code>{' '}
                     {t('agentBundle.deployStep2LinuxAfter', { serverUrl })}
                   </>
+                ) : platform === 'desktop' ? (
+                  t('agentBundle.deployStep2Desktop')
                 ) : (
                   <>
                     {t('agentBundle.deployStep2Before')}{' '}
-                    <code className="text-xs">corax_send_silent.vbs</code>{' '}
+                    <code className="text-xs">corax_send.bat</code>{' '}
                     {t('agentBundle.deployStep2After', { serverUrl })}
                   </>
                 )}
               </li>
               {platform === 'linux' ? (
                 <li>{t('agentBundle.deployStep3Linux')}</li>
+              ) : platform === 'desktop' ? (
+                <li>{t('agentBundle.deployStep3Desktop')}</li>
               ) : (
                 <li>{t('agentBundle.deployStep3Win10')}</li>
               )}

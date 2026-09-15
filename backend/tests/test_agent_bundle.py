@@ -41,7 +41,8 @@ def test_windows_bundle_unifies_win7_and_win10():
         assert "CORAX_VISIBLE" in dispatcher
         assert "corax_send_silent.vbs" in dispatcher
         assert "wscript.exe" in dispatcher
-        assert "start \"\" wscript.exe" in dispatcher
+        assert "start \"\" wscript.exe" not in dispatcher
+        assert "corax-last-run.txt" in dispatcher
         win10_bat = zf.read("win10/corax_send.bat").decode("utf-8", errors="replace")
         assert r"System32\WindowsPowerShell\v1.0\powershell.exe" in win10_bat
         assert "powershell.exe -NoProfile" not in win10_bat
@@ -53,6 +54,8 @@ def test_windows_bundle_unifies_win7_and_win10():
         assert "start /wait" not in win10_bat.lower()
         common = zf.read("win10/lib/Agent-Common.ps1").decode("utf-8-sig")
         assert "function Stop-AgentJob" in common
+        assert "function Write-CoraxLastRun" in common
+        assert "corax-last-run.txt" in common
         for arc_name in names:
             if not arc_name.lower().endswith(".ps1"):
                 continue
@@ -153,10 +156,14 @@ def test_windows_bundle_schedule_runs_hidden_as_system():
         assert "cmd.exe" not in tr_line
         assert "/RU SYSTEM" in bat
         assert "/NP" in bat
+        assert "/Run" in bat
+        assert "corax-last-run.txt" in bat
         ps = zf.read("register_scheduled_task.ps1").decode("utf-8-sig", errors="replace")
         assert "wscript.exe" in ps
         assert "/RU" in ps and "SYSTEM" in ps
         assert "cmd.exe /c" not in ps
+        assert "/Run" in ps
+        assert "corax-last-run.txt" in ps
 
 
 def test_dockerfile_copies_windows_agent_wrapper():
@@ -167,3 +174,46 @@ def test_dockerfile_copies_windows_agent_wrapper():
     text = dockerfile.read_text(encoding="utf-8")
     assert "agent/windows" in text
     assert "COPY --chown=corax:corax agent/windows ./agent/windows" in text
+    assert "COPY --chown=corax:corax agent/desktop/prebuilt ./agent/desktop/prebuilt" in text
+
+
+def test_desktop_bundle_seals_token_and_omits_plaintext(tmp_path):
+    import json
+
+    from app.agent_desktop import empty_seal_slot, pack_desktop_zip, seal_agent_token, stamp_desktop_exe
+
+    fake = tmp_path / "CORAX-Agent.exe"
+
+    slot = empty_seal_slot()
+    fake.write_bytes(b"MZ" + slot + b"\0" * 60_000)
+    secret = "aabbccdd.super-secret-token-value"
+    data = pack_desktop_zip(fake, secret)
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        names = zf.namelist()
+        assert set(names) == {"CORAX-Agent.exe", "agent.json", "Install.bat", "README.txt"}
+        exe = zf.read("CORAX-Agent.exe")
+        assert secret.encode("utf-8") not in exe
+        assert b"<<<CORAX_DESKTOP_SEAL_BEGIN>>>" in exe
+        raw = zf.read("agent.json").decode("utf-8")
+        assert secret not in raw
+        cfg = json.loads(raw)
+        assert "token_enc" in cfg
+        assert cfg["token_prefix"] == "aabbccdd"
+        assert cfg["token_enc"]["wrap"].encode("ascii") in exe
+        assert "token" not in cfg
+        from app.agent_desktop import unseal_agent_token
+
+        assert unseal_agent_token(cfg["token_enc"]) == secret
+        assert cfg["daily_at"] == "09:00"
+        assert cfg["autostart"] is True
+        bat = zf.read("Install.bat").decode("utf-8")
+        assert "CurrentVersion\\Run" in bat
+        readme = zf.read("README.txt").decode("utf-8")
+        assert "прототип" not in readme.lower()
+        assert "Windows 10/11" in readme
+        sealed = seal_agent_token("x")
+        assert sealed["v"] == 1
+        decoy = b"MZ" + b"<<<CORAX_DESKTOP_SEAL_BEGIN>>>" + (b"Q" * 8000) + b"<<<CORAX_DESKTOP_SEAL_END>>>" + slot
+        stamped = stamp_desktop_exe(decoy + b"\0" * 1000, sealed)
+        assert sealed["wrap"].encode("ascii") in stamped
+        assert stamped[len(b"MZ") + len(b"<<<CORAX_DESKTOP_SEAL_BEGIN>>>") :].startswith(b"Q")

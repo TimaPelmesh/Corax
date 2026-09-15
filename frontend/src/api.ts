@@ -1227,7 +1227,7 @@ export type AgentBundleLanIp = {
   candidates: string[]
 }
 
-export type AgentBundleTarget = 'win10' | 'win7' | 'cpp' | 'linux'
+export type AgentBundleTarget = 'win10' | 'win7' | 'cpp' | 'linux' | 'desktop'
 
 export type AgentBundleCreateBody = {
   server_url: string

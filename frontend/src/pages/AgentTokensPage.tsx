@@ -58,6 +58,7 @@ export function AgentTokensPage() {
     if (!confirm(t('agentTokens.revokeConfirm'))) return
     try {
       await api.revokeAgentToken(id)
+      setCreatedOnce((prev) => (prev && prev.id === id ? null : prev))
       void load()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
@@ -84,6 +85,13 @@ export function AgentTokensPage() {
             onClick={() => void navigator.clipboard.writeText(createdOnce.token)}
           >
             {t('agentTokens.copyToken')}
+          </button>
+          <button
+            type="button"
+            className="ml-4 mt-2 text-sm font-medium text-[var(--color-fg-muted)] underline"
+            onClick={() => setCreatedOnce(null)}
+          >
+            {t('common.close')}
           </button>
         </div>
       ) : null}
@@ -141,7 +149,7 @@ export function AgentTokensPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {rows.filter((r) => !r.revoked_at).map((r) => (
                 <tr key={r.id} className="app-table-row border-b border-[var(--color-border)] last:border-0">
                   <td className="px-4 py-3 font-mono text-xs">{r.id}</td>
                   <td className="px-4 py-3 font-mono text-xs text-[var(--color-fg-muted)]">{r.public_id_prefix}</td>
@@ -154,27 +162,19 @@ export function AgentTokensPage() {
                     {r.last_used_at ? new Date(r.last_used_at).toLocaleString() : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {r.revoked_at ? (
-                      <span className="text-xs text-[var(--color-fg-subtle)]">
-                        {t('agentTokens.revokedOn', {
-                          date: new Date(r.revoked_at).toLocaleDateString(),
-                        })}
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
-                        onClick={() => void onRevoke(r.id)}
-                      >
-                        {t('agentTokens.revokeAction')}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                      onClick={() => void onRevoke(r.id)}
+                    >
+                      {t('agentTokens.revokeAction')}
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {rows.length === 0 ? <p className="p-4 text-sm text-[var(--color-fg-muted)]">{t('agentTokens.emptyState')}</p> : null}
+          {rows.filter((r) => !r.revoked_at).length === 0 ? <p className="p-4 text-sm text-[var(--color-fg-muted)]">{t('agentTokens.emptyState')}</p> : null}
           </div>
         </div>
       )}

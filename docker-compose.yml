@@ -97,6 +97,8 @@ services:
       - "${CORAX_PUBLISH_PORT:-3000}:3000"
     volumes:
       - corax_data:/data
+      # Host-built tray EXE so the panel can pack a ZIP without rebuilding the image.
+      - ./agent/desktop/prebuilt:/app/agent/desktop/prebuilt:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

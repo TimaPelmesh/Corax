@@ -69,6 +69,7 @@ function New-CorePayload {
 
 try {
     Log '=== CORAX Agent start ==='
+    Write-CoraxLastRun -Result 'RUNNING' -Detail 'Collecting inventory'
     Set-AgentProgress 'Config...' 5
     $config = Get-AgentConfig -Root $Lib
 
@@ -156,13 +157,16 @@ try {
     Clear-AgentProgress
     if ($exitCode -eq 0) {
         Log '=== CORAX Agent OK ==='
+        Write-CoraxLastRun -Result 'OK' -Detail 'Report sent'
     } else {
         Log '=== CORAX Agent FAILED (core+full upload). See corax-agent.log ==='
+        Write-CoraxLastRun -Result 'FAILED' -Detail 'Upload failed; see corax-agent.log'
     }
     exit $exitCode
 }
 catch {
     Clear-AgentProgress
     Log "ERROR: $($_.Exception.Message)"
+    Write-CoraxLastRun -Result 'FAILED' -Detail $_.Exception.Message
     exit 1
 }

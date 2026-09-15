@@ -218,7 +218,7 @@ export const ru = {
     zabbixSubtitle: 'Подключение Zabbix (чтение API)',
     zabbixDataSubtitle: 'Хосты и проблемы из Zabbix (только чтение).',
     agentTokensSubtitle: 'Токены для агентов инвентаризации',
-    agentBundleSubtitle: 'Windows: ZIP PowerShell (Win 7/10/11). Linux: ZIP bash.',
+    agentBundleSubtitle: 'Windows 10/11: EXE с треем или ZIP PowerShell. Linux: ZIP bash.',
     wolSubtitle:
       'Кому разрешено включать ПК для обслуживания. Кнопка — в карточке ПК, только если машина не в сети.',
     httpsSubtitle:
@@ -2000,6 +2000,8 @@ export const ru = {
     deletePcHint: 'Удаляет машину вместе с ПО, периферией и историей. Необратимо.',
     saveFailed: 'Не удалось сохранить',
     deleteFailed: 'Не удалось удалить',
+    deleting: 'Удаляю ПК…',
+    deleted: 'ПК удалён',
     save: 'Сохранить',
     deleteConfirm:
       'Удалить «{hostname}» из базы вместе с ПО и периферией? Действие необратимо.',
@@ -2425,12 +2427,14 @@ export const ru = {
     defaultTokenLabelWin10: 'CORAX deploy windows',
     defaultTokenLabelCpp: 'CORAX deploy cpp',
     defaultTokenLabelLinux: 'CORAX deploy linux',
+    defaultTokenLabelDesktop: 'CORAX deploy desktop',
     downloadSuccess: 'Архив скачан: {filename}',
     buildError: 'Ошибка сборки',
     apiNotRespondingSuffix:
       '. API CORAX не отвечает на этом URL/порту — проверьте, что сервер запущен (prod :3000 или dev API :3001).',
     platformCpp: 'Нативный EXE (не 1:1 с PowerShell)',
     platformWin10: 'ZIP PowerShell Windows (рекомендуется)',
+    platformDesktop: 'Windows 10/11 · EXE',
     platformWin7: 'ZIP Windows 7',
     platformLinux: 'ZIP Linux (bash)',
     formatCpp: 'Portable ZIP',
@@ -2439,6 +2443,15 @@ export const ru = {
     guideLink: 'Полная инструкция: База знаний → Руководство',
     linuxNotice:
       'Bash-агент для Linux. В ZIP: agent_env.sh (URL + токен) и скрипты. Распакуйте в /opt/corax-agent (не в /opt/corax). Обновление скриптов: update_scripts.sh — не затирает agent_env.sh. Подробно — Руководство, раздел «Linux-агент».',
+    desktopNotice:
+      'Готовый EXE для Windows 10 и 11: окно и иконка в трее. При скачивании токен вшивается в EXE в зашифрованном виде — секрет в открытом тексте нигде не лежит. На ПК пользователь указывает только IP сервера. Отчёт уходит раз в сутки; время и автозапуск — в настройках агента.',
+    summaryServerAtInstall: 'на ПК при установке',
+    summaryArchiveDesktop:
+      'В архиве четыре файла: CORAX-Agent.exe, agent.json (префикс токена), Install.bat, README. Секрет в открытом виде не кладётся — сверьте token_prefix со списком «Токены агентов».',
+    downloadDesktop: 'Скачать EXE для Windows 10/11',
+    deployStep1Desktop: 'Скачайте ZIP и распакуйте на ПК (или запустите Install.bat).',
+    deployStep2Desktop: 'При первом запуске укажите IP и порт сервера CORAX. Токен уже внутри EXE.',
+    deployStep3Desktop: 'Окно можно закрыть — агент останется в трее и будет слать отчёт раз в сутки. Время — шестерёнка.',
     parametersTitle: 'Параметры',
     serverIpLabel: 'IP-адрес сервера CORAX',
     schemeLabel: 'Схема',
@@ -2460,7 +2473,7 @@ export const ru = {
     win7Notice:
       'Базовый профиль: WMI, реестр ПО, PnP-периферия. Расширенные модули (патчи, BitLocker, Docker и т.д.) доступны только в сборке для Windows 10/11.',
     windowsZipNotice:
-      'Канонический агент для Windows. Запуск без окна: corax_send_silent.vbs (или corax_send.bat — сам уходит в фон). По расписанию задача SYSTEM через тот же VBS. После запуска на рабочем столе появляется ярлык «Оставить заявку» на /h с уже вписанным именем ПК (LAN-IP сервера, не localhost). Отладка: corax_send.bat visible. Обновление: update_scripts.bat — agent_env.bat не затирается.',
+      'Канонический агент для Windows. Ручной запуск corax_send.bat: окно ждёт конца сбора и показывает status (OK/FAILED) в corax-last-run.txt. По расписанию — задача SYSTEM без окна; install_schedule.bat сразу запускает первый отчёт. На рабочем столе появляется ярлык «Оставить заявку». Отладка консоли: corax_send.bat visible.',
     collectionLevel: 'Уровень сбора',
     levelFull: 'Полный',
     levelFullHint: 'Все модули: сеть, патчи, безопасность, Office, Docker/WSL и т.д.',
@@ -2478,9 +2491,13 @@ export const ru = {
     tokenParagraph3:
       'Без токена API отклонит отчёт. Храните ZIP приватно. Используйте HTTPS: при HTTP токен и инвентаризация не шифруются в сети.',
     tokenLabelAdmin: 'Подпись токена в админке (необязательно)',
+    tokenDesktopSeal:
+      'При скачивании создаётся токен и вшивается в CORAX-Agent.exe в зашифрованном виде. Секрет в открытом виде не показывается — ни в панели, ни рядом с файлом.',
+    tokenDesktopRevokeBefore: 'Отозвать доступ —',
+    tokenDesktopRevokeAfter: '. Отозванные токены сразу пропадают из списка.',
     scheduleEnable: 'Добавить автозапуск по расписанию',
     scheduleHint:
-      'В архив попадёт install_schedule.bat. Запустите его от имени администратора один раз: в Планировщике появится фоновая задача SYSTEM без окна cmd. Само по себе в систему не встраивается, пока bat не выполнен.',
+      'В архив попадёт install_schedule.bat. Один раз от администратора: появится фоновая задача SYSTEM без окна и сразу уйдёт первый отчёт. Проверка через минуту: Компьютеры в панели, ярлык на столе, файл corax-last-run.txt.',
     scheduleModeLabel: 'Режим',
     scheduleDaily: 'Ежедневно',
     scheduleWeekly: 'Еженедельно (пн)',
@@ -2498,7 +2515,7 @@ export const ru = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'Нет',
     summaryArchiveWin10:
-      'В архиве: corax_send_silent.vbs (без окна), corax_send.bat, win10/, win7/, agent_env.bat, agent_config.json, update_scripts.bat. Ярлык «Оставить заявку» на рабочий стол: /h#pc=ИМЯ-ПК.',
+      'В архиве: corax_send.bat (ждёт конца сбора), corax_send_silent.vbs, corax-last-run.txt после запуска, win10/, win7/, agent_env.bat. Ярлык «Оставить заявку»: /h#pc=ИМЯ-ПК.',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
     summaryArchiveCpp:
@@ -2519,7 +2536,7 @@ export const ru = {
     deployStep2LinuxBefore: 'На хосте выполните',
     deployStep2LinuxAfter: '— отчёт уйдёт на {serverUrl}.',
     deployStep3Win10:
-      'Расписание: от администратора — install_schedule.bat (фон, SYSTEM, без окна). Ярлык «Оставить заявку» появится на рабочем столе после первого запуска. Обновление: update_scripts.bat (не затирает agent_env.bat).',
+      'Расписание: от администратора — install_schedule.bat (регистрирует задачу SYSTEM без окна и сразу шлёт первый отчёт). Ярлык «Оставить заявку» появится на столе. Статус: corax-last-run.txt. Обновление: update_scripts.bat (не затирает agent_env.bat).',
     deployStep3Win7:
       'Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.',
     deployStep3Cpp:

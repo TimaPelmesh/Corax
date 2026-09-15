@@ -28,7 +28,9 @@ async def list_agent_tokens(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    r = await db.execute(select(AgentToken).order_by(AgentToken.id.desc()))
+    r = await db.execute(
+        select(AgentToken).where(AgentToken.revoked_at.is_(None)).order_by(AgentToken.id.desc())
+    )
     return list(r.scalars().all())
 
 

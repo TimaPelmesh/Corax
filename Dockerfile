@@ -108,6 +108,7 @@ COPY --chown=corax:corax agent/win7 ./agent/win7
 COPY --chown=corax:corax agent/windows ./agent/windows
 COPY --chown=corax:corax agent/cpp ./agent/cpp
 COPY --chown=corax:corax agent/linux ./agent/linux
+COPY --chown=corax:corax agent/desktop/prebuilt ./agent/desktop/prebuilt
 COPY --from=frontend-build --chown=corax:corax /frontend/dist ./frontend/dist
 COPY --chown=corax:corax deploy/docker/entrypoint.sh /entrypoint.sh
 

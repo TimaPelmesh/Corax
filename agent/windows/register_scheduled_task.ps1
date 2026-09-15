@@ -29,4 +29,7 @@ switch ($Schedule) {
 Write-Host "Creating task: $TaskName"
 & $sch @args
 if ($LASTEXITCODE -ne 0) { throw "schtasks exit $LASTEXITCODE" }
-Write-Host 'Done. Hidden SYSTEM task: wscript runs corax_send.bat nopause with no window. OS is picked each run.'
+& $sch /Run /TN $TaskName
+if ($LASTEXITCODE -ne 0) { throw "schtasks /Run exit $LASTEXITCODE" }
+Write-Host 'Done. Hidden SYSTEM task registered; first inventory started in the background.'
+Write-Host 'After about a minute: Computers in the panel, desktop shortcut, corax-last-run.txt'

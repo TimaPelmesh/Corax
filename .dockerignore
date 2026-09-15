@@ -38,6 +38,7 @@ agent/cpp/out
 # Exclude build artifacts, but keep the stamped Windows template for Docker/Linux.
 **/*.exe
 !agent/cpp/prebuilt/CORAX-Agent.template.exe
+!agent/desktop/prebuilt/CORAX-Agent.exe
 .idea
 .vscode
 .cursor

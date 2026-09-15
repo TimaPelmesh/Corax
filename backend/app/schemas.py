@@ -651,8 +651,8 @@ class AgentBundleLanIpOut(BaseModel):
 
 
 class AgentBundleCreate(BaseModel):
-    server_url: str = Field(min_length=8, max_length=512)
-    target: str = Field(default="win10", pattern="^(win10|win7|cpp|linux)$")
+    server_url: str = Field(default="", max_length=512)
+    target: str = Field(default="win10", pattern="^(win10|win7|cpp|linux|desktop)$")
     profile: str = Field(default="full", pattern="^(full|custom|basic|standard)$")
     modules: AgentBundleModules | None = None
     create_token: bool = True
@@ -660,6 +660,12 @@ class AgentBundleCreate(BaseModel):
     allowed_hostname: str | None = Field(default=None, max_length=128)
     existing_token: str | None = Field(default=None, max_length=512)
     schedule: AgentBundleSchedule | None = None
+
+    @model_validator(mode="after")
+    def server_url_required_unless_desktop(self):
+        if self.target != "desktop" and len((self.server_url or "").strip()) < 8:
+            raise ValueError("Укажите server_url")
+        return self
 
 
 class LdapConfigOut(BaseModel):

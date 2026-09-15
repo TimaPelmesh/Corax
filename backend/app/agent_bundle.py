@@ -254,8 +254,8 @@ def _write_install_schedule_bat(schedule: AgentBundleSchedule) -> str:
         extra = f"/SC WEEKLY /D {weekday}"
     return (
         "@echo off\r\n"
-        "REM Run as Administrator once. Task is a background SYSTEM job:\r\n"
-        "REM corax_send_silent.vbs starts corax_send.bat nopause with no window.\r\n"
+        "REM Run as Administrator once. Registers a hidden SYSTEM task and starts\r\n"
+        "REM the first inventory immediately (no window on the user desktop).\r\n"
         "cd /d \"%~dp0\"\r\n"
         f'set "TASKNAME={schedule.task_name}"\r\n'
         "set \"VBS=%~dp0corax_send_silent.vbs\"\r\n"
@@ -267,7 +267,20 @@ def _write_install_schedule_bat(schedule: AgentBundleSchedule) -> str:
         "\"%SystemRoot%\\System32\\schtasks.exe\" /Delete /TN \"%TASKNAME%\" /F >NUL 2>&1\r\n"
         f"\"%SystemRoot%\\System32\\schtasks.exe\" /Create /TN \"%TASKNAME%\" "
         f"/TR \"wscript.exe //B //Nologo \\\"%VBS%\\\"\" /F /RL HIGHEST /RU SYSTEM /NP {extra} /ST {hhmm}\r\n"
-        "if errorlevel 1 pause\r\n"
+        "if errorlevel 1 (\r\n"
+        "  echo ERROR: could not create the scheduled task. Run this file as Administrator.\r\n"
+        "  pause\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
+        "\"%SystemRoot%\\System32\\schtasks.exe\" /Run /TN \"%TASKNAME%\"\r\n"
+        "echo.\r\n"
+        "echo Task %TASKNAME% installed. First inventory started in the background.\r\n"
+        "echo Users will not see a window. After about a minute check:\r\n"
+        "echo   - Computers in the CORAX panel\r\n"
+        "echo   - desktop shortcut\r\n"
+        "echo   - %~dp0corax-last-run.txt\r\n"
+        "echo.\r\n"
+        "pause\r\n"
     )
 
 
@@ -343,6 +356,11 @@ def _build_win7_zip(body: AgentBundleCreate, server: str, token: str) -> tuple[b
 
 
 async def build_agent_bundle_zip(db: AsyncSession, body: AgentBundleCreate) -> tuple[bytes, str]:
+    if body.target == "desktop":
+        from app.agent_desktop import build_desktop_bundle
+
+        return await build_desktop_bundle(db, body)
+
     server = body.server_url.strip().rstrip("/")
     if not server.lower().startswith(("http://", "https://")):
         raise ValueError("server_url должен начинаться с http:// или https://")

@@ -221,7 +221,7 @@ export const en: MessageTree = {
     zabbixSubtitle: 'Zabbix API connection (read-only)',
     zabbixDataSubtitle: 'Hosts and problems from Zabbix (read-only).',
     agentTokensSubtitle: 'Tokens for inventory agents',
-    agentBundleSubtitle: 'Windows: PowerShell ZIP (Win 7/10/11). Linux: bash ZIP.',
+    agentBundleSubtitle: 'Windows 10/11: tray EXE or PowerShell ZIP. Linux: bash ZIP.',
     wolSubtitle:
       'Who may wake PCs for maintenance. The button is on the PC card and only appears when the host is offline.',
     httpsSubtitle:
@@ -2003,6 +2003,8 @@ export const en: MessageTree = {
     deletePcHint: 'Deletes the machine together with software, peripherals, and history. Irreversible.',
     saveFailed: 'Could not save',
     deleteFailed: 'Could not delete',
+    deleting: 'Deleting PC…',
+    deleted: 'PC deleted',
     save: 'Save',
     deleteConfirm:
       'Delete "{hostname}" from the database together with software and peripherals? This cannot be undone.',
@@ -2430,12 +2432,14 @@ export const en: MessageTree = {
     defaultTokenLabelWin10: 'CORAX deploy windows',
     defaultTokenLabelCpp: 'CORAX deploy cpp',
     defaultTokenLabelLinux: 'CORAX deploy linux',
+    defaultTokenLabelDesktop: 'CORAX deploy desktop',
     downloadSuccess: 'Archive downloaded: {filename}',
     buildError: 'Build failed',
     apiNotRespondingSuffix:
       '. The CORAX API is not responding on this URL/port — check that the server is running (prod :3000 or dev API :3001).',
     platformCpp: 'Native EXE (not 1:1 with PowerShell)',
     platformWin10: 'ZIP PowerShell Windows (recommended)',
+    platformDesktop: 'Windows 10/11 · EXE',
     platformWin7: 'ZIP Windows 7',
     platformLinux: 'ZIP Linux (bash)',
     formatCpp: 'Portable ZIP',
@@ -2444,6 +2448,15 @@ export const en: MessageTree = {
     guideLink: 'Full runbook: Knowledge base → Guide',
     linuxNotice:
       'Bash agent for Linux. The ZIP includes agent_env.sh (URL + token) and scripts. Extract to /opt/corax-agent (not /opt/corax). Script updates: update_scripts.sh — does not overwrite agent_env.sh. Full steps: Guide → Linux agent.',
+    desktopNotice:
+      'Native EXE for Windows 10 and 11: window and tray icon. On download the token is sealed inside the EXE — never stored in plaintext. The user only enters the CORAX server IP. Inventory is sent once a day; time and Windows autostart are in the agent settings.',
+    summaryServerAtInstall: 'on the PC at install time',
+    summaryArchiveDesktop:
+      'The archive has four files: CORAX-Agent.exe, agent.json (token prefix), Install.bat, README. The secret is not in plaintext — match token_prefix with Agent tokens.',
+    downloadDesktop: 'Download EXE for Windows 10/11',
+    deployStep1Desktop: 'Download the ZIP and extract it (or run Install.bat).',
+    deployStep2Desktop: 'On first launch enter the CORAX server IP and port. The token is already inside the EXE.',
+    deployStep3Desktop: 'Closing the window leaves the agent in the tray. It sends a report once a day; the time is under the gear.',
     parametersTitle: 'Parameters',
     serverIpLabel: 'CORAX server IP address',
     schemeLabel: 'Scheme',
@@ -2465,7 +2478,7 @@ export const en: MessageTree = {
     win7Notice:
       'Base profile: WMI, software registry, PnP peripherals. Extended modules (patches, BitLocker, Docker, etc.) are available only in the Windows 10/11 build.',
     windowsZipNotice:
-      'The canonical Windows agent. Run with no window: corax_send_silent.vbs (or corax_send.bat — it hides itself). The scheduled task is a SYSTEM job via the same VBS. After a run, an “Оставить заявку” desktop shortcut opens /h with this PC name already filled in (server LAN IP, not localhost). Debug: corax_send.bat visible. Updates: update_scripts.bat — keeps agent_env.bat.',
+      'The canonical Windows agent. Manual corax_send.bat waits until collection finishes and writes OK/FAILED to corax-last-run.txt. The scheduled SYSTEM task has no window; install_schedule.bat also starts the first report immediately. An “Оставить заявку” shortcut appears on the desktop. Console debug: corax_send.bat visible.',
     collectionLevel: 'Collection level',
     levelFull: 'Full',
     levelFullHint: 'All modules: network, patches, security, Office, Docker/WSL, and more.',
@@ -2483,9 +2496,13 @@ export const en: MessageTree = {
     tokenParagraph3:
       'Without a token, the API will reject the report. Keep the ZIP private. Prefer HTTPS: HTTP does not encrypt the token or inventory in transit.',
     tokenLabelAdmin: 'Token label in admin UI (optional)',
+    tokenDesktopSeal:
+      'On download a token is created and sealed inside CORAX-Agent.exe. The secret is never shown in the panel or stored next to the file in plaintext.',
+    tokenDesktopRevokeBefore: 'Revoke access in',
+    tokenDesktopRevokeAfter: '. Revoked tokens disappear from the list immediately.',
     scheduleEnable: 'Add scheduled autorun',
     scheduleHint:
-      'The archive will include install_schedule.bat. Run it once as administrator: Task Scheduler gets a background SYSTEM job with no cmd window. Nothing is installed automatically until the bat file is executed.',
+      'The archive will include install_schedule.bat. Run it once as administrator: Task Scheduler gets a background SYSTEM job with no window, and the first report starts immediately. After about a minute check Computers, the desktop shortcut, and corax-last-run.txt.',
     scheduleModeLabel: 'Mode',
     scheduleDaily: 'Daily',
     scheduleWeekly: 'Weekly (Mon)',
@@ -2524,7 +2541,7 @@ export const en: MessageTree = {
     deployStep2LinuxBefore: 'On the host, run',
     deployStep2LinuxAfter: '— the report will be sent to {serverUrl}.',
     deployStep3Win10:
-      'Scheduling: run install_schedule.bat as administrator (background SYSTEM job, no window). The “Оставить заявку” desktop shortcut appears after the first run. Updates: update_scripts.bat (keeps agent_env.bat).',
+      'Scheduling: run install_schedule.bat as administrator (registers a hidden SYSTEM job and starts the first report immediately). The “Оставить заявку” shortcut appears on the desktop. Status: corax-last-run.txt. Updates: update_scripts.bat (keeps agent_env.bat).',
     deployStep3Win7:
       'Scheduling: create a Windows Task Scheduler task to run the bat manually or through GPO.',
     deployStep3Cpp:

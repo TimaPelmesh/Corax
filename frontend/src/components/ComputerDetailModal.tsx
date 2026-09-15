@@ -48,6 +48,7 @@ type Props = {
   preview?: (Computer | (Partial<Computer> & Pick<Computer, 'id' | 'hostname'>)) | null
   onClose: () => void
   onChanged?: () => void
+  onDeleted?: (id: number) => void
   overlayZClass?: string
 }
 
@@ -91,6 +92,7 @@ export function ComputerDetailModal({
   preview = null,
   onClose,
   onChanged,
+  onDeleted,
   overlayZClass = 'z-50',
 }: Props) {
   const t = useT()
@@ -302,14 +304,19 @@ export function ComputerDetailModal({
     ) {
       return
     }
+    const id = detail.id
+    toast.busy(t('computerDetail.deleting'))
+    onDeleted?.(id)
+    onClose()
     try {
-      await api.deleteComputer(detail.id)
-      onChanged?.()
-      onClose()
+      await api.deleteComputer(id)
+      toast.ok(t('computerDetail.deleted'))
+      if (!onDeleted) onChangedRef.current?.()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('computerDetail.deleteFailed'))
+      onChangedRef.current?.()
     }
-  }, [detail, user?.is_superuser, onChanged, onClose, t, toast])
+  }, [detail, user?.is_superuser, onDeleted, onClose, t, toast])
 
   const refreshWol = useCallback(async () => {
     if (!detail || !user) return
