@@ -56,16 +56,39 @@ function Get-ExtendedNetwork {
                 }
             }
         }
-    } catch {
-        foreach ($cfg in @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' -ErrorAction SilentlyContinue)) {
+    } catch { }
+
+    # Win7+WMF: Get-NetIPConfiguration may exist and return nothing. CIM may need WinRM.
+    if ($adapters.Count -eq 0) {
+        $nicRows = @()
+        try {
+            $nicRows = @(Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' -ErrorAction Stop)
+        } catch {
+            try { $nicRows = @(Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' -ErrorAction Stop) } catch { $nicRows = @() }
+        }
+        foreach ($cfg in $nicRows) {
+            $ipv4 = @($cfg.IPAddress | Where-Object { $_ -match '^\d+\.' })
+            $gwList = @($cfg.DefaultIPGateway | Where-Object { $_ -match '^\d+\.' })
+            $gw = $null
+            if ($gwList.Count -gt 0) { $gw = [string]$gwList[0] }
             [void]$adapters.Add(@{
-                description = [string]$cfg.Description
-                mac_address = ($cfg.MACAddress -replace '-', ':')
-                ipv4        = @($cfg.IPAddress | Where-Object { $_ -match '^\d+\.' })
-                ipv6        = @()
-                gateway     = @($cfg.DefaultIPGateway | Where-Object { $_ -match '^\d+\.' }) -join ','
+                description  = [string]$cfg.Description
+                mac_address  = ($cfg.MACAddress -replace '-', ':')
+                ipv4         = @($ipv4)
+                ipv6         = @()
+                gateway      = $gw
                 dhcp_enabled = [bool]$cfg.DHCPEnabled
             })
+            if ($gw -and $gateways -notcontains $gw) { [void]$gateways.Add($gw) }
+            foreach ($d in @($cfg.DNSServerSearchOrder)) {
+                if (-not (Test-IsUsefulDns $d)) { continue }
+                $ds = [string]$d
+                if ($ds -match ':') {
+                    if ($dnsV6 -notcontains $ds) { [void]$dnsV6.Add($ds) }
+                } else {
+                    if ($dnsV4 -notcontains $ds) { [void]$dnsV4.Add($ds) }
+                }
+            }
         }
     }
 

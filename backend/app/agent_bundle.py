@@ -326,7 +326,7 @@ def _build_windows_zip(body: AgentBundleCreate, server: str, token: str) -> tupl
     """One ZIP: root dispatcher + win10 (PS 5+) + win7 (PS 2) payloads. Shared agent_env.bat."""
     profile_key = "custom" if body.profile == "custom" else "full"
     config = _build_agent_config(body)
-    config["agent_version"] = "3.2.3-windows"
+    config["agent_version"] = "3.2.4-windows"
     env_bat = _write_agent_env_bat(server, token)
     config_json = json.dumps(config, ensure_ascii=False, indent=2)
     schedule = body.schedule or AgentBundleSchedule()

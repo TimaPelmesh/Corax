@@ -1,11 +1,40 @@
 #Requires -Version 5.1
 # Core inventory (hardware, OS, software, peripherals) - CORAX API v1
 
+function Get-Win32Class {
+    param(
+        [Parameter(Mandatory = $true)][string]$Class,
+        [string]$Filter = ''
+    )
+    if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {
+        try {
+            if ($Filter) {
+                $rows = @(Get-CimInstance -ClassName $Class -Filter $Filter -ErrorAction Stop)
+            } else {
+                $rows = @(Get-CimInstance -ClassName $Class -ErrorAction Stop)
+            }
+            if ($rows.Count -gt 0 -and $null -ne $rows[0]) { return $rows }
+        } catch { }
+    }
+    try {
+        if ($Filter) {
+            return @(Get-WmiObject -Class $Class -Filter $Filter -ErrorAction Stop)
+        }
+        return @(Get-WmiObject -Class $Class -ErrorAction Stop)
+    } catch {
+        return @()
+    }
+}
+
 function Get-PrimaryMac {
-    $cfg = Get-CimInstance Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPEnabled } | Select-Object -First 1
-    if (-not $cfg) { return $null }
-    ($cfg.MACAddress -replace '-', ':').ToUpperInvariant()
+    $cfg = Get-Win32Class -Class Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' |
+        Select-Object -First 1
+    if (-not $cfg -or -not $cfg.MACAddress) { return $null }
+    try {
+        return (($cfg.MACAddress -replace '-', ':').ToUpperInvariant())
+    } catch {
+        return $null
+    }
 }
 
 function Get-PreferredHostname {
@@ -122,7 +151,14 @@ function Get-PnpPeripheralsForReport([int]$Max = 140) {
 
     $seen = @{}
     $out = [System.Collections.ArrayList]@()
-    foreach ($d in @(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue)) {
+    $devs = @()
+    try {
+        $devs = @(Get-PnpDevice -PresentOnly -ErrorAction Stop)
+    } catch {
+        $devs = @()
+    }
+    foreach ($d in $devs) {
+        if ($null -eq $d) { continue }
         if ($out.Count -ge $Max) { break }
         if (-not $d.Class) { continue }
         $cls = [string]$d.Class
@@ -162,12 +198,37 @@ function Get-PnpPeripheralsForReport([int]$Max = 140) {
         }
     } catch { }
 
+    if ($out.Count -eq 0) {
+        $wmiMap = @(
+            @{ Class = 'Win32_Keyboard'; Kind = 'keyboard' }
+            @{ Class = 'Win32_PointingDevice'; Kind = 'mouse' }
+            @{ Class = 'Win32_DesktopMonitor'; Kind = 'monitor' }
+            @{ Class = 'Win32_Printer'; Kind = 'printer' }
+            @{ Class = 'Win32_SoundDevice'; Kind = 'audio' }
+            @{ Class = 'Win32_NetworkAdapter'; Kind = 'net' }
+        )
+        foreach ($item in $wmiMap) {
+            foreach ($row in @(Get-Win32Class -Class $item.Class)) {
+                if ($out.Count -ge $Max) { break }
+                if (-not $row -or -not $row.Name) { continue }
+                $name = ([string]$row.Name).Trim()
+                if (-not $name) { continue }
+                if ($item.Kind -eq 'monitor' -and -not (Test-IsRealMonitorName $name)) { continue }
+                if (Test-IsNoisePeripheral -Kind $item.Kind -Name $name) { continue }
+                $key = "$($item.Kind)|$($name.ToLowerInvariant())"
+                if ($seen.ContainsKey($key)) { continue }
+                $seen[$key] = $true
+                [void]$out.Add([pscustomobject]@{ kind = $item.Kind; name = $name })
+            }
+        }
+    }
+
     @($out.ToArray() | Sort-Object { if ($kindOrder.ContainsKey($_.kind)) { $kindOrder[$_.kind] } else { 99 } }, { $_.name })
 }
 
 function Get-InventoryGpuName {
     $names = [System.Collections.ArrayList]@()
-    foreach ($v in @(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue)) {
+    foreach ($v in @(Get-Win32Class -Class Win32_VideoController)) {
         if ($v.Name -and $v.Name.Trim()) { [void]$names.Add($v.Name.Trim()) }
     }
     if ($names.Count -eq 0) { return $null }
@@ -183,7 +244,7 @@ function Get-InventoryGpuName {
 function Get-InventoryDisks {
     $rows = [System.Collections.ArrayList]@()
     $seen = @{}
-    foreach ($d in @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue)) {
+    foreach ($d in @(Get-Win32Class -Class Win32_LogicalDisk -Filter 'DriveType=3')) {
         $size = [double]$d.Size
         if ($size -le 0) { continue }
         $mount = ($d.DeviceID -as [string]).Trim().ToUpperInvariant()
@@ -206,16 +267,16 @@ function Get-CoreInventoryPayload {
 
     Set-AgentProgress '[1/4] WMI: system, BIOS, OS, CPU...' 20
     Log '[core] WMI: system, BIOS, OS, CPU...'
-    $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
-    $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
-    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
-    $cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+    $cs = @(Get-Win32Class -Class Win32_ComputerSystem) | Select-Object -First 1
+    $bios = @(Get-Win32Class -Class Win32_BIOS) | Select-Object -First 1
+    $os = @(Get-Win32Class -Class Win32_OperatingSystem) | Select-Object -First 1
+    $cpu = @(Get-Win32Class -Class Win32_Processor) | Select-Object -First 1
 
     $serial = Get-CleanWmiText $(if ($bios -and $bios.SerialNumber) { $bios.SerialNumber })
     $mfr = Get-CleanWmiText $(if ($cs -and $cs.Manufacturer) { $cs.Manufacturer })
     $model = Get-CleanWmiText $(if ($cs -and $cs.Model) { $cs.Model })
 
-    $bb = Get-CimInstance Win32_BaseBoard -ErrorAction SilentlyContinue
+    $bb = @(Get-Win32Class -Class Win32_BaseBoard) | Select-Object -First 1
     $mbMfr = $mbProd = $null
     if ($bb) {
         $mbMfr = Get-CleanWmiText $bb.Manufacturer
@@ -241,16 +302,26 @@ function Get-CoreInventoryPayload {
 
     Set-AgentProgress '[2/4] Registry: installed software...' 40
     Log '[core] Registry: installed software...'
-    $sw = @(Get-InstalledSoftwareMax -Max $swMax)
+    $sw = @()
+    try { $sw = @(Get-InstalledSoftwareMax -Max $swMax) } catch {
+        Log ("WARN: software collect: " + $_.Exception.Message)
+    }
 
     Set-AgentProgress '[3/4] PnP: peripherals...' 55
     Log '[core] PnP: peripherals...'
-    $periph = @(Get-PnpPeripheralsForReport)
+    $periph = @()
+    try { $periph = @(Get-PnpPeripheralsForReport) } catch {
+        Log ("WARN: peripherals collect: " + $_.Exception.Message)
+    }
 
     Set-AgentProgress '[4/4] GPU, disks...' 65
     Log '[core] GPU, disks...'
-    $gpu = Get-InventoryGpuName
-    $disks = @(Get-InventoryDisks)
+    $gpu = $null
+    try { $gpu = Get-InventoryGpuName } catch { }
+    $disks = @()
+    try { $disks = @(Get-InventoryDisks) } catch {
+        Log ("WARN: disks collect: " + $_.Exception.Message)
+    }
 
     [ordered]@{
         hostname                 = (Get-PreferredHostname)

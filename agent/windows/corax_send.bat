@@ -131,12 +131,20 @@ if "%_PH%"=="1" (
   goto :done
 )
 
-REM PS 3+ (Win8/10/11, or Win7+WMF) has this key. Avoid spawning powershell.exe.
-set "CORAX_FLAVOR=win7"
-reg query "HKLM\SOFTWARE\Microsoft\PowerShell\3" >NUL 2>&1
-if not errorlevel 1 set "CORAX_FLAVOR=win10"
-reg query "HKLM\SOFTWARE\Wow6432Node\Microsoft\PowerShell\3" >NUL 2>&1
-if not errorlevel 1 set "CORAX_FLAVOR=win10"
+REM Pick collector by OS, not by WMF. Win7+WMF 5 still has no Get-PnpDevice /
+REM Get-NetAdapter / working CIM-without-WinRM. Routing those PCs to win10\
+REM used to POST a hostname-only payload.
+set "CORAX_FLAVOR=win10"
+ver | findstr /C:" 6.1." /C:" 6.0." >NUL
+if not errorlevel 1 set "CORAX_FLAVOR=win7"
+if "%CORAX_FLAVOR%"=="win10" (
+  reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentVersion 2>NUL | findstr /C:"6.1" /C:"6.0" >NUL
+  if not errorlevel 1 set "CORAX_FLAVOR=win7"
+)
+if "%CORAX_FLAVOR%"=="win10" (
+  reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v ProductName 2>NUL | findstr /I /C:"Windows 7" /C:"Windows Vista" >NUL
+  if not errorlevel 1 set "CORAX_FLAVOR=win7"
+)
 
 if not defined CORAX_HIDDEN (
   echo   OS       Windows  -^> %CORAX_FLAVOR%

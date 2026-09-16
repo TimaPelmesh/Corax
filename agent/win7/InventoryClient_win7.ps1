@@ -230,12 +230,14 @@ function Log-NetDiag([string]$HostName, [int]$Port, [string]$Uri) {
 
 function JsonEscape([string]$s) {
     if ($s -eq $null) { return '' }
-    $t = $s
+    $t = [string]$s
     $t = $t -replace '\\', '\\\\'
     $t = $t -replace '"', '\"'
     $t = $t -replace "`r", '\r'
     $t = $t -replace "`n", '\n'
     $t = $t -replace "`t", '\t'
+    $t = $t -replace ([char]8), '\b'
+    $t = $t -replace ([char]12), '\f'
     return $t
 }
 
@@ -354,81 +356,82 @@ function Add-InstalledSoftwareEntry {
     [void]$List.Add(@{ name = $name; version = $ver })
 }
 
+function Get-HashText($Item, [string]$Key) {
+    if ($null -eq $Item) { return $null }
+    try {
+        $v = $Item[$Key]
+        if ($v -ne $null -and ([string]$v).Trim().Length -gt 0) { return [string]$v }
+    } catch { }
+    try {
+        $v = $Item.$Key
+        if ($v -ne $null -and ([string]$v).Trim().Length -gt 0) { return [string]$v }
+    } catch { }
+    return $null
+}
+
+function Add-SoftwareFromRegistryKey($Root, [string]$SubPath, $List, $Seen, [int]$Max) {
+    if ($List.Count -ge $Max) { return }
+    $k = $null
+    try { $k = $Root.OpenSubKey($SubPath) } catch { return }
+    if ($null -eq $k) { return }
+    try {
+        foreach ($subName in @($k.GetSubKeyNames())) {
+            if ($List.Count -ge $Max) { break }
+            $sk = $null
+            try {
+                $sk = $k.OpenSubKey($subName)
+                if ($null -eq $sk) { continue }
+                $name = $sk.GetValue('DisplayName')
+                if ($null -eq $name) { continue }
+                $ver = $sk.GetValue('DisplayVersion')
+                $verStr = $null
+                if ($ver) { $verStr = [string]$ver }
+                Add-InstalledSoftwareEntry -List $List -Seen $Seen -Name ([string]$name) -Version $verStr -Max $Max
+            } catch {
+            } finally {
+                try { if ($sk) { $sk.Close() } } catch { }
+            }
+        }
+    } catch {
+    } finally {
+        try { $k.Close() } catch { }
+    }
+}
+
 function Get-InstalledSoftwareBasic([int]$Max = 500) {
-    # Win7 / PS 2.0: reg.exe lists keys as HKEY_LOCAL_MACHINE\..., not HKLM\...
     $seen = @{}
     $out = New-Object System.Collections.ArrayList
-
-    $regBases = @(
-        @{ Query = 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'; Prefix = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' },
-        @{ Query = 'HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall'; Prefix = 'HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall' },
-        @{ Query = 'HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'; Prefix = 'HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' }
-    )
-
-    foreach ($base in $regBases) {
-        if ($out.Count -ge $Max) { break }
-        try {
-            $keys = & reg.exe query $base.Query 2>&1
-            if ($INV_DEBUG) {
-                Log ("DBG: reg query " + $base.Query + " lines=" + $keys.Count)
-            }
-            foreach ($k in $keys) {
-                if ($out.Count -ge $Max) { break }
-                $key = ([string]$k).Trim()
-                if ($key.Length -eq 0) { continue }
-                if ($key -match '(?i)^error') { continue }
-                if (-not $key.StartsWith($base.Prefix)) { continue }
-                if ($key -eq $base.Prefix) { continue }
-                $dnOut = & reg.exe query $key /v DisplayName 2>&1
-                $dnLine = $null
-                foreach ($line in @($dnOut)) {
-                    $s = [string]$line
-                    if ($s -match 'DisplayName') { $dnLine = $s; break }
+    try {
+        $hklm = [Microsoft.Win32.Registry]::LocalMachine
+        $hkcu = [Microsoft.Win32.Registry]::CurrentUser
+        Add-SoftwareFromRegistryKey $hklm 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' $out $seen $Max
+        Add-SoftwareFromRegistryKey $hklm 'SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall' $out $seen $Max
+        Add-SoftwareFromRegistryKey $hkcu 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' $out $seen $Max
+        Add-SoftwareFromRegistryKey $hkcu 'SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall' $out $seen $Max
+    } catch {
+        if ($INV_DEBUG) { Log ("DBG: Registry software: " + $_.Exception.Message) }
+    }
+    if ($out.Count -eq 0) {
+        $psPaths = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        foreach ($pattern in $psPaths) {
+            if ($out.Count -ge $Max) { break }
+            try {
+                $propsList = Get-ItemProperty -Path $pattern -ErrorAction SilentlyContinue
+                foreach ($props in @($propsList)) {
+                    if ($out.Count -ge $Max) { break }
+                    if (-not $props -or -not $props.DisplayName) { continue }
+                    $ver = $null
+                    if ($props.DisplayVersion) { $ver = [string]$props.DisplayVersion }
+                    Add-InstalledSoftwareEntry -List $out -Seen $seen -Name ([string]$props.DisplayName) -Version $ver -Max $Max
                 }
-                if (-not $dnLine) { continue }
-                $name = Get-SanitizedAgentText (($dnLine -replace '(?i).*REG_\w+\s+', '').Trim())
-                if (-not $name) { continue }
-                $ver = $null
-                $verOut = & reg.exe query $key /v DisplayVersion 2>&1
-                foreach ($line in @($verOut)) {
-                    $s = [string]$line
-                    if ($s -match 'DisplayVersion') {
-                        $ver = Get-SanitizedAgentText (($s -replace '(?i).*REG_\w+\s+', '').Trim())
-                        break
-                    }
-                }
-                Add-InstalledSoftwareEntry -List $out -Seen $seen -Name $name -Version $ver -Max $Max
-            }
-        } catch {
-            if ($INV_DEBUG) { Log ("DBG: reg exception on " + $base.Query + ": " + $_.Exception.Message) }
+            } catch { }
         }
     }
-
-    $psPaths = @(
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-        'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
-    )
-    foreach ($pattern in $psPaths) {
-        if ($out.Count -ge $Max) { break }
-        try {
-            $propsList = Get-ItemProperty -Path $pattern -ErrorAction SilentlyContinue
-            if (-not $propsList) { continue }
-            foreach ($props in @($propsList)) {
-                if ($out.Count -ge $Max) { break }
-                if (-not $props -or -not $props.DisplayName) { continue }
-                $ver = $null
-                if ($props.DisplayVersion) { $ver = [string]$props.DisplayVersion }
-                Add-InstalledSoftwareEntry -List $out -Seen $seen -Name ([string]$props.DisplayName) -Version $ver -Max $Max
-            }
-        } catch {
-            if ($INV_DEBUG) { Log ("DBG: Get-ItemProperty failed on " + $pattern + ": " + $_.Exception.Message) }
-        }
-    }
-
-    if ($INV_DEBUG) {
-        Log ("DBG: software collected count=" + $out.Count)
-    }
+    if ($INV_DEBUG) { Log ("DBG: software collected count=" + $out.Count) }
     return @($out.ToArray())
 }
 
@@ -512,106 +515,86 @@ function Get-PeripheralsBasic([int]$Max = 80) {
         return $false
     }
 
-    # Win7: full enumeration of Win32_PnPEntity can be extremely slow/hang on some PCs.
-    # Query only selected PNPClass values with WQL filters.
-    $want = @(
-        @{ pnp = 'Keyboard'; kind = 'keyboard' },
-        @{ pnp = 'Mouse'; kind = 'mouse' },
-        @{ pnp = 'Monitor'; kind = 'monitor' },
-        @{ pnp = 'Image'; kind = 'camera' },
-        @{ pnp = 'Camera'; kind = 'camera' },
-        @{ pnp = 'Media'; kind = 'audio' },
-        @{ pnp = 'AudioEndpoint'; kind = 'audio' },
-        @{ pnp = 'Printer'; kind = 'printer' },
-        @{ pnp = 'PrintQueue'; kind = 'printer' },
-        @{ pnp = 'Bluetooth'; kind = 'bluetooth' },
-        @{ pnp = 'Net'; kind = 'net' }
+    # Win7 Win32_PnPEntity has no PNPClass (Win8+). Dedicated WMI classes first.
+    $wmiMap = @(
+        @{ Class = 'Win32_Keyboard'; Kind = 'keyboard' },
+        @{ Class = 'Win32_PointingDevice'; Kind = 'mouse' },
+        @{ Class = 'Win32_DesktopMonitor'; Kind = 'monitor' },
+        @{ Class = 'Win32_Printer'; Kind = 'printer' },
+        @{ Class = 'Win32_SoundDevice'; Kind = 'audio' },
+        @{ Class = 'Win32_NetworkAdapter'; Kind = 'net' }
     )
-
-    try {
-        foreach ($w in $want) {
-            if ($out.Count -ge $Max) { break }
-            $pnpClass = [string]$w.pnp
-            $kind = [string]$w.kind
-            $flt = "PNPClass='$pnpClass'"
-            try {
-                $devs = Get-WmiObject Win32_PnPEntity -Filter $flt -ErrorAction SilentlyContinue
-                if ($INV_DEBUG) { Log ("DBG: PnPEntity filter " + $flt + " count=" + $(if ($devs) { @($devs).Count } else { 0 })) }
-                foreach ($d in @($devs)) {
-                    if ($out.Count -ge $Max) { break }
-                    $name = $null
-                    try { if ($d.Name) { $name = ([string]$d.Name).Trim() } } catch { }
-                    if (-not $name) { continue }
-                    if (Test-IsNoisePeripheral $kind $name) { continue }
-                    $k = ($kind + '|' + $name.ToLower())
-                    if ($seen.ContainsKey($k)) { continue }
-                    $seen[$k] = $true
-                    [void]$out.Add(@{ kind = $kind; name = $name })
-                }
-            } catch {
-                if ($INV_DEBUG) { Log ("DBG: PnPEntity filter failed (" + $flt + "): " + $_.Exception.Message) }
+    foreach ($item in $wmiMap) {
+        if ($out.Count -ge $Max) { break }
+        $kind = [string]$item.Kind
+        try {
+            foreach ($row in @(Get-WmiObject -Class $item.Class -ErrorAction SilentlyContinue)) {
+                if ($out.Count -ge $Max) { break }
+                if (-not $row -or -not $row.Name) { continue }
+                $name = ([string]$row.Name).Trim()
+                if (-not $name) { continue }
+                if (Test-IsNoisePeripheral $kind $name) { continue }
+                $k = ($kind + '|' + $name.ToLower())
+                if ($seen.ContainsKey($k)) { continue }
+                $seen[$k] = $true
+                [void]$out.Add(@{ kind = $kind; name = $name })
             }
-        }
-    } catch {
-        if ($INV_DEBUG) { Log ("DBG: peripherals filtered exception: " + $_.Exception.Message) }
+        } catch { }
     }
-
-    # Fallback WMI classes if PnPEntity yields nothing
-    if ($out.Count -eq 0) {
-        try {
-            foreach ($k in @(Get-WmiObject Win32_Keyboard -ErrorAction SilentlyContinue)) {
-                if ($out.Count -ge $Max) { break }
-                if ($k -and $k.Name) { [void]$out.Add(@{ kind='keyboard'; name=([string]$k.Name).Trim() }) }
-            }
-        } catch { }
-        try {
-            foreach ($m in @(Get-WmiObject Win32_PointingDevice -ErrorAction SilentlyContinue)) {
-                if ($out.Count -ge $Max) { break }
-                if ($m -and $m.Name) { [void]$out.Add(@{ kind='mouse'; name=([string]$m.Name).Trim() }) }
-            }
-        } catch { }
-        try {
-            foreach ($p in @(Get-WmiObject Win32_Printer -ErrorAction SilentlyContinue)) {
-                if ($out.Count -ge $Max) { break }
-                if ($p -and $p.Name) { [void]$out.Add(@{ kind='printer'; name=([string]$p.Name).Trim() }) }
-            }
-        } catch { }
-        try {
-            foreach ($a in @(Get-WmiObject Win32_SoundDevice -ErrorAction SilentlyContinue)) {
-                if ($out.Count -ge $Max) { break }
-                if ($a -and $a.Name) { [void]$out.Add(@{ kind='audio'; name=([string]$a.Name).Trim() }) }
-            }
-        } catch { }
-        try {
-            foreach ($n in @(Get-WmiObject Win32_NetworkAdapter -ErrorAction SilentlyContinue)) {
-                if ($out.Count -ge $Max) { break }
-                if ($n -and $n.Name) {
-                    $nm = ([string]$n.Name).Trim()
-                    if (-not (Test-IsNoisePeripheral 'net' $nm)) { [void]$out.Add(@{ kind='net'; name=$nm }) }
-                }
-            }
-        } catch { }
-        try {
-            foreach ($mon in @(Get-WmiObject Win32_DesktopMonitor -ErrorAction SilentlyContinue)) {
-                if ($out.Count -ge $Max) { break }
-                if ($mon -and $mon.Name) { [void]$out.Add(@{ kind='monitor'; name=([string]$mon.Name).Trim() }) }
-            }
-        } catch { }
-
-        # de-dupe fallback entries
-        $ded = New-Object System.Collections.ArrayList
-        foreach ($x in $out) {
-            if (-not $x.name) { continue }
-            if (Test-IsNoisePeripheral ([string]$x.kind) ([string]$x.name)) { continue }
-            $key = ($x.kind + '|' + ([string]$x.name).ToLower())
-            if ($seen.ContainsKey($key)) { continue }
-            $seen[$key] = $true
-            [void]$ded.Add($x)
-        }
-        $out = $ded
-        if ($INV_DEBUG) { Log ("DBG: peripherals fallback count=" + $out.Count) }
-    }
+    if ($INV_DEBUG) { Log ("DBG: peripherals WMI count=" + $out.Count) }
     return @($out.ToArray())
+}
+
+function Get-NetworkAdaptersWin7 {
+    $out = New-Object System.Collections.ArrayList
+    try {
+        foreach ($cfg in @(Get-WmiObject Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=TRUE' -ErrorAction SilentlyContinue)) {
+            if (-not $cfg) { continue }
+            $ips = New-Object System.Collections.ArrayList
+            foreach ($ip in @($cfg.IPAddress)) {
+                if ($ip -and $ip -match '^\d+\.\d+\.\d+\.\d+$') { [void]$ips.Add([string]$ip) }
+            }
+            if ($ips.Count -eq 0) { continue }
+            $mac = $null
+            if ($cfg.MACAddress) { $mac = ([string]$cfg.MACAddress).Replace('-', ':').ToUpper() }
+            $gw = $null
+            foreach ($g in @($cfg.DefaultIPGateway)) {
+                if ($g -and $g -match '^\d+\.\d+\.\d+\.\d+$') { $gw = [string]$g; break }
+            }
+            $desc = $null
+            if ($cfg.Description) { $desc = ([string]$cfg.Description).Trim() }
+            [void]$out.Add(@{
+                description = $desc
+                mac = $mac
+                mac_address = $mac
+                ipv4 = @($ips.ToArray())
+                gateway = $gw
+                status = 'up'
+            })
+        }
+    } catch { }
+    return @($out.ToArray())
+}
+
+function Get-InteractiveUserWin7 {
+    try {
+        $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cs -and $cs.UserName) {
+            $u = ([string]$cs.UserName).Trim()
+            if ($u) { return $u }
+        }
+    } catch { }
+    try {
+        $ex = Get-WmiObject Win32_Process -Filter "Name='explorer.exe'" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($ex) {
+            $owner = $ex.GetOwner()
+            if ($owner -and $owner.User) {
+                if ($owner.Domain) { return ([string]$owner.Domain + '\' + [string]$owner.User) }
+                return [string]$owner.User
+            }
+        }
+    } catch { }
+    return $null
 }
 
 function Post-Json([string]$Uri, [string]$Token, [string]$Json) {
@@ -692,22 +675,18 @@ $token = $env:AGENT_TOKEN
 
 try { Install-CoraxHelpdeskShortcut -ServerUrl $base -Hostname $env:COMPUTERNAME } catch { }
 
-# Candidates: ports from URL (e.g. 3250 for docker 3250:3001), then 3001, 3000; paths /api/v1/agent/inventory or legacy
+# POST only to the stamped URL. Do not spray 3250/3001 — that looked like a "weird" send on lab PCs.
 $u = New-Object System.Uri($base)
 $serverHost = $u.Host
-$scheme = $u.Scheme
-$ports = @()
-if ($u.Port -gt 0) {
-    $urlPort = [int]$u.Port
-    if ($urlPort -eq 3250 -and -not ($ports -contains 3001)) { $ports += 3001 }
-    if (-not ($ports -contains $urlPort)) { $ports += $urlPort }
-}
-if (-not ($ports -contains 3250)) { $ports += 3250 }
-if (-not ($ports -contains 3001)) { $ports += 3001 }
-if (-not ($ports -contains 3000)) { $ports += 3000 }
-$paths = @('/api/v1/agent/inventory', '/api/agent/inventory')
+$urlPort = 80
+if ($u.Scheme -eq 'https') { $urlPort = 443 }
+if ($u.Port -gt 0) { $urlPort = [int]$u.Port }
+$uris = @(
+    ($base + '/api/v1/agent/inventory'),
+    ($base + '/api/agent/inventory')
+)
 
-Log "[1/5] Collect: machine + OS + CPU + MAC ..."
+Log "[1/6] Collect: machine + OS + CPU + MAC ..."
 $hostname = FirstNonEmpty @($env:COMPUTERNAME, (Get-WmiText 'Win32_ComputerSystem' 'Name'))
 if (-not $hostname -or $hostname.Trim().Length -eq 0) { $hostname = 'unknown-host' }
 $osName = Safe-Call "WMI OS Caption" { Get-WmiText 'Win32_OperatingSystem' 'Caption' }
@@ -728,7 +707,7 @@ $mbMfr = Safe-Call "WMI baseboard Manufacturer" { Get-WmiText 'Win32_BaseBoard' 
 $mbProduct = Safe-Call "WMI baseboard Product" { Get-WmiText 'Win32_BaseBoard' 'Product' }
 $ramGb = $null
 try {
-    $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue
+    $cs = Get-WmiObject Win32_ComputerSystem -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cs -and $cs.TotalPhysicalMemory) {
         $ramGb = [math]::Round(([double]$cs.TotalPhysicalMemory / 1GB), 2)
     }
@@ -739,21 +718,26 @@ try {
 $sw = @()
 $per = @()
 $disks = @()
-Log "[2/5] Registry: installed software ..."
+$nics = @()
+$primaryUser = $null
+Log "[2/6] Registry: installed software ..."
 try { $sw = @(Get-InstalledSoftwareBasic -Max 400) } catch { if ($INV_DEBUG) { Log ("DBG: software failed: " + $_.Exception.Message) } }
-Log "[3/5] WMI: peripherals ..."
+Log "[3/6] WMI: peripherals ..."
 try { $per = @(Get-PeripheralsBasic -Max 80) } catch { if ($INV_DEBUG) { Log ("DBG: peripherals failed: " + $_.Exception.Message) } }
-Log "[4/5] WMI: disks ..."
+Log "[4/6] WMI: disks ..."
 try { $disks = @(Get-InventoryDisks) } catch { if ($INV_DEBUG) { Log ("DBG: disks failed: " + $_.Exception.Message) } }
+Log "[5/6] WMI: network + user ..."
+try { $nics = @(Get-NetworkAdaptersWin7) } catch { if ($INV_DEBUG) { Log ("DBG: nics failed: " + $_.Exception.Message) } }
+try { $primaryUser = Get-InteractiveUserWin7 } catch { }
 
-# Build JSON manually (PS2-safe).
-Log "[5/5] JSON: build payload ..."
+# Build JSON manually (PS2-safe). Hashtable keys via indexer — `.name` is empty on PS 2 arrays.
+Log "[6/6] JSON: build payload ..."
 $json = '{'
 $json += '"hostname":"' + (JsonEscape $hostname) + '",'
 $json += '"serial_number":' + ($(if ($serial) { '"' + (JsonEscape $serial) + '"' } else { 'null' })) + ','
 $json += '"mac_primary":' + ($(if ($mac) { '"' + (JsonEscape $mac) + '"' } else { 'null' })) + ','
 $json += '"cpu":' + ($(if ($cpu) { '"' + (JsonEscape $cpu) + '"' } else { 'null' })) + ','
-$json += '"ram_gb":' + ($(if ($ramGb -ne $null) { [string]$ramGb } else { 'null' })) + ','
+$json += '"ram_gb":' + ($(if ($ramGb -ne $null) { ([string]$ramGb).Replace(',', '.') } else { 'null' })) + ','
 $json += '"memory_used_percent":' + ($(if ($memPct -ne $null) { [string]$memPct } else { 'null' })) + ','
 $json += '"gpu_name":' + ($(if ($gpuName) { '"' + (JsonEscape $gpuName) + '"' } else { 'null' })) + ','
 $json += '"os_name":' + ($(if ($osName) { '"' + (JsonEscape $osName) + '"' } else { 'null' })) + ','
@@ -766,38 +750,79 @@ $json += '"location":null,'
 $json += '"software":['
 for ($i = 0; $i -lt $sw.Count; $i++) {
     if ($i -gt 0) { $json += ',' }
-    $n = $sw[$i].name
-    $v = $sw[$i].version
+    $n = Get-HashText $sw[$i] 'name'
+    $v = Get-HashText $sw[$i] 'version'
     $json += '{"name":"' + (JsonEscape ([string]$n)) + '","version":' + ($(if ($v) { '"' + (JsonEscape ([string]$v)) + '"' } else { 'null' })) + '}'
 }
 $json += '],'
 $json += '"peripherals":['
 for ($i = 0; $i -lt $per.Count; $i++) {
     if ($i -gt 0) { $json += ',' }
-    $json += '{"kind":"' + (JsonEscape ([string]$per[$i].kind)) + '","name":"' + (JsonEscape ([string]$per[$i].name)) + '"}'
+    $pk = Get-HashText $per[$i] 'kind'
+    $pn = Get-HashText $per[$i] 'name'
+    $json += '{"kind":"' + (JsonEscape ([string]$pk)) + '","name":"' + (JsonEscape ([string]$pn)) + '"}'
 }
 $json += '],'
 $json += '"disks":['
 for ($i = 0; $i -lt $disks.Count; $i++) {
     if ($i -gt 0) { $json += ',' }
     $d = $disks[$i]
+    $mount = Get-HashText $d 'mount'
+    $label = Get-HashText $d 'label'
+    $tot = $null; $used = $null; $free = $null
+    try { $tot = $d['total_gb'] } catch { try { $tot = $d.total_gb } catch { } }
+    try { $used = $d['used_percent'] } catch { try { $used = $d.used_percent } catch { } }
+    try { $free = $d['free_gb'] } catch { try { $free = $d.free_gb } catch { } }
     $json += '{'
-    $json += '"mount":"' + (JsonEscape ([string]$d.mount)) + '",'
-    $json += '"label":' + ($(if ($d.label) { '"' + (JsonEscape ([string]$d.label)) + '"' } else { 'null' })) + ','
-    $json += '"total_gb":' + ($(if ($d.total_gb -ne $null) { [string]$d.total_gb } else { 'null' })) + ','
-    $json += '"used_percent":' + ($(if ($d.used_percent -ne $null) { [string]$d.used_percent } else { 'null' })) + ','
-    $json += '"free_gb":' + ($(if ($d.free_gb -ne $null) { [string]$d.free_gb } else { 'null' }))
+    $json += '"mount":"' + (JsonEscape ([string]$mount)) + '",'
+    $json += '"label":' + ($(if ($label) { '"' + (JsonEscape $label) + '"' } else { 'null' })) + ','
+    $json += '"total_gb":' + ($(if ($tot -ne $null) { ([string]$tot).Replace(',', '.') } else { 'null' })) + ','
+    $json += '"used_percent":' + ($(if ($used -ne $null) { [string]$used } else { 'null' })) + ','
+    $json += '"free_gb":' + ($(if ($free -ne $null) { ([string]$free).Replace(',', '.') } else { 'null' }))
     $json += '}'
 }
-$json += ']'
+$json += '],'
+$json += '"extended":{'
+$json += '"agent_version":"3.2.4-win7",'
+$json += '"network":{"adapters":['
+for ($i = 0; $i -lt $nics.Count; $i++) {
+    if ($i -gt 0) { $json += ',' }
+    $ad = $nics[$i]
+    $desc = Get-HashText $ad 'description'
+    $adMac = Get-HashText $ad 'mac'
+    $gw = Get-HashText $ad 'gateway'
+    $json += '{'
+    $json += '"description":' + ($(if ($desc) { '"' + (JsonEscape $desc) + '"' } else { 'null' })) + ','
+    $json += '"mac":' + ($(if ($adMac) { '"' + (JsonEscape $adMac) + '"' } else { 'null' })) + ','
+    $json += '"mac_address":' + ($(if ($adMac) { '"' + (JsonEscape $adMac) + '"' } else { 'null' })) + ','
+    $json += '"status":"up",'
+    $json += '"gateway":' + ($(if ($gw) { '"' + (JsonEscape $gw) + '"' } else { 'null' })) + ','
+    $json += '"ipv4":['
+    $ipList = @()
+    try { $ipList = @($ad['ipv4']) } catch { try { $ipList = @($ad.ipv4) } catch { } }
+    $ipN = 0
+    foreach ($ip in $ipList) {
+        if (-not $ip) { continue }
+        if ($ipN -gt 0) { $json += ',' }
+        $json += '"' + (JsonEscape ([string]$ip)) + '"'
+        $ipN++
+    }
+    $json += ']'
+    $json += '}'
+}
+$json += ']}'
+if ($primaryUser) {
+    $json += ',"system":{"primary_user":"' + (JsonEscape $primaryUser) + '"}'
+    $json += ',"sessions":[{"username":"' + (JsonEscape $primaryUser) + '"}]'
+}
+$json += '}'
 $json += '}'
 
 Log ("Config: base URL = " + $base)
-Log ("Config: host = " + $serverHost)
+Log ("Config: host = " + $serverHost + " port=" + $urlPort)
 Log ("Config: token = " + ($(if ($token) { $token.Substring(0, [Math]::Min(8, $token.Length)) + '...' } else { '(none)' })))
-Log ("Config: payload sizes - sw=" + $sw.Count + " per=" + $per.Count + " disks=" + $disks.Count)
+Log ("Config: payload sizes - sw=" + $sw.Count + " per=" + $per.Count + " disks=" + $disks.Count + " nics=" + $nics.Count)
 
-# For troubleshooting (especially on Win7): store payload locally.
 try {
     $payloadPath = Join-Path $env:TEMP 'inventory_payload_win7.json'
     [System.IO.File]::WriteAllText($payloadPath, $json, [System.Text.Encoding]::UTF8)
@@ -806,50 +831,36 @@ try {
 
 $lastErr = $null
 
-# Store-and-forward: send previous unsent report first.
+function Send-Win7Report([string]$Payload) {
+    foreach ($uri in $uris) {
+        Log ("HTTP: POST " + $uri)
+        try {
+            Log-NetDiag -HostName $serverHost -Port $urlPort -Uri $uri
+            $resp = Post-Json -Uri $uri -Token $token -Json $Payload
+            Log ("HTTP: OK " + $resp)
+            Log ("HTTP: working endpoint = " + $uri)
+            return $true
+        } catch {
+            $script:lastErr = $_.Exception
+            Log ("HTTP: failed: " + $_.Exception.Message)
+        }
+    }
+    return $false
+}
+
 try {
     $pending = Load-PendingReport
     if ($pending -and $pending.Trim().Length -gt 0) {
         Log "Found pending report from previous run. Sending it first..."
-        foreach ($p0 in $ports) {
-            foreach ($path0 in $paths) {
-                $uri0 = "{0}://{1}:{2}{3}" -f $scheme, $serverHost, $p0, $path0
-                Log ("HTTP: POST (pending) " + $uri0)
-                try {
-                    Log-NetDiag -HostName $serverHost -Port ([int]$p0) -Uri $uri0
-                    $resp0 = Post-Json -Uri $uri0 -Token $token -Json $pending
-                    Log ("HTTP: OK (pending) " + $resp0)
-                    Clear-PendingReport
-                    $p0 = $null
-                    $path0 = $null
-                    break
-                } catch {
-                    $lastErr = $_.Exception
-                    Log ("HTTP: pending failed: " + $lastErr.Message)
-                }
-            }
-        }
+        if (Send-Win7Report $pending) { Clear-PendingReport }
     }
 } catch { }
 
-foreach ($p in $ports) {
-    foreach ($path in $paths) {
-        $uri = "{0}://{1}:{2}{3}" -f $scheme, $serverHost, $p, $path
-        Log ("HTTP: POST " + $uri)
-        try {
-            Log-NetDiag -HostName $serverHost -Port ([int]$p) -Uri $uri
-            $resp = Post-Json -Uri $uri -Token $token -Json $json
-            Log ("HTTP: OK " + $resp)
-            Log ("HTTP: working endpoint = " + $uri)
-            try { Install-CoraxHelpdeskShortcut -ServerUrl $base -Hostname $hostname } catch { }
-            Log "=== Inventory client (Win7): done ==="
-            Write-CoraxLastRun -Result 'OK' -Detail 'Report sent'
-            exit 0
-        } catch {
-            $lastErr = $_.Exception
-            Log ("HTTP: failed: " + $lastErr.Message)
-        }
-    }
+if (Send-Win7Report $json) {
+    try { Install-CoraxHelpdeskShortcut -ServerUrl $base -Hostname $hostname } catch { }
+    Log "=== Inventory client (Win7): done ==="
+    Write-CoraxLastRun -Result 'OK' -Detail 'Report sent'
+    exit 0
 }
 
 Log "=== Inventory client (Win7): FAILED ==="

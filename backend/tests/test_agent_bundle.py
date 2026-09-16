@@ -35,7 +35,9 @@ def test_windows_bundle_unifies_win7_and_win10():
         assert "__INVENTORY_SERVER__" not in env
         dispatcher = zf.read("corax_send.bat").decode("utf-8", errors="replace")
         assert "win10\\corax_send.bat" in dispatcher
-        assert "Microsoft\\PowerShell\\3" in dispatcher
+        assert "win7\\inventory_send_win7.bat" in dispatcher
+        assert " 6.1." in dispatcher
+        assert "Windows 7" in dispatcher
         assert "for /f %%P in ('powershell" not in dispatcher
         assert "CORAX_HIDDEN" in dispatcher
         assert "CORAX_VISIBLE" in dispatcher
@@ -66,7 +68,7 @@ def test_windows_bundle_unifies_win7_and_win10():
                     continue
                 assert not _STOP_JOB_FORCE.search(line), f"{arc_name}: {line}"
         config = zf.read("agent_config.json").decode("utf-8")
-        assert "3.2.3-windows" in config
+        assert "3.2.4-windows" in config
         client = zf.read("win10/InventoryClient.ps1").decode("utf-8-sig")
         assert "Start-ExtendedCollectJob" not in client
         assert "Invoke-ExtendedInProcess" in client
@@ -94,6 +96,14 @@ def test_windows_bundle_unifies_win7_and_win10():
         assert "/h#pc=" in win7_client
         assert "Оставить заявку.url" in win7_client
         assert "CORAX-ticket.url" in win7_client
+        assert "Get-NetworkAdaptersWin7" in win7_client
+        assert "Get-Win32Class" not in win7_client
+        assert "PNPClass=" not in win7_client
+        assert "3.2.4-win7" in win7_client
+        assert 'if (-not ($ports -contains 3250))' not in win7_client
+        core = zf.read("win10/lib/Collect-Core.ps1").decode("utf-8-sig")
+        assert "function Get-Win32Class" in core
+        assert "Get-WmiObject -Class $Class" in core
         post = zf.read("win10/lib/Invoke-Post.ps1").decode("utf-8-sig")
         assert "ConvertTo-AgentJson" in post
         assert "JavaScriptSerializer" in post
