@@ -1,34 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import ReactFlow, {
-  Background,
-  BackgroundVariant,
-  Controls,
-  MiniMap,
-  MarkerType,
-  type DefaultEdgeOptions,
-  type EdgeTypes,
-  type Node,
-  type NodeTypes,
-} from 'reactflow'
-import 'reactflow/dist/style.css'
+import { Link } from 'react-router-dom'
 import {
   api,
   type NetworkDevice,
   type NetworkJobStatus,
   type NetworkPollConfig,
-  type NetworkTopology,
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconClose } from '../components/icons'
 import { NetworkDeviceDetailModal } from '../components/NetworkDeviceDetailModal'
-import { NetworkMapNode } from '../components/network/NetworkMapNode'
 import { useLocale } from '../i18n/LocaleContext'
 import type { MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
-import { layoutTopology, mapNodeColor } from './networkMapLayout'
 
-type ViewMode = 'list' | 'map'
 type RoleFilter =
   | 'all'
   | 'gateway'
@@ -47,16 +32,6 @@ type RoleFilter =
   | 'modem'
   | 'host'
   | 'unknown'
-
-/** Stable refs — React Flow warns if nodeTypes/edgeTypes are recreated each render. */
-const RF_NODE_TYPES: NodeTypes = { topology: NetworkMapNode }
-const RF_EDGE_TYPES: EdgeTypes = {}
-const RF_DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
-  type: 'smoothstep',
-  markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-  style: { stroke: 'var(--color-fg-subtle)', strokeWidth: 1.25 },
-}
-const RF_PRO_OPTIONS = { hideAttribution: true }
 
 function fmtWhen(iso: string | null | undefined, locale: string) {
   if (!iso) return '—'
@@ -129,16 +104,13 @@ export function NetworkPage() {
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
 
-  const [view, setView] = useState<ViewMode>('list')
   const [rows, setRows] = useState<NetworkDevice[]>([])
-  const [topo, setTopo] = useState<NetworkTopology | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [detailId, setDetailId] = useState<number | null>(null)
   const [job, setJob] = useState<NetworkJobStatus | null>(null)
-  const [expandClusters, setExpandClusters] = useState<Set<string>>(() => new Set())
   const jobWasRunning = useRef(false)
   const [cfgOpen, setCfgOpen] = useState(false)
   const [cfg, setCfg] = useState<NetworkPollConfig | null>(null)
@@ -151,14 +123,10 @@ export function NetworkPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
 
   const reload = useCallback(async () => {
-    const [devices, topology] = await Promise.all([
-      api.networkDevices({ q: search.trim() || undefined, limit: 1000 }),
-      view === 'map' ? api.networkTopology() : Promise.resolve(null),
-    ])
+    const devices = await api.networkDevices({ q: search.trim() || undefined, limit: 1000 })
     setRows(devices)
-    if (topology) setTopo(topology)
     return devices
-  }, [search, view])
+  }, [search])
 
   useEffect(() => {
     void (async () => {
@@ -183,14 +151,8 @@ export function NetworkPage() {
       total: rows.length,
       ok: rows.filter((r) => r.snmp_status === 'ok').length,
       err: rows.filter((r) => r.snmp_status === 'error').length,
-      links: topo?.edges.length ?? 0,
     }),
-    [rows, topo],
-  )
-
-  const flow = useMemo(
-    () => (topo ? layoutTopology(topo, expandClusters) : { nodes: [], edges: [] }),
-    [topo, expandClusters],
+    [rows],
   )
 
   const jobBusy = Boolean(job?.running)
@@ -224,22 +186,6 @@ export function NetworkPage() {
       window.clearInterval(id)
     }
   }, [reload, t, toast])
-
-  const onMapNodeClick = useCallback((_: unknown, node: Node) => {
-    const clusterOf = (node.data as { clusterOf?: string })?.clusterOf
-    if (clusterOf) {
-      setExpandClusters((prev) => {
-        const next = new Set(prev)
-        next.add(clusterOf)
-        return next
-      })
-      return
-    }
-    if (node.id.startsWith('network_device:')) {
-      const id = Number(node.id.split(':')[1])
-      if (Number.isFinite(id)) setDetailId(id)
-    }
-  }, [])
 
   const openCfg = async () => {
     try {
@@ -348,31 +294,15 @@ export function NetworkPage() {
   ]
 
   return (
-    <div
-      className={
-        view === 'map'
-          ? 'flex w-full flex-col gap-3 px-3 py-4 sm:px-5'
-          : 'mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6'
-      }
-    >
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
       <header className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-[var(--color-border)] p-0.5">
-            <button
-              type="button"
-              onClick={() => setView('list')}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${view === 'list' ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-fg-subtle)]'}`}
-            >
-              {t('network.viewList')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('map')}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${view === 'map' ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-fg-subtle)]'}`}
-            >
-              {t('network.viewMap')}
-            </button>
-          </div>
+          <Link
+            to="/network-map"
+            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
+          >
+            {t('network.openMap')}
+          </Link>
           {canEdit ? (
             <>
               <button
@@ -412,9 +342,6 @@ export function NetworkPage() {
         <span className="rounded-lg bg-red-500/10 px-3 py-1.5 text-red-800 dark:text-red-200">
           {t('network.statErrors')}: <strong>{stats.err}</strong>
         </span>
-        <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
-          {t('network.statLinks')}: <strong>{stats.links}</strong>
-        </span>
       </div>
 
       {jobBusy && job ? (
@@ -444,9 +371,7 @@ export function NetworkPage() {
         </div>
       ) : null}
 
-      {view === 'list' ? (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -534,7 +459,17 @@ export function NetworkPage() {
                           />
                         </td>
                       ) : null}
-                      <td className="app-table-sticky-col px-3 py-2 font-medium">{r.hostname || r.sys_name || '—'}</td>
+                      <td className="app-table-sticky-col px-3 py-2 font-medium">
+                        <span>{r.hostname || r.sys_name || '—'}</span>
+                        {r.zabbix?.hostid ? (
+                          <span className="ml-1.5 inline-flex rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-800 dark:text-rose-200">
+                            Zabbix
+                          </span>
+                        ) : null}
+                        {(r.neighbor_count || 0) > 0 ? (
+                          <span className="ml-1 text-[10px] text-[var(--color-fg-subtle)]">LLDP {r.neighbor_count}</span>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2 font-mono text-xs">{r.ip_address}</td>
                       <td className="px-3 py-2">
                         <span
@@ -556,70 +491,6 @@ export function NetworkPage() {
               </tbody>
             </table>
           </div>
-        </>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg)]">
-              <span className="h-[2px] w-5 border-t border-dashed border-[var(--color-fg-muted)]" />
-              {t('network.mapLegendLan')}
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg)]">
-              <span className="h-[2px] w-5 rounded-full bg-[#7c3aed]" />
-              {t('network.mapLegendTrace')}
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg)]">
-              <span className="h-[2px] w-5 rounded-full bg-[var(--color-primary)]" />
-              {t('network.mapLegendLldp')}
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
-              <span className="h-[2px] w-5 rounded-full bg-[var(--color-fg-subtle)]" />
-              {t('network.mapLegendHosts')}
-            </span>
-            <span className="text-[var(--color-fg-subtle)]">{t('network.mapHint')}</span>
-            {expandClusters.size > 0 ? (
-              <button
-                type="button"
-                onClick={() => setExpandClusters(new Set())}
-                className="rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-bg-muted)]"
-              >
-                {t('network.mapCollapsePcs')}
-              </button>
-            ) : null}
-          </div>
-          <div className="h-[min(86vh,960px)] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-            {flow.nodes.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-[var(--color-fg-subtle)]">
-                {t('network.mapEmpty')}
-              </div>
-            ) : (
-              <ReactFlow
-                nodes={flow.nodes}
-                edges={flow.edges}
-                nodeTypes={RF_NODE_TYPES}
-                edgeTypes={RF_EDGE_TYPES}
-                defaultEdgeOptions={RF_DEFAULT_EDGE_OPTIONS}
-                fitView
-                fitViewOptions={{ padding: 0.18, minZoom: 0.08, maxZoom: 1.5 }}
-                minZoom={0.06}
-                maxZoom={1.8}
-                onNodeClick={onMapNodeClick}
-                proOptions={RF_PRO_OPTIONS}
-              >
-                <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--color-border)" />
-                <Controls />
-                <MiniMap
-                  pannable
-                  zoomable
-                  nodeColor={(node) =>
-                    mapNodeColor((node.data as { deviceType?: string } | undefined)?.deviceType)
-                  }
-                />
-              </ReactFlow>
-            )}
-          </div>
-        </div>
-      )}
 
       {detailId != null ? (
         <NetworkDeviceDetailModal

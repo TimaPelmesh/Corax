@@ -12,9 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_editor_or_superuser, get_current_user
 from app.database import get_db
+from app.secret_mask import can_read_integration_secrets, mask_secret
 from app.local_ip import advertise_lan_ipv4, default_gateway_ipv4, dns_server_ipv4
-from app.models import Computer, NetworkDevice, NetworkLink, Printer, User
+from app.models import Computer, NetworkDevice, NetworkLink, NetworkMapScene, Printer, User
 from app.network_classify import NETWORK_DEVICE_TYPES, infer_network_role, network_dedupe_key_for_ip
+from app.network_link_builder import AUTO_LINK_TYPES
+from app.network_map_scene import (
+    BIND_TYPES,
+    LINK_ENDPOINT_TYPES,
+    dumps_scene,
+    empty_scene,
+    normalize_scene,
+)
 from app.network_poll import poll_single_device
 from app.network_poll_config import get_effective_network_poll_config, get_network_poll_config_row, parse_cidr_list
 from app.network_snmp import fetch_network_snmp
@@ -55,6 +64,9 @@ class NetworkDeviceOut(BaseModel):
     extras: dict[str, Any] = {}
     source: str
     notes: str | None
+    zabbix: dict[str, Any] | None = None
+    port_count: int | None = None
+    neighbor_count: int = 0
     created_at: datetime | None
     updated_at: datetime | None
 
@@ -174,6 +186,88 @@ class TopologyOut(BaseModel):
     edges: list[TopologyEdge]
 
 
+class NetworkMapSceneOut(BaseModel):
+    id: int
+    title: str
+    scene: dict[str, Any]
+    updated_at: datetime | None = None
+    updated_by: int | None = None
+    node_count: int = 0
+    edge_count: int = 0
+
+    @field_serializer("updated_at")
+    def _ser_updated(self, v: datetime | None):
+        return _ser_dt(v)
+
+
+class NetworkMapScenePut(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+    scene: dict[str, Any]
+
+
+class NetworkMapSceneCreate(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+    mode: str = Field(default="blank", max_length=32)
+
+
+class NetworkMapSceneMeta(BaseModel):
+    id: int
+    title: str
+    updated_at: datetime | None = None
+    node_count: int = 0
+    edge_count: int = 0
+
+    @field_serializer("updated_at")
+    def _ser_updated(self, v: datetime | None):
+        return _ser_dt(v)
+
+
+class MapLiveBind(BaseModel):
+    type: str = Field(min_length=1, max_length=32)
+    id: int
+
+
+class MapLiveIn(BaseModel):
+    binds: list[MapLiveBind] = Field(default_factory=list, max_length=400)
+
+
+class MapLiveItem(BaseModel):
+    type: str
+    id: int
+    label: str | None = None
+    ip: str | None = None
+    vendor: str | None = None
+    status: str | None = None
+    missing: bool = False
+    port_count: int | None = None
+    ports: list[dict[str, Any]] = []
+
+
+class MapLiveOut(BaseModel):
+    items: list[MapLiveItem]
+
+
+class NetworkLinkCreate(BaseModel):
+    from_type: str = Field(min_length=1, max_length=32)
+    from_id: int
+    to_type: str = Field(min_length=1, max_length=32)
+    to_id: int
+    local_port: str | None = Field(default=None, max_length=128)
+    remote_port: str | None = Field(default=None, max_length=128)
+
+
+class NetworkLinkOut(BaseModel):
+    id: int
+    from_type: str
+    from_id: int
+    to_type: str
+    to_id: int
+    link_type: str
+    local_port: str | None = None
+    remote_port: str | None = None
+    confidence: float = 1.0
+
+
 def _validate_ip(ip: str | None) -> str | None:
     if not ip:
         return None
@@ -208,6 +302,137 @@ def _parse_extras(raw: str | None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _zabbix_summary(extras: dict[str, Any]) -> dict[str, Any] | None:
+    zb = extras.get("zabbix")
+    if not isinstance(zb, dict) or not zb.get("hostid"):
+        return None
+    return {
+        "hostid": str(zb.get("hostid") or ""),
+        "name": zb.get("name") or zb.get("host"),
+        "status": zb.get("status"),
+        "ip": zb.get("ip"),
+    }
+
+
+def _port_count_from(extras: dict[str, Any], interfaces: list[dict[str, Any]]) -> int | None:
+    for key in ("ethernet_ports", "bridge_num_ports"):
+        val = extras.get(key)
+        try:
+            n = int(val)
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            return n
+    eth = [i for i in interfaces if isinstance(i, dict) and int(i.get("if_type") or 0) in {6, 62, 69, 117, 55}]
+    if eth:
+        return len(eth)
+    return None
+
+
+def _switch_ports(interfaces: list[dict[str, Any]], extras: dict[str, Any], limit: int = 52) -> list[dict[str, Any]]:
+    from app.network_map_layout import port_handle_id
+
+    rows: list[dict[str, Any]] = []
+    eth = [
+        i
+        for i in interfaces
+        if isinstance(i, dict) and int(i.get("if_type") or 0) in {6, 62, 69, 117, 55}
+    ]
+    if not eth:
+        count = _port_count_from(extras, interfaces) or 0
+        for idx in range(min(count, limit)):
+            name = str(idx + 1)
+            hid = port_handle_id(name)
+            if hid:
+                rows.append({"id": hid, "name": name, "up": None})
+        return rows
+    for iface in eth[:limit]:
+        name = str(iface.get("name") or iface.get("descr") or iface.get("if_index") or "").strip()
+        hid = port_handle_id(name)
+        if not hid:
+            continue
+        rows.append(
+            {
+                "id": hid,
+                "name": name,
+                "up": (iface.get("oper_status") or "") == "up",
+            }
+        )
+    return rows
+
+
+def _topology_node_id(kind: str, oid: int) -> str:
+    if kind == "corax":
+        return "corax:self"
+    return f"{kind}:{oid}"
+
+
+def _link_out(row: NetworkLink) -> NetworkLinkOut:
+    return NetworkLinkOut(
+        id=row.id,
+        from_type=row.from_type,
+        from_id=row.from_id,
+        to_type=row.to_type,
+        to_id=row.to_id,
+        link_type=row.link_type,
+        local_port=row.local_port,
+        remote_port=row.remote_port,
+        confidence=float(row.confidence or 1.0),
+    )
+
+
+async def _ensure_link_endpoint(db: AsyncSession, kind: str, oid: int) -> None:
+    k = (kind or "").strip().lower()
+    if k not in LINK_ENDPOINT_TYPES:
+        raise HTTPException(status_code=400, detail="Некорректный тип узла связи")
+    if k == "corax":
+        if oid != 0:
+            raise HTTPException(status_code=400, detail="Corax всегда id=0")
+        return
+    if k == "network_device":
+        row = (await db.execute(select(NetworkDevice.id).where(NetworkDevice.id == oid))).scalar_one_or_none()
+    elif k == "computer":
+        row = (await db.execute(select(Computer.id).where(Computer.id == oid))).scalar_one_or_none()
+    else:
+        row = (await db.execute(select(Printer.id).where(Printer.id == oid))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Узел связи не найден")
+
+
+async def _default_map_scene(db: AsyncSession) -> NetworkMapScene | None:
+    return (await db.execute(select(NetworkMapScene).order_by(NetworkMapScene.id.asc()).limit(1))).scalar_one_or_none()
+
+
+def _scene_out(row: NetworkMapScene) -> NetworkMapSceneOut:
+    try:
+        scene = normalize_scene(row.scene_json)
+    except HTTPException:
+        scene = empty_scene()
+    return NetworkMapSceneOut(
+        id=row.id,
+        title=row.title or "Карта сети",
+        scene=scene,
+        updated_at=row.updated_at,
+        updated_by=row.updated_by,
+        node_count=len(scene.get("nodes") or []),
+        edge_count=len(scene.get("edges") or []),
+    )
+
+
+def _scene_meta(row: NetworkMapScene) -> NetworkMapSceneMeta:
+    try:
+        scene = normalize_scene(row.scene_json)
+    except HTTPException:
+        scene = empty_scene()
+    return NetworkMapSceneMeta(
+        id=row.id,
+        title=row.title or "Карта сети",
+        updated_at=row.updated_at,
+        node_count=len(scene.get("nodes") or []),
+        edge_count=len(scene.get("edges") or []),
+    )
+
+
 def _device_out(row: NetworkDevice, *, include_details: bool = False) -> NetworkDeviceOut:
     dtype = row.device_type or "unknown"
     role = infer_network_role(
@@ -216,6 +441,10 @@ def _device_out(row: NetworkDevice, *, include_details: bool = False) -> Network
         device_type=dtype,
         source=row.source,
     )
+    extras = _parse_extras(getattr(row, "extras_json", None))
+    interfaces = _parse_json_list(row.interfaces_json) if include_details else []
+    neighbors = _parse_json_list(row.neighbors_json) if include_details else []
+    port_ifaces = interfaces if include_details else _parse_json_list(row.interfaces_json)
     return NetworkDeviceOut(
         id=row.id,
         ip_address=row.ip_address,
@@ -231,12 +460,15 @@ def _device_out(row: NetworkDevice, *, include_details: bool = False) -> Network
         snmp_error=row.snmp_error if include_details else None,
         last_snmp_at=row.last_snmp_at,
         last_seen_at=row.last_seen_at,
-        interfaces=_parse_json_list(row.interfaces_json) if include_details else [],
-        neighbors=_parse_json_list(row.neighbors_json) if include_details else [],
+        interfaces=interfaces,
+        neighbors=neighbors,
         fdb=_parse_json_list(row.fdb_json) if include_details else [],
-        extras=_parse_extras(getattr(row, "extras_json", None)) if include_details else {},
+        extras=extras if include_details else {},
         source=row.source or "snmp",
         notes=row.notes,
+        zabbix=_zabbix_summary(extras),
+        port_count=_port_count_from(extras, port_ifaces),
+        neighbor_count=len(neighbors) if include_details else int(extras.get("neighbors_total") or 0),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -465,12 +697,14 @@ async def poll_device(
 
 
 @router.get("/poll-config", response_model=NetworkPollConfigOut)
-async def get_poll_config(_: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_poll_config(current: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     row = await get_network_poll_config_row(db)
+    community = (row.snmp_community or "public").strip() or "public"
+    reveal = can_read_integration_secrets(current)
     return NetworkPollConfigOut(
         poll_enabled=bool(row.poll_enabled),
         poll_interval_minutes=int(row.poll_interval_minutes or 120),
-        snmp_community=(row.snmp_community or "public").strip() or "public",
+        snmp_community=community if reveal else mask_secret(community, reveal=False),
         snmp_community_set=bool((row.snmp_community or "").strip()),
         snmp_timeout_seconds=float(row.snmp_timeout_seconds or 3.5),
         poll_concurrency=int(row.poll_concurrency or 8),
@@ -520,9 +754,21 @@ async def get_topology(
 ):
     devices = (await db.execute(select(NetworkDevice))).scalars().all()
     links = (await db.execute(select(NetworkLink))).scalars().all()
+    strong = {"lldp", "cdp", "mndp", "ndp", "fdp", "edp", "isdp", "hndp", "fdb"}
+    linked_device_ids: set[int] = set()
+    for link in links:
+        if (link.link_type or "").lower() not in strong:
+            continue
+        if link.from_type == "network_device":
+            linked_device_ids.add(link.from_id)
+        if link.to_type == "network_device":
+            linked_device_ids.add(link.to_id)
 
     nodes: dict[str, TopologyNode] = {}
     for d in devices:
+        dtype = (d.device_type or "").lower()
+        if dtype in {"host", "pc"} and d.id not in linked_device_ids:
+            continue
         nid = f"network_device:{d.id}"
         nodes[nid] = TopologyNode(
             id=nid,
@@ -541,24 +787,21 @@ async def get_topology(
             ),
         )
 
-    # Inventory endpoints: linked ones always, plus every PC/printer that has an IP.
+    # Inventory endpoints only when they already have a discovery link — map is gear-first.
     needed_computers: set[int] = set()
     needed_printers: set[int] = set()
     for link in links:
+        if (link.link_type or "").lower() not in strong:
+            continue
         for typ, oid in ((link.from_type, link.from_id), (link.to_type, link.to_id)):
             if typ == "computer":
                 needed_computers.add(oid)
             elif typ == "printer":
                 needed_printers.add(oid)
 
-    device_ips = {(d.ip_address or "").strip() for d in devices if d.ip_address}
     comps = (await db.execute(select(Computer).order_by(Computer.id.asc()).limit(2500))).scalars().all()
     for c in comps:
-        in_links = c.id in needed_computers
-        ip = (c.ip_address or "").strip()
-        if not in_links and not ip:
-            continue
-        if not in_links and ip in device_ips:
+        if c.id not in needed_computers:
             continue
         nid = f"computer:{c.id}"
         nodes[nid] = TopologyNode(
@@ -574,11 +817,7 @@ async def get_topology(
 
     prns = (await db.execute(select(Printer).order_by(Printer.id.asc()).limit(800))).scalars().all()
     for p in prns:
-        in_links = p.id in needed_printers
-        ip = (p.ip_address or "").strip()
-        if not in_links and not ip:
-            continue
-        if not in_links and ip in device_ips:
+        if p.id not in needed_printers:
             continue
         nid = f"printer:{p.id}"
         nodes[nid] = TopologyNode(
@@ -592,8 +831,8 @@ async def get_topology(
 
     edges: list[TopologyEdge] = []
     for link in links:
-        src = f"{link.from_type}:{link.from_id}"
-        tgt = f"{link.to_type}:{link.to_id}"
+        src = _topology_node_id(link.from_type, link.from_id)
+        tgt = _topology_node_id(link.to_type, link.to_id)
         if src not in nodes or tgt not in nodes:
             continue
         edges.append(
@@ -654,3 +893,380 @@ async def get_topology(
         known_pairs.add((nid, corax_id))
 
     return TopologyOut(nodes=list(nodes.values()), edges=edges)
+
+
+@router.get("/map-scene", response_model=NetworkMapSceneOut)
+async def get_map_scene(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _default_map_scene(db)
+    if row is None:
+        return NetworkMapSceneOut(id=0, title="Карта сети", scene=empty_scene(), updated_at=None, updated_by=None)
+    return _scene_out(row)
+
+
+@router.put("/map-scene", response_model=NetworkMapSceneOut)
+async def put_map_scene(
+    body: NetworkMapScenePut,
+    user: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    scene = normalize_scene(body.scene)
+    row = await _default_map_scene(db)
+    title = (body.title or "").strip()[:255] or None
+    if row is None:
+        row = NetworkMapScene(
+            title=title or "Карта сети",
+            scene_json=dumps_scene(scene),
+            updated_by=user.id,
+        )
+        db.add(row)
+    else:
+        if title:
+            row.title = title
+        row.scene_json = dumps_scene(scene)
+        row.updated_by = user.id
+    await db.commit()
+    await db.refresh(row)
+    return _scene_out(row)
+
+
+@router.get("/map-scenes", response_model=list[NetworkMapSceneMeta])
+async def list_map_scenes(
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (await db.execute(select(NetworkMapScene).order_by(NetworkMapScene.id.asc()))).scalars().all()
+    return [_scene_meta(row) for row in rows]
+
+
+@router.post("/map-scenes", response_model=NetworkMapSceneOut)
+async def create_map_scene(
+    body: NetworkMapSceneCreate,
+    user: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    mode = (body.mode or "blank").strip().lower()
+    title = (body.title or "").strip()[:255]
+    if mode == "topology":
+        topo = await get_topology(user, db)
+        from app.network_map_layout import layout_topology_scene
+
+        scene = layout_topology_scene(
+            [n.model_dump() for n in topo.nodes],
+            [e.model_dump() for e in topo.edges],
+        )
+        title = title or "Схема по топологии"
+    else:
+        scene = empty_scene()
+        title = title or "Новая схема"
+    row = NetworkMapScene(title=title, scene_json=dumps_scene(scene), updated_by=user.id)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _scene_out(row)
+
+
+@router.get("/map-scenes/{scene_id}", response_model=NetworkMapSceneOut)
+async def get_map_scene_by_id(
+    scene_id: int,
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = (await db.execute(select(NetworkMapScene).where(NetworkMapScene.id == scene_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Схема не найдена")
+    return _scene_out(row)
+
+
+@router.put("/map-scenes/{scene_id}", response_model=NetworkMapSceneOut)
+async def put_map_scene_by_id(
+    scene_id: int,
+    body: NetworkMapScenePut,
+    user: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = (await db.execute(select(NetworkMapScene).where(NetworkMapScene.id == scene_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Схема не найдена")
+    scene = normalize_scene(body.scene)
+    title = (body.title or "").strip()[:255]
+    if title:
+        row.title = title
+    row.scene_json = dumps_scene(scene)
+    row.updated_by = user.id
+    await db.commit()
+    await db.refresh(row)
+    return _scene_out(row)
+
+
+@router.post("/map-scenes/{scene_id}/layout", response_model=NetworkMapSceneOut)
+async def layout_map_scene(
+    scene_id: int,
+    user: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = (await db.execute(select(NetworkMapScene).where(NetworkMapScene.id == scene_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Схема не найдена")
+    topo = await get_topology(user, db)
+    from app.network_map_layout import layout_topology_scene
+
+    scene = layout_topology_scene(
+        [n.model_dump() for n in topo.nodes],
+        [e.model_dump() for e in topo.edges],
+    )
+    row.scene_json = dumps_scene(scene)
+    row.updated_by = user.id
+    if not (row.title or "").strip() or row.title == "Карта сети":
+        row.title = "Схема по топологии"
+    await db.commit()
+    await db.refresh(row)
+    return _scene_out(row)
+
+
+@router.delete("/map-scenes/{scene_id}", status_code=204)
+async def delete_map_scene(
+    scene_id: int,
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = (await db.execute(select(NetworkMapScene).where(NetworkMapScene.id == scene_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Схема не найдена")
+    await db.delete(row)
+    await db.commit()
+    return None
+
+
+@router.post("/map-live", response_model=MapLiveOut)
+async def map_live(
+    body: MapLiveIn,
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wanted: dict[tuple[str, int], None] = {}
+    for raw in body.binds:
+        btype = (raw.type or "").strip().lower()
+        if btype not in BIND_TYPES:
+            continue
+        wanted[(btype, int(raw.id))] = None
+    if not wanted:
+        return MapLiveOut(items=[])
+
+    device_ids = [i for t, i in wanted if t == "network_device"]
+    computer_ids = [i for t, i in wanted if t == "computer"]
+    printer_ids = [i for t, i in wanted if t == "printer"]
+    zabbix_ids = [i for t, i in wanted if t == "zabbix"]
+
+    found: dict[tuple[str, int], MapLiveItem] = {}
+
+    if device_ids:
+        rows = (
+            await db.execute(
+                select(
+                    NetworkDevice.id,
+                    NetworkDevice.hostname,
+                    NetworkDevice.sys_name,
+                    NetworkDevice.ip_address,
+                    NetworkDevice.vendor,
+                    NetworkDevice.snmp_status,
+                    NetworkDevice.interfaces_json,
+                    NetworkDevice.extras_json,
+                ).where(NetworkDevice.id.in_(device_ids))
+            )
+        ).all()
+        for row in rows:
+            extras = _parse_extras(row.extras_json)
+            interfaces = _parse_json_list(row.interfaces_json)
+            found[("network_device", int(row.id))] = MapLiveItem(
+                type="network_device",
+                id=int(row.id),
+                label=(row.hostname or row.sys_name or row.ip_address),
+                ip=row.ip_address,
+                vendor=row.vendor,
+                status=row.snmp_status,
+                missing=False,
+                port_count=_port_count_from(extras, interfaces),
+                ports=_switch_ports(interfaces, extras),
+            )
+
+    if computer_ids:
+        rows = (
+            await db.execute(
+                select(
+                    Computer.id,
+                    Computer.hostname,
+                    Computer.ip_address,
+                    Computer.manufacturer,
+                    Computer.ping_status,
+                ).where(Computer.id.in_(computer_ids))
+            )
+        ).all()
+        for row in rows:
+            found[("computer", int(row.id))] = MapLiveItem(
+                type="computer",
+                id=int(row.id),
+                label=row.hostname,
+                ip=row.ip_address,
+                vendor=row.manufacturer,
+                status=row.ping_status,
+                missing=False,
+            )
+
+    if printer_ids:
+        rows = (
+            await db.execute(
+                select(
+                    Printer.id,
+                    Printer.name,
+                    Printer.ip_address,
+                    Printer.snmp_model,
+                    Printer.poll_status,
+                    Printer.snmp_status,
+                ).where(Printer.id.in_(printer_ids))
+            )
+        ).all()
+        for row in rows:
+            found[("printer", int(row.id))] = MapLiveItem(
+                type="printer",
+                id=int(row.id),
+                label=row.name or row.ip_address,
+                ip=row.ip_address,
+                vendor=row.snmp_model,
+                status=row.poll_status or row.snmp_status,
+                missing=False,
+            )
+
+    if ("corax", 0) in wanted:
+        found[("corax", 0)] = MapLiveItem(
+            type="corax",
+            id=0,
+            label="Corax",
+            ip=None,
+            vendor="CORAX",
+            status="ok",
+            missing=False,
+        )
+
+    if zabbix_ids:
+        try:
+            from app.zabbix_service import get_hosts_payload
+
+            payload = await get_hosts_payload(db, limit=500)
+            hosts = payload.get("items") if isinstance(payload, dict) else None
+            by_id: dict[int, dict[str, Any]] = {}
+            if isinstance(hosts, list):
+                for host in hosts:
+                    if not isinstance(host, dict):
+                        continue
+                    try:
+                        hid = int(str(host.get("hostid") or ""))
+                    except (TypeError, ValueError):
+                        continue
+                    by_id[hid] = host
+            for hid in zabbix_ids:
+                host = by_id.get(hid)
+                if not host:
+                    continue
+                enabled = int(host.get("status") or 0) == 0
+                found[("zabbix", hid)] = MapLiveItem(
+                    type="zabbix",
+                    id=hid,
+                    label=(host.get("name") or host.get("host") or str(hid)),
+                    ip=(host.get("ip") or None),
+                    vendor="Zabbix",
+                    status="ok" if enabled else "offline",
+                    missing=False,
+                )
+        except Exception:
+            pass
+
+    items: list[MapLiveItem] = []
+    for key in wanted:
+        hit = found.get(key)
+        if hit is not None:
+            items.append(hit)
+        else:
+            items.append(MapLiveItem(type=key[0], id=key[1], missing=True))
+    return MapLiveOut(items=items)
+
+
+@router.post("/links", response_model=NetworkLinkOut)
+async def create_manual_link(
+    body: NetworkLinkCreate,
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    from_type = (body.from_type or "").strip().lower()
+    to_type = (body.to_type or "").strip().lower()
+    if from_type not in LINK_ENDPOINT_TYPES or to_type not in LINK_ENDPOINT_TYPES:
+        raise HTTPException(status_code=400, detail="Некорректный тип узла связи")
+    if from_type == to_type and body.from_id == body.to_id:
+        raise HTTPException(status_code=400, detail="Нельзя связать узел с самим собой")
+    await _ensure_link_endpoint(db, from_type, body.from_id)
+    await _ensure_link_endpoint(db, to_type, body.to_id)
+
+    existing = (
+        await db.execute(
+            select(NetworkLink).where(
+                NetworkLink.from_type == from_type,
+                NetworkLink.from_id == body.from_id,
+                NetworkLink.to_type == to_type,
+                NetworkLink.to_id == body.to_id,
+                NetworkLink.link_type == "manual",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        existing = (
+            await db.execute(
+                select(NetworkLink).where(
+                    NetworkLink.from_type == to_type,
+                    NetworkLink.from_id == body.to_id,
+                    NetworkLink.to_type == from_type,
+                    NetworkLink.to_id == body.from_id,
+                    NetworkLink.link_type == "manual",
+                )
+            )
+        ).scalar_one_or_none()
+    if existing:
+        existing.local_port = (body.local_port or "").strip()[:128] or None
+        existing.remote_port = (body.remote_port or "").strip()[:128] or None
+        await db.commit()
+        await db.refresh(existing)
+        return _link_out(existing)
+
+    row = NetworkLink(
+        from_type=from_type,
+        from_id=int(body.from_id),
+        to_type=to_type,
+        to_id=int(body.to_id),
+        link_type="manual",
+        local_port=(body.local_port or "").strip()[:128] or None,
+        remote_port=(body.remote_port or "").strip()[:128] or None,
+        confidence=1.0,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _link_out(row)
+
+
+@router.delete("/links/{link_id}", status_code=204)
+async def delete_manual_link(
+    link_id: int,
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = (await db.execute(select(NetworkLink).where(NetworkLink.id == link_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Связь не найдена")
+    if (row.link_type or "").lower() in AUTO_LINK_TYPES:
+        raise HTTPException(status_code=400, detail="Автосвязь нельзя удалить вручную")
+    if (row.link_type or "").lower() != "manual":
+        raise HTTPException(status_code=400, detail="Можно удалять только ручные связи")
+    await db.delete(row)
+    await db.commit()
+    return None

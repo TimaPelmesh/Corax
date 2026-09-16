@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from jose import JWTError, jwt
 from sqlalchemy import select
 
 from app.config import _is_default_secret, settings
+from app.jwtutil import JWTError, decode_token
 from app.models import User
 
 PASSWORD_CHANGE_REQUIRED = "password_change_required"
@@ -93,9 +93,10 @@ async def password_change_block_response(request: Request) -> JSONResponse | Non
         return None
 
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = decode_token(token)
         sub = payload.get("sub")
-    except JWTError:
+        token_ver = int(payload.get("ver") or 0)
+    except (JWTError, TypeError, ValueError):
         return None
     if not sub:
         return None
@@ -105,7 +106,9 @@ async def password_change_block_response(request: Request) -> JSONResponse | Non
     async with AsyncSessionLocal() as db:
         r = await db.execute(select(User).where(User.username == sub))
         user = r.scalar_one_or_none()
-        if user is None or not getattr(user, "must_change_password", False):
+        if user is None or int(getattr(user, "token_version", 0) or 0) != token_ver:
+            return None
+        if not getattr(user, "must_change_password", False):
             return None
 
     return JSONResponse({"detail": PASSWORD_CHANGE_REQUIRED}, status_code=403)

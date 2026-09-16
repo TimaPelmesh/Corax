@@ -12,6 +12,7 @@ const APP_PATHS = new Set([
   '/computers',
   '/printers',
   '/network',
+  '/network-map',
   '/requests',
   '/requests/database',
   '/requests/stats',

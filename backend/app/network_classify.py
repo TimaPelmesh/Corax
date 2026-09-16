@@ -226,6 +226,11 @@ _VENDOR_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bqtech\b", re.I), "Qtech"),
     (re.compile(r"\bsnr\b", re.I), "SNR"),
     (re.compile(r"\bengenius\b", re.I), "EnGenius"),
+    (re.compile(r"\ballied\s*telesis\b|\bcentrecom\b", re.I), "Allied Telesis"),
+    (re.compile(r"\bruijie\b|\breyee\b", re.I), "Ruijie"),
+    (re.compile(r"\bcambium\b|\bepmp\b", re.I), "Cambium"),
+    (re.compile(r"\bsophos\b", re.I), "Sophos"),
+    (re.compile(r"check\s*point|checkpoint", re.I), "Check Point"),
 ]
 
 _NETWORK_VENDORS = {
@@ -250,6 +255,11 @@ _NETWORK_VENDORS = {
     "Qtech",
     "SNR",
     "EnGenius",
+    "Allied Telesis",
+    "Ruijie",
+    "Cambium",
+    "Sophos",
+    "Check Point",
 }
 
 _INFRA_VENDORS = _NETWORK_VENDORS | {
@@ -268,12 +278,16 @@ _INFRA_VENDORS = _NETWORK_VENDORS | {
 # Enterprise OID prefixes → vendor
 _OID_VENDOR: list[tuple[str, str]] = [
     ("1.3.6.1.4.1.9.", "Cisco"),
+    ("1.3.6.1.4.1.29671.", "Cisco Meraki"),
     ("1.3.6.1.4.1.14988.", "MikroTik"),
     ("1.3.6.1.4.1.41112.", "Ubiquiti"),
     ("1.3.6.1.4.1.11.", "HPE/Aruba"),
+    ("1.3.6.1.4.1.14823.", "HPE/Aruba"),
     ("1.3.6.1.4.1.47196.", "HPE/Aruba"),
     ("1.3.6.1.4.1.25506.", "HPE/Aruba"),
     ("1.3.6.1.4.1.674.", "Dell"),
+    ("1.3.6.1.4.1.45.", "Dell"),
+    ("1.3.6.1.4.1.89.", "Dell"),
     ("1.3.6.1.4.1.2636.", "Juniper"),
     ("1.3.6.1.4.1.12356.", "Fortinet"),
     ("1.3.6.1.4.1.11863.", "TP-Link"),
@@ -283,8 +297,14 @@ _OID_VENDOR: list[tuple[str, str]] = [
     ("1.3.6.1.4.1.890.", "Zyxel"),
     ("1.3.6.1.4.1.35265.", "Eltex"),
     ("1.3.6.1.4.1.25053.", "Ruckus"),
+    ("1.3.6.1.4.1.1991.", "Ruckus"),
     ("1.3.6.1.4.1.1916.", "Extreme"),
     ("1.3.6.1.4.1.25461.", "Palo Alto"),
+    ("1.3.6.1.4.1.207.", "Allied Telesis"),
+    ("1.3.6.1.4.1.4881.", "Ruijie"),
+    ("1.3.6.1.4.1.17713.", "Cambium"),
+    ("1.3.6.1.4.1.2604.", "Sophos"),
+    ("1.3.6.1.4.1.2620.", "Check Point"),
     ("1.3.6.1.4.1.6574.", "Synology"),
     ("1.3.6.1.4.1.24681.", "QNAP"),
     ("1.3.6.1.4.1.318.", "APC"),

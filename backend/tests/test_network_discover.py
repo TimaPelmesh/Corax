@@ -63,8 +63,13 @@ def test_corax_scope_includes_server_home():
         assert n.prefixlen >= 24
 
 
-def test_manual_cidr_overrides_auto():
+def test_manual_cidr_is_merged_not_exclusive():
     nets, reasons = resolve_discovery_networks(["10.9.0.0/24"])
-    assert len(nets) == 1
-    assert str(nets[0]) == "10.9.0.0/24"
+    assert any(str(n) == "10.9.0.0/24" for n in nets)
+    assert any("ручной" in r for r in reasons)
+
+
+def test_exclusive_cidr_stays_narrow():
+    nets, reasons = resolve_discovery_networks(["10.9.0.0/24"], exclusive=True)
+    assert [str(n) for n in nets] == ["10.9.0.0/24"]
     assert any("ручной" in r for r in reasons)

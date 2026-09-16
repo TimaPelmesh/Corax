@@ -16,6 +16,21 @@ except ImportError:  # pragma: no cover
         SnmpV1 = None
 
 from app.network_classify import ClassifyHints, build_hints_from_interfaces, classify_device, normalize_mac
+from app.network_snmp_vendors import (
+    OID_DOT1Q_FDB_PORT,
+    OID_IF_ALIAS,
+    OID_LLDP_LOC_PORT_DESC,
+    OID_LLDP_LOC_PORT_ID,
+    OID_LLDP_REM_CHASSIS,
+    apply_identity_scalars,
+    apply_lldp_chassis,
+    apply_lldp_local_ports,
+    extra_walk_oids_for,
+    identity_oids_for,
+    merge_neighbors,
+    parse_qbridge_fdb,
+    parse_vendor_neighbor_maps,
+)
 
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 OID_SYS_OBJECT_ID = "1.3.6.1.2.1.1.2.0"
@@ -71,13 +86,14 @@ _OPER_MAP = {1: "up", 2: "down", 3: "testing", 4: "unknown", 5: "dormant", 6: "n
 
 @dataclass
 class SnmpNeighbor:
-    protocol: str  # lldp|cdp
+    protocol: str  # lldp|cdp|mndp|ndp|fdp|edp|isdp|hndp
     remote_name: str | None = None
     remote_port: str | None = None
     remote_descr: str | None = None
     remote_ip: str | None = None
     local_if_index: str | None = None
     local_port: str | None = None
+    remote_chassis: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,7 +104,21 @@ class SnmpNeighbor:
             "remote_ip": self.remote_ip,
             "local_if_index": self.local_if_index,
             "local_port": self.local_port,
+            "remote_chassis": self.remote_chassis,
         }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> SnmpNeighbor:
+        return cls(
+            protocol=str(raw.get("protocol") or "lldp"),
+            remote_name=raw.get("remote_name"),
+            remote_port=raw.get("remote_port"),
+            remote_descr=raw.get("remote_descr"),
+            remote_ip=raw.get("remote_ip"),
+            local_if_index=raw.get("local_if_index"),
+            local_port=raw.get("local_port"),
+            remote_chassis=raw.get("remote_chassis"),
+        )
 
 
 @dataclass
@@ -519,14 +549,22 @@ async def fetch_network_snmp(
 
         if_by_index = {i.if_index: i for i in snap.interfaces}
 
-        # LLDP
-        lldp_name, lldp_port, lldp_pdesc, lldp_sdesc, lldp_man = await asyncio.gather(
+        # LLDP + locPort + chassis (IEEE 802.1AB)
+        lldp_name, lldp_port, lldp_pdesc, lldp_sdesc, lldp_man, lldp_ch, lldp_loc, lldp_ldesc, if_alias = await asyncio.gather(
             _walk_oid_map(client, OID_LLDP_REM_SYS_NAME, walk_timeout),
             _walk_oid_map(client, OID_LLDP_REM_PORT_ID, walk_timeout),
             _walk_oid_map(client, OID_LLDP_REM_PORT_DESC, walk_timeout),
             _walk_oid_map(client, OID_LLDP_REM_SYS_DESC, walk_timeout),
             _walk_oid_map(client, OID_LLDP_REM_MAN_ADDR, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_REM_CHASSIS, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_LOC_PORT_ID, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_LOC_PORT_DESC, walk_timeout),
+            _walk_oid_map(client, OID_IF_ALIAS, walk_timeout),
         )
+        for iface in snap.interfaces:
+            alias = str(if_alias.get(iface.if_index) or "").strip()
+            if alias and not iface.name:
+                iface.name = alias[:128]
         man_by_rem: dict[str, str] = {}
         for key, val in lldp_man.items():
             idx = _lldp_rem_index(key)
@@ -543,7 +581,8 @@ async def fetch_network_snmp(
             rem_port = str(lldp_port.get(key) or lldp_pdesc.get(key) or "").strip() or None
             rem_desc = str(lldp_sdesc.get(key) or "").strip() or None
             rem_ip = man_by_rem.get(key) or man_by_rem.get(_lldp_rem_index(key) or "")
-            if not rem_name and not rem_port and not rem_ip:
+            rem_ch = normalize_mac(lldp_ch.get(key))
+            if not rem_name and not rem_port and not rem_ip and not rem_ch:
                 continue
             snap.neighbors.append(
                 SnmpNeighbor(
@@ -554,6 +593,7 @@ async def fetch_network_snmp(
                     remote_ip=rem_ip,
                     local_if_index=local_if,
                     local_port=local_port,
+                    remote_chassis=rem_ch,
                 )
             )
 
@@ -585,8 +625,26 @@ async def fetch_network_snmp(
                     remote_ip=rem_ip,
                     local_if_index=local_if,
                     local_port=local_port,
+                    remote_chassis=normalize_mac(rem_name) if rem_name else None,
                 )
             )
+
+        extra_oids = extra_walk_oids_for(
+            snap.sys_object_id, snap.vendor, neighbor_count=len(snap.neighbors)
+        )
+        extra_neighbors: list[dict] = []
+        if extra_oids:
+            vendor_maps = await asyncio.gather(
+                *[_walk_oid_map(client, oid, min(walk_timeout, 8.0)) for oid in extra_oids]
+            )
+            extra_neighbors = parse_vendor_neighbor_maps(
+                dict(zip(extra_oids, vendor_maps)),
+                if_by_index=if_by_index,
+            )
+        raw_neighbors = [n.to_dict() for n in snap.neighbors] + extra_neighbors
+        apply_lldp_local_ports(raw_neighbors, lldp_loc, lldp_ldesc, if_by_index)
+        apply_lldp_chassis(raw_neighbors, lldp_ch)
+        snap.neighbors = [SnmpNeighbor.from_dict(n) for n in merge_neighbors(raw_neighbors)]
 
         # Bridge FDB
         fdb_addr, fdb_port, base_port_if = await asyncio.gather(
@@ -613,6 +671,23 @@ async def fetch_network_snmp(
             snap.fdb.append(SnmpFdbEntry(mac=mac, port=port_str, if_index=if_index))
             if len(snap.fdb) >= 4000:
                 break
+
+        if len(snap.fdb) < 40:
+            try:
+                qfdb = await _walk_oid_map(client, OID_DOT1Q_FDB_PORT, min(walk_timeout, 10.0))
+                have = {e.mac for e in snap.fdb}
+                for entry in parse_qbridge_fdb(qfdb):
+                    mac = entry.get("mac")
+                    if not mac or mac in have:
+                        continue
+                    have.add(mac)
+                    snap.fdb.append(
+                        SnmpFdbEntry(mac=mac, port=entry.get("port"), if_index=entry.get("if_index"))
+                    )
+                    if len(snap.fdb) >= 4000:
+                        break
+            except Exception:
+                pass
 
         # Device IP addresses (IP-MIB)
         try:
@@ -665,6 +740,19 @@ async def fetch_network_snmp(
             entity_descr = edescr
         except Exception:
             entity_descr = None
+
+        try:
+            id_oids = identity_oids_for(snap.sys_object_id, snap.vendor)
+            if id_oids:
+                id_vals: dict[str, Any] = {}
+                for oid in id_oids:
+                    try:
+                        id_vals[oid] = await _safe_get(client, oid, min(timeout, 2.0))
+                    except Exception:
+                        continue
+                apply_identity_scalars(snap, id_vals)
+        except Exception:
+            pass
 
         hints = build_hints_from_interfaces(
             snap.interfaces,

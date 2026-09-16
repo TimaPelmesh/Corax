@@ -8,6 +8,11 @@ describe('titleForPath', () => {
     expect(titleForPath('/', 'en')).toMatch(/Dashboard/i)
   })
 
+  it('resolves the network map route', () => {
+    expect(titleForPath('/network-map', 'ru')).toMatch(/Карта сети/)
+    expect(titleForPath('/network-map', 'en')).toMatch(/Network map/i)
+  })
+
   it('resolves https settings route', () => {
     expect(titleForPath('/settings/https', 'ru')).toMatch(/HTTPS/i)
     expect(titleForPath('/settings/https', 'en')).toMatch(/HTTPS/i)

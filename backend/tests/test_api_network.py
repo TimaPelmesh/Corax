@@ -79,3 +79,114 @@ def test_network_device_manual_crud(client: TestClient, auth_headers: dict[str, 
 
     deleted = client.delete(f"/api/v1/network/devices/{device_id}", headers=auth_headers)
     assert deleted.status_code == 204
+
+
+def test_network_map_scene_and_manual_links(client: TestClient, auth_headers: dict[str, str]):
+    a = client.post(
+        "/api/v1/network/devices",
+        headers=auth_headers,
+        json={"ip_address": "192.168.77.21", "hostname": "pytest-map-sw", "device_type": "switch"},
+    )
+    b = client.post(
+        "/api/v1/network/devices",
+        headers=auth_headers,
+        json={"ip_address": "192.168.77.22", "hostname": "pytest-map-fw", "device_type": "firewall"},
+    )
+    assert a.status_code == 200, a.text
+    assert b.status_code == 200, b.text
+    id_a = a.json()["id"]
+    id_b = b.json()["id"]
+    try:
+        empty = client.get("/api/v1/network/map-scene", headers=auth_headers)
+        assert empty.status_code == 200, empty.text
+        body = empty.json()
+        assert body["scene"]["version"] == 1
+        assert body["scene"]["nodes"] == []
+
+        saved = client.put(
+            "/api/v1/network/map-scene",
+            headers=auth_headers,
+            json={
+                "title": "LAN HQ",
+                "scene": {
+                    "version": 1,
+                    "groups": [
+                        {
+                            "id": "room-1",
+                            "title": "Серверная",
+                            "kind": "room",
+                            "x": 0,
+                            "y": 0,
+                            "width": 480,
+                            "height": 320,
+                        }
+                    ],
+                    "nodes": [
+                        {
+                            "id": f"network_device:{id_a}",
+                            "stencil": "switch",
+                            "x": 40,
+                            "y": 60,
+                            "parentGroupId": "room-1",
+                            "bind": {"type": "network_device", "id": id_a},
+                        }
+                    ],
+                    "edges": [],
+                    "hiddenNodeIds": [f"network_device:{id_b}"],
+                    "viewport": {"x": 0, "y": 0, "zoom": 0.8},
+                },
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        scene = saved.json()["scene"]
+        assert saved.json()["title"] == "LAN HQ"
+        assert scene["nodes"][0]["bind"]["id"] == id_a
+        assert scene["hiddenNodeIds"] == [f"network_device:{id_b}"]
+
+        linked = client.post(
+            "/api/v1/network/links",
+            headers=auth_headers,
+            json={
+                "from_type": "network_device",
+                "from_id": id_a,
+                "to_type": "network_device",
+                "to_id": id_b,
+                "local_port": "Gi1/0/1",
+            },
+        )
+        assert linked.status_code == 200, linked.text
+        link_id = linked.json()["id"]
+        assert linked.json()["link_type"] == "manual"
+
+        topo = client.get("/api/v1/network/topology", headers=auth_headers)
+        assert topo.status_code == 200
+        edges = topo.json()["edges"]
+        assert any(
+            e["link_type"] == "manual"
+            and {e["source"], e["target"]} == {f"network_device:{id_a}", f"network_device:{id_b}"}
+            for e in edges
+        )
+
+        deleted_link = client.delete(f"/api/v1/network/links/{link_id}", headers=auth_headers)
+        assert deleted_link.status_code == 204
+
+        live = client.post(
+            "/api/v1/network/map-live",
+            headers=auth_headers,
+            json={
+                "binds": [
+                    {"type": "network_device", "id": id_a},
+                    {"type": "network_device", "id": 9_999_999},
+                    {"type": "corax", "id": 0},
+                ]
+            },
+        )
+        assert live.status_code == 200, live.text
+        by_key = {(row["type"], row["id"]): row for row in live.json()["items"]}
+        assert by_key[("network_device", id_a)]["missing"] is False
+        assert by_key[("network_device", id_a)]["ip"] == "192.168.77.21"
+        assert by_key[("network_device", 9_999_999)]["missing"] is True
+        assert by_key[("corax", 0)]["status"] == "ok"
+    finally:
+        client.delete(f"/api/v1/network/devices/{id_a}", headers=auth_headers)
+        client.delete(f"/api/v1/network/devices/{id_b}", headers=auth_headers)

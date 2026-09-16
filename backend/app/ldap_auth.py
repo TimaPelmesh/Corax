@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import secrets
 
 from fastapi import HTTPException
@@ -54,6 +55,12 @@ async def authenticate_via_ldap(db: AsyncSession, cfg: EffectiveLdapConfig, user
 
     server = Server(cfg.uri)
     uname = username.strip()
+    try:
+        from ldap3.utils.conv import escape_filter_chars
+    except Exception:
+        escape_filter_chars = lambda s: s.replace("\\", r"\5c").replace("*", r"\2a").replace("(", r"\28").replace(")", r"\29").replace("\x00", "")  # noqa: E731
+    uname_esc = escape_filter_chars(uname)
+    attr = re.sub(r"[^A-Za-z0-9-]", "", cfg.username_attr or "") or "sAMAccountName"
 
     # 1) Bind (service or anonymous) and find user DN.
     try:
@@ -67,7 +74,7 @@ async def authenticate_via_ldap(db: AsyncSession, cfg: EffectiveLdapConfig, user
             # If cfg.user_filter is empty, fall back to a safe default.
             base_filter = cfg.user_filter.strip() or "(&(objectClass=user)(objectCategory=person))"
             # Most LDAP servers accept an AND wrapper; keep it simple.
-            user_filter = f"(&{base_filter}({cfg.username_attr}={uname}))"
+            user_filter = f"(&{base_filter}({attr}={uname_esc}))"
             conn.search(
                 search_base=cfg.user_search_base,
                 search_filter=user_filter,

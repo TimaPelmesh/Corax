@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import can_access_panel, get_current_user
 from app.database import get_db
+from app.html_sanitize import sanitize_html
 from app.models import Note, NoteShare, User
 from app.schemas import (
     NoteCreate,
@@ -74,7 +75,7 @@ async def _note_out(db: AsyncSession, note: Note, viewer: User) -> NoteOut:
     return NoteOut(
         id=note.id,
         title=note.title or "",
-        body_html=note.body_html or "",
+        body_html=sanitize_html(note.body_html or "", max_len=_BODY_MAX),
         owner_user_id=note.owner_user_id,
         owner_username=owner.username if owner else None,
         owner_full_name=owner.full_name if owner else None,
@@ -166,7 +167,7 @@ async def create_note(
     db: AsyncSession = Depends(get_db),
 ):
     _validate_plan_dates(body.plan_start, body.plan_end)
-    html = (body.body_html or "")[:_BODY_MAX]
+    html = sanitize_html(body.body_html or "", max_len=_BODY_MAX)
     note = Note(
         title=(body.title or "").strip() or "Без названия",
         body_html=html,
@@ -210,7 +211,7 @@ async def update_note(
     if "title" in patch and patch["title"] is not None:
         note.title = (patch["title"] or "").strip() or "Без названия"
     if "body_html" in patch and patch["body_html"] is not None:
-        note.body_html = (patch["body_html"] or "")[:_BODY_MAX]
+        note.body_html = sanitize_html(patch["body_html"] or "", max_len=_BODY_MAX)
     if "plan_start" in patch:
         note.plan_start = patch["plan_start"]
     if "plan_end" in patch:

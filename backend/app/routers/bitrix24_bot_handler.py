@@ -144,9 +144,16 @@ def _mention_user(user_id: int, label: str) -> str:
 def _verify_handler_token(handler_token: str | None, header_token: str | None) -> None:
     expected = (settings.bitrix24_bot_handler_token or "").strip()
     if not expected:
-        raise HTTPException(status_code=500, detail="BITRIX24_BOT_HANDLER_TOKEN не задан на сервере.")
+        raise HTTPException(status_code=403, detail="Bitrix handler is not configured")
     got = (header_token or handler_token or "").strip()
-    if not got or not secrets.compare_digest(expected, got):
+    if not got:
+        raise HTTPException(status_code=403, detail="Invalid handler token")
+    import hashlib
+    import hmac as hmac_mod
+
+    left = hashlib.sha256(expected.encode("utf-8")).digest()
+    right = hashlib.sha256(got.encode("utf-8")).digest()
+    if not hmac_mod.compare_digest(left, right):
         raise HTTPException(status_code=403, detail="Invalid handler token")
 
 
@@ -247,8 +254,18 @@ async def handler(
         {
             "received_at": datetime.now(timezone.utc).isoformat(),
             "content_type": ctype,
-            "headers": {k: v for k, v in request.headers.items()},
-            "raw_body": raw_body_text,
+            "headers": {
+                k: v
+                for k, v in request.headers.items()
+                if k.lower()
+                not in {
+                    "authorization",
+                    "cookie",
+                    "x-handler-token",
+                    "x-forwarded-user",
+                    "x-remote-user",
+                }
+            },
             "parsed": payload,
         },
         datetime.now(timezone.utc),

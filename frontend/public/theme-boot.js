@@ -9,4 +9,9 @@
   } catch (e) {
     document.documentElement.setAttribute('data-theme', 'light')
   }
+  try {
+    if (CSS.supports('-moz-appearance', 'none')) {
+      document.documentElement.classList.add('is-gecko')
+    }
+  } catch (e) {}
 })()

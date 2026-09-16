@@ -486,20 +486,9 @@ async def health():
 
 @app.get("/api/v1/health")
 async def health_v1():
-    import asyncio
-
-    from app.local_ip import list_lan_ipv4, pick_primary_lan_ipv4
-
-    # OS IP discovery is sync/subprocess — never block the event loop on health.
-    lan_ip, lan_ips = await asyncio.gather(
-        asyncio.to_thread(pick_primary_lan_ipv4),
-        asyncio.to_thread(list_lan_ipv4),
-    )
     return {
         "status": "ok",
         "api": "v1",
-        "lan_ip": lan_ip,
-        "lan_ips": lan_ips,
     }
 
 

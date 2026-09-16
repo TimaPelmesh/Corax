@@ -4,6 +4,8 @@ from app.network_link_builder import (
     _extract_ips_from_payload,
     _extract_macs_from_payload,
     _macs_from_interfaces_json,
+    _resolve_neighbor_target,
+    _HostIndex,
 )
 from app.network_snmp import _parse_lldp_man_ipv4
 
@@ -35,3 +37,11 @@ def test_parse_lldp_management_address_from_oid_suffix():
     assert _parse_lldp_man_ipv4("0.12.1.1.4.10.20.0.1", None) == "10.20.0.1"
     assert _parse_lldp_man_ipv4("0.3.2.1.10.0.0.1", None) == "10.0.0.1"
     assert _parse_lldp_man_ipv4("0.3.2.1.1.1.1.1", b"\x0a\x00\x00\x02") == "10.0.0.2"
+
+
+def test_resolve_neighbor_prefers_network_device_over_pc():
+    idx = _HostIndex()
+    idx.by_hostname["core-sw"] = ("computer", 9)
+    idx.by_mac["aa:bb:cc:dd:ee:ff"] = ("network_device", 3)
+    hit = _resolve_neighbor_target(idx, None, "core-sw", "aa:bb:cc:dd:ee:ff")
+    assert hit == ("network_device", 3)

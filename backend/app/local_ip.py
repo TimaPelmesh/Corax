@@ -208,13 +208,16 @@ def resolve_lan_scan_networks(
     *,
     cidr_list: list[str] | None = None,
     hint_ips: list[str] | None = None,
-    max_subnets: int = 32,
+    max_subnets: int = 64,
+    exclusive: bool = False,
 ) -> tuple[list[ipaddress.IPv4Network], list[str]]:
     """
     LAN prefixes to SNMP-scan.
 
-    Manual CIDR wins. Otherwise merge: env/host LAN (docker:up), advertise IP,
-    inventory hints, OS interfaces — always dropping Docker 172.17–31 / 192.168.65.
+    Manual CIDR is added to the auto zone (host LAN, routes, ARP, inventory),
+    never a hard cap — otherwise VLANs next to CORAX stay invisible.
+    Docker 172.17–31 / 192.168.65 are always dropped.
+    exclusive=True scans only the given CIDR list (second-pass neighbor nets).
     """
     reasons: list[str] = []
     networks: set[ipaddress.IPv4Network] = set()
@@ -229,9 +232,17 @@ def resolve_lan_scan_networks(
             if isinstance(net, ipaddress.IPv4Network):
                 _add_scan_units(networks, net)
         if networks:
-            ordered = sorted(networks, key=lambda n: int(n.network_address))[: max(1, max_subnets)]
-            reasons.append("ручной CIDR: " + ", ".join(str(n) for n in ordered[:12]))
-            return ordered, reasons
+            reasons.append(
+                "ручной CIDR: "
+                + ", ".join(str(n) for n in sorted(networks, key=lambda n: int(n.network_address))[:12])
+            )
+            if exclusive:
+                ordered = sorted(networks, key=lambda n: int(n.network_address))[: max(1, max_subnets)]
+                return ordered, reasons
+
+    if exclusive:
+        ordered = sorted(networks, key=lambda n: int(n.network_address))[: max(1, max_subnets)]
+        return ordered, reasons or ["пустой список CIDR"]
 
     env_added: list[str] = []
     for raw in _env_scan_cidrs():

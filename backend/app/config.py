@@ -164,6 +164,15 @@ class Settings(BaseSettings):
     corax_scan_networks: str = ""
     # Injected by npm run docker:up from the HOST LAN (not the container 172.x bridge).
     corax_host_lan_networks: str = ""
+    # Reverse-proxy IPs/CIDRs allowed to set X-Forwarded-For / X-Real-IP / X-Forwarded-Proto / SSO headers.
+    # Empty = do not trust client-supplied forwarding headers (direct :3000).
+    trusted_proxy_ips: str = ""
+    # WikiRAG / ticket-handler LLM: public internet URLs are denied unless this is true.
+    llm_allow_public_url: bool = False
+    # Extra hostnames allowed for the local LLM (comma-separated), in addition to LM_STUDIO_BASE_URL.
+    llm_allow_hosts: str = ""
+    # Shared AGENT_TOKEN may update a PC only when MAC/serial matches the existing row.
+    agent_bind_identity: bool = True
 
 
 def _is_default_secret(v: str) -> bool:

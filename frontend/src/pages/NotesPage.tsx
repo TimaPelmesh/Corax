@@ -26,6 +26,35 @@ const MARK_GLYPH: Record<NoteMark, string> = {
   star: '★',
 }
 
+function sanitizeNoteHtml(html: string): string {
+  if (!html) return ''
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const banned = new Set(['SCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'FORM', 'INPUT', 'BUTTON', 'SVG', 'STYLE'])
+  const walk = (node: ParentNode) => {
+    ;[...node.childNodes].forEach((child) => {
+      if (child.nodeType !== Node.ELEMENT_NODE) return
+      const el = child as HTMLElement
+      if (banned.has(el.tagName)) {
+        el.remove()
+        return
+      }
+      for (const attr of [...el.attributes]) {
+        const name = attr.name.toLowerCase()
+        if (name.startsWith('on') || name === 'style' || name === 'src' || name === 'srcset') {
+          el.removeAttribute(attr.name)
+        }
+      }
+      if (el.tagName === 'A') {
+        const href = (el.getAttribute('href') || '').trim()
+        if (href && !/^(https?:|mailto:|\/|#)/i.test(href)) el.removeAttribute('href')
+      }
+      walk(el)
+    })
+  }
+  walk(doc.body)
+  return doc.body.innerHTML
+}
+
 function execCmd(cmd: string, value?: string) {
   try {
     document.execCommand(cmd, false, value)
@@ -166,7 +195,7 @@ export function NotesPage() {
         setMark(row.mark ?? null)
         setShareDraft(row.shares.map((s) => ({ user_id: s.user_id, can_edit: s.can_edit })))
         bodyHtmlRef.current = row.body_html || ''
-        if (editorRef.current) editorRef.current.innerHTML = bodyHtmlRef.current
+        if (editorRef.current) editorRef.current.innerHTML = sanitizeNoteHtml(bodyHtmlRef.current)
       } catch (e) {
         if (!cancelled) {
           toast.error(e instanceof Error ? e.message : t('notes.loadFailed'))

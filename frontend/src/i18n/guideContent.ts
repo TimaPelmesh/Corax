@@ -287,7 +287,7 @@ const GUIDE_RU: GuideCopy = {
     {
       id: 'network',
       title: 'Сеть',
-      summary: 'Список устройств в LAN, опрос SNMP и карта связей.',
+      summary: 'Список устройств в LAN, опрос SNMP. Схема — отдельная «Карта сети».',
       steps: [
         {
           title: 'Список',
@@ -298,11 +298,14 @@ const GUIDE_RU: GuideCopy = {
           body: '«Опросить все» обновляет SNMP-статус уже известных устройств. Новые хосты появляются после опроса или ручного добавления.',
         },
         {
-          title: 'Карта',
-          body: 'Переключатель «Карта» показывает связи. ПК на загруженных свичах можно свернуть.',
+          title: 'Карта сети',
+          body: 'Пункт меню «Карта сети»: несколько схем (чистый холст или раскладка по топологии). Добавляете предметы, надписи и картинки, привязываете устройства. Очистка схемы — с подтверждением.',
         },
       ],
-      links: [{ to: '/network', label: 'Сеть' }],
+      links: [
+        { to: '/network', label: 'Сеть' },
+        { to: '/network-map', label: 'Карта сети' },
+      ],
     },
     {
       id: 'requests',
@@ -797,7 +800,7 @@ const GUIDE_EN: GuideCopy = {
     {
       id: 'network',
       title: 'Network',
-      summary: 'LAN device list, SNMP polling, and a topology map.',
+      summary: 'LAN device list and SNMP polling. The diagram lives on Network map.',
       steps: [
         {
           title: 'List',
@@ -808,11 +811,14 @@ const GUIDE_EN: GuideCopy = {
           body: '“Poll all” refreshes SNMP status of known devices. New hosts appear after a poll or a manual add.',
         },
         {
-          title: 'Map',
-          body: 'The Map toggle shows links. PCs on busy switches can collapse.',
+          title: 'Network map',
+          body: 'Use the Network map menu item for several diagrams (blank canvas or auto-layout from topology). Add items, captions and pictures, then bind devices. Clearing a diagram needs a typed confirmation.',
         },
       ],
-      links: [{ to: '/network', label: 'Network' }],
+      links: [
+        { to: '/network', label: 'Network' },
+        { to: '/network-map', label: 'Network map' },
+      ],
     },
     {
       id: 'requests',

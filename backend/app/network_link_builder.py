@@ -13,8 +13,13 @@ from app.network_classify import normalize_mac
 
 _MAC_RE = re.compile(r"(?:[0-9a-f]{2}[:\-]){5}[0-9a-f]{2}|[0-9a-f]{12}", re.I)
 
+from app.network_snmp_vendors import DISCOVERY_PROTOCOLS
+
 # Prefer these as logical parents when attaching orphans on the same /24.
 _CORE_TYPES = frozenset({"switch", "router", "gateway", "firewall", "controller", "ap"})
+
+# Poll rebuilds these; manual editor cables must never be in this set.
+AUTO_LINK_TYPES = frozenset({"lldp", "cdp", "fdb", "trace", "subnet"} | DISCOVERY_PROTOCOLS)
 
 
 @dataclass
@@ -123,16 +128,25 @@ async def build_host_index(db: AsyncSession) -> _HostIndex:
         idx.devices_meta[d.id] = (d.ip_address, d.device_type, d.hostname)
         for mac in _macs_from_interfaces_json(d.interfaces_json):
             idx.by_mac[mac] = ("network_device", d.id)
-        # MAC of network gear from extras / FDB own ports is rare; still index sys_name short
         if d.hostname and "." in d.hostname:
             idx.by_hostname[d.hostname.split(".")[0].strip().lower()] = ("network_device", d.id)
+        if d.neighbors_json:
+            try:
+                for item in json.loads(d.neighbors_json) or []:
+                    if not isinstance(item, dict):
+                        continue
+                    chassis = normalize_mac(item.get("remote_chassis"))
+                    if chassis:
+                        idx.by_mac.setdefault(chassis, ("network_device", d.id))
+            except (json.JSONDecodeError, TypeError):
+                pass
 
     computers = (await db.execute(select(Computer))).scalars().all()
     for c in computers:
         if c.hostname:
-            idx.by_hostname[c.hostname.strip().lower()] = ("computer", c.id)
+            idx.by_hostname.setdefault(c.hostname.strip().lower(), ("computer", c.id))
             if "." in c.hostname:
-                idx.by_hostname[c.hostname.split(".")[0].strip().lower()] = ("computer", c.id)
+                idx.by_hostname.setdefault(c.hostname.split(".")[0].strip().lower(), ("computer", c.id))
         mac = normalize_mac(c.mac_primary)
         if mac:
             idx.by_mac.setdefault(mac, ("computer", c.id))
@@ -202,22 +216,28 @@ async def upsert_link(
     return True
 
 
-def _resolve_neighbor_target(idx: _HostIndex, remote_ip: str | None, remote_name: str | None) -> tuple[str, int] | None:
+def _resolve_neighbor_target(idx: _HostIndex, remote_ip: str | None, remote_name: str | None, remote_chassis: str | None = None) -> tuple[str, int] | None:
+    hits: list[tuple[str, int]] = []
     if remote_ip and remote_ip in idx.by_ip:
-        return idx.by_ip[remote_ip]
+        hits.append(idx.by_ip[remote_ip])
+    chassis = normalize_mac(remote_chassis) or normalize_mac(remote_name)
+    if chassis and chassis in idx.by_mac:
+        hits.append(idx.by_mac[chassis])
     if remote_name:
         low = remote_name.strip().lower()
         if low in idx.by_hostname:
-            return idx.by_hostname[low]
+            hits.append(idx.by_hostname[low])
         if "." in low:
             short = low.split(".")[0]
             if short in idx.by_hostname:
-                return idx.by_hostname[short]
-        # Chassis ID sometimes looks like a MAC
+                hits.append(idx.by_hostname[short])
         mac = normalize_mac(remote_name)
         if mac and mac in idx.by_mac:
-            return idx.by_mac[mac]
-    return None
+            hits.append(idx.by_mac[mac])
+    if not hits:
+        return None
+    hits.sort(key=lambda x: 0 if x[0] == "network_device" else 1)
+    return hits[0]
 
 
 async def rebuild_links_for_device(
@@ -231,7 +251,7 @@ async def rebuild_links_for_device(
     if clear_auto:
         q = await db.execute(
             delete(NetworkLink).where(
-                NetworkLink.link_type.in_(("lldp", "cdp", "fdb", "trace", "subnet")),
+                NetworkLink.link_type.in_(tuple(AUTO_LINK_TYPES)),
                 or_(
                     (NetworkLink.from_type == "network_device") & (NetworkLink.from_id == device.id),
                     (NetworkLink.to_type == "network_device") & (NetworkLink.to_id == device.id),
@@ -250,10 +270,11 @@ async def rebuild_links_for_device(
     for n in neighbors:
         if not isinstance(n, dict):
             continue
-        protocol = str(n.get("protocol") or "lldp")
+        protocol = str(n.get("protocol") or "lldp").lower()
         remote_ip = (n.get("remote_ip") or "").strip() or None
         remote_name = (n.get("remote_name") or n.get("remote_chassis") or "").strip() or None
-        target = _resolve_neighbor_target(idx, remote_ip, remote_name)
+        remote_chassis = (n.get("remote_chassis") or "").strip() or None
+        target = _resolve_neighbor_target(idx, remote_ip, remote_name, remote_chassis)
         if not target:
             continue
         to_type, to_id = target
@@ -263,7 +284,7 @@ async def rebuild_links_for_device(
             from_id=device.id,
             to_type=to_type,
             to_id=to_id,
-            link_type=protocol if protocol in ("lldp", "cdp") else "lldp",
+            link_type=protocol if protocol in AUTO_LINK_TYPES else "lldp",
             local_port=n.get("local_port"),
             remote_port=n.get("remote_port"),
             confidence=0.9,
@@ -332,7 +353,7 @@ async def seed_trace_links(db: AsyncSession, idx: _HostIndex, devices: list[Netw
             ).where(
                 NetworkLink.from_type == "network_device",
                 NetworkLink.to_type == "network_device",
-                NetworkLink.link_type.in_(("lldp", "cdp", "fdb")),
+                NetworkLink.link_type.in_(tuple(AUTO_LINK_TYPES - {"subnet", "trace"})),
             )
         )
     ).all()
@@ -416,7 +437,7 @@ async def seed_logical_subnet_links(db: AsyncSession, idx: _HostIndex) -> int:
                 NetworkLink.from_id,
                 NetworkLink.to_type,
                 NetworkLink.to_id,
-            ).where(NetworkLink.link_type.in_(("lldp", "cdp", "fdb", "trace", "subnet")))
+            ).where(NetworkLink.link_type.in_(tuple(AUTO_LINK_TYPES)))
         )
     ).all()
     for ft, fid, tt, tid in rows:
@@ -514,7 +535,7 @@ async def seed_logical_subnet_links(db: AsyncSession, idx: _HostIndex) -> int:
 async def rebuild_all_links(db: AsyncSession) -> LinkBuildResult:
     idx = await build_host_index(db)
     cleared = await db.execute(
-        delete(NetworkLink).where(NetworkLink.link_type.in_(("lldp", "cdp", "fdb", "trace", "subnet")))
+        delete(NetworkLink).where(NetworkLink.link_type.in_(tuple(AUTO_LINK_TYPES)))
     )
     total = LinkBuildResult(cleared=cleared.rowcount or 0)
     devices = (await db.execute(select(NetworkDevice))).scalars().all()

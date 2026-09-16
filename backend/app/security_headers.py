@@ -35,7 +35,13 @@ class SecurityHeadersMiddleware:
 
         header_map = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
         xf_proto = (header_map.get("x-forwarded-proto") or "").strip().lower()
-        is_https = scope.get("scheme") == "https" or xf_proto == "https"
+        peer = ""
+        client = scope.get("client")
+        if client:
+            peer = client[0] if isinstance(client, (list, tuple)) else str(client)
+        from app.net_trust import request_is_https
+
+        is_https = request_is_https(scope.get("scheme"), xf_proto, peer)
         apply_csp = self.enable_csp and self.environment == "production"
         frame_options = self.frame_options
 

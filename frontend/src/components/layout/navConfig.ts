@@ -8,6 +8,7 @@ import {
   IconGraph,
   IconKey,
   IconLock,
+  IconNetworkMap,
   IconPcs,
   IconPencil,
   IconPrinter,
@@ -29,6 +30,7 @@ export function prefsNavItems(user: { is_superuser?: boolean; role?: string } | 
     { path: '/software', labelKey: 'nav.software' },
     { path: '/printers', labelKey: 'nav.printers' },
     { path: '/network', labelKey: 'nav.network' },
+    { path: '/network-map', labelKey: 'nav.networkMap' },
     { path: '/warehouse', labelKey: 'nav.warehouse' },
     { path: '/requests', labelKey: 'nav.requestNew' },
     { path: '/requests/database', labelKey: 'nav.requestList' },
@@ -105,6 +107,12 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           icon: IconGraph,
           labelKey: 'nav.network',
           keywords: ['snmp', 'switch', 'router', 'сеть', 'топология', 'lldp'],
+        },
+        {
+          to: '/network-map',
+          icon: IconNetworkMap,
+          labelKey: 'nav.networkMap',
+          keywords: ['карта сети', 'topology', 'packet tracer', 'серверная', 'схема', 'lldp'],
         },
         {
           to: '/warehouse',

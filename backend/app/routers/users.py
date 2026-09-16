@@ -310,6 +310,7 @@ async def change_my_password(
         raise HTTPException(status_code=400, detail=forbidden)
     u.hashed_password = hash_password(new_password)
     u.must_change_password = False
+    u.token_version = int(getattr(u, "token_version", 0) or 0) + 1
     await db.commit()
     return {"ok": True}
 

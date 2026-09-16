@@ -1,14 +1,11 @@
-from datetime import datetime, timedelta, timezone
-
-import bcrypt
 from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database import get_db
+from app.jwtutil import JWTError, access_token_payload, decode_token, encode_token
 from app.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -46,13 +43,8 @@ def hash_password(password: str) -> str:
     ).decode("utf-8")
 
 
-def create_access_token(subject: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    return jwt.encode(
-        {"sub": subject, "exp": expire},
-        settings.secret_key,
-        algorithm=settings.algorithm,
-    )
+def create_access_token(subject: str, token_version: int = 0) -> str:
+    return encode_token(access_token_payload(subject, token_version))
 
 
 async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
@@ -85,16 +77,30 @@ async def get_current_user(
     if not token:
         raise credentials_exception
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = decode_token(token)
         sub: str | None = payload.get("sub")
         if sub is None:
             raise credentials_exception
-    except JWTError:
+        token_ver = int(payload.get("ver") or 0)
+    except (JWTError, TypeError, ValueError):
         raise credentials_exception
     user = await get_user_by_username(db, sub)
     if user is None or not user.is_active or not can_access_panel(user):
         raise credentials_exception
+    if int(getattr(user, "token_version", 0) or 0) != token_ver:
+        raise credentials_exception
     return user
+
+
+async def get_current_user_optional(
+    token: str | None = Depends(oauth2_scheme),
+    access_token: str | None = Cookie(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    try:
+        return await get_current_user(token=token, access_token=access_token, db=db)
+    except HTTPException:
+        return None
 
 
 async def get_current_superuser(current: User = Depends(get_current_user)) -> User:
@@ -122,16 +128,19 @@ async def verify_superuser_standalone(
     if not tok:
         raise credentials_exception
     try:
-        payload = jwt.decode(tok, settings.secret_key, algorithms=[settings.algorithm])
+        payload = decode_token(tok)
         sub: str | None = payload.get("sub")
         if sub is None:
             raise credentials_exception
-    except JWTError:
+        token_ver = int(payload.get("ver") or 0)
+    except (JWTError, TypeError, ValueError):
         raise credentials_exception
 
     async with AsyncSessionLocal() as db:
         user = await get_user_by_username(db, sub)
         if user is None or not user.is_active:
+            raise credentials_exception
+        if int(getattr(user, "token_version", 0) or 0) != token_ver:
             raise credentials_exception
         if not user.is_superuser:
             raise HTTPException(status_code=403, detail="Нужны права администратора")

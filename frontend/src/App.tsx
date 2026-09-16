@@ -84,6 +84,9 @@ const PrintersPage = lazy(() =>
 const NetworkPage = lazy(() =>
   import('./pages/NetworkPage').then((module) => ({ default: module.NetworkPage })),
 )
+const NetworkMapPage = lazy(() =>
+  import('./pages/NetworkMapPage').then((module) => ({ default: module.NetworkMapPage })),
+)
 const TicketHandlerClientPage = lazy(() =>
   import('./pages/TicketHandlerClientPage').then((module) => ({ default: module.TicketHandlerClientPage })),
 )
@@ -153,6 +156,7 @@ export default function App() {
         <Route path="computers" element={<ComputersPage />} />
         <Route path="printers" element={<PrintersPage />} />
         <Route path="network" element={<NetworkPage />} />
+        <Route path="network-map" element={<NetworkMapPage />} />
         <Route path="requests/handler" element={<Navigate to="/requests/database" replace />} />
         <Route path="requests" element={<ServiceRequestsPage />}>
           <Route index element={null} />

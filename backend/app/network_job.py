@@ -125,7 +125,15 @@ class NetworkJobRunner:
         from app.network_poll_config import get_effective_network_poll_config
         from app.network_snmp_discover import discover_network_devices
 
-        self._set(phase="discover", progress=8, message="Авто-зона CORAX → полный SNMP-скан…")
+        self._set(phase="discover", progress=6, message="Zabbix → вкладка «Сеть»…")
+        from app.network_zabbix_merge import merge_zabbix_into_network_devices
+
+        zb = await merge_zabbix_into_network_devices(db)
+        zb_note = ""
+        if zb.get("matched") or zb.get("created"):
+            zb_note = f" Zabbix: совпало {zb.get('matched', 0)}, новых {zb.get('created', 0)}."
+
+        self._set(phase="discover", progress=10, message="Авто-зона всех подсетей → SNMP…")
         cfg = await get_effective_network_poll_config(db)
         extra = await _extra_communities(db, cfg.snmp_community)
         r = await discover_network_devices(
@@ -142,16 +150,50 @@ class NetworkJobRunner:
             db,
             community=cfg.snmp_community,
             timeout=min(4.0, max(2.0, cfg.snmp_timeout_seconds)),
-            limit=48,
+            limit=120,
         )
         seeded = await seed_devices_from_neighbors(
             db,
             community=cfg.snmp_community,
             timeout=min(1.4, max(0.8, cfg.snmp_timeout_seconds)),
         )
-        msg = r.message
+        extra_nets = 0
+        from app.network_snmp_discover import collect_unseen_neighbor_cidrs
+        import ipaddress as _ipaddress
+
+        known_nets = []
+        for raw in r.networks or []:
+            try:
+                known_nets.append(_ipaddress.ip_network(raw, strict=False))
+            except ValueError:
+                continue
+        extra_cidrs = await collect_unseen_neighbor_cidrs(db, known_nets)
+        if extra_cidrs:
+            self._set(phase="neighbors", progress=80, message="Скан подсетей соседей…")
+            extra_scan = await discover_network_devices(
+                db,
+                community=cfg.snmp_community,
+                communities=extra,
+                timeout=min(1.4, max(0.7, cfg.snmp_timeout_seconds)),
+                total_budget_seconds=90.0,
+                concurrency=max(cfg.poll_concurrency, 24),
+                cidr_list=extra_cidrs,
+                exclusive=True,
+                expand_neighbors=False,
+            )
+            extra_nets = extra_scan.found
+            seeded += extra_scan.created
+            r.created += extra_scan.created
+            r.updated += extra_scan.updated
+            r.scanned += extra_scan.scanned
+            for net in extra_scan.networks:
+                if net not in r.networks:
+                    r.networks.append(net)
+        msg = r.message + zb_note
         if enriched or seeded:
             msg += f" Соседи: deep-poll {enriched}, добавлено по LLDP/CDP {seeded}."
+        if extra_nets:
+            msg += f" Дальние VLAN: SNMP {extra_nets}."
 
         self._set(phase="trace", progress=84, message="Трассировка соседних сетей и шлюзов…")
         from app.network_tracer import trace_nearest_gateways

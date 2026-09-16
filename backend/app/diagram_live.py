@@ -8,11 +8,10 @@ import logging
 from dataclasses import dataclass
 
 from fastapi import WebSocket
-from jose import JWTError, jwt
 from sqlalchemy import select
 
-from app.config import settings
 from app.database import AsyncSessionLocal
+from app.jwtutil import JWTError, decode_token
 from app.models import User
 
 log = logging.getLogger(__name__)
@@ -22,16 +21,19 @@ async def user_from_access_token(token: str | None) -> User | None:
     if not token or not str(token).strip():
         return None
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = decode_token(token)
         sub = payload.get("sub")
         if sub is None or not isinstance(sub, str):
             return None
-    except JWTError:
+        token_ver = int(payload.get("ver") or 0)
+    except (JWTError, TypeError, ValueError):
         return None
     async with AsyncSessionLocal() as db:
         r = await db.execute(select(User).where(User.username == sub))
         u = r.scalar_one_or_none()
         if u is None or not u.is_active:
+            return None
+        if int(getattr(u, "token_version", 0) or 0) != token_ver:
             return None
         return u
 

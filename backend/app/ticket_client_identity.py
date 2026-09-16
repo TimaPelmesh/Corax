@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import base64
-import ipaddress
 import socket
 from typing import Iterable
 
 from fastapi import Request
+
+from app.net_trust import (
+    client_ip_from_parts,
+    is_dockerish_ip,
+    is_private_ip,
+    is_trusted_proxy,
+    normalize_ip,
+)
 
 _SSO_HEADERS = (
     "remote-user",
@@ -16,38 +23,18 @@ _SSO_HEADERS = (
     "x-authenticated-user",
 )
 
-_DOCKERISH_NETS = (
-    ipaddress.ip_network("172.17.0.0/16"),
-    ipaddress.ip_network("172.18.0.0/16"),
-    ipaddress.ip_network("192.168.65.0/24"),
-)
-
-
-def normalize_ip(raw: str | None) -> str | None:
-    s = (raw or "").strip()
-    if not s:
-        return None
-    if s.startswith("[") and "]" in s:
-        s = s[1 : s.index("]")]
-    if "%" in s:
-        s = s.split("%", 1)[0]
-    try:
-        addr = ipaddress.ip_address(s)
-    except ValueError:
-        return None
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-        addr = addr.ipv4_mapped
-    return str(addr)
-
-
-def is_dockerish_ip(ip: str | None) -> bool:
-    parsed = normalize_ip(ip)
-    if not parsed:
-        return True
-    addr = ipaddress.ip_address(parsed)
-    if addr.is_loopback or addr.is_link_local or addr.is_unspecified:
-        return True
-    return any(addr in net for net in _DOCKERISH_NETS)
+__all__ = [
+    "client_ip",
+    "client_ip_from_parts",
+    "is_dockerish_ip",
+    "is_private_ip",
+    "normalize_ip",
+    "ntlm_type3_username",
+    "sam_account",
+    "sso_login",
+    "sso_login_from_headers",
+    "reverse_dns_shortname",
+]
 
 
 def sam_account(raw: str | None) -> str | None:
@@ -100,25 +87,6 @@ def ntlm_type3_username(authorization: str | None) -> str | None:
     return sam_account(name)
 
 
-def client_ip_from_parts(peer: str | None, forwarded_for: str | None, real_ip: str | None) -> str:
-    candidates: list[str] = []
-    for item in (forwarded_for or "").split(","):
-        got = normalize_ip(item)
-        if got:
-            candidates.append(got)
-    real = normalize_ip(real_ip)
-    if real:
-        candidates.append(real)
-    peer_ip = normalize_ip(peer)
-    if peer_ip:
-        candidates.append(peer_ip)
-    for ip in candidates:
-        addr = ipaddress.ip_address(ip)
-        if addr.is_private and not addr.is_loopback and not addr.is_link_local:
-            return ip
-    return candidates[0] if candidates else ""
-
-
 def client_ip(request: Request) -> str:
     peer = (request.client.host if request.client else "") or ""
     return client_ip_from_parts(
@@ -138,6 +106,9 @@ def sso_login_from_headers(headers: Iterable[tuple[str, str]]) -> str | None:
 
 
 def sso_login(request: Request) -> str | None:
+    peer = (request.client.host if request.client else "") or ""
+    if not is_trusted_proxy(peer):
+        return None
     return sso_login_from_headers(request.headers.items())
 
 
@@ -157,13 +128,3 @@ def reverse_dns_shortname(ip: str, timeout_sec: float = 0.35) -> str | None:
     if not name:
         return None
     return name
-
-
-def is_private_ip(ip: str | None) -> bool:
-    parsed = normalize_ip(ip)
-    if not parsed:
-        return False
-    try:
-        return ipaddress.ip_address(parsed).is_private
-    except ValueError:
-        return False

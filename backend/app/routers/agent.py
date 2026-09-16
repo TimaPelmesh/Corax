@@ -24,6 +24,55 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 _AGENT_TOKEN_PREFIX = "hmac256:"
 
 
+def _token_matches(left: str, right: str) -> bool:
+    if not left or not right or len(left) != len(right):
+        return False
+    return hmac.compare_digest(left, right)
+_PLACEHOLDER_SERIALS = frozenset(
+    {
+        "",
+        "none",
+        "n/a",
+        "na",
+        "null",
+        "to be filled by o.e.m.",
+        "default string",
+        "system serial number",
+        "0",
+    }
+)
+
+
+def _norm_mac(value: str | None) -> str:
+    return re.sub(r"[^0-9A-Fa-f]", "", value or "").upper()
+
+
+def _usable_serial(value: str | None) -> str:
+    s = (value or "").strip()
+    if s.lower() in _PLACEHOLDER_SERIALS:
+        return ""
+    return s
+
+
+def _guard_agent_identity(existing: Computer, report: AgentInventoryReport) -> None:
+    if not bool(getattr(settings, "agent_bind_identity", True)):
+        return
+    old_mac = _norm_mac(existing.mac_primary)
+    new_mac = _norm_mac(report.mac_primary)
+    if old_mac and new_mac and old_mac != new_mac:
+        raise HTTPException(
+            status_code=403,
+            detail="Токен агента не может перезаписать этот hostname: MAC не совпадает",
+        )
+    old_sn = _usable_serial(existing.serial_number)
+    new_sn = _usable_serial(report.serial_number)
+    if old_sn and new_sn and old_sn.lower() != new_sn.lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Токен агента не может перезаписать этот hostname: серийный номер не совпадает",
+        )
+
+
 def lean_raw_payload_json(dump: dict) -> str:
     """Store inventory JSON without the full software list (normalized table holds rows)."""
     data = dict(dump)
@@ -109,7 +158,7 @@ async def verify_agent_token(db: AsyncSession, authorization: str | None, hostna
         raise HTTPException(status_code=401, detail="Нужен заголовок Authorization: Bearer <token>")
     token = authorization.removeprefix("Bearer ").strip()
     legacy_tokens = {t.strip() for t in settings.agent_legacy_tokens.split(",") if t.strip()}
-    if token == settings.agent_token or token in legacy_tokens:
+    if _token_matches(token, settings.agent_token) or any(_token_matches(token, item) for item in legacy_tokens):
         return
     if token != settings.agent_token:
         if "." not in token:
@@ -176,6 +225,7 @@ async def submit_inventory(
         )
 
     if pc:
+        _guard_agent_identity(pc, report)
         action = "updated"
         pc.serial_number = report.serial_number or pc.serial_number
         pc.mac_primary = report.mac_primary or pc.mac_primary

@@ -93,6 +93,7 @@ async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
     extras["ethernet_ports"] = eth
     extras["wifi_ports"] = wifi
     extras["neighbors_total"] = len(snap.neighbors)
+    extras["neighbor_protocols"] = sorted({n.protocol for n in snap.neighbors if n.protocol})
     extras["fdb_total"] = len(snap.fdb)
     if hasattr(row, "extras_json"):
         row.extras_json = json.dumps(extras, ensure_ascii=False)
@@ -323,6 +324,11 @@ async def run_network_poll_cycle(
     cfg = await get_effective_network_poll_config(db)
     extra = await _extra_communities(db, cfg.snmp_community)
 
+    await _emit(progress_cb, "discover", 4, "Zabbix → вкладка «Сеть»…")
+    from app.network_zabbix_merge import merge_zabbix_into_network_devices
+
+    zb = await merge_zabbix_into_network_devices(db)
+
     if with_discovery:
         await _emit(progress_cb, "discover", 8, "Авто-зона CORAX (интерфейсы, шлюз, маршруты, ARP)…")
         disc = await discover_network_devices(
@@ -364,10 +370,9 @@ async def run_network_poll_cycle(
     async def worker(dev: NetworkDevice) -> None:
         nonlocal done_count
         # ПК без SNMP (инвентарь / ping): не тратим бюджет и не красим offline.
-        dtype = (dev.device_type or "").strip().lower()
         src = (dev.source or "").strip().lower()
         has_snmp_identity = bool((dev.sys_descr or "").strip() or (dev.sys_object_id or "").strip())
-        if dtype == "host" and not has_snmp_identity and src in {"inventory", "ping", ""}:
+        if not has_snmp_identity and src in {"inventory", "ping", "zabbix"}:
             done_count += 1
             pct = 40 + int(40 * done_count / total)
             await _emit(progress_cb, "deep_poll", pct, f"Опрос SNMP {done_count}/{total}…")
@@ -410,7 +415,7 @@ async def run_network_poll_cycle(
 
     await db.commit()
 
-    await _emit(progress_cb, "neighbors", 82, "Сбор соседей LLDP/CDP…")
+    await _emit(progress_cb, "neighbors", 82, "Сбор соседей LLDP/CDP/MNDP…")
     result.neighbor_seeded = await seed_devices_from_neighbors(
         db, community=cfg.snmp_community, timeout=min(1.2, cfg.snmp_timeout_seconds)
     )
@@ -454,5 +459,7 @@ async def run_network_poll_cycle(
         f"связи ПК: {result.links_computers}, устройства: {result.links_devices} "
         f"({result.duration_ms} мс)"
     )
+    if zb.get("matched") or zb.get("created"):
+        result.message += f" Zabbix: совпало {zb.get('matched', 0)}, новых {zb.get('created', 0)}."
     await _emit(progress_cb, "links", 96, result.message)
     return result

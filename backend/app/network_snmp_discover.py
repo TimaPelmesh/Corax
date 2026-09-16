@@ -29,7 +29,7 @@ from app.printer_poll import ping_ip
 # Full /24 = 254 hosts. Windows select() ~512 → keep concurrency under ~48.
 _MAX_HOSTS_PER_NETWORK = 1022
 _MAX_DISCOVERY_IPS = 6144
-_MAX_SUBNETS = 64
+_MAX_SUBNETS = 96
 _WIN32 = platform.system().lower() == "windows"
 _DEFAULT_DISCOVERY_CONCURRENCY = 28 if _WIN32 else 48
 
@@ -99,12 +99,15 @@ def local_network_snmp_networks(cidr_list: list[str] | None = None) -> list[ipad
 def resolve_discovery_networks(
     cidr_list: list[str] | None = None,
     hint_ips: list[str] | None = None,
+    *,
+    exclusive: bool = False,
 ) -> tuple[list[ipaddress.IPv4Network], list[str]]:
     """Return networks + human reasons for UI/logs."""
     return resolve_lan_scan_networks(
         cidr_list=cidr_list,
         hint_ips=hint_ips,
         max_subnets=_MAX_SUBNETS,
+        exclusive=exclusive,
     )
 
 
@@ -304,6 +307,8 @@ async def discover_network_devices(
     total_budget_seconds: float = 420.0,
     concurrency: int = 32,
     cidr_list: list[str] | None = None,
+    exclusive: bool = False,
+    expand_neighbors: bool = True,
 ) -> NetworkDiscoveryResult:
     started = time.monotonic()
     deadline = started + max(30.0, total_budget_seconds)
@@ -311,7 +316,7 @@ async def discover_network_devices(
     inventory_pcs = await _inventory_pc_entries(db, networks=None)
     extra_hints = await _known_device_ips(db)
     hint_ips = [ip for ip, _hn in inventory_pcs] + extra_hints
-    networks, reasons = resolve_discovery_networks(cidr_list, hint_ips=hint_ips)
+    networks, reasons = resolve_discovery_networks(cidr_list, hint_ips=hint_ips, exclusive=exclusive)
     result.networks = [str(n) for n in networks]
     result.scope_reasons = reasons
 
@@ -448,6 +453,35 @@ async def discover_network_devices(
     result.created += ping_created
 
     await db.commit()
+
+    if expand_neighbors and time.monotonic() < deadline - 20:
+        extra_cidrs = await collect_unseen_neighbor_cidrs(db, networks)
+        if extra_cidrs:
+            extra = await discover_network_devices(
+                db,
+                community=community,
+                communities=communities,
+                timeout=timeout,
+                total_budget_seconds=max(20.0, deadline - time.monotonic()),
+                concurrency=concurrency,
+                cidr_list=extra_cidrs,
+                exclusive=True,
+                expand_neighbors=False,
+            )
+            result.scanned += extra.scanned
+            result.found += extra.found
+            result.created += extra.created
+            result.updated += extra.updated
+            result.skipped += extra.skipped
+            result.errors += extra.errors
+            for net in extra.networks:
+                if net not in result.networks:
+                    result.networks.append(net)
+            if extra.networks:
+                result.scope_reasons.append(
+                    "соседи LLDP/CDP/Zabbix → +" + ", ".join(extra.networks[:8])
+                )
+
     result.duration_ms = int((time.monotonic() - started) * 1000)
     limit_note = " (сканирование ограничено по числу адресов)" if truncated else ""
     timed_out = time.monotonic() >= deadline
@@ -455,7 +489,7 @@ async def discover_network_devices(
     nets_s = ", ".join(result.networks[:8])
     if len(result.networks) > 8:
         nets_s += f" …+{len(result.networks) - 8}"
-    why = "; ".join(reasons[:4])
+    why = "; ".join((result.scope_reasons or reasons)[:5])
     scope_note = f" Зона CORAX: {why}." if why else ""
     stub_note = f", stub без SNMP +{stub_created}" if stub_created else ""
     inv_note = f", ПК из инвентаря +{inv_created}/~{inv_updated}" if result.inventory_seeded else ""
@@ -491,6 +525,70 @@ def _ip_in_networks(ip_s: str, networks: list[ipaddress.IPv4Network] | None) -> 
     if not isinstance(addr, ipaddress.IPv4Address):
         return False
     return any(addr in net for net in networks)
+
+
+def _private_slash24(raw: str | None) -> str | None:
+    ip = str(raw or "").strip().split("/")[0].split(":")[0]
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return None
+    if not isinstance(addr, ipaddress.IPv4Address):
+        return None
+    if not addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_multicast:
+        return None
+    last = int(addr) & 0xFF
+    if last in {0, 255}:
+        return None
+    return str(ipaddress.ip_network(f"{addr}/24", strict=False))
+
+
+async def collect_unseen_neighbor_cidrs(
+    db: AsyncSession,
+    known: list[ipaddress.IPv4Network],
+    *,
+    limit: int = 24,
+) -> list[str]:
+    """Extra /24s from LLDP/CDP, SNMP IP lists and Zabbix extras — not already scanned."""
+    known_set = set(known)
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: str | None) -> None:
+        cidr = _private_slash24(raw)
+        if not cidr or cidr in seen:
+            return
+        try:
+            net = ipaddress.ip_network(cidr, strict=False)
+        except ValueError:
+            return
+        if net in known_set:
+            return
+        seen.add(cidr)
+        found.append(cidr)
+
+    rows = (await db.execute(select(NetworkDevice.neighbors_json, NetworkDevice.extras_json, NetworkDevice.ip_address))).all()
+    for neighbors_raw, extras_raw, ip in rows:
+        add(ip)
+        if neighbors_raw:
+            try:
+                neighbors = json.loads(neighbors_raw) or []
+            except (TypeError, json.JSONDecodeError):
+                neighbors = []
+            for item in neighbors:
+                if isinstance(item, dict):
+                    add(item.get("remote_ip"))
+        if extras_raw:
+            try:
+                extras = json.loads(extras_raw) or {}
+            except (TypeError, json.JSONDecodeError):
+                extras = {}
+            if isinstance(extras, dict):
+                for extra_ip in extras.get("ip_addresses") or []:
+                    add(str(extra_ip))
+                zb = extras.get("zabbix") if isinstance(extras.get("zabbix"), dict) else {}
+                add(zb.get("ip") if isinstance(zb, dict) else None)
+    return found[: max(0, limit)]
 
 
 async def _known_device_ips(db: AsyncSession) -> list[str]:

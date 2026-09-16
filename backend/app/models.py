@@ -30,6 +30,8 @@ class User(Base):
     is_ldap: Mapped[bool] = mapped_column(Boolean, default=False)
     # Bootstrap / lab password: panel is locked until the user sets their own.
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Incremented on logout / password change so stolen JWTs stop working.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Локальная учётка CORAX → человек из справочника (LDAP/импорт) для заявок и уведомлений.
     linked_directory_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
@@ -480,6 +482,21 @@ class NetworkLink(Base):
     local_port: Mapped[str | None] = mapped_column(String(128), nullable=True)
     remote_port: Mapped[str | None] = mapped_column(String(128), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class NetworkMapScene(Base):
+    __tablename__ = "network_map_scenes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), default="Карта сети")
+    scene_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

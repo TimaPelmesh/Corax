@@ -471,6 +471,18 @@ export function IconPencil({ className, title }: Props) {
   )
 }
 
+export function IconImage({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <rect x="3.5" y="5" width="17" height="14" rx="2.25" {...soft} />
+      <rect x="3.5" y="5" width="17" height="14" rx="2.25" {...s} />
+      <circle cx="8.6" cy="9.6" r="1.45" fill="currentColor" fillOpacity={0.55} stroke="none" />
+      <path d="M4.2 16.4 9.1 12.1l3.2 2.4 3.1-3.6 4.4 5.5" {...s} />
+    </svg>
+  )
+}
+
 export function IconLock({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
@@ -562,6 +574,47 @@ export function IconFirewall({ className, title }: Props) {
       <path d="M12 3.4 19.4 7v5.4c0 4.35-3.05 7.55-7.4 8.6-4.35-1.05-7.4-4.25-7.4-8.6V7L12 3.4Z" {...soft} />
       <path d="M12 3.4 19.4 7v5.4c0 4.35-3.05 7.55-7.4 8.6-4.35-1.05-7.4-4.25-7.4-8.6V7L12 3.4Z" {...s} />
       <path d="M8.4 12.2h7.2M12 8.7v7" {...s} />
+    </svg>
+  )
+}
+
+export function IconServer({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <rect x="3.5" y="4.25" width="17" height="5.1" rx="1.2" {...soft} />
+      <rect x="3.5" y="9.45" width="17" height="5.1" rx="1.2" {...soft} />
+      <rect x="3.5" y="14.65" width="17" height="5.1" rx="1.2" {...soft} />
+      <rect x="3.5" y="4.25" width="17" height="5.1" rx="1.2" {...s} />
+      <rect x="3.5" y="9.45" width="17" height="5.1" rx="1.2" {...s} />
+      <rect x="3.5" y="14.65" width="17" height="5.1" rx="1.2" {...s} />
+      <circle cx="6.6" cy="6.8" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="6.6" cy="12" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="6.6" cy="17.2" r="0.85" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function IconCloud({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <path d="M7.8 17.5h9.4A3.7 3.7 0 0 0 21 13.9c0-1.9-1.4-3.5-3.3-3.8A5.05 5.05 0 0 0 8.1 8.4 3.9 3.9 0 0 0 4 12.3c0 2.1 1.6 3.8 3.8 3.8Z" {...soft} />
+      <path d="M7.8 17.5h9.4A3.7 3.7 0 0 0 21 13.9c0-1.9-1.4-3.5-3.3-3.8A5.05 5.05 0 0 0 8.1 8.4 3.9 3.9 0 0 0 4 12.3c0 2.1 1.6 3.8 3.8 3.8Z" {...s} />
+    </svg>
+  )
+}
+
+export function IconNetworkMap({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <rect x="3.2" y="3.2" width="17.6" height="17.6" rx="3" {...soft} />
+      <rect x="3.2" y="3.2" width="17.6" height="17.6" rx="3" {...s} />
+      <circle cx="8" cy="8.2" r="1.55" fill="currentColor" stroke="none" />
+      <circle cx="16.2" cy="8.6" r="1.55" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="16.1" r="1.55" fill="currentColor" stroke="none" />
+      <path d="M9.4 8.6 14.7 8.8M8.6 9.6 11.1 14.7M15.4 10 12.9 14.6" {...s} />
     </svg>
   )
 }

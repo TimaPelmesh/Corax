@@ -44,7 +44,7 @@ function packCols(count: number): number {
 }
 
 function linkWeight(t: string): number {
-  if (t === 'lldp' || t === 'cdp') return 6
+  if (t === 'lldp' || t === 'cdp' || t === 'mndp' || t === 'ndp' || t === 'fdp' || t === 'edp' || t === 'isdp' || t === 'hndp') return 6
   if (t === 'trace') return 5
   if (t === 'lan') return 4
   if (t === 'fdb') return 3

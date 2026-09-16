@@ -1740,7 +1740,9 @@ body {
 .login-glow {
   position: absolute;
   border-radius: 9999px;
-  filter: blur(64px);
+  pointer-events: none;
+  filter: none;
+  animation: none;
 }
 
 .login-glow-a {
@@ -1748,8 +1750,7 @@ body {
   top: 10%;
   height: 32rem;
   width: 32rem;
-  background: rgb(37 99 235 / 0.28);
-  animation: login-glow-drift 18s ease-in-out infinite;
+  background: radial-gradient(circle, rgb(37 99 235 / 0.28), transparent 68%);
 }
 
 .login-glow-b {
@@ -1757,8 +1758,7 @@ body {
   top: -4%;
   height: 26rem;
   width: 26rem;
-  background: rgb(56 189 248 / 0.14);
-  animation: login-glow-drift 22s ease-in-out infinite reverse;
+  background: radial-gradient(circle, rgb(56 189 248 / 0.14), transparent 68%);
 }
 
 .login-glow-c {
@@ -1766,8 +1766,7 @@ body {
   bottom: -18%;
   height: 28rem;
   width: 28rem;
-  background: rgb(99 102 241 / 0.14);
-  animation: login-glow-drift 24s ease-in-out infinite;
+  background: radial-gradient(circle, rgb(99 102 241 / 0.14), transparent 68%);
 }
 
 @keyframes login-glow-drift {
@@ -2334,9 +2333,10 @@ body {
   position: absolute;
   z-index: 0;
   border-radius: 999px;
-  filter: blur(48px);
+  filter: none;
   opacity: 0.7;
-  animation: help-glow-drift 18s ease-in-out infinite;
+  animation: none;
+  background: radial-gradient(circle, rgb(37 99 235 / 0.16), transparent 68%);
 }
 
 .help-glow-a {
@@ -2344,7 +2344,7 @@ body {
   left: -6%;
   height: 18rem;
   width: 18rem;
-  background: rgb(37 99 235 / 0.16);
+  background: radial-gradient(circle, rgb(37 99 235 / 0.16), transparent 68%);
 }
 
 .help-glow-b {
@@ -2352,9 +2352,7 @@ body {
   bottom: -10%;
   height: 20rem;
   width: 20rem;
-  background: rgb(56 189 248 / 0.16);
-  animation-direction: reverse;
-  animation-duration: 22s;
+  background: radial-gradient(circle, rgb(56 189 248 / 0.16), transparent 68%);
 }
 
 @keyframes help-glow-drift {
@@ -3643,5 +3641,66 @@ html.theme-fade body {
 @media (max-width: 639px) {
   .app-hide-xs {
     display: none !important;
+  }
+}
+
+/* Gecko re-blurs backdrop-filter and large transform/opacity trees every frame,
+   so load and route enters stutter. Keep glass elsewhere; use solid chrome here. */
+@supports (-moz-appearance: none) {
+  .chrome-glass,
+  .chrome-glass-card,
+  .app-input-glass,
+  .login-glass,
+  .help-card,
+  .login-error-content,
+  [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .chrome-glass,
+  .chrome-glass-card,
+  .app-input-glass {
+    background: var(--color-surface) !important;
+  }
+
+  .login-glow,
+  .login-glow-a,
+  .login-glow-b,
+  .login-glow-c,
+  .help-glow,
+  .help-glow-a,
+  .help-glow-b {
+    animation: none !important;
+    filter: none !important;
+    transform: none !important;
+  }
+
+  .login-bird-img,
+  .login-logo-img {
+    mix-blend-mode: normal;
+    filter: none;
+  }
+
+  .route-enter,
+  .dashboard-enter,
+  .dashboard-stagger > *,
+  .login-card-enter,
+  .login-field-enter,
+  .login-logo-mark,
+  .help-card,
+  .risk-card-enter,
+  .app-fade-swap,
+  .popup-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  html.theme-animating::view-transition-old(root),
+  html.theme-animating::view-transition-new(root),
+  html.theme-fade body {
+    animation: none !important;
+    filter: none !important;
   }
 }

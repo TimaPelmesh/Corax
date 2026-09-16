@@ -29,7 +29,6 @@ const COPY = {
     low: 'Низкий',
     healthy: 'Без заметных рисков',
     aiTitle: 'Инсайты локального AI',
-    aiHint: 'Модель получает только компактную сводку рассчитанных рисков — не полный инвентарь.',
     aiRun: 'Проанализировать',
     aiRefresh: 'Обновить анализ',
     aiBusy: 'Модель анализирует…',
@@ -81,7 +80,6 @@ const COPY = {
     low: 'Low',
     healthy: 'No notable risks',
     aiTitle: 'Local AI insights',
-    aiHint: 'The model receives only a compact calculated summary, not the full inventory.',
     aiRun: 'Analyze',
     aiRefresh: 'Refresh analysis',
     aiBusy: 'Model is analyzing…',
@@ -464,9 +462,9 @@ export function RiskCenterPage() {
                 <IconCheckBadge className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 <h2 className="font-semibold text-[var(--color-fg)]">{c.aiTitle}</h2>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
-                {c.aiHint} {!canRunAi ? c.aiPermission : ''}
-              </p>
+              {!canRunAi ? (
+                <p className="mt-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">{c.aiPermission}</p>
+              ) : null}
             </div>
             <button
               type="button"

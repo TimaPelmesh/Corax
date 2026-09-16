@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_editor_or_superuser, get_current_user
 from app.database import get_db
+from app.secret_mask import can_read_integration_secrets, mask_secret
 from app.models import Computer, Printer, User
 from app.printer_cleanup import cleanup_printers_db, is_noise_printer_name, is_noise_printer_row, printer_dedupe_key_for_ip, snmp_tab_clause
 from app.printer_poll import _discovery_concurrency, poll_single_printer, run_printer_poll_cycle
@@ -339,13 +340,15 @@ async def discover_printers_snmp(
 
 
 @router.get("/poll-config", response_model=PrinterPollConfigOut)
-async def get_poll_config(_: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_poll_config(current: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     row = await get_printer_poll_config_row(db)
+    community = (row.snmp_community or "public").strip() or "public"
+    reveal = can_read_integration_secrets(current)
     return PrinterPollConfigOut(
         poll_enabled=bool(row.poll_enabled),
         poll_interval_minutes=int(row.poll_interval_minutes),
         snmp_enabled=bool(row.snmp_enabled),
-        snmp_community=(row.snmp_community or "public").strip() or "public",
+        snmp_community=community if reveal else mask_secret(community, reveal=False),
         snmp_community_set=bool((row.snmp_community or "").strip()),
         snmp_timeout_seconds=float(row.snmp_timeout_seconds or 5.0),
         ping_timeout_ms=int(row.ping_timeout_ms or 1200),

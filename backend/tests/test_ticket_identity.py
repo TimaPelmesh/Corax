@@ -24,8 +24,9 @@ def test_requester_label_matches_directory_picker():
     assert requester_label_for_user(only_login) == "ivanov"  # type: ignore[arg-type]
 
 
-def test_client_ip_prefers_forwarded_lan():
-    assert client_ip_from_parts("172.17.0.1", "192.168.3.50, 172.17.0.1", None) == "192.168.3.50"
+def test_client_ip_prefers_forwarded_lan_only_from_trusted_proxy():
+    assert client_ip_from_parts("172.17.0.1", "192.168.3.50, 172.17.0.1", None, trust_forwarded=False) == "172.17.0.1"
+    assert client_ip_from_parts("172.17.0.1", "192.168.3.50, 172.17.0.1", None, trust_forwarded=True) == "192.168.3.50"
     assert client_ip_from_parts("::ffff:10.1.2.3", None, None) == "10.1.2.3"
 
 

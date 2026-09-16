@@ -205,6 +205,13 @@ def _migrate_users_avatar_data(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE users ADD COLUMN avatar_data TEXT"))
 
 
+def _migrate_users_token_version(sync_conn) -> None:
+    cols = _column_names(sync_conn, "users")
+    if "token_version" in cols:
+        return
+    sync_conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0"))
+
+
 def _migrate_users_must_change_password(sync_conn) -> None:
     cols = _column_names(sync_conn, "users")
     if "must_change_password" in cols:
@@ -559,6 +566,28 @@ def _migrate_notes_calendar_style(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE notes ADD COLUMN color VARCHAR(16)"))
     if "mark" not in cols:
         sync_conn.execute(text("ALTER TABLE notes ADD COLUMN mark VARCHAR(16)"))
+
+
+def _migrate_network_map_scenes(sync_conn) -> None:
+    tables = _table_names(sync_conn)
+    if "network_map_scenes" in tables:
+        return
+    sync_conn.execute(
+        text(
+            """
+            CREATE TABLE network_map_scenes (
+              id SERIAL PRIMARY KEY,
+              title VARCHAR(255) DEFAULT 'Карта сети',
+              scene_json TEXT DEFAULT '{}',
+              updated_by INTEGER,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(updated_by) REFERENCES users(id) ON DELETE SET NULL
+            )
+            """
+        )
+    )
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_map_scenes_updated_by ON network_map_scenes (updated_by)"))
 
 
 def _migrate_network_extras_json(sync_conn) -> None:
@@ -1521,6 +1550,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-08-14_users_must_change_password", _migrate_users_must_change_password),
     ("2026-07-15_network_devices", _migrate_network_tables),
     ("2026-07-15_network_extras_json", _migrate_network_extras_json),
+    ("2026-09-16_network_map_scenes", _migrate_network_map_scenes),
     ("2026-07-16_wake_on_lan_config", _migrate_wake_on_lan_config),
     ("2026-07-16_wol_wake_user_ids", _migrate_wol_wake_user_ids),
     ("2026-07-21_wol_cooldown_zero", _migrate_wol_cooldown_zero),
@@ -1541,6 +1571,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-08-28_risk_rule_acks", _migrate_risk_rule_acks),
     ("2026-09-07_perf_indexes_1_3", _migrate_perf_indexes_1_3),
     ("2026-09-07_ticket_handler_enable", _migrate_ticket_handler_enable_by_default),
+    ("2026-09-16_users_token_version", _migrate_users_token_version),
 ]
 
 

@@ -15,4 +15,4 @@ def test_health_v1(client: TestClient):
     body = r.json()
     assert body["status"] == "ok"
     assert body["api"] == "v1"
-    assert "lan_ips" in body
+    assert "lan_ips" not in body

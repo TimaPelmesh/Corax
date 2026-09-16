@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import authenticate_user, create_access_token, get_current_user
+from app.auth import authenticate_user, create_access_token, get_current_user, get_current_user_optional
 from app.password_change import maybe_flag_bootstrap_password
 from app.config import settings
 from app.database import get_db
@@ -39,7 +39,7 @@ async def login(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный логин или пароль")
     await maybe_flag_bootstrap_password(db, user, form.password)
-    token = create_access_token(user.username)
+    token = create_access_token(user.username, int(getattr(user, "token_version", 0) or 0))
     return Token(access_token=token)
 
 
@@ -55,10 +55,13 @@ async def login_json(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный логин или пароль")
     await maybe_flag_bootstrap_password(db, user, body.password)
-    token = create_access_token(user.username)
+    token = create_access_token(user.username, int(getattr(user, "token_version", 0) or 0))
     csrf = secrets.token_urlsafe(32)
     xf_proto = (request.headers.get("x-forwarded-proto") or "").strip().lower()
-    is_https = request.url.scheme == "https" or xf_proto == "https"
+    from app.net_trust import request_is_https
+
+    peer = (request.client.host if request.client else "") or ""
+    is_https = request_is_https(request.url.scheme, xf_proto, peer)
     # Secure cookies whenever the request itself is HTTPS (LAN self-signed included).
     secure_cookie = is_https
     max_age = _cookie_max_age()
@@ -111,7 +114,14 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
 
 
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+):
+    if user is not None:
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+        await db.commit()
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("csrf_token", path="/")
     return {"ok": True}

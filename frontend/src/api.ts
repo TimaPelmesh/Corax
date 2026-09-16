@@ -2757,6 +2757,42 @@ export const api = {
     request<NetworkPollConfig>(`${API_PREFIX}/network/poll-config`, { method: 'PUT', json: body }),
 
   networkTopology: () => request<NetworkTopology>(`${API_PREFIX}/network/topology`),
+
+  networkMapScene: (id?: number) =>
+    request<NetworkMapSceneDto>(
+      id && id > 0 ? `${API_PREFIX}/network/map-scenes/${id}` : `${API_PREFIX}/network/map-scene`,
+    ),
+
+  listNetworkMapScenes: () => request<NetworkMapSceneMeta[]>(`${API_PREFIX}/network/map-scenes`),
+
+  createNetworkMapScene: (body: { title?: string; mode?: 'blank' | 'topology' }) =>
+    request<NetworkMapSceneDto>(`${API_PREFIX}/network/map-scenes`, { method: 'POST', json: body }),
+
+  saveNetworkMapScene: (body: { title?: string; scene: NetworkMapScenePayload }, id?: number) =>
+    request<NetworkMapSceneDto>(
+      id && id > 0 ? `${API_PREFIX}/network/map-scenes/${id}` : `${API_PREFIX}/network/map-scene`,
+      { method: 'PUT', json: body },
+    ),
+
+  layoutNetworkMapScene: (id: number) =>
+    request<NetworkMapSceneDto>(`${API_PREFIX}/network/map-scenes/${id}/layout`, { method: 'POST' }),
+
+  deleteNetworkMapScene: (id: number) =>
+    request<void>(`${API_PREFIX}/network/map-scenes/${id}`, { method: 'DELETE' }),
+
+  networkMapLive: (binds: Array<{ type: string; id: number }>) =>
+    request<NetworkMapLiveOut>(`${API_PREFIX}/network/map-live`, { method: 'POST', json: { binds } }),
+
+  createNetworkLink: (body: {
+    from_type: string
+    from_id: number
+    to_type: string
+    to_id: number
+    local_port?: string | null
+    remote_port?: string | null
+  }) => request<NetworkLinkDto>(`${API_PREFIX}/network/links`, { method: 'POST', json: body }),
+
+  deleteNetworkLink: (id: number) => request<void>(`${API_PREFIX}/network/links/${id}`, { method: 'DELETE' }),
 }
 
 export type WikiRagIndexSettings = {
@@ -3110,6 +3146,9 @@ export type NetworkDevice = {
   extras: Record<string, unknown>
   source: string
   notes: string | null
+  zabbix?: { hostid: string; name?: string | null; status?: number | null; ip?: string | null } | null
+  port_count?: number | null
+  neighbor_count?: number
   created_at: string | null
   updated_at: string | null
 }
@@ -3226,4 +3265,84 @@ export type NetworkTopologyEdge = {
 export type NetworkTopology = {
   nodes: NetworkTopologyNode[]
   edges: NetworkTopologyEdge[]
+}
+
+export type NetworkMapScenePayload = {
+  version: 1
+  groups: Array<{
+    id: string
+    title: string
+    kind: 'room' | 'rack'
+    x: number
+    y: number
+    width: number
+    height: number
+  }>
+    nodes: Array<{
+    id: string
+    stencil: string
+    x: number
+    y: number
+    parentGroupId?: string | null
+    bind?: { type: string; id: number } | null
+    label?: string | null
+    imageSrc?: string | null
+    width?: number | null
+    height?: number | null
+  }>
+  edges: Array<{
+    id: string
+    source: string
+    target: string
+    local_port?: string | null
+    remote_port?: string | null
+  }>
+  hiddenNodeIds: string[]
+  viewport?: { x: number; y: number; zoom: number } | null
+}
+
+export type NetworkMapSceneDto = {
+  id: number
+  title: string
+  scene: NetworkMapScenePayload
+  updated_at: string | null
+  updated_by: number | null
+  node_count?: number
+  edge_count?: number
+}
+
+export type NetworkMapSceneMeta = {
+  id: number
+  title: string
+  updated_at: string | null
+  node_count: number
+  edge_count: number
+}
+
+export type NetworkMapLiveItem = {
+  type: string
+  id: number
+  label: string | null
+  ip: string | null
+  vendor: string | null
+  status: string | null
+  missing: boolean
+  port_count?: number | null
+  ports?: Array<{ id: string; name: string; up?: boolean | null }>
+}
+
+export type NetworkMapLiveOut = {
+  items: NetworkMapLiveItem[]
+}
+
+export type NetworkLinkDto = {
+  id: number
+  from_type: string
+  from_id: number
+  to_type: string
+  to_id: number
+  link_type: string
+  local_port: string | null
+  remote_port: string | null
+  confidence: number
 }

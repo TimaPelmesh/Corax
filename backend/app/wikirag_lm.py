@@ -271,6 +271,13 @@ def normalize_lm_base_url(raw: str | None) -> str:
     if not re.match(r"^https?://", base, re.IGNORECASE):
         raise ValueError("URL локальной LLM должен начинаться с http:// или https://")
     base = base.rstrip("/")
+    from app.net_trust import llm_url_allowed
+
+    if not llm_url_allowed(base):
+        raise ValueError(
+            "URL локальной LLM должен указывать на LAN/loopback. "
+            "Для внешнего хоста задайте LLM_ALLOW_PUBLIC_URL=true"
+        )
     # Ollama native API is /api/*; OpenAI-compatible surface is /v1 (same as LM Studio).
     if not base.lower().endswith("/v1"):
         base = f"{base}/v1"

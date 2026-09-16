@@ -26,8 +26,13 @@ Never commit `backend/.env`, agent ZIPs with stamped tokens, `agent_env.bat` / `
 
 - Passwords hashed; agent tokens stored as HMAC (pepper in `.env`)
 - Rate limits on login and agent inventory
-- Security headers (and HSTS when HTTPS is on)
+- Security headers (and HSTS when HTTPS is on, only if the request is HTTPS or the peer is in `TRUSTED_PROXY_IPS`)
 - OpenAPI docs off in production unless `ENABLE_OPENAPI=true`
+- `/h` intake: kiosk secret **or** a hostname that already exists in inventory (X-Forwarded-For / SSO headers ignored unless `TRUSTED_PROXY_IPS` is set)
+- Shared `AGENT_TOKEN` cannot overwrite an existing PC when MAC/serial disagree
+- Observer role does not receive SNMP community or `/h` client_secret
+- Panel JWT is versioned: logout and password change revoke previous sessions
+- Notes HTML is sanitized; unauthenticated `/api/v1/health` does not list LAN IPs
 
 ## Agent (C++, Windows) — credential storage and hardening
 

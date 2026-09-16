@@ -32,8 +32,11 @@ from app.ticket_handler_runtime import (
     enrich_ticket_ai_task,
     list_public_tickets,
     resolve_client_identity,
+    resolve_computer,
     run_intake,
 )
+from app.secret_mask import can_read_integration_secrets, mask_secret
+from app.net_trust import llm_url_allowed
 
 router = APIRouter(prefix="/ticket-handler", tags=["ticket-handler"])
 
@@ -111,12 +114,13 @@ def _validate_pipeline(steps: list[TicketHandlerPipelineStep]) -> list[str]:
     return errors
 
 
-def _row_to_out(row: TicketHandlerConfig) -> TicketHandlerConfigOut:
+def _row_to_out(row: TicketHandlerConfig, *, reveal_secret: bool = True) -> TicketHandlerConfigOut:
+    secret = (row.client_secret or "").strip()
     return TicketHandlerConfigOut(
         enabled=bool(row.enabled),
         processor_mode=(row.processor_mode or "local").strip() or "local",
         remote_base_url=(row.remote_base_url or "").strip(),
-        client_secret=(row.client_secret or "").strip(),
+        client_secret=mask_secret(secret, reveal=reveal_secret),
         llm_provider=(row.llm_provider or "ollama").strip() or "ollama",
         llm_base_url=(row.llm_base_url or "").strip() or "http://127.0.0.1:11434/v1",
         llm_model=(row.llm_model or "").strip(),
@@ -151,7 +155,7 @@ async def _get_or_create_config(db: AsyncSession) -> TicketHandlerConfig:
             llm_provider=provider,
             llm_base_url=lm_url,
             llm_model=lm_model,
-            include_corax_knowledge=True,
+            include_corax_knowledge=False,
             include_wiki_docs=True,
             auto_create_ticket=True,
             default_priority="normal",
@@ -230,11 +234,11 @@ def _parse_day(value: str | None, *, default: date) -> date:
 
 @router.get("/config", response_model=TicketHandlerConfigOut)
 async def get_ticket_handler_config(
-    _: User = Depends(get_current_user),
+    current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     row = await _get_or_create_config(db)
-    return _row_to_out(row)
+    return _row_to_out(row, reveal_secret=can_read_integration_secrets(current))
 
 
 @router.put("/config", response_model=TicketHandlerConfigOut)
@@ -263,7 +267,13 @@ async def update_ticket_handler_config(
             raise HTTPException(status_code=400, detail="llm_provider: ollama или lm_studio")
         row.llm_provider = prov
     if "llm_base_url" in patch and patch["llm_base_url"] is not None:
-        row.llm_base_url = str(patch["llm_base_url"] or "").strip() or "http://127.0.0.1:11434/v1"
+        url = str(patch["llm_base_url"] or "").strip() or "http://127.0.0.1:11434/v1"
+        if not llm_url_allowed(url):
+            raise HTTPException(
+                status_code=400,
+                detail="LLM URL должен быть локальным (LAN/loopback). Для внешнего хоста задайте LLM_ALLOW_PUBLIC_URL=true",
+            )
+        row.llm_base_url = url
     if "llm_model" in patch and patch["llm_model"] is not None:
         row.llm_model = str(patch["llm_model"] or "").strip()
     if "include_corax_knowledge" in patch and patch["include_corax_knowledge"] is not None:
@@ -289,7 +299,7 @@ async def update_ticket_handler_config(
 
     await db.commit()
     await db.refresh(row)
-    return _row_to_out(row)
+    return _row_to_out(row, reveal_secret=True)
 
 
 @router.post("/config/regenerate-secret", response_model=TicketHandlerConfigOut)
@@ -301,7 +311,7 @@ async def regenerate_client_secret(
     row.client_secret = secrets.token_urlsafe(24)
     await db.commit()
     await db.refresh(row)
-    return _row_to_out(row)
+    return _row_to_out(row, reveal_secret=True)
 
 
 @router.get("/runs", response_model=list[TicketHandlerRunOut])
@@ -423,17 +433,39 @@ def _secret_ok(cfg: TicketHandlerConfig, provided: str | None, request: Request)
     got = (provided or "").strip()
     header = (request.headers.get("x-corax-handler-secret") or "").strip()
     token = got or header
-    if not token or len(token) != len(expected):
+    if not token:
         return False
-    return secrets.compare_digest(expected, token)
+    import hashlib
+    import hmac as hmac_mod
+
+    left = hashlib.sha256(expected.encode("utf-8")).digest()
+    right = hashlib.sha256(token.encode("utf-8")).digest()
+    return hmac_mod.compare_digest(left, right)
 
 
-def _require_intake_access(cfg: TicketHandlerConfig, request: Request, secret: str | None) -> None:
+async def _require_intake_access(
+    cfg: TicketHandlerConfig,
+    request: Request,
+    secret: str | None,
+    db: AsyncSession,
+    hostname_hint: str | None = None,
+) -> None:
     if not bool(cfg.enabled) and settings.environment != "test":
         raise HTTPException(status_code=404, detail="Обработчик заявок выключен")
     if _secret_ok(cfg, secret, request):
         return
-    if _is_private_client(request):
+    hint = (hostname_hint or "").strip()
+    if hint:
+        pc = await resolve_computer(db, hint)
+        if pc is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Нужен секрет клиента или известный ПК из инвентаря",
+            )
+        return
+    if settings.environment == "test":
+        return
+    if is_private_ip(_client_host(request)):
         return
     raise HTTPException(
         status_code=403,
@@ -449,7 +481,7 @@ async def public_context(
     db: AsyncSession = Depends(get_db),
 ):
     cfg = await _get_or_create_config(db)
-    _require_intake_access(cfg, request, secret)
+    await _require_intake_access(cfg, request, secret, db, hostname)
     identity = await resolve_client_identity(
         db,
         hostname_hint=hostname or "",
@@ -473,7 +505,7 @@ async def public_tickets(
     db: AsyncSession = Depends(get_db),
 ):
     cfg = await _get_or_create_config(db)
-    _require_intake_access(cfg, request, secret)
+    await _require_intake_access(cfg, request, secret, db, hostname)
     identity = await resolve_client_identity(
         db,
         hostname_hint=hostname or "",
@@ -507,7 +539,7 @@ async def intake(
     db: AsyncSession = Depends(get_db),
 ):
     cfg = await _get_or_create_config(db)
-    _require_intake_access(cfg, request, body.secret)
+    await _require_intake_access(cfg, request, body.secret, db, body.hostname)
 
     if (cfg.processor_mode or "local").strip().lower() == "remote":
         remote = (cfg.remote_base_url or "").strip().rstrip("/")

@@ -77,9 +77,15 @@ def test_classify_udm_router():
     assert c.device_type == "router"
 
 
-def test_classify_meraki_ap():
-    c = classify_device("Cisco Meraki MR46 Cloud Managed AP")
-    assert c.device_type == "ap"
+def test_classify_aruba_oid():
+    c = classify_device("ArubaOS", sys_object_id="1.3.6.1.4.1.14823.1.1.1")
+    assert c.vendor == "HPE/Aruba"
+
+
+def test_classify_allied_telesis():
+    c = classify_device("Allied Telesis AT-x510-28GTX")
+    assert c.vendor == "Allied Telesis"
+    assert c.device_type == "switch"
 
 
 def test_classify_hostname_leaf_switch():

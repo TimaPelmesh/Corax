@@ -11,6 +11,9 @@ import { useNavCounts } from '../hooks/useNavCounts'
 import { useWelcomeToast } from '../hooks/useWelcomeToast'
 import { useLocale } from '../i18n/LocaleContext'
 
+const IS_GECKO =
+  typeof document !== 'undefined' && document.documentElement.classList.contains('is-gecko')
+
 function RouteLoader() {
   return (
     <div className="route-loader grid min-h-64 place-items-center" aria-busy="true">
@@ -28,7 +31,8 @@ export function Layout() {
   const { user } = useAuth()
   const { t, isNavHidden } = useLocale()
   const location = useLocation()
-  const lockPageScroll = location.pathname.startsWith('/knowledge-base/wikirag')
+  const lockPageScroll =
+    location.pathname.startsWith('/knowledge-base/wikirag') || location.pathname.startsWith('/network-map')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileNavPath, setMobileNavPath] = useState(location.pathname)
   const [desktopNavHidden, setDesktopNavHidden] = useState(false)
@@ -245,14 +249,16 @@ export function Layout() {
           <div
             className={
               lockPageScroll
-                ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-3 sm:px-5 lg:px-6'
+                ? location.pathname.startsWith('/network-map')
+                  ? 'flex min-h-0 flex-1 flex-col overflow-hidden p-0'
+                  : 'flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-3 sm:px-5 lg:px-6'
                 : 'px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 lg:px-10 lg:pb-12 lg:pt-8'
             }
           >
             <Suspense fallback={<RouteLoader />}>
               <div
                 key={location.pathname}
-                className={`route-enter ${lockPageScroll ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}`}
+                className={`${IS_GECKO ? '' : 'route-enter '}${lockPageScroll ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}`}
               >
                 <Outlet />
               </div>
