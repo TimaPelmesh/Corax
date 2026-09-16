@@ -1049,6 +1049,11 @@ export const en: MessageTree = {
     imageBad: 'Could not read the image.',
     imageLimit: 'The diagram already has too many pictures.',
     groupTitle: 'Name',
+    neighbors: 'Neighbors',
+    noNeighbors: 'No LLDP/CDP neighbors yet — poll the device on the Network tab.',
+    placeNeighbors: 'Place nearby',
+    gatherNeighbors: 'Gather around',
+    focusNeighbor: 'Show',
     stencil: {
       switch: 'Switch',
       router: 'Router',

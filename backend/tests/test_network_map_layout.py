@@ -44,6 +44,18 @@ def test_layout_keeps_pc_with_lldp():
     assert "computer:2" in ids
 
 
+def test_layout_wraps_wide_switch_row():
+    nodes = [
+        {"id": f"network_device:{i}", "kind": "network_device", "ref_id": i, "label": f"sw{i}", "device_type": "switch"}
+        for i in range(1, 10)
+    ]
+    scene = layout_topology_scene(nodes, [])
+    xs = [n["x"] for n in scene["nodes"]]
+    ys = [n["y"] for n in scene["nodes"]]
+    assert max(xs) - min(xs) < 168 * 8
+    assert max(ys) > min(ys)
+
+
 def test_port_handle_id_slug():
     assert port_handle_id("Gi1/0/1") == "p:Gi1-0-1"
     assert port_handle_id("") is None

@@ -129,6 +129,60 @@ export function toFlowEdges(edges: MergedCanvasEdge[]): Edge[] {
   })
 }
 
+export function decorateSelection(
+  rfNodes: Node[],
+  rfEdges: Edge[],
+  selectedId: string | null,
+): { nodes: Node[]; edges: Edge[] } {
+  if (!selectedId) return { nodes: rfNodes, edges: rfEdges }
+  const related = new Set<string>([selectedId])
+  const hotByNode = new Map<string, Set<string>>()
+  const addHot = (nodeId: string, handle?: string | null) => {
+    if (!handle) return
+    const set = hotByNode.get(nodeId) ?? new Set<string>()
+    set.add(handle)
+    hotByNode.set(nodeId, set)
+  }
+  for (const e of rfEdges) {
+    if (e.source !== selectedId && e.target !== selectedId) continue
+    related.add(e.source)
+    related.add(e.target)
+    addHot(e.source, e.sourceHandle)
+    addHot(e.target, e.targetHandle)
+  }
+  return {
+    nodes: rfNodes.map((n) => {
+      if (n.type !== 'equipment') return n
+      const data = n.data as EquipmentNodeData
+      const neighbor = related.has(n.id) && n.id !== selectedId
+      return {
+        ...n,
+        className: neighbor ? 'is-neighbor' : n.className,
+        data: {
+          ...data,
+          neighbor,
+          hotPorts: [...(hotByNode.get(n.id) ?? [])],
+        },
+      }
+    }),
+    edges: rfEdges.map((e) => {
+      const on = e.source === selectedId || e.target === selectedId
+      return {
+        ...e,
+        className: on ? 'is-related' : 'is-dim',
+        animated: on,
+        zIndex: on ? 8 : 1,
+        style: {
+          ...e.style,
+          stroke: on ? 'var(--color-primary)' : e.style?.stroke,
+          strokeWidth: on ? 2.8 : 1.1,
+          opacity: on ? 1 : 0.16,
+        },
+      }
+    }),
+  }
+}
+
 export function collectScene(
   rfNodes: Node[],
   rfEdges: Edge[],

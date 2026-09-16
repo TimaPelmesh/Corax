@@ -14,10 +14,22 @@ type BindHit = {
 
 type Tab = 'network' | 'printers' | 'zabbix'
 
+type NeighborRow = {
+  topoId: string
+  label: string
+  ip: string | null
+  localPort: string | null
+  remotePort: string | null
+  linkType: string
+  canvasId: string | null
+}
+
 type Props = {
   canEdit: boolean
   node: MergedCanvasNode | null
   group: NetworkMapGroup | null
+  neighbors?: NeighborRow[]
+  neighborsBusy?: boolean
   onLabel: (label: string) => void
   onStencil: (stencil: NetworkMapStencil) => void
   onBind: (bind: NetworkMapBind | null, extra?: { label?: string; ip?: string | null; stencil?: NetworkMapStencil }) => void
@@ -26,6 +38,10 @@ type Props = {
   onGroupTitle: (title: string) => void
   onDeleteGroup: () => void
   onReplaceImage?: (file: File) => void
+  onPlaceNeighbor?: (topoId: string) => void
+  onFocusNeighbor?: (canvasId: string) => void
+  onPlaceAllNeighbors?: () => void
+  onGatherNeighbors?: () => void
 }
 
 export function NetworkMapInspector({
@@ -40,6 +56,12 @@ export function NetworkMapInspector({
   onGroupTitle,
   onDeleteGroup,
   onReplaceImage,
+  neighbors = [],
+  neighborsBusy = false,
+  onPlaceNeighbor,
+  onFocusNeighbor,
+  onPlaceAllNeighbors,
+  onGatherNeighbors,
 }: Props) {
   const t = useT()
   const [tab, setTab] = useState<Tab>('network')
@@ -332,6 +354,72 @@ export function NetworkMapInspector({
           </>
         ) : null}
       </div>
+      {node.bind && node.bind.type !== 'zabbix' && node.bind.type !== 'corax' ? (
+        <div>
+          <div className="text-xs text-[var(--color-fg-subtle)]">{t('networkMap.neighbors')}</div>
+          {neighborsBusy && neighbors.length === 0 ? (
+            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('common.loading')}</p>
+          ) : null}
+          {neighbors.length > 0 ? (
+            <>
+              {canEdit ? (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {neighbors.some((n) => !n.canvasId) && onPlaceAllNeighbors ? (
+                    <button
+                      type="button"
+                      onClick={onPlaceAllNeighbors}
+                      className="rounded-md bg-[var(--color-fg)] px-2 py-1 text-[11px] font-medium text-[var(--color-surface)]"
+                    >
+                      {t('networkMap.placeNeighbors')}
+                    </button>
+                  ) : null}
+                  {neighbors.some((n) => n.canvasId) && onGatherNeighbors ? (
+                    <button
+                      type="button"
+                      onClick={onGatherNeighbors}
+                      className="rounded-md border border-[var(--color-border)] px-2 py-1 text-[11px] font-medium hover:bg-[var(--color-bg-muted)]"
+                    >
+                      {t('networkMap.gatherNeighbors')}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              <ul className="mt-1.5 max-h-40 overflow-y-auto rounded-lg border border-[var(--color-border)]">
+                {neighbors.map((n) => (
+                  <li key={n.topoId} className="flex items-center gap-1 border-b border-[var(--color-border)] px-2 py-1.5 last:border-b-0">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium">{n.label}</div>
+                      <div className="truncate text-[10px] text-[var(--color-fg-subtle)]">
+                        {[n.linkType.toUpperCase(), n.localPort, n.remotePort].filter(Boolean).join(' · ')}
+                        {n.ip ? ` · ${n.ip}` : ''}
+                      </div>
+                    </div>
+                    {n.canvasId && onFocusNeighbor ? (
+                      <button
+                        type="button"
+                        onClick={() => onFocusNeighbor(n.canvasId as string)}
+                        className="shrink-0 text-[11px] text-[var(--color-primary)] hover:underline"
+                      >
+                        {t('networkMap.focusNeighbor')}
+                      </button>
+                    ) : canEdit && onPlaceNeighbor ? (
+                      <button
+                        type="button"
+                        onClick={() => onPlaceNeighbor(n.topoId)}
+                        className="shrink-0 text-[11px] font-medium text-[var(--color-primary)] hover:underline"
+                      >
+                        {t('networkMap.place')}
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : !neighborsBusy ? (
+            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('networkMap.noNeighbors')}</p>
+          ) : null}
+        </div>
+      ) : null}
       {node.bind && node.bind.type !== 'corax' && node.bind.type !== 'zabbix' ? (
         <button
           type="button"

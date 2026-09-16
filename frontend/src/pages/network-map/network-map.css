@@ -14,14 +14,31 @@
 }
 
 .network-map-canvas .react-flow__node.selected .react-flow__handle,
+.network-map-canvas .react-flow__node.is-neighbor .react-flow__handle,
+.network-map-canvas .is-hot-port .react-flow__handle,
 .network-map-canvas.is-linking .react-flow__handle {
-  opacity: 0.9;
+  opacity: 0.95;
   pointer-events: auto;
   transform: scale(1);
 }
 
+.network-map-canvas .react-flow__edge.is-related .react-flow__edge-path {
+  stroke: var(--color-primary);
+  stroke-width: 2.8;
+}
+
+.network-map-canvas .react-flow__edge.is-dim .react-flow__edge-path,
+.network-map-canvas .react-flow__edge.is-dim .react-flow__edge-textwrapper {
+  opacity: 0.18;
+}
+
+.network-map-canvas .react-flow__edge.is-related .react-flow__edge-text {
+  fill: var(--color-primary);
+  font-weight: 650;
+}
+
 .network-map-canvas .react-flow__background {
-  opacity: 0.7;
+  opacity: 0.85;
 }
 
 .network-map-canvas .react-flow__minimap {
@@ -42,31 +59,4 @@
   background: var(--color-surface);
   border-bottom-color: var(--color-border);
   fill: var(--color-fg);
-}
-
-.network-map-canvas .react-flow__handle {
-  opacity: 0;
-  pointer-events: none;
-  transform: scale(0.65);
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
-}
-
-.network-map-canvas .react-flow__node.selected .react-flow__handle,
-.network-map-canvas.is-linking .react-flow__handle {
-  opacity: 0.9;
-  pointer-events: auto;
-  transform: scale(1);
-}
-
-.network-map-canvas .react-flow__background {
-  opacity: 0.85;
-}
-
-.network-map-canvas .react-flow__minimap {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 12px 32px -24px rgba(0, 0, 0, 0.55);
 }

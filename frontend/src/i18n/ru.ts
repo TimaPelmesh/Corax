@@ -1046,6 +1046,11 @@ export const ru = {
     imageBad: 'Не удалось прочитать изображение.',
     imageLimit: 'На схеме уже слишком много картинок.',
     groupTitle: 'Название',
+    neighbors: 'Соседи',
+    noNeighbors: 'Соседей LLDP/CDP пока нет — опросите устройство на вкладке Сеть.',
+    placeNeighbors: 'Поставить рядом',
+    gatherNeighbors: 'Собрать вокруг',
+    focusNeighbor: 'К узлу',
     stencil: {
       switch: 'Коммутатор',
       router: 'Маршрутизатор',

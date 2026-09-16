@@ -36,6 +36,8 @@ export type EquipmentNodeData = {
   height?: number
   ports?: Array<{ id: string; name: string; up?: boolean | null }>
   portCount?: number
+  hotPorts?: string[]
+  neighbor?: boolean
 }
 
 export type GroupNodeData = {
@@ -103,32 +105,50 @@ function statusClass(status: string | null | undefined): string {
   return 'bg-[var(--color-fg-subtle)]'
 }
 
-function SwitchPorts({ ports, selected }: { ports: Array<{ id: string; name: string; up?: boolean | null }>; selected?: boolean }) {
+function SwitchPorts({
+  ports,
+  selected,
+  hotPorts,
+}: {
+  ports: Array<{ id: string; name: string; up?: boolean | null }>
+  selected?: boolean
+  hotPorts?: string[]
+}) {
   const shown = ports.slice(0, 52)
+  const hot = new Set(hotPorts || [])
   return (
     <div className="relative mt-1.5 flex flex-wrap gap-[3px]">
-      {shown.map((port) => (
-        <span key={port.id} className="relative" title={port.name}>
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id={port.id}
-            style={{
-              ...HANDLE,
-              position: 'relative',
-              transform: 'none',
-              left: 0,
-              top: 0,
-              width: 8,
-              height: 10,
-              borderRadius: 2,
-              opacity: selected ? 1 : 0.85,
-              background:
-                port.up === true ? 'rgb(16,185,129)' : port.up === false ? 'rgb(148,163,184)' : 'var(--color-primary)',
-            }}
-          />
-        </span>
-      ))}
+      {shown.map((port) => {
+        const lit = selected || hot.has(port.id)
+        return (
+          <span key={port.id} className={`relative ${lit ? 'is-hot-port' : ''}`} title={port.name}>
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id={port.id}
+              style={{
+                ...HANDLE,
+                position: 'relative',
+                transform: 'none',
+                left: 0,
+                top: 0,
+                width: 8,
+                height: 10,
+                borderRadius: 2,
+                opacity: lit ? 1 : 0.85,
+                background:
+                  hot.has(port.id)
+                    ? 'var(--color-primary)'
+                    : port.up === true
+                      ? 'rgb(16,185,129)'
+                      : port.up === false
+                        ? 'rgb(148,163,184)'
+                        : 'var(--color-primary)',
+              }}
+            />
+          </span>
+        )
+      })}
     </div>
   )
 }
@@ -187,7 +207,7 @@ export function NetworkMapEquipmentNode({ data, selected }: NodeProps<EquipmentN
       <div
         className={`rounded-lg border px-2.5 py-2 shadow-[0_10px_28px_-20px_rgba(0,0,0,0.65)] ${tone(data.stencil)} ${
           compact ? 'w-[148px]' : 'w-[176px]'
-        } ${selected ? 'ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-bg)]' : ''} ${data.missing ? 'opacity-70' : ''}`}
+        } ${selected ? 'ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-bg)]' : data.neighbor ? 'ring-2 ring-[var(--color-primary)]/45' : ''} ${data.missing ? 'opacity-70' : ''}`}
       >
         <div className="flex items-start gap-2">
           <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
@@ -205,7 +225,7 @@ export function NetworkMapEquipmentNode({ data, selected }: NodeProps<EquipmentN
         </div>
         {data.stencil === 'switch' && (data.ports?.length || data.portCount) ? (
           data.ports && data.ports.length > 0 ? (
-            <SwitchPorts ports={data.ports} selected={selected} />
+            <SwitchPorts ports={data.ports} selected={selected} hotPorts={data.hotPorts} />
           ) : (
             <PortRow count={data.portCount || 8} />
           )

@@ -32,10 +32,11 @@ _STRONG_LINKS = frozenset({"lldp", "cdp", "mndp", "ndp", "fdp", "edp", "isdp", "
 
 _MAX_LAYOUT_NODES = 240
 _MAX_ENDPOINTS = 24
-_COL_GAP = 220
-_ROW_GAP = 160
+_COL_GAP = 168
+_ROW_GAP = 128
 _ORIGIN_X = 80
 _ORIGIN_Y = 80
+_LAYER_WRAP = 7
 
 
 def _stencil_for(kind: str | None, device_type: str | None) -> str:
@@ -157,11 +158,13 @@ def layout_topology_scene(
                 slot = parent_slot.get(parent, 0)
                 parent_slot[parent] = slot + 1
                 px, py = placed[parent]
-                x = px + (slot - 0.5) * 70
+                x = px + (slot - 0.5) * 88
                 y = py + _ROW_GAP
             else:
-                x = _ORIGIN_X + idx * _COL_GAP
-                y = _ORIGIN_Y + layer * _ROW_GAP
+                col = idx % _LAYER_WRAP
+                row = idx // _LAYER_WRAP
+                x = _ORIGIN_X + col * _COL_GAP
+                y = _ORIGIN_Y + layer * _ROW_GAP + row * _ROW_GAP
             placed[nid] = (x, y)
             bind = _bind_for(node)
             scene_nodes.append(

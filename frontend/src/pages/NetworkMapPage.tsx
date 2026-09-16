@@ -18,7 +18,7 @@ import ReactFlow, {
   type OnNodesDelete,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { api, type NetworkMapLiveItem, type NetworkMapSceneDto, type NetworkPrinter } from '../api'
+import { api, type NetworkMapLiveItem, type NetworkMapSceneDto, type NetworkPrinter, type NetworkTopology } from '../api'
 import { useAuth } from '../AuthContext'
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { NetworkDeviceDetailModal } from '../components/NetworkDeviceDetailModal'
@@ -30,9 +30,10 @@ import { NetworkMapClearDialog } from './network-map/NetworkMapClearDialog'
 import { NETWORK_MAP_DND, NetworkMapPalette, type PaletteDrag } from './network-map/NetworkMapPalette'
 import { NetworkMapInspector } from './network-map/NetworkMapInspector'
 import { NetworkMapScenesBar } from './network-map/NetworkMapScenesBar'
-import { collectScene, groupAtPoint, toFlowEdges, toFlowNodes } from './network-map/flow'
+import { collectScene, decorateSelection, groupAtPoint, toFlowEdges, toFlowNodes } from './network-map/flow'
 import { compressMapImage } from './network-map/image'
 import { bindsFromScene, hydrateScene } from './network-map/mergeScene'
+import { applyNeighborCluster, offersFromTopology } from './network-map/neighborsAround'
 import './network-map/network-map.css'
 import {
   MAX_MAP_IMAGES,
@@ -79,7 +80,7 @@ function NetworkMapEditor() {
   const toast = useToast()
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
-  const { screenToFlowPosition, getViewport, setViewport, getNodes, getEdges } = useReactFlow()
+  const { screenToFlowPosition, getViewport, setViewport, getNodes, getEdges, fitView } = useReactFlow()
 
   const [loading, setLoading] = useState(true)
   const [scene, setScene] = useState<NetworkMapScene>(emptyNetworkMapScene())
@@ -100,6 +101,8 @@ function NetworkMapEditor() {
   const [sceneId, setSceneId] = useState(0)
   const [sceneTitle, setSceneTitle] = useState('Карта сети')
   const [scenes, setScenes] = useState<Array<{ id: number; title: string; updated_at: string | null; node_count: number; edge_count: number }>>([])
+  const [topology, setTopology] = useState<NetworkTopology | null>(null)
+  const [neighborsBusy, setNeighborsBusy] = useState(false)
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -122,6 +125,11 @@ function NetworkMapEditor() {
   const selectedGroup = useMemo(
     () => scene.groups.find((g) => g.id === selectedGroupId) ?? null,
     [scene.groups, selectedGroupId],
+  )
+  const shown = useMemo(() => decorateSelection(nodes, edges, selectedId), [nodes, edges, selectedId])
+  const neighborOffers = useMemo(
+    () => offersFromTopology(selected?.bind, scene, topology),
+    [selected?.bind, scene, topology],
   )
 
   const paint = useCallback(
@@ -257,6 +265,26 @@ function NetworkMapEditor() {
     const timer = window.setInterval(() => void refreshLive(sceneRef.current), 45_000)
     return () => window.clearInterval(timer)
   }, [refreshLive, scene.nodes.length])
+
+  useEffect(() => {
+    if (!selected?.bind || selected.bind.type === 'zabbix') return
+    let cancelled = false
+    setNeighborsBusy(true)
+    void api
+      .networkTopology()
+      .then((topo) => {
+        if (!cancelled) setTopology(topo)
+      })
+      .catch(() => {
+        if (!cancelled) setTopology(null)
+      })
+      .finally(() => {
+        if (!cancelled) setNeighborsBusy(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selected?.bind?.id, selected?.bind?.type])
 
   const onNodeDragStop = useCallback(() => {
     if (!canEdit) return
@@ -598,6 +626,36 @@ function NetworkMapEditor() {
     }
   }
 
+  const fitAround = useCallback(
+    (ids: string[]) => {
+      const unique = [...new Set(ids.filter(Boolean))]
+      if (!unique.length) return
+      fitView({
+        nodes: unique.map((id) => ({ id })),
+        padding: 0.35,
+        duration: 0,
+        maxZoom: 1.05,
+      })
+    },
+    [fitView],
+  )
+
+  const applyCluster = useCallback(
+    (mode: 'place-missing' | 'gather-all', onlyTopoId?: string) => {
+      if (!canEdit || !selectedId) return
+      const current = sceneFromCanvas()
+      const offers = onlyTopoId ? neighborOffers.filter((o) => o.topoId === onlyTopoId) : neighborOffers
+      const next = applyNeighborCluster(current, selectedId, offers, mode)
+      persist(next)
+      void refreshLive(next)
+      window.setTimeout(() => {
+        const placed = next.nodes.map((n) => n.id)
+        fitAround([selectedId, ...placed.filter((id) => id !== selectedId && offers.some((o) => o.canvasId === id || o.topoId === id))])
+      }, 30)
+    },
+    [canEdit, fitAround, neighborOffers, persist, refreshLive, sceneFromCanvas, selectedId],
+  )
+
   const renameScene = async (title: string) => {
     if (!canEdit || !sceneId) return
     setSceneTitle(title)
@@ -668,8 +726,8 @@ function NetworkMapEditor() {
             ) : null}
             <ReactFlow
               className={`network-map-canvas h-full ${linking ? 'is-linking' : ''}`}
-              nodes={nodes}
-              edges={edges}
+              nodes={shown.nodes}
+              edges={shown.edges}
               nodeTypes={NODE_TYPES}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
@@ -738,6 +796,8 @@ function NetworkMapEditor() {
             canEdit={canEdit}
             node={selected}
             group={selected ? null : selectedGroup}
+            neighbors={neighborOffers}
+            neighborsBusy={neighborsBusy}
             onLabel={onLabel}
             onStencil={onStencil}
             onBind={onBind}
@@ -746,6 +806,14 @@ function NetworkMapEditor() {
             onGroupTitle={onGroupTitle}
             onDeleteGroup={onDeleteGroup}
             onReplaceImage={(file) => void replaceSelectedImage(file)}
+            onPlaceNeighbor={(topoId) => applyCluster('place-missing', topoId)}
+            onFocusNeighbor={(canvasId) => {
+              setSelectedId(canvasId)
+              setSelectedGroupId(null)
+              fitAround([canvasId, selectedId || canvasId])
+            }}
+            onPlaceAllNeighbors={() => applyCluster('place-missing')}
+            onGatherNeighbors={() => applyCluster('gather-all')}
           />
         ) : null}
         </div>
