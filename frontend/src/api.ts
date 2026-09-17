@@ -2777,6 +2777,9 @@ export const api = {
   layoutNetworkMapScene: (id: number) =>
     request<NetworkMapSceneDto>(`${API_PREFIX}/network/map-scenes/${id}/layout`, { method: 'POST' }),
 
+  traceNetworkMapScene: (id: number, body: { target: string; from_id?: string }) =>
+    request<NetworkMapSceneDto>(`${API_PREFIX}/network/map-scenes/${id}/trace`, { method: 'POST', json: body }),
+
   deleteNetworkMapScene: (id: number) =>
     request<void>(`${API_PREFIX}/network/map-scenes/${id}`, { method: 'DELETE' }),
 
@@ -3296,6 +3299,7 @@ export type NetworkMapScenePayload = {
     target: string
     local_port?: string | null
     remote_port?: string | null
+    link_type?: string | null
   }>
   hiddenNodeIds: string[]
   viewport?: { x: number; y: number; zoom: number } | null

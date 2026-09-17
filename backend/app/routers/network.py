@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_editor_or_superuser, get_current_user
 from app.database import get_db
 from app.secret_mask import can_read_integration_secrets, mask_secret
-from app.local_ip import advertise_lan_ipv4, default_gateway_ipv4, dns_server_ipv4
+from app.local_ip import advertise_lan_ipv4
 from app.models import Computer, NetworkDevice, NetworkLink, NetworkMapScene, Printer, User
 from app.network_classify import NETWORK_DEVICE_TYPES, infer_network_role, network_dedupe_key_for_ip
 from app.network_link_builder import AUTO_LINK_TYPES
@@ -208,6 +208,11 @@ class NetworkMapScenePut(BaseModel):
 class NetworkMapSceneCreate(BaseModel):
     title: str | None = Field(default=None, max_length=255)
     mode: str = Field(default="blank", max_length=32)
+
+
+class NetworkMapTraceIn(BaseModel):
+    target: str = Field(min_length=1, max_length=255)
+    from_id: str | None = Field(default=None, max_length=120)
 
 
 class NetworkMapSceneMeta(BaseModel):
@@ -860,38 +865,6 @@ async def get_topology(
         snmp_status="ok",
         role="corax",
     )
-    gateway_ips = {str(g) for g in default_gateway_ipv4()}
-    dns_ips = {str(d) for d in dns_server_ipv4()}
-    known_pairs = {(e.source, e.target) for e in edges} | {(e.target, e.source) for e in edges}
-    hub_types = {"router", "gateway", "firewall", "modem"}
-    for nid, node in list(nodes.items()):
-        if nid == corax_id or node.kind != "network_device":
-            continue
-        ip = (node.ip_address or "").strip()
-        role = (node.role or "").lower()
-        dtype = (node.device_type or "").lower()
-        attach = (
-            ip in gateway_ips
-            or ip in dns_ips
-            or role in {"gateway", "dns"}
-            or dtype in hub_types
-        )
-        if not attach:
-            continue
-        if (corax_id, nid) in known_pairs:
-            continue
-        edges.append(
-            TopologyEdge(
-                id=f"link:corax-{nid}",
-                source=corax_id,
-                target=nid,
-                link_type="lan",
-                confidence=0.45,
-            )
-        )
-        known_pairs.add((corax_id, nid))
-        known_pairs.add((nid, corax_id))
-
     return TopologyOut(nodes=list(nodes.values()), edges=edges)
 
 
@@ -1026,7 +999,97 @@ async def layout_map_scene(
     return _scene_out(row)
 
 
-@router.delete("/map-scenes/{scene_id}", status_code=204)
+@router.post("/map-scenes/{scene_id}/trace", response_model=NetworkMapSceneOut)
+async def trace_map_scene(
+    scene_id: int,
+    body: NetworkMapTraceIn,
+    user: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = (await db.execute(select(NetworkMapScene).where(NetworkMapScene.id == scene_id))).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Схема не найдена")
+    target = (body.target or "").strip()
+    if not target:
+        raise HTTPException(status_code=400, detail="Укажите IP или имя")
+
+    topo = await get_topology(user, db)
+    topo_nodes = [n.model_dump() for n in topo.nodes]
+    topo_edges = [e.model_dump() for e in topo.edges]
+    from app.network_map_layout import (
+        _norm_ip,
+        merge_trace_into_scene,
+        pick_path_start,
+        resolve_topology_target,
+        shortest_topology_path,
+        stored_trace_chain,
+    )
+
+    by_id = {str(n["id"]): n for n in topo_nodes}
+    by_ip = {_norm_ip(n.get("ip_address")): n for n in topo_nodes if _norm_ip(n.get("ip_address"))}
+
+    devices = (await db.execute(select(NetworkDevice))).scalars().all()
+    for device in devices:
+        ip = _norm_ip(getattr(device, "ip_address", None))
+        if ip and ip not in by_ip:
+            by_ip[ip] = {
+                "id": f"network_device:{device.id}",
+                "kind": "network_device",
+                "ref_id": device.id,
+                "label": device.hostname or device.sys_name or device.ip_address,
+                "device_type": device.device_type,
+                "ip_address": device.ip_address,
+            }
+            by_id[f"network_device:{device.id}"] = by_ip[ip]
+
+    scene = normalize_scene(row.scene_json)
+    dest_id = resolve_topology_target(list(by_id.values()), target)
+    stored = stored_trace_chain(list(devices), target, by_ip)
+
+    path_nodes: list[dict[str, Any]] = []
+    path_edges: list[dict[str, Any]] = []
+    if stored:
+        path_nodes, path_edges = stored
+    else:
+        if not dest_id:
+            raise HTTPException(status_code=404, detail="Нет известного пути до этого адреса")
+        preferred = None
+        from_id = (body.from_id or "").strip() or None
+        if from_id:
+            preferred = from_id if from_id in by_id else None
+            if not preferred:
+                for node in scene.get("nodes") or []:
+                    if not isinstance(node, dict) or str(node.get("id")) != from_id:
+                        continue
+                    bind = node.get("bind") if isinstance(node.get("bind"), dict) else None
+                    if bind and bind.get("type") == "corax":
+                        preferred = "corax:self"
+                    elif bind and bind.get("type") and bind.get("id") is not None:
+                        preferred = f"{bind['type']}:{int(bind['id'])}"
+        start_id = pick_path_start(
+            list(scene.get("nodes") or []),
+            set(by_id),
+            preferred=preferred,
+            avoid=dest_id,
+        )
+        if not start_id:
+            raise HTTPException(status_code=404, detail="Нет известного пути до этого адреса")
+        found = shortest_topology_path(topo_edges, start_id, dest_id)
+        if not found:
+            raise HTTPException(status_code=404, detail="Нет известного пути до этого адреса")
+        ids, used = found
+        path_nodes = [by_id[i] for i in ids if i in by_id]
+        path_edges = used
+
+    if len(path_nodes) < 2:
+        raise HTTPException(status_code=404, detail="Нет известного пути до этого адреса")
+
+    next_scene = merge_trace_into_scene(scene, path_nodes, path_edges, anchor_id=(body.from_id or None))
+    row.scene_json = dumps_scene(next_scene)
+    row.updated_by = user.id
+    await db.commit()
+    await db.refresh(row)
+    return _scene_out(row)
 async def delete_map_scene(
     scene_id: int,
     _: User = Depends(get_current_editor_or_superuser),

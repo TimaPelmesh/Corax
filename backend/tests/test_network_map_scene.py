@@ -104,6 +104,21 @@ def test_normalize_scene_keeps_note_and_image():
     assert scene["nodes"][1]["bind"] is None
 
 
+def test_normalize_scene_keeps_equipment_size():
+    scene = normalize_scene(
+        {
+            "version": 1,
+            "nodes": [
+                {"id": "logical:sw", "stencil": "switch", "x": 10, "y": 20, "width": 280, "height": 96, "label": "core"},
+            ],
+            "edges": [{"id": "e1", "source": "a", "target": "b", "linkType": "trace"}],
+        }
+    )
+    assert scene["nodes"][0]["width"] == 280
+    assert scene["nodes"][0]["height"] == 96
+    assert scene["edges"][0]["link_type"] == "trace"
+
+
 def test_normalize_scene_rejects_bad_version():
     with pytest.raises(HTTPException) as ei:
         normalize_scene({"version": 9, "groups": [], "nodes": [], "edges": [], "hiddenNodeIds": []})

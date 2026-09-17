@@ -42,6 +42,9 @@ _IMAGE_DATA_RE = re.compile(
 GROUP_KINDS = frozenset({"room", "rack"})
 BIND_TYPES = frozenset({"network_device", "computer", "printer", "corax", "zabbix"})
 LINK_ENDPOINT_TYPES = frozenset({"network_device", "computer", "printer", "corax"})
+SCENE_LINK_TYPES = frozenset(
+    {"lldp", "cdp", "mndp", "ndp", "fdp", "edp", "isdp", "hndp", "fdb", "trace", "lan", "manual", "subnet"}
+)
 
 EMPTY_SCENE: dict[str, Any] = {
     "version": SCENE_VERSION,
@@ -198,14 +201,14 @@ def normalize_scene(raw: object) -> dict[str, Any]:
         height = int(_num(item.get("height"), default=0, lo=0, hi=1200)) or None
         if stencil != "image":
             image_src = None
-            width = None
-            height = None
         elif not image_src:
             continue
         if stencil == "image":
             if image_count >= MAX_IMAGES:
                 continue
             image_count += 1
+            width = width or 220
+            height = height or 140
         node: dict[str, Any] = {
             "id": nid,
             "stencil": stencil,
@@ -215,10 +218,12 @@ def normalize_scene(raw: object) -> dict[str, Any]:
             "bind": bind,
             "label": _opt_str(item.get("label"), max_len=500 if stencil == "note" else 255),
         }
-        if stencil == "image":
+        if image_src:
             node["imageSrc"] = image_src
-            node["width"] = width or 220
-            node["height"] = height or 140
+        if width:
+            node["width"] = width
+        if height:
+            node["height"] = height
         nodes.append(node)
 
     edges: list[dict[str, Any]] = []
@@ -232,6 +237,9 @@ def normalize_scene(raw: object) -> dict[str, Any]:
         if not eid or not source or not target or source == target or eid in seen_edges:
             continue
         seen_edges.add(eid)
+        link_type = _str(item.get("link_type") or item.get("linkType"), max_len=16).lower()
+        if link_type not in SCENE_LINK_TYPES:
+            link_type = "manual"
         edges.append(
             {
                 "id": eid,
@@ -239,6 +247,7 @@ def normalize_scene(raw: object) -> dict[str, Any]:
                 "target": target,
                 "local_port": _opt_str(item.get("local_port") or item.get("localPort"), max_len=128),
                 "remote_port": _opt_str(item.get("remote_port") or item.get("remotePort"), max_len=128),
+                "link_type": link_type,
             }
         )
 

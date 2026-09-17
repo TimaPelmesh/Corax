@@ -55,8 +55,40 @@
   box-shadow: none;
 }
 
-.network-map-canvas .react-flow__controls-button {
-  background: var(--color-surface);
-  border-bottom-color: var(--color-border);
-  fill: var(--color-fg);
+.network-map-canvas .react-flow__edge-path {
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.network-map-canvas.is-exporting .react-flow__handle,
+.network-map-canvas.is-exporting .react-flow__minimap,
+.network-map-canvas.is-exporting .react-flow__controls,
+.network-map-canvas.is-exporting .network-map-legend {
+  display: none !important;
+}
+
+.network-map-legend {
+  box-shadow: 0 8px 24px -20px rgb(15 23 42 / 0.6);
+}
+
+.network-map-resizer {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 11px;
+  height: 11px;
+  cursor: nwse-resize;
+  z-index: 24;
+  border-right: 2px solid var(--color-primary);
+  border-bottom: 2px solid var(--color-primary);
+  border-radius: 0 0 3px 0;
+  opacity: 0.85;
+}
+
+.network-map-scenes {
+  min-width: 0;
+}
+
+.network-map-scenes-menu {
+  max-height: min(24rem, 70vh);
 }

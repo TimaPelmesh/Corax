@@ -1,4 +1,5 @@
-import { MarkerType, type Edge, type Node } from 'reactflow'
+import { type Edge, type Node } from 'reactflow'
+import { laneForEdges } from './cables'
 import type { MergedCanvasEdge, MergedCanvasNode, NetworkMapGroup, NetworkMapScene } from './types'
 import type { EquipmentNodeData, GroupNodeData } from './NetworkMapCanvasNode'
 
@@ -26,11 +27,12 @@ export function equipmentWidth(
   width?: number | null,
   portCount?: number | null,
 ): number {
+  if (width && width > 0) return Math.max(80, Math.min(1600, width))
   if (stencil === 'note') {
     const longest = label.split('\n').reduce((max, line) => Math.max(max, line.length), 0)
     return Math.max(96, Math.min(420, longest * 11 + 20))
   }
-  if (stencil === 'image') return Math.max(80, width || 220)
+  if (stencil === 'image') return 220
   if (stencil === 'switch' && (portCount || 0) > 8) {
     return Math.min(460, Math.max(176, Number(portCount) * 8 + 36))
   }
@@ -38,9 +40,21 @@ export function equipmentWidth(
 }
 
 export function equipmentHeight(stencil: string, label = '', height?: number | null): number {
+  if (height && height > 0) return Math.max(48, Math.min(1200, height))
   if (stencil === 'note') return Math.max(36, Math.min(240, label.split('\n').length * 28 + 8))
-  if (stencil === 'image') return Math.max(48, height || 140)
+  if (stencil === 'image') return 140
   return 72
+}
+
+export function viewportFlowCenter(
+  viewport: { x: number; y: number; zoom: number },
+  size: { width: number; height: number },
+): { x: number; y: number } {
+  const zoom = viewport.zoom || 1
+  return {
+    x: (-viewport.x + size.width / 2) / zoom,
+    y: (-viewport.y + size.height / 2) / zoom,
+  }
 }
 
 export function toFlowNodes(
@@ -87,7 +101,7 @@ export function toFlowNodes(
       },
       style: {
         width: equipmentWidth(n.stencil, n.label, n.width, n.portCount ?? n.ports?.length),
-        height: n.stencil === 'image' || n.stencil === 'note' ? equipmentHeight(n.stencil, n.label, n.height) : undefined,
+        height: equipmentHeight(n.stencil, n.label, n.height),
         padding: 0,
         border: 'none',
         background: 'transparent',
@@ -101,11 +115,20 @@ export function toFlowNodes(
 }
 
 export function toFlowEdges(edges: MergedCanvasEdge[]): Edge[] {
+  const lanes = laneForEdges(edges)
   return edges.map((e) => {
     const manual = e.linkType === 'manual'
     const lan = e.linkType === 'lan'
     const traced = e.linkType === 'trace'
-    const lldp = e.linkType === 'lldp' || e.linkType === 'cdp' || e.linkType === 'mndp' || e.linkType === 'ndp' || e.linkType === 'fdp' || e.linkType === 'edp' || e.linkType === 'isdp' || e.linkType === 'hndp'
+    const lldp =
+      e.linkType === 'lldp' ||
+      e.linkType === 'cdp' ||
+      e.linkType === 'mndp' ||
+      e.linkType === 'ndp' ||
+      e.linkType === 'fdp' ||
+      e.linkType === 'edp' ||
+      e.linkType === 'isdp' ||
+      e.linkType === 'hndp'
     const caption = [e.localPort, e.remotePort].filter(Boolean).join(' → ')
     return {
       id: e.id,
@@ -113,17 +136,16 @@ export function toFlowEdges(edges: MergedCanvasEdge[]): Edge[] {
       target: e.target,
       sourceHandle: portHandleId(e.localPort),
       targetHandle: portHandleId(e.remotePort),
-      type: 'smoothstep',
-      data: { linkDbId: e.linkDbId, persisted: e.persisted, linkType: e.linkType },
-      label: caption || (manual ? ' ' : undefined),
-      animated: lldp || traced,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+      type: 'cable',
+      data: { linkDbId: e.linkDbId, persisted: e.persisted, linkType: e.linkType, lane: lanes.get(e.id) || 0 },
+      label: caption || undefined,
+      animated: false,
       zIndex: traced ? 4 : manual ? 3 : 2,
       style: {
         stroke: traced ? '#7c3aed' : manual ? 'var(--color-fg)' : lan ? 'var(--color-fg-muted)' : 'var(--color-primary)',
-        strokeWidth: traced || manual ? 2 : 1.4,
-        strokeDasharray: lan ? '5 4' : manual ? '2 0' : undefined,
-        opacity: lan ? 0.7 : 1,
+        strokeWidth: traced || manual ? 1.9 : lldp ? 1.7 : 1.45,
+        strokeDasharray: lan ? '5 4' : undefined,
+        opacity: lan ? 0.75 : 1,
       },
     }
   })
@@ -134,7 +156,21 @@ export function decorateSelection(
   rfEdges: Edge[],
   selectedId: string | null,
 ): { nodes: Node[]; edges: Edge[] } {
-  if (!selectedId) return { nodes: rfNodes, edges: rfEdges }
+  if (!selectedId) {
+    const dirty = rfNodes.some((n) => {
+      const data = n.data as EquipmentNodeData | undefined
+      return Boolean(data?.neighbor || data?.hotPorts?.length)
+    })
+    if (!dirty) return { nodes: rfNodes, edges: rfEdges }
+    return {
+      nodes: rfNodes.map((n) => {
+        const data = n.data as EquipmentNodeData | undefined
+        if (!data?.neighbor && !data?.hotPorts?.length) return n
+        return { ...n, className: undefined, data: { ...data, neighbor: false, hotPorts: [] } }
+      }),
+      edges: rfEdges,
+    }
+  }
   const related = new Set<string>([selectedId])
   const hotByNode = new Map<string, Set<string>>()
   const addHot = (nodeId: string, handle?: string | null) => {
@@ -150,14 +186,19 @@ export function decorateSelection(
     addHot(e.source, e.sourceHandle)
     addHot(e.target, e.targetHandle)
   }
+  const dirty = new Set(related)
+  for (const n of rfNodes) {
+    const data = n.data as EquipmentNodeData | undefined
+    if (data?.neighbor || data?.hotPorts?.length) dirty.add(n.id)
+  }
   return {
     nodes: rfNodes.map((n) => {
-      if (n.type !== 'equipment') return n
+      if (n.type !== 'equipment' || !dirty.has(n.id)) return n
       const data = n.data as EquipmentNodeData
       const neighbor = related.has(n.id) && n.id !== selectedId
       return {
         ...n,
-        className: neighbor ? 'is-neighbor' : n.className,
+        className: neighbor ? 'is-neighbor' : undefined,
         data: {
           ...data,
           neighbor,
@@ -169,8 +210,12 @@ export function decorateSelection(
       const on = e.source === selectedId || e.target === selectedId
       return {
         ...e,
+        data: {
+          ...(e.data as Record<string, unknown> | undefined),
+          highlight: on ? 'related' : 'dim',
+        },
         className: on ? 'is-related' : 'is-dim',
-        animated: on,
+        animated: false,
         zIndex: on ? 8 : 1,
         style: {
           ...e.style,
@@ -200,8 +245,8 @@ export function collectScene(
         kind: data.kind,
         x: n.position.x,
         y: n.position.y,
-        width: Number(n.style?.width || 420),
-        height: Number(n.style?.height || 280),
+        width: Number(n.width || n.style?.width || 420),
+        height: Number(n.height || n.style?.height || 280),
       })
       continue
     }
@@ -216,8 +261,8 @@ export function collectScene(
       bind: data.bind ?? null,
       label: data.title,
       imageSrc: data.imageSrc ?? null,
-      width: data.width ?? null,
-      height: data.height ?? null,
+      width: data.width ?? (typeof n.width === 'number' ? n.width : null),
+      height: data.height ?? (typeof n.height === 'number' ? n.height : null),
     })
   }
   const byId = new Map(rfNodes.map((n) => [n.id, n]))
@@ -229,6 +274,7 @@ export function collectScene(
       target: e.target,
       local_port: portNameFromHandle(byId.get(e.source), e.sourceHandle) || null,
       remote_port: portNameFromHandle(byId.get(e.target), e.targetHandle) || null,
+      link_type: String((e.data as { linkType?: string } | undefined)?.linkType || 'manual'),
     }))
   return {
     version: 1,
@@ -240,14 +286,22 @@ export function collectScene(
   }
 }
 
-export function groupAtPoint(rfNodes: Node[], pos: { x: number; y: number }): Node | null {
+export function groupAtPoint(
+  rfNodes: Node[],
+  pos: { x: number; y: number },
+  size?: { width: number; height: number },
+): Node | null {
   const groups = rfNodes.filter((n) => n.type === 'groupFrame')
   for (const g of groups) {
-    const w = Number(g.style?.width || 0)
-    const h = Number(g.style?.height || 0)
-    if (pos.x >= g.position.x && pos.x <= g.position.x + w && pos.y >= g.position.y && pos.y <= g.position.y + h) {
-      return g
+    const w = Number(g.width || g.style?.width || 0)
+    const h = Number(g.height || g.style?.height || 0)
+    if (pos.x < g.position.x || pos.y < g.position.y) continue
+    if (pos.x > g.position.x + w || pos.y > g.position.y + h) continue
+    if (size) {
+      if (pos.x + size.width > g.position.x + w - 8) continue
+      if (pos.y + size.height > g.position.y + h - 8) continue
     }
+    return g
   }
   return null
 }

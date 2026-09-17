@@ -53,6 +53,7 @@ export type NetworkMapSceneEdge = {
   target: string
   local_port?: string | null
   remote_port?: string | null
+  link_type?: string | null
 }
 
 export type NetworkMapViewport = {

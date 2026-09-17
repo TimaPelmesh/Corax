@@ -61,6 +61,90 @@ def test_port_handle_id_slug():
     assert port_handle_id("") is None
 
 
+def test_layout_does_not_hang_gear_off_corax_lan():
+    scene = layout_topology_scene(
+        [
+            {"id": "corax:self", "kind": "corax", "ref_id": 0, "label": "Corax", "device_type": "corax"},
+            {"id": "network_device:1", "kind": "network_device", "ref_id": 1, "label": "gw", "device_type": "router"},
+            {"id": "network_device:2", "kind": "network_device", "ref_id": 2, "label": "sw", "device_type": "switch"},
+        ],
+        [
+            {"id": "e-lan", "source": "corax:self", "target": "network_device:1", "link_type": "lan"},
+            {"id": "e-lldp", "source": "network_device:1", "target": "network_device:2", "link_type": "lldp"},
+        ],
+    )
+    by_id = {n["id"]: n for n in scene["nodes"]}
+    assert by_id["network_device:2"]["y"] > by_id["network_device:1"]["y"]
+    edge_ids = {e["id"] for e in scene["edges"]}
+    assert "e-lan" not in edge_ids
+    assert any("network_device:1" in (e["source"], e["target"]) and "network_device:2" in (e["source"], e["target"]) for e in scene["edges"])
+
+
+def test_shortest_path_prefers_lldp_over_lan():
+    from app.network_map_layout import shortest_topology_path
+
+    found = shortest_topology_path(
+        [
+            {"id": "weak", "source": "a", "target": "c", "link_type": "lan"},
+            {"id": "ab", "source": "a", "target": "b", "link_type": "lldp"},
+            {"id": "bc", "source": "b", "target": "c", "link_type": "trace"},
+        ],
+        "a",
+        "c",
+    )
+    assert found is not None
+    path, used = found
+    assert path == ["a", "b", "c"]
+    assert [e["id"] for e in used] == ["ab", "bc"]
+
+
+def test_merge_trace_places_foreign_subnet_hops():
+    from app.network_map_layout import merge_trace_into_scene, stored_trace_chain
+
+    class _Dev:
+        extras_json = (
+            '{"trace_routes":[{"target_ip":"10.80.1.5","hops":['
+            '{"ip":"10.0.0.1"},{"ip":"10.50.0.1"},{"ip":"10.80.1.5"}]}]}'
+        )
+
+    index = {
+        "10.0.0.1": {
+            "id": "network_device:8",
+            "kind": "network_device",
+            "ref_id": 8,
+            "label": "core",
+            "device_type": "switch",
+            "ip_address": "10.0.0.1",
+        }
+    }
+    chain = stored_trace_chain([_Dev()], "10.80.1.5", index)
+    assert chain is not None
+    nodes, edges = chain
+    scene = merge_trace_into_scene(
+        {
+            "version": 1,
+            "nodes": [
+                {
+                    "id": "network_device:8",
+                    "stencil": "switch",
+                    "x": 40,
+                    "y": 80,
+                    "bind": {"type": "network_device", "id": 8},
+                    "label": "core",
+                }
+            ],
+        },
+        nodes,
+        edges,
+        anchor_id="network_device:8",
+    )
+    ids = [n["id"] for n in scene["nodes"]]
+    assert "network_device:8" in ids
+    assert "hop:10.50.0.1" in ids
+    assert "hop:10.80.1.5" in ids
+    assert any(e.get("link_type") == "trace" for e in scene["edges"])
+
+
 def test_neighbor_ip_becomes_slash24():
     assert _private_slash24("10.20.30.40") == "10.20.30.0/24"
     assert _private_slash24("8.8.8.8") is None

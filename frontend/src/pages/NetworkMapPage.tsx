@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import ReactFlow, {
   Background,
   BackgroundVariant,
+  ConnectionLineType,
   Controls,
   MiniMap,
   ReactFlowProvider,
@@ -11,6 +12,7 @@ import ReactFlow, {
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeTypes,
   type Node,
   type NodeTypes,
   type OnConnect,
@@ -26,14 +28,17 @@ import { PrinterDetailModal } from '../components/PrinterDetailModal'
 import { useLocale } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 import { NetworkMapEquipmentNode, NetworkMapGroupNode } from './network-map/NetworkMapCanvasNode'
+import { NetworkMapCableEdge } from './network-map/NetworkMapCableEdge'
 import { NetworkMapClearDialog } from './network-map/NetworkMapClearDialog'
 import { NETWORK_MAP_DND, NetworkMapPalette, type PaletteDrag } from './network-map/NetworkMapPalette'
 import { NetworkMapInspector } from './network-map/NetworkMapInspector'
 import { NetworkMapScenesBar } from './network-map/NetworkMapScenesBar'
-import { collectScene, decorateSelection, groupAtPoint, toFlowEdges, toFlowNodes } from './network-map/flow'
+import { collectScene, decorateSelection, equipmentHeight, equipmentWidth, groupAtPoint, toFlowEdges, toFlowNodes, viewportFlowCenter } from './network-map/flow'
 import { compressMapImage } from './network-map/image'
 import { bindsFromScene, hydrateScene } from './network-map/mergeScene'
 import { applyNeighborCluster, offersFromTopology } from './network-map/neighborsAround'
+import { exportNetworkMapPng } from './network-map/exportPng'
+import { onMapNodeResized } from './network-map/NetworkMapResizer'
 import './network-map/network-map.css'
 import {
   MAX_MAP_IMAGES,
@@ -46,6 +51,7 @@ import {
 } from './network-map/types'
 
 const NODE_TYPES: NodeTypes = { equipment: NetworkMapEquipmentNode, groupFrame: NetworkMapGroupNode }
+const EDGE_TYPES: EdgeTypes = { cable: NetworkMapCableEdge }
 const RF_PRO = { hideAttribution: true }
 const SCENE_STORE_KEY = 'corax-network-map-scene-id'
 
@@ -80,7 +86,7 @@ function NetworkMapEditor() {
   const toast = useToast()
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
-  const { screenToFlowPosition, getViewport, setViewport, getNodes, getEdges, fitView } = useReactFlow()
+  const { screenToFlowPosition, getViewport, setViewport, getNodes, getEdges, fitView, setCenter } = useReactFlow()
 
   const [loading, setLoading] = useState(true)
   const [scene, setScene] = useState<NetworkMapScene>(emptyNetworkMapScene())
@@ -103,6 +109,10 @@ function NetworkMapEditor() {
   const [scenes, setScenes] = useState<Array<{ id: number; title: string; updated_at: string | null; node_count: number; edge_count: number }>>([])
   const [topology, setTopology] = useState<NetworkTopology | null>(null)
   const [neighborsBusy, setNeighborsBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [traceTarget, setTraceTarget] = useState('')
+  const [tracing, setTracing] = useState(false)
+  const paneRef = useRef<HTMLDivElement>(null)
 
   const sceneRef = useRef(scene)
   sceneRef.current = scene
@@ -200,7 +210,15 @@ function NetworkMapEditor() {
   }, [paint])
 
   const sceneFromCanvas = useCallback(() => {
-    return collectScene(getNodes(), getEdges(), sceneRef.current.hiddenNodeIds, getViewport())
+    const fromRf = collectScene(getNodes(), getEdges(), sceneRef.current.hiddenNodeIds, getViewport())
+    if (
+      fromRf.nodes.length === 0 &&
+      fromRf.groups.length === 0 &&
+      (sceneRef.current.nodes.length > 0 || sceneRef.current.groups.length > 0)
+    ) {
+      return { ...sceneRef.current, viewport: getViewport() }
+    }
+    return fromRf
   }, [getEdges, getNodes, getViewport])
 
   const applySceneDto = useCallback(
@@ -267,24 +285,35 @@ function NetworkMapEditor() {
   }, [refreshLive, scene.nodes.length])
 
   useEffect(() => {
-    if (!selected?.bind || selected.bind.type === 'zabbix') return
     let cancelled = false
+    const load = () => {
+      void api
+        .networkTopology()
+        .then((topo) => {
+          if (!cancelled) setTopology(topo)
+        })
+        .catch(() => {
+          if (!cancelled) setTopology(null)
+        })
+        .finally(() => {
+          if (!cancelled) setNeighborsBusy(false)
+        })
+    }
     setNeighborsBusy(true)
-    void api
-      .networkTopology()
-      .then((topo) => {
-        if (!cancelled) setTopology(topo)
-      })
-      .catch(() => {
-        if (!cancelled) setTopology(null)
-      })
-      .finally(() => {
-        if (!cancelled) setNeighborsBusy(false)
-      })
+    load()
+    const timer = window.setInterval(load, 90_000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
-  }, [selected?.bind?.id, selected?.bind?.type])
+  }, [])
+
+  useEffect(() => {
+    return onMapNodeResized(() => {
+      if (!canEdit) return
+      persist(sceneFromCanvas(), false, true)
+    })
+  }, [canEdit, persist, sceneFromCanvas])
 
   const onNodeDragStop = useCallback(() => {
     if (!canEdit) return
@@ -296,18 +325,19 @@ function NetworkMapEditor() {
   }, [persistViewport])
 
   const canvasCenter = useCallback(() => {
-    const pane = document.querySelector('.react-flow')
-    const rect = pane?.getBoundingClientRect()
-    return screenToFlowPosition({
-      x: (rect?.left ?? 0) + (rect?.width ?? 640) / 2,
-      y: (rect?.top ?? 0) + (rect?.height ?? 420) / 2,
+    const pane = paneRef.current
+    return viewportFlowCenter(getViewport(), {
+      width: pane?.clientWidth || 800,
+      height: pane?.clientHeight || 520,
     })
-  }, [screenToFlowPosition])
+  }, [getViewport])
 
   const placeAt = useCallback(
-    (partial: MergedCanvasNode, flowPos: { x: number; y: number }) => {
+    (partial: MergedCanvasNode, flowPos: { x: number; y: number }, nestGroup = false) => {
       const current = sceneFromCanvas()
-      const group = groupAtPoint(nodes, flowPos)
+      const w = equipmentWidth(partial.stencil, partial.label, partial.width, partial.portCount)
+      const h = equipmentHeight(partial.stencil, partial.label, partial.height)
+      const group = nestGroup ? groupAtPoint(getNodes(), flowPos, { width: w, height: h }) : null
       const pos = group
         ? { x: flowPos.x - group.position.x, y: flowPos.y - group.position.y }
         : flowPos
@@ -320,15 +350,21 @@ function NetworkMapEditor() {
         bind: partial.bind ?? null,
         label: partial.label,
         imageSrc: partial.imageSrc ?? null,
-        width: partial.width ?? null,
-        height: partial.height ?? null,
+        width: partial.width ?? w,
+        height: partial.height ?? h,
       })
       persist(current)
       setSelectedId(partial.id)
       setSelectedGroupId(null)
+      window.requestAnimationFrame(() => {
+        setCenter(flowPos.x + w / 2, flowPos.y + h / 2, {
+          duration: 0,
+          zoom: Math.max(0.7, Math.min(1.2, getViewport().zoom || 1)),
+        })
+      })
       if (partial.bind) void refreshLive(current)
     },
-    [nodes, persist, refreshLive, sceneFromCanvas],
+    [getNodes, getViewport, persist, refreshLive, sceneFromCanvas, setCenter],
   )
 
   const placeGroup = useCallback(
@@ -347,12 +383,18 @@ function NetworkMapEditor() {
       persist(current)
       setSelectedId(null)
       setSelectedGroupId(id)
+      window.requestAnimationFrame(() => {
+        setCenter(pos.x + (kind === 'rack' ? 140 : 240), pos.y + (kind === 'rack' ? 210 : 150), {
+          duration: 0,
+          zoom: Math.max(0.55, Math.min(1, getViewport().zoom || 1)),
+        })
+      })
     },
-    [persist, sceneFromCanvas, t],
+    [getViewport, persist, sceneFromCanvas, setCenter, t],
   )
 
   const placePayload = useCallback(
-    (payload: PaletteDrag, pos: { x: number; y: number }) => {
+    (payload: PaletteDrag, pos: { x: number; y: number }, nestGroup = false) => {
       if (payload.kind === 'group') {
         placeGroup(payload.groupKind, pos)
         return
@@ -368,6 +410,7 @@ function NetworkMapEditor() {
           missing: false,
         },
         pos,
+        nestGroup,
       )
     },
     [placeAt, placeGroup, t],
@@ -438,7 +481,7 @@ function NetworkMapEditor() {
         void placeImage(file, screenToFlowPosition({ x: event.clientX, y: event.clientY }))
         return
       }
-      const raw = event.dataTransfer.getData(NETWORK_MAP_DND)
+      const raw = event.dataTransfer.getData(NETWORK_MAP_DND) || event.dataTransfer.getData('text/plain')
       if (!raw) return
       let payload: PaletteDrag
       try {
@@ -446,7 +489,7 @@ function NetworkMapEditor() {
       } catch {
         return
       }
-      placePayload(payload, screenToFlowPosition({ x: event.clientX, y: event.clientY }))
+      placePayload(payload, screenToFlowPosition({ x: event.clientX, y: event.clientY }), true)
     },
     [canEdit, placeImage, placePayload, screenToFlowPosition],
   )
@@ -464,8 +507,8 @@ function NetworkMapEditor() {
           {
             ...connection,
             id: newId('scene-edge'),
-            type: 'smoothstep',
-            data: { persisted: false, linkType: 'manual', linkDbId: null },
+            type: 'cable',
+            data: { persisted: false, linkType: 'manual', linkDbId: null, lane: 0 },
             style: { stroke: 'var(--color-fg)', strokeWidth: 2 },
           },
           eds,
@@ -656,26 +699,77 @@ function NetworkMapEditor() {
     [canEdit, fitAround, neighborOffers, persist, refreshLive, sceneFromCanvas, selectedId],
   )
 
-  const renameScene = async (title: string) => {
-    if (!canEdit || !sceneId) return
-    setSceneTitle(title)
+  const exportMap = useCallback(async () => {
+    const viewportEl = document.querySelector('.network-map-canvas .react-flow__viewport') as HTMLElement | null
+    const pane = document.querySelector('.network-map-canvas') as HTMLElement | null
+    if (!viewportEl || getNodes().filter((n) => n.type === 'equipment' || n.type === 'groupFrame').length === 0) {
+      toastRef.current.error(tRef.current('networkMap.exportPngFailed'))
+      return
+    }
+    setExporting(true)
+    pane?.classList.add('is-exporting')
     try {
-      await api.saveNetworkMapScene({ title, scene: sceneFromCanvas() }, sceneId)
+      await exportNetworkMapPng({ viewportEl, nodes: getNodes(), title: sceneTitleRef.current })
+      toastRef.current.ok(tRef.current('networkMap.exportPngOk'))
+    } catch {
+      toastRef.current.error(tRef.current('networkMap.exportPngFailed'))
+    } finally {
+      pane?.classList.remove('is-exporting')
+      setExporting(false)
+    }
+  }, [getNodes])
+
+  const renameScene = async (title: string, id = sceneId) => {
+    if (!canEdit || !id) return
+    try {
+      if (id === sceneId) {
+        setSceneTitle(title)
+        await api.saveNetworkMapScene({ title, scene: sceneFromCanvas() }, id)
+      } else {
+        const dto = await api.networkMapScene(id)
+        await api.saveNetworkMapScene({ title, scene: dto.scene }, id)
+      }
       await reloadScenes()
     } catch (e) {
       toastRef.current.error(e instanceof Error ? e.message : tRef.current('networkMap.saveFailed'))
     }
   }
 
-  const deleteActive = async () => {
-    if (!canEdit || !sceneId || scenes.length < 2) return
+  const deleteActive = async (id = sceneId) => {
+    if (!canEdit || !id || scenes.length < 2) return
     try {
-      await api.deleteNetworkMapScene(sceneId)
+      await api.deleteNetworkMapScene(id)
       const listed = await reloadScenes()
-      const nextId = listed[0]?.id
-      if (nextId) await openScene(nextId)
+      if (id === sceneId) {
+        const nextId = listed[0]?.id
+        if (nextId) await openScene(nextId)
+      }
     } catch (e) {
       toastRef.current.error(e instanceof Error ? e.message : tRef.current('networkMap.saveFailed'))
+    }
+  }
+
+  const runTrace = async () => {
+    if (!canEdit || !sceneId) {
+      toastRef.current.error(tRef.current('networkMap.traceNeedScene'))
+      return
+    }
+    const target = traceTarget.trim()
+    if (!target) return
+    setTracing(true)
+    try {
+      const dto = await api.traceNetworkMapScene(sceneId, { target, from_id: selectedId || undefined })
+      const listed = await reloadScenes()
+      applySceneDto(dto, listed)
+      toastRef.current.ok(tRef.current('networkMap.traceOk'))
+      window.setTimeout(() => {
+        const ids = ((dto.scene as NetworkMapScene)?.nodes || []).map((n) => n.id)
+        fitAround(ids.slice(-8))
+      }, 40)
+    } catch (e) {
+      toastRef.current.error(e instanceof Error ? e.message : tRef.current('networkMap.traceFailed'))
+    } finally {
+      setTracing(false)
     }
   }
 
@@ -708,12 +802,18 @@ function NetworkMapEditor() {
           onCreateBlank={() => void createScene('blank')}
           onCreateTopology={() => void createScene('topology')}
           onLayout={() => void layoutActive()}
-          onRename={(title) => void renameScene(title)}
-          onDelete={() => void deleteActive()}
+          onRename={(title, id) => void renameScene(title, id)}
+          onDelete={(id) => void deleteActive(id)}
+          onExportPng={() => void exportMap()}
+          exporting={exporting}
+          traceValue={traceTarget}
+          onTraceValue={setTraceTarget}
+          onTrace={() => void runTrace()}
+          tracing={tracing}
         />
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <div className="network-map-canvas relative min-h-0 flex-1">
+            <div ref={paneRef} className="network-map-canvas relative min-h-0 flex-1">
             {loading ? (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-bg)] text-sm text-[var(--color-fg-subtle)]">
                 {t('common.loading')}
@@ -725,10 +825,14 @@ function NetworkMapEditor() {
               </div>
             ) : null}
             <ReactFlow
-              className={`network-map-canvas h-full ${linking ? 'is-linking' : ''}`}
+              className={`network-map-canvas h-full ${linking ? 'is-linking' : ''} ${exporting ? 'is-exporting' : ''}`}
               nodes={shown.nodes}
               edges={shown.edges}
               nodeTypes={NODE_TYPES}
+              edgeTypes={EDGE_TYPES}
+              defaultEdgeOptions={{ type: 'cable' }}
+              connectionLineType={ConnectionLineType.SmoothStep}
+              connectionLineStyle={{ stroke: 'var(--color-primary)', strokeWidth: 1.6 }}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeDragStop={onNodeDragStop}
@@ -768,21 +872,46 @@ function NetworkMapEditor() {
               proOptions={RF_PRO}
             >
               <Background
-                variant={BackgroundVariant.Dots}
-                gap={26}
-                size={1.35}
-                color="color-mix(in srgb, var(--color-fg) 11%, transparent)"
+                variant={BackgroundVariant.Lines}
+                gap={20}
+                size={1}
+                color="color-mix(in srgb, var(--color-fg) 7%, transparent)"
               />
               <Controls showInteractive={false} />
               {!empty ? (
                 <MiniMap
                   pannable
                   zoomable
+                  nodeStrokeWidth={0}
+                  nodeColor="var(--color-fg-muted)"
                   maskColor="color-mix(in srgb, var(--color-bg) 55%, transparent)"
                   style={{ background: 'var(--color-surface)' }}
                 />
               ) : null}
             </ReactFlow>
+            {!empty ? (
+              <div className="network-map-legend pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/92 px-2.5 py-2 text-[10px] leading-4 text-[var(--color-fg-muted)]">
+                <div className="mb-1 font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                  {t('networkMap.legendTitle')}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-px w-5 bg-[var(--color-primary)]" />
+                  {t('networkMap.legendLldp')}
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span className="inline-block h-px w-5 bg-[var(--color-fg)]" />
+                  {t('networkMap.legendManual')}
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span className="inline-block w-5 border-t border-dashed border-[var(--color-fg-muted)]" />
+                  {t('networkMap.legendLan')}
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span className="inline-block h-px w-5 bg-[#7c3aed]" />
+                  {t('networkMap.legendTrace')}
+                </div>
+              </div>
+            ) : null}
           </div>
           <NetworkMapPalette
             canEdit={canEdit}

@@ -62,7 +62,9 @@ export function NetworkMapPalette({ canEdit, onPick, onRequestBlank, onImportIma
               title={t(`networkMap.stencil.${stencil}` as MessageKey)}
               onClick={() => canEdit && onPick({ kind: 'stencil', stencil })}
               onDragStart={(e) => {
-                e.dataTransfer.setData(NETWORK_MAP_DND, JSON.stringify({ kind: 'stencil', stencil } satisfies PaletteDrag))
+                const payload = JSON.stringify({ kind: 'stencil', stencil } satisfies PaletteDrag)
+                e.dataTransfer.setData(NETWORK_MAP_DND, payload)
+                e.dataTransfer.setData('text/plain', payload)
                 e.dataTransfer.effectAllowed = 'copy'
               }}
               className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-fg)] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
@@ -79,7 +81,9 @@ export function NetworkMapPalette({ canEdit, onPick, onRequestBlank, onImportIma
           title={t('networkMap.stencil.note')}
           onClick={() => canEdit && onPick({ kind: 'stencil', stencil: 'note' })}
           onDragStart={(e) => {
-            e.dataTransfer.setData(NETWORK_MAP_DND, JSON.stringify({ kind: 'stencil', stencil: 'note' } satisfies PaletteDrag))
+            const payload = JSON.stringify({ kind: 'stencil', stencil: 'note' } satisfies PaletteDrag)
+            e.dataTransfer.setData(NETWORK_MAP_DND, payload)
+            e.dataTransfer.setData('text/plain', payload)
             e.dataTransfer.effectAllowed = 'copy'
           }}
           className="flex shrink-0 items-center gap-1.5 rounded-lg border border-dashed border-[var(--color-border-strong)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-fg)] hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
@@ -116,10 +120,9 @@ export function NetworkMapPalette({ canEdit, onPick, onRequestBlank, onImportIma
             disabled={!canEdit}
             onClick={() => canEdit && onPick({ kind: 'group', groupKind: kind })}
             onDragStart={(e) => {
-              e.dataTransfer.setData(
-                NETWORK_MAP_DND,
-                JSON.stringify({ kind: 'group', groupKind: kind } satisfies PaletteDrag),
-              )
+              const payload = JSON.stringify({ kind: 'group', groupKind: kind } satisfies PaletteDrag)
+              e.dataTransfer.setData(NETWORK_MAP_DND, payload)
+              e.dataTransfer.setData('text/plain', payload)
               e.dataTransfer.effectAllowed = 'copy'
             }}
             className="flex shrink-0 items-center rounded-lg border border-dashed border-[var(--color-border-strong)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] disabled:opacity-50"

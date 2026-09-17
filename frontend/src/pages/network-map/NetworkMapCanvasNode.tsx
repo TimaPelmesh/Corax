@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import { memo, type CSSProperties, type ReactNode } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import {
   IconAccessPoint,
@@ -13,6 +13,7 @@ import {
   IconWarehouse,
 } from '../../components/icons'
 import type { NetworkMapGroupKind, NetworkMapStencil } from './types'
+import { NetworkMapResizer } from './NetworkMapResizer'
 
 const HANDLE: CSSProperties = {
   width: 8,
@@ -167,17 +168,21 @@ function PortRow({ compact, count }: { compact?: boolean; count?: number }) {
   )
 }
 
-export function NetworkMapEquipmentNode({ data, selected }: NodeProps<EquipmentNodeData>) {
+export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
+  data,
+  selected,
+}: NodeProps<EquipmentNodeData>) {
   if (data.stencil === 'note') {
     return (
       <div
-        className={`min-w-[4.5rem] max-w-[26rem] px-1 py-0.5 ${
+        className={`h-full min-w-[4.5rem] px-1 py-0.5 ${
           selected ? 'rounded-md ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg)]' : ''
         }`}
       >
         <div className="whitespace-pre-wrap text-[18px] font-semibold leading-snug tracking-tight text-[var(--color-fg)] [text-shadow:0_1px_0_color-mix(in_srgb,var(--color-surface)_80%,transparent)]">
           {data.title || '…'}
         </div>
+        <NetworkMapResizer visible={Boolean(selected)} minWidth={96} minHeight={36} maxWidth={640} maxHeight={320} />
       </div>
     )
   }
@@ -186,7 +191,7 @@ export function NetworkMapEquipmentNode({ data, selected }: NodeProps<EquipmentN
     const h = data.height || 140
     return (
       <div
-        className={`overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] ${
+        className={`relative h-full w-full overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] ${
           selected ? 'ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-bg)]' : ''
         }`}
         style={{ width: w, height: h }}
@@ -196,18 +201,20 @@ export function NetworkMapEquipmentNode({ data, selected }: NodeProps<EquipmentN
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-[var(--color-fg-subtle)]">{data.title}</div>
         )}
+        <NetworkMapResizer visible={Boolean(selected)} minWidth={80} minHeight={48} maxWidth={1600} maxHeight={1200} />
       </div>
     )
   }
   const compact = data.stencil === 'pc' || data.stencil === 'printer'
+  const livePorts = Boolean(selected || (data.hotPorts && data.hotPorts.length))
   return (
-    <div className="relative">
+    <div className="relative h-full w-full">
       <Handle type="target" position={Position.Top} style={HANDLE} />
       <Handle type="target" position={Position.Left} id="left" style={HANDLE} />
       <div
-        className={`rounded-lg border px-2.5 py-2 shadow-[0_10px_28px_-20px_rgba(0,0,0,0.65)] ${tone(data.stencil)} ${
-          compact ? 'w-[148px]' : 'w-[176px]'
-        } ${selected ? 'ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-bg)]' : data.neighbor ? 'ring-2 ring-[var(--color-primary)]/45' : ''} ${data.missing ? 'opacity-70' : ''}`}
+        className={`h-full w-full rounded-lg border px-2.5 py-2 shadow-[0_10px_28px_-20px_rgba(0,0,0,0.65)] ${tone(data.stencil)} ${
+          selected ? 'ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-bg)]' : data.neighbor ? 'ring-2 ring-[var(--color-primary)]/45' : ''
+        } ${data.missing ? 'opacity-70' : ''} ${compact ? 'min-w-[148px]' : 'min-w-[176px]'}`}
       >
         <div className="flex items-start gap-2">
           <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
@@ -224,10 +231,10 @@ export function NetworkMapEquipmentNode({ data, selected }: NodeProps<EquipmentN
           </div>
         </div>
         {data.stencil === 'switch' && (data.ports?.length || data.portCount) ? (
-          data.ports && data.ports.length > 0 ? (
+          livePorts && data.ports && data.ports.length > 0 ? (
             <SwitchPorts ports={data.ports} selected={selected} hotPorts={data.hotPorts} />
           ) : (
-            <PortRow count={data.portCount || 8} />
+            <PortRow count={Math.min(data.portCount || data.ports?.length || 8, 24)} />
           )
         ) : data.stencil === 'server' || data.stencil === 'nas' ? (
           <PortRow compact />
@@ -235,11 +242,15 @@ export function NetworkMapEquipmentNode({ data, selected }: NodeProps<EquipmentN
       </div>
       <Handle type="source" position={Position.Bottom} style={HANDLE} />
       <Handle type="source" position={Position.Right} id="right" style={HANDLE} />
+      <NetworkMapResizer visible={Boolean(selected)} minWidth={compact ? 120 : 140} minHeight={56} maxWidth={640} maxHeight={280} />
     </div>
   )
-}
+})
 
-export function NetworkMapGroupNode({ data }: NodeProps<GroupNodeData>) {
+export const NetworkMapGroupNode = memo(function NetworkMapGroupNode({
+  data,
+  selected,
+}: NodeProps<GroupNodeData>) {
   return (
     <div className="relative h-full w-full rounded-3xl border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-surface)_78%,var(--color-primary)_8%)] shadow-[inset_0_1px_0_color-mix(in_srgb,white_18%,transparent)]">
       <div className="absolute inset-x-3 top-2 flex items-center justify-between">
@@ -247,6 +258,7 @@ export function NetworkMapGroupNode({ data }: NodeProps<GroupNodeData>) {
           {data.title}
         </div>
       </div>
+      <NetworkMapResizer visible={Boolean(selected)} minWidth={160} minHeight={120} maxWidth={2400} maxHeight={1800} />
     </div>
   )
-}
+})

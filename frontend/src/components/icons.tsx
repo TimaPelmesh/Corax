@@ -618,3 +618,14 @@ export function IconNetworkMap({ className, title }: Props) {
     </svg>
   )
 }
+
+export function IconDownload({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <path d="M12 4.5v10.2" {...s} />
+      <path d="M8.2 11.6 12 15.4l3.8-3.8" {...s} />
+      <path d="M5.2 18.8h13.6" {...s} />
+    </svg>
+  )
+}
