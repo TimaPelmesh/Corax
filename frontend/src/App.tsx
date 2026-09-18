@@ -121,6 +121,11 @@ function LegacySelfServiceRedirect() {
   return <Navigate to={legacySelfServiceLocation(hash)} replace />
 }
 
+function PreserveSearchRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation()
+  return <Navigate to={`${to}${search}${hash}`} replace />
+}
+
 function PageLoader() {
   const { t } = useLocale()
   return (
@@ -160,7 +165,7 @@ export default function App() {
         <Route path="network-map" element={<NetworkMapPage />} />
         <Route path="requests/handler" element={<Navigate to="/requests/database" replace />} />
         <Route path="requests" element={<ServiceRequestsPage />}>
-          <Route index element={null} />
+          <Route index element={<PreserveSearchRedirect to="/requests/database" />} />
           <Route path="database" element={null} />
           <Route path="stats" element={null} />
           <Route path="templates" element={null} />

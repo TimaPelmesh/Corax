@@ -143,7 +143,7 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
               id: r.id,
               title: requestLabel(r),
               subtitle: [r.status, r.computer_hostname, r.requester_name].filter(Boolean).join(' · '),
-              to: `/requests?edit=${r.id}`,
+              to: `/requests/database?edit=${r.id}`,
               row: r,
             }))
           setHits([...computerHits, ...printerHits, ...requestHits])

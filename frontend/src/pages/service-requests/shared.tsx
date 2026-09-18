@@ -36,7 +36,7 @@ export const RECENT_TITLES_MAX = 8
 export const DB_PAGE_SIZE_KEY = 'service_request_database_page_size_v3'
 export const DB_PAGE_SIZE_OPTIONS = [50, 100, 0] as const
 
-export type RequestsTabId = 'create' | 'database' | 'stats' | 'templates'
+export type RequestsTabId = 'database' | 'stats' | 'templates'
 
 export type SortKey = 'opened_desc' | 'closed_desc' | 'id_asc' | 'id_desc' | 'priority_desc'
 

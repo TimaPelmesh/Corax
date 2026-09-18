@@ -313,11 +313,11 @@ const GUIDE_RU: GuideCopy = {
     {
       id: 'requests',
       title: 'Заявки',
-      summary: 'Создание, список, шаблоны, статистика.',
+      summary: 'Список, шаблоны, статистика. Новая заявка — кнопка, не отдельная вкладка.',
       steps: [
         {
-          title: 'Создать',
-          body: '«Заявки → Создание»: тема, описание, ПК (по желанию), категория, приоритет, исполнитель. Сохранение — в верхней панели.',
+          title: 'Создать или править',
+          body: 'На списке заявок кнопка «Новая заявка» открывает форму в окне. Клик по заявке открывает то же окно для правки. Тема, описание, ПК, категория, приоритет, исполнитель — сохранение в верхней панели окна.',
         },
         {
           title: 'База заявок',
@@ -341,7 +341,6 @@ const GUIDE_RU: GuideCopy = {
         },
       ],
       links: [
-        { to: '/requests', label: 'Создать' },
         { to: '/requests/database', label: 'База' },
         { to: '/requests/templates', label: 'Шаблоны' },
         { to: '/requests/stats', label: 'Статистика' },
@@ -827,11 +826,11 @@ const GUIDE_EN: GuideCopy = {
     {
       id: 'requests',
       title: 'Tickets',
-      summary: 'Create, list, templates, stats.',
+      summary: 'List, templates, stats. New ticket is a button, not a separate tab.',
       steps: [
         {
-          title: 'Create',
-          body: 'Tickets → New: title, description, PC, category, priority, assignee. Save from the top bar.',
+          title: 'Create or edit',
+          body: 'On the ticket list, the “New ticket” button opens the form in a dialog. Clicking a ticket opens the same dialog to edit. Title, description, PC, category, priority, assignee — save from the dialog’s top bar.',
         },
         {
           title: 'Ticket list',
@@ -855,7 +854,6 @@ const GUIDE_EN: GuideCopy = {
         },
       ],
       links: [
-        { to: '/requests', label: 'New' },
         { to: '/requests/database', label: 'List' },
         { to: '/requests/templates', label: 'Templates' },
         { to: '/requests/stats', label: 'Stats' },

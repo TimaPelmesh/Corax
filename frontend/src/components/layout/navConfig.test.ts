@@ -36,6 +36,16 @@ describe('buildNavSections', () => {
     const paths = (kb?.items ?? []).map((i) => i.to)
     expect(paths).toEqual(['/knowledge-base/wikirag', '/knowledge-base/guide', '/knowledge-base/notes'])
   })
+
+  it('puts tickets as list, templates, and stats — create is a button, not a tab', () => {
+    const sections = buildNavSections({ is_superuser: true })
+    const tickets = sections.find((s) => s.titleKey === 'nav.requests')
+    expect((tickets?.items ?? []).map((i) => i.to)).toEqual([
+      '/requests/database',
+      '/requests/templates',
+      '/requests/stats',
+    ])
+  })
 })
 
 describe('prefsNavItems', () => {

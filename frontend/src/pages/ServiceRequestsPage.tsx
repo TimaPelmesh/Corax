@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   api,
   type Computer,
@@ -37,8 +37,6 @@ import {
   isRequestPriority,
   readDatabasePageSize,
   sortArrow,
-  getAppScrollContainer,
-  captureListScrollForRestore,
   scheduleListScrollRestore,
   readRecentTitles,
   pushRecentTitle,
@@ -87,10 +85,9 @@ export function ServiceRequestsPage() {
 
   const tab = useMemo<RequestsTabId>(() => {
     const p = location.pathname
-    if (p === '/requests/database') return 'database'
     if (p === '/requests/stats') return 'stats'
     if (p === '/requests/templates') return 'templates'
-    return 'create'
+    return 'database'
   }, [location.pathname])
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
@@ -115,6 +112,7 @@ export function ServiceRequestsPage() {
   )
   const [title, setTitle] = useState('')
   const [aiTitleSuggestion, setAiTitleSuggestion] = useState('')
+  const [aiCategorySuggestion, setAiCategorySuggestion] = useState('')
   const [aiSuggestBusy, setAiSuggestBusy] = useState(false)
   const [description, setDescription] = useState('')
   const [showDescription, setShowDescription] = useState(false)
@@ -162,19 +160,12 @@ export function ServiceRequestsPage() {
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('id_desc')
   const [editingRequestId, setEditingRequestId] = useState<number | null>(null)
-  const [editingReturnPath, setEditingReturnPath] = useState<string | null>(null)
-  const [editingReturnPage, setEditingReturnPage] = useState<number | null>(null)
+  const [ticketFormOpen, setTicketFormOpen] = useState(false)
   const [editDeleting, setEditDeleting] = useState(false)
   const [filterCategory, setFilterCategory] = useState<string>('')
   const [reportOpen, setReportOpen] = useState(false)
   const [closeDialog, setCloseDialog] = useState<{
     row: ServiceRequestRow
-    aiBusy: boolean
-    aiError: string | null
-    suggestedTitle: string | null
-    suggestedCategory: string | null
-    applyTitle: boolean
-    applyCategory: boolean
     saving: boolean
   } | null>(null)
   const [statsFrom, setStatsFrom] = useState<string>('')
@@ -746,11 +737,10 @@ export function ServiceRequestsPage() {
     )
   }
 
-  function beginEditRequest(row: ServiceRequestRow, returnPath: string | null, returnPage: number | null) {
+  function beginEditRequest(row: ServiceRequestRow) {
     populateFormFromRequest(row)
     setEditingRequestId(row.id)
-    setEditingReturnPath(returnPath)
-    setEditingReturnPage(returnPage)
+    setTicketFormOpen(true)
   }
 
   useEffect(() => {
@@ -767,17 +757,8 @@ export function ServiceRequestsPage() {
       stripEditQuery()
       return
     }
-    beginEditRequest(
-      row,
-      navState?.editReturnPath ?? (location.pathname === '/requests' ? '/requests/database' : location.pathname),
-      navState?.editReturnPage ?? dbPage,
-    )
+    beginEditRequest(row)
     stripEditQuery()
-    if (location.pathname !== '/requests') navigate('/requests', { replace: true })
-    window.requestAnimationFrame(() => {
-      const el = getAppScrollContainer()
-      if (el) el.scrollTop = 0
-    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, rows, searchParams, location.state, location.pathname])
 
@@ -819,7 +800,7 @@ export function ServiceRequestsPage() {
   }, [dbPage, dbPageCount])
 
   useEffect(() => {
-    if (tab !== 'create' && tab !== 'templates') return
+    if (!ticketFormOpen && tab !== 'templates') return
     void (async () => {
       try {
         const r = await api.computers({ limit: 500 })
@@ -828,7 +809,7 @@ export function ServiceRequestsPage() {
         setPcList([])
       }
     })()
-  }, [tab])
+  }, [tab, ticketFormOpen])
 
   useEffect(() => {
     void (async () => {
@@ -866,7 +847,7 @@ export function ServiceRequestsPage() {
   }, [user])
 
   useEffect(() => {
-    if (tab !== 'create' || editingRequestId != null) return
+    if (!ticketFormOpen || editingRequestId != null) return
     if (assigneeIds.length === 0 && myIdentityIds.length > 0) {
       setAssigneeIds(myIdentityIds)
     }
@@ -875,10 +856,10 @@ export function ServiceRequestsPage() {
     }
     // Only seed once identity is known; don't fight user edits after that.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot defaults when identity arrives
-  }, [tab, editingRequestId, user?.id, user?.linked_directory_user_id, myRequesterDefault])
+  }, [ticketFormOpen, editingRequestId, user?.id, user?.linked_directory_user_id, myRequesterDefault])
 
   useEffect(() => {
-    if (tab !== 'templates' && tab !== 'create') return
+    if (tab !== 'templates' && !ticketFormOpen) return
     void loadTemplates()
   }, [tab, loadTemplates])
 
@@ -890,7 +871,7 @@ export function ServiceRequestsPage() {
       const mins = map[e.key]
       if (!mins) return
       e.preventDefault()
-      if (tab === 'create') {
+      if (ticketFormOpen) {
         setPlannedCloseLocal((prev) => addMinutesToLocalDatetimeValue(openedAtLocal, mins) || prev)
       }
       if (tab === 'templates') {
@@ -899,7 +880,7 @@ export function ServiceRequestsPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [openedAtLocal, tab, tplOpenedAtLocal])
+  }, [openedAtLocal, tab, ticketFormOpen, tplOpenedAtLocal])
 
   useEffect(() => {
     if (!closedSameAsPlanned) return
@@ -928,15 +909,17 @@ export function ServiceRequestsPage() {
     setRequesterName(myRequesterDefault)
     setCategory('')
     setAiTitleSuggestion('')
+    setAiCategorySuggestion('')
+    setAiSuggestBusy(false)
     setShowDescription(false)
     setEditingRequestId(null)
-    setEditingReturnPath(null)
-    setEditingReturnPage(null)
+    setTicketFormOpen(false)
   }
 
   function populateFormFromRequest(t: ServiceRequestRow) {
     setTitle(t.title ?? '')
     setAiTitleSuggestion((t.ai_title_suggestion ?? '').trim())
+    setAiCategorySuggestion('')
     setDescription(t.description ?? '')
     setShowDescription(Boolean(t.description?.trim()))
     setRequesterName((t.requester_name ?? '').trim())
@@ -974,36 +957,63 @@ export function ServiceRequestsPage() {
     }
   }
 
-  function navigateBackToList(returnPath: string | null, returnPage: number | null) {
-    if (!returnPath || returnPath === '/requests') return
-    if (returnPage != null) setDbPage(returnPage)
-    navigate(returnPath)
-  }
+  useEffect(() => {
+    if (editingRequestId == null || !canManageRequests) return
+    let cancelled = false
+    setAiSuggestBusy(true)
+    void api
+      .suggestServiceRequestAi(editingRequestId, { persist: false })
+      .then((out) => {
+        if (cancelled) return
+        const nextTitle = (out.title_suggestion || '').trim()
+        const nextCategory = (out.category || '').trim()
+        if (nextTitle) setAiTitleSuggestion(nextTitle)
+        if (nextCategory) setAiCategorySuggestion(nextCategory)
+      })
+      .catch(() => {
+        /* keep the form usable */
+      })
+      .finally(() => {
+        if (!cancelled) setAiSuggestBusy(false)
+      })
+    return () => {
+      cancelled = true
+      setAiSuggestBusy(false)
+    }
+  }, [canManageRequests, editingRequestId])
 
-  function openRequestForEdit(t: ServiceRequestRow) {
-    captureListScrollForRestore(t.id, location.pathname)
-    beginEditRequest(t, location.pathname, dbPage)
-    navigate(`/requests?edit=${t.id}`, {
-      state: {
-        editRequest: t,
-        editReturnPath: location.pathname,
-        editReturnPage: dbPage,
-      } satisfies EditRequestNavState,
-    })
-    window.requestAnimationFrame(() => {
-      const el = getAppScrollContainer()
-      if (el) el.scrollTop = 0
-    })
-  }
-
-  function cancelEditing() {
-    const returnPath = editingReturnPath
-    const returnPage = editingReturnPage
+  function openCreateForm() {
     setTitle('')
     setDescription('')
     resetCreateFormAfterSubmit()
-    navigateBackToList(returnPath, returnPage)
+    setTicketFormOpen(true)
   }
+
+  function openRequestForEdit(t: ServiceRequestRow) {
+    beginEditRequest(t)
+  }
+
+  function cancelEditing() {
+    if (saving || editDeleting) return
+    setTitle('')
+    setDescription('')
+    resetCreateFormAfterSubmit()
+    stripEditQuery()
+  }
+
+  useEffect(() => {
+    if (!ticketFormOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (closeDialog) return
+      e.preventDefault()
+      cancelEditing()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // cancelEditing reads saving/editDeleting from the render that registered this listener
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketFormOpen, closeDialog, saving, editDeleting])
 
   async function onSubmitRequest(e: FormEvent) {
     e.preventDefault()
@@ -1049,8 +1059,6 @@ export function ServiceRequestsPage() {
           ...body,
           closed_at: body.closed_at,
         })
-        const returnPath = editingReturnPath
-        const returnPage = editingReturnPage
         setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
         setTitle('')
         setDescription('')
@@ -1058,7 +1066,6 @@ export function ServiceRequestsPage() {
         toast.ok(t('requests.messages.saved'))
         void refreshSummary()
         window.dispatchEvent(new Event('corax:assignee-notifications'))
-        if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath, returnPage)
       } else {
         await api.createServiceRequest(body)
         pushRecentTitle(title.trim())
@@ -1442,15 +1449,12 @@ export function ServiceRequestsPage() {
       await api.deleteServiceRequest(editingRequestId)
       const id = editingRequestId
       if (datesEdit?.id === id) setDatesEdit(null)
-      const returnPath = editingReturnPath
-      const returnPage = editingReturnPage
       setTitle('')
       setDescription('')
       resetCreateFormAfterSubmit()
       toast.ok(t('requests.messages.deleted'))
       await load()
       void refreshSummary()
-      if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath, returnPage)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('requests.errors.delete'))
     } finally {
@@ -1479,7 +1483,8 @@ export function ServiceRequestsPage() {
     setPlannedCloseLocal(planned)
     setClosedAtLocal(closeVal)
     setClosedSameAsPlanned(!closed || !planned || closed === planned)
-    navigate('/requests')
+    setEditingRequestId(null)
+    setTicketFormOpen(true)
     toast.info(t('requests.messages.templateApplied', { title: template.title }))
   }
 
@@ -1569,73 +1574,24 @@ export function ServiceRequestsPage() {
 
   const isCloseableStatus = (status: string) => status === 'open' || status === 'in_progress'
 
-  async function openCloseDialog(row: ServiceRequestRow) {
+  function openCloseDialog(row: ServiceRequestRow) {
     if (!canManageRequests || !isCloseableStatus(row.status)) return
-    setCloseDialog({
-      row,
-      aiBusy: true,
-      aiError: null,
-      suggestedTitle: null,
-      suggestedCategory: null,
-      applyTitle: false,
-      applyCategory: false,
-      saving: false,
-    })
-    try {
-      const out = await api.suggestServiceRequestAi(row.id, { persist: false })
-      const titleSug = (out.title_suggestion || '').trim()
-      const catSug = (out.category || '').trim()
-      const titleChanged = Boolean(titleSug) && titleSug !== (row.title || '').trim()
-      const catChanged = Boolean(catSug) && catSug !== (row.category || '').trim()
-      setCloseDialog((prev) =>
-        prev && prev.row.id === row.id
-          ? {
-              ...prev,
-              aiBusy: false,
-              aiError: !out.ok && out.error_detail ? out.error_detail : null,
-              suggestedTitle: titleSug || null,
-              suggestedCategory: catSug || null,
-              applyTitle: titleChanged,
-              applyCategory: catChanged || (Boolean(catSug) && !(row.category || '').trim()),
-            }
-          : prev,
-      )
-    } catch (e) {
-      setCloseDialog((prev) =>
-        prev && prev.row.id === row.id
-          ? {
-              ...prev,
-              aiBusy: false,
-              aiError: e instanceof Error ? e.message : String(e),
-            }
-          : prev,
-      )
-    }
+    setCloseDialog({ row, saving: false })
   }
 
   async function confirmCloseDialog() {
     if (!closeDialog || closeDialog.saving) return
     setCloseDialog({ ...closeDialog, saving: true })
     try {
-      const patch: Parameters<typeof api.updateServiceRequest>[1] = {
+      const updated = await api.updateServiceRequest(closeDialog.row.id, {
         status: 'done',
         closed_at: new Date().toISOString(),
-      }
-      if (closeDialog.applyTitle && closeDialog.suggestedTitle) {
-        patch.title = closeDialog.suggestedTitle
-      }
-      if (closeDialog.applyCategory && closeDialog.suggestedCategory) {
-        patch.category = closeDialog.suggestedCategory
-      }
-      const updated = await api.updateServiceRequest(closeDialog.row.id, patch)
+      })
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
       if (editingRequestId === updated.id) {
-        const returnPath = editingReturnPath
-        const returnPage = editingReturnPage
         setTitle('')
         setDescription('')
         resetCreateFormAfterSubmit()
-        if (returnPath && returnPath !== '/requests') navigateBackToList(returnPath, returnPage)
       }
       setCloseDialog(null)
       toast.ok(t('requests.close.done'))
@@ -1651,16 +1607,29 @@ export function ServiceRequestsPage() {
 
   return (
     <>
+    <Outlet />
     <div>
       <div>
         <section className="min-w-0">
-          {/* Создание / редактирование — стиль как у Сети, sticky save */}
-          {tab === 'create' ? (
-            <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-              <form onSubmit={onSubmitRequest} className="flex flex-col gap-4">
+          {ticketFormOpen
+            ? createPortal(
+            <div
+              className="app-modal-layer fixed inset-0 z-[180] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ticket-form-title"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) cancelEditing()
+              }}
+            >
+            <div
+              className="flex max-h-[100dvh] w-full max-w-[1400px] flex-col overflow-hidden rounded-none bg-[var(--color-surface)] shadow-2xl sm:max-h-[min(96dvh,calc(100vh-1.5rem))] sm:rounded-2xl sm:border sm:border-[var(--color-border)]"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <form onSubmit={onSubmitRequest} className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-3 sm:p-5">
                 <div className="sticky top-0 z-30 -mx-1 flex flex-col gap-3 rounded-xl border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-surface)_92%,transparent)] px-3 py-3 shadow-sm backdrop-blur-md sm:flex-row sm:items-center sm:justify-between sm:px-4">
                   <div className="min-w-0">
-                    <h2 className="truncate text-base font-semibold tracking-tight text-[var(--color-fg)] sm:text-lg">
+                    <h2 id="ticket-form-title" className="truncate text-base font-semibold tracking-tight text-[var(--color-fg)] sm:text-lg">
                       {editingRequestId != null
                         ? t('requests.create.editTitle', { id: editingRequestId })
                         : t('requests.create.newTitle')}
@@ -1672,16 +1641,14 @@ export function ServiceRequestsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {editingRequestId != null ? (
-                      <button
-                        type="button"
-                        disabled={saving || editDeleting}
-                        onClick={cancelEditing}
-                        className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
-                      >
-                        {t('requests.create.cancel')}
-                      </button>
-                    ) : null}
+                    <button
+                      type="button"
+                      disabled={saving || editDeleting}
+                      onClick={cancelEditing}
+                      className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
+                    >
+                      {t('requests.create.cancel')}
+                    </button>
                     {editingRequestId != null && canManageRequests ? (
                       <button
                         type="button"
@@ -1761,7 +1728,10 @@ export function ServiceRequestsPage() {
                         </label>
                         <button
                           type="button"
-                          onClick={() => navigate('/requests/templates')}
+                          onClick={() => {
+                            cancelEditing()
+                            navigate('/requests/templates')
+                          }}
                           className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]"
                         >
                           {tplRows.length === 0 ? t('requests.create.noTemplates') : t('requests.create.manageTemplates')}
@@ -1815,50 +1785,107 @@ export function ServiceRequestsPage() {
                         required
                         className={CREATE_FORM_INPUT_CLS}
                       />
-                      {aiTitleSuggestion && aiTitleSuggestion.trim() !== title.trim() ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-3 py-2 text-sm">
-                          <span className="text-[var(--color-fg-muted)]">CORAX AI:</span>
-                          <span className="font-medium">{aiTitleSuggestion}</span>
-                          <button
-                            type="button"
-                            className="rounded-md bg-[var(--color-primary)] px-2.5 py-1 text-xs font-semibold text-white"
-                            onClick={() => {
-                              setTitle(aiTitleSuggestion)
-                              setAiTitleSuggestion('')
-                            }}
-                          >
-                            Применить
-                          </button>
-                          <button type="button" className="text-xs text-[var(--color-fg-subtle)] hover:underline" onClick={() => setAiTitleSuggestion('')}>
-                            Скрыть
-                          </button>
-                          <span className="text-[11px] text-[var(--color-fg-subtle)]">Tab</span>
-                        </div>
-                      ) : null}
-                      {editingRequestId != null ? (
-                        <button
-                          type="button"
-                          disabled={aiSuggestBusy}
-                          className="mt-2 text-xs font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50"
-                          onClick={async () => {
-                            if (editingRequestId == null) return
-                            setAiSuggestBusy(true)
-                            try {
-                              const out = await api.suggestServiceRequestAi(editingRequestId)
-                              if (out.category) setCategory(out.category)
+                      {(() => {
+                        const titleDiff =
+                          Boolean(aiTitleSuggestion.trim()) && aiTitleSuggestion.trim() !== title.trim()
+                        const catDiff =
+                          Boolean(aiCategorySuggestion.trim()) &&
+                          aiCategorySuggestion.trim() !== category.trim()
+                        const refresh = () => {
+                          if (editingRequestId == null) return
+                          setAiSuggestBusy(true)
+                          void api
+                            .suggestServiceRequestAi(editingRequestId, { persist: false })
+                            .then((out) => {
                               if (out.title_suggestion) setAiTitleSuggestion(out.title_suggestion)
+                              if (out.category) setAiCategorySuggestion(out.category)
                               if (!out.ok && out.error_detail) toast.error(out.error_detail)
-                              else toast.ok('CORAX AI обновил подсказки')
-                            } catch (err) {
+                            })
+                            .catch((err) => {
                               toast.error(err instanceof Error ? err.message : String(err))
-                            } finally {
-                              setAiSuggestBusy(false)
-                            }
-                          }}
-                        >
-                          {aiSuggestBusy ? 'CORAX AI…' : 'Пересчитать CORAX AI'}
-                        </button>
-                      ) : null}
+                            })
+                            .finally(() => setAiSuggestBusy(false))
+                        }
+                        if (!aiSuggestBusy && !titleDiff && !catDiff) {
+                          if (editingRequestId == null) return null
+                          return (
+                            <button
+                              type="button"
+                              disabled={aiSuggestBusy}
+                              className="mt-1.5 text-xs font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                              onClick={refresh}
+                            >
+                              {t('requests.create.aiRefresh')}
+                            </button>
+                          )
+                        }
+                        return (
+                          <div className="mt-2 grid gap-2 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-3 py-2 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                                {aiSuggestBusy && !titleDiff && !catDiff
+                                  ? t('requests.create.aiWorking')
+                                  : t('requests.create.aiFormalize')}
+                              </span>
+                              {editingRequestId != null ? (
+                                <button
+                                  type="button"
+                                  disabled={aiSuggestBusy}
+                                  className="text-xs font-medium text-[var(--color-primary)] hover:underline disabled:opacity-50"
+                                  onClick={refresh}
+                                >
+                                  {t('requests.create.aiRefresh')}
+                                </button>
+                              ) : null}
+                            </div>
+                            {titleDiff ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="min-w-0 flex-1 font-medium">{aiTitleSuggestion}</span>
+                                <button
+                                  type="button"
+                                  className="rounded-md bg-[var(--color-primary)] px-2.5 py-1 text-xs font-semibold text-white"
+                                  onClick={() => {
+                                    setTitle(aiTitleSuggestion)
+                                    setAiTitleSuggestion('')
+                                  }}
+                                >
+                                  {t('requests.create.aiApplyTitle')}
+                                </button>
+                              </div>
+                            ) : null}
+                            {catDiff ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="min-w-0 flex-1 text-[var(--color-fg)]">
+                                  {t('requests.create.aiSuggestedCategory')}:{' '}
+                                  <span className="font-medium">{aiCategorySuggestion}</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-semibold"
+                                  onClick={() => {
+                                    setCategory(aiCategorySuggestion)
+                                    setAiCategorySuggestion('')
+                                  }}
+                                >
+                                  {t('requests.create.aiApplyCategory')}
+                                </button>
+                              </div>
+                            ) : null}
+                            {titleDiff || catDiff ? (
+                              <button
+                                type="button"
+                                className="self-start text-xs text-[var(--color-fg-subtle)] hover:underline"
+                                onClick={() => {
+                                  setAiTitleSuggestion('')
+                                  setAiCategorySuggestion('')
+                                }}
+                              >
+                                {t('requests.create.aiHide')}
+                              </button>
+                            ) : null}
+                          </div>
+                        )
+                      })()}
                     </label>
 
                     {!showDescription ? (
@@ -2083,7 +2110,10 @@ export function ServiceRequestsPage() {
                 </div>
               </form>
             </div>
-          ) : null}
+            </div>,
+            document.body,
+          )
+          : null}
 
         {/* База */}
         {tab === 'database' ? (
@@ -2109,120 +2139,110 @@ export function ServiceRequestsPage() {
             })}
           </div>
 
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="sm:max-w-[34rem] sm:flex-1">
-              <label className="sr-only" htmlFor="requests-search">
-                {t('requests.database.searchLabel')}
-              </label>
-              <input
-                id="requests-search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('requests.database.searchPlaceholder')}
-                className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)]"
-              />
-              <div className="mt-1 text-[11px] font-medium text-[var(--color-fg-muted)]">
-                {t('requests.database.searchHint')}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:min-w-[22rem]">
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--color-fg)] shadow-sm"
-                aria-label={t('requests.database.categoryFilterAria')}
-                title={t('requests.database.categoryFilterTitle')}
-              >
-                <option value="">{t('requests.database.categoryAll')}</option>
-                {categoryPaths.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <select
-                  value={sortKey}
-                  onChange={(e) => setSortKey(e.target.value as SortKey)}
-                  className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--color-fg)] shadow-sm"
-                  aria-label={t('requests.database.sortAria')}
-                >
-                  <option value="id_desc">{t('requests.database.sort.idDesc')}</option>
-                  <option value="id_asc">{t('requests.database.sort.idAsc')}</option>
-                  <option value="opened_desc">{t('requests.database.sort.openedDesc')}</option>
-                  <option value="closed_desc">{t('requests.database.sort.closedDesc')}</option>
-                  <option value="priority_desc">{t('requests.database.sort.priorityDesc')}</option>
-                </select>
-                <label className="flex w-full flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
-                    {t('requests.database.pageSizeLabel')}
-                  </span>
-                  <select
-                    value={dbPageSize}
-                    onChange={(e) => {
-                      const next = Number(e.target.value) as (typeof DB_PAGE_SIZE_OPTIONS)[number]
-                      setDbPageSize(next)
-                      setDbPage(1)
-                      try {
-                        localStorage.setItem(DB_PAGE_SIZE_KEY, String(next))
-                      } catch {
-                        /* Ignore unavailable local storage. */
-                      }
-                    }}
-                    className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--color-fg)] shadow-sm"
-                    aria-label={t('requests.database.pageSizeAria')}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={openCreateForm}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95"
+            >
+              <IconPencil className="h-3.5 w-3.5" />
+              {t('requests.create.newTitle')}
+            </button>
+            <label className="sr-only" htmlFor="requests-search">
+              {t('requests.database.searchLabel')}
+            </label>
+            <input
+              id="requests-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('requests.database.searchPlaceholder')}
+              title={t('requests.database.searchHint')}
+              className="min-w-[12rem] flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] shadow-sm placeholder:text-[var(--color-fg-subtle)]"
+            />
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="max-w-[16rem] shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] shadow-sm"
+              aria-label={t('requests.database.categoryFilterAria')}
+              title={t('requests.database.categoryFilterTitle')}
+            >
+              <option value="">{t('requests.database.categoryAll')}</option>
+              {categoryPaths.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] shadow-sm"
+              aria-label={t('requests.database.sortAria')}
+            >
+              <option value="id_desc">{t('requests.database.sort.idDesc')}</option>
+              <option value="id_asc">{t('requests.database.sort.idAsc')}</option>
+              <option value="opened_desc">{t('requests.database.sort.openedDesc')}</option>
+              <option value="closed_desc">{t('requests.database.sort.closedDesc')}</option>
+              <option value="priority_desc">{t('requests.database.sort.priorityDesc')}</option>
+            </select>
+            <select
+              value={dbPageSize}
+              onChange={(e) => {
+                const next = Number(e.target.value) as (typeof DB_PAGE_SIZE_OPTIONS)[number]
+                setDbPageSize(next)
+                setDbPage(1)
+                try {
+                  localStorage.setItem(DB_PAGE_SIZE_KEY, String(next))
+                } catch {
+                  /* Ignore unavailable local storage. */
+                }
+              }}
+              className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] shadow-sm"
+              aria-label={t('requests.database.pageSizeAria')}
+              title={t('requests.database.pageSizeLabel')}
+            >
+              {DB_PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size === 0
+                    ? t('requests.database.pageSizeAll')
+                    : t('requests.database.pageSize', { size })}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={pdfBusy}
+              onClick={() => void downloadPdf()}
+              className="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+            >
+              {pdfBusy ? 'PDF…' : 'PDF'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportOpen(true)}
+              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)]"
+              title={t('requests.database.reportTitle')}
+            >
+              {t('requests.database.reportButton')}
+            </button>
+            {canManageRequests ? (
+              <details className="relative">
+                <summary className="cursor-pointer list-none rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)] marker:content-none [&::-webkit-details-marker]:hidden">
+                  {t('requests.database.actions')}
+                </summary>
+                <div className="absolute right-0 z-20 mt-1 w-72 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
+                  <button
+                    type="button"
+                    disabled={alignDatesBusy || loading}
+                    onClick={() => void alignPlannedToClosedDates()}
+                    className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-[var(--color-fg)] hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
+                    title={t('requests.database.alignDatesTitle')}
                   >
-                    {DB_PAGE_SIZE_OPTIONS.map((size) => (
-                      <option key={size} value={size}>
-                        {size === 0
-                          ? t('requests.database.pageSizeAll')
-                          : t('requests.database.pageSize', { size })}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  disabled={pdfBusy}
-                  onClick={() => void downloadPdf()}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 text-xs font-semibold text-[var(--color-fg)] shadow-sm transition hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-blue-600" aria-hidden />
-                  {pdfBusy ? 'PDF…' : 'PDF'}
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 text-xs font-semibold text-[var(--color-fg)] shadow-sm transition hover:bg-[var(--color-surface-muted)]"
-                title={t('requests.database.reportTitle')}
-              >
-                {t('requests.database.reportButton')}
-              </button>
-              {canManageRequests ? (
-                <details className="relative">
-                  <summary className="cursor-pointer list-none rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2.5 text-xs font-semibold text-[var(--color-fg)] shadow-sm transition hover:bg-[var(--color-surface-muted)] marker:content-none [&::-webkit-details-marker]:hidden">
-                    {t('requests.database.actions')}
-                  </summary>
-                  <div className="absolute right-0 z-20 mt-1 w-72 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
-                    <button
-                      type="button"
-                      disabled={alignDatesBusy || loading}
-                      onClick={() => void alignPlannedToClosedDates()}
-                      className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-[var(--color-fg)] hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
-                      title={t('requests.database.alignDatesTitle')}
-                    >
-                      {alignDatesBusy ? t('requests.database.alignDatesBusy') : t('requests.database.alignDates')}
-                    </button>
-                  </div>
-                </details>
-              ) : null}
-              </div>
-            </div>
+                    {alignDatesBusy ? t('requests.database.alignDatesBusy') : t('requests.database.alignDates')}
+                  </button>
+                </div>
+              </details>
+            ) : null}
           </div>
 
           <h2 className="mb-3 text-sm font-semibold text-[var(--color-fg)]">
@@ -3457,11 +3477,11 @@ export function ServiceRequestsPage() {
         aria-modal="true"
         aria-label={t('requests.close.dialogAria')}
         onClick={() => {
-          if (!closeDialog.saving && !closeDialog.aiBusy) setCloseDialog(null)
+          if (!closeDialog.saving) setCloseDialog(null)
         }}
       >
         <div
-          className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl"
+          className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
           <h2 className="text-lg font-semibold tracking-tight text-[var(--color-fg)]">
@@ -3470,85 +3490,9 @@ export function ServiceRequestsPage() {
           <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-fg-muted)]">
             {t('requests.close.hint')}
           </p>
-
-          <div className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 px-3.5 py-3 text-sm">
-            <div className="text-[11px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
-              {t('requests.close.currentTitle')}
-            </div>
-            <div className="mt-0.5 font-medium text-[var(--color-fg)]">{closeDialog.row.title}</div>
-            <div className="mt-2 text-[11px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
-              {t('requests.close.currentCategory')}
-            </div>
-            <div className="mt-0.5 text-[var(--color-fg)]">{closeDialog.row.category || '—'}</div>
-          </div>
-
-          {closeDialog.aiBusy ? (
-            <p className="mt-4 text-sm text-[var(--color-fg-muted)]">{t('requests.close.aiBusy')}</p>
-          ) : null}
-          {closeDialog.aiError && !closeDialog.aiBusy ? (
-            <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
-              {t('requests.close.aiFailed')}
-              <span className="mt-1 block text-xs opacity-80">{closeDialog.aiError}</span>
-            </p>
-          ) : null}
-
-          {!closeDialog.aiBusy ? (
-            <div className="mt-4 grid gap-3">
-              <label className="flex items-start gap-3 rounded-xl border border-[var(--color-border)] px-3.5 py-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={closeDialog.applyTitle}
-                  disabled={!closeDialog.suggestedTitle || closeDialog.suggestedTitle === closeDialog.row.title.trim()}
-                  onChange={(e) =>
-                    setCloseDialog((prev) => (prev ? { ...prev, applyTitle: e.target.checked } : prev))
-                  }
-                />
-                <span className="min-w-0">
-                  <span className="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                    {t('requests.close.suggestedTitle')}
-                  </span>
-                  {closeDialog.suggestedTitle && closeDialog.suggestedTitle !== closeDialog.row.title.trim() ? (
-                    <span className="mt-0.5 block font-medium text-[var(--color-fg)]">{closeDialog.suggestedTitle}</span>
-                  ) : (
-                    <span className="mt-0.5 block text-[var(--color-fg-muted)]">{t('requests.close.noTitleChange')}</span>
-                  )}
-                  {closeDialog.suggestedTitle && closeDialog.suggestedTitle !== closeDialog.row.title.trim() ? (
-                    <span className="mt-1 block text-xs text-[var(--color-fg-subtle)]">{t('requests.close.applyTitle')}</span>
-                  ) : null}
-                </span>
-              </label>
-              <label className="flex items-start gap-3 rounded-xl border border-[var(--color-border)] px-3.5 py-3 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={closeDialog.applyCategory}
-                  disabled={!closeDialog.suggestedCategory}
-                  onChange={(e) =>
-                    setCloseDialog((prev) => (prev ? { ...prev, applyCategory: e.target.checked } : prev))
-                  }
-                />
-                <span className="min-w-0">
-                  <span className="block text-xs font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                    {t('requests.close.suggestedCategory')}
-                  </span>
-                  {closeDialog.suggestedCategory ? (
-                    <span className="mt-0.5 block font-medium text-[var(--color-fg)]">
-                      {closeDialog.suggestedCategory}
-                    </span>
-                  ) : (
-                    <span className="mt-0.5 block text-[var(--color-fg-muted)]">{t('requests.close.noCategory')}</span>
-                  )}
-                  {closeDialog.suggestedCategory ? (
-                    <span className="mt-1 block text-xs text-[var(--color-fg-subtle)]">
-                      {t('requests.close.applyCategory')}
-                    </span>
-                  ) : null}
-                </span>
-              </label>
-            </div>
-          ) : null}
-
+          <p className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 px-3.5 py-3 text-sm font-medium text-[var(--color-fg)]">
+            {closeDialog.row.title}
+          </p>
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button
               type="button"
@@ -3560,7 +3504,7 @@ export function ServiceRequestsPage() {
             </button>
             <button
               type="button"
-              disabled={closeDialog.saving || closeDialog.aiBusy}
+              disabled={closeDialog.saving}
               className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               onClick={() => void confirmCloseDialog()}
             >

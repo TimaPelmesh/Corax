@@ -280,63 +280,124 @@ export function toFlowEdges(
   })
 }
 
+function portsKey(ports: string[] | undefined): string {
+  return ports?.length ? ports.join('\0') : ''
+}
+
+export function portsForPicker(
+  ports?: Array<{ id: string; name: string; up?: boolean | null }> | null,
+  limit = 24,
+): Array<{ id: string; name: string; up?: boolean | null }> {
+  const seen = new Set<string>()
+  const out: Array<{ id: string; name: string; up?: boolean | null }> = []
+  for (const port of ports || []) {
+    const name = (port.name || '').trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ id: port.id || name, name, up: port.up })
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+export function isMultiSelectEvent(event: {
+  shiftKey?: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+} | null | undefined): boolean {
+  return Boolean(event?.shiftKey || event?.ctrlKey || event?.metaKey)
+}
+
+export function nextCanvasPackIds(prev: string[], id: string, additive: boolean): string[] {
+  if (!additive) return [id]
+  return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+}
+
+export function followPackLeader(
+  members: Array<{ id: string; x: number; y: number }>,
+  origin: { x: number; y: number },
+  leader: { id: string; x: number; y: number },
+): Array<{ id: string; x: number; y: number }> {
+  const dx = leader.x - origin.x
+  const dy = leader.y - origin.y
+  return members.map((m) =>
+    m.id === leader.id ? { id: m.id, x: leader.x, y: leader.y } : { id: m.id, x: m.x + dx, y: m.y + dy },
+  )
+}
+
+export function addToCanvasPack(prev: string[], id: string): string[] {
+  return prev.includes(id) ? prev : [...prev, id]
+}
+
 export function decorateSelection(
   rfNodes: Node[],
   rfEdges: Edge[],
-  selectedId: string | null,
+  selectedIds: string[] | string | null,
+  selectedGroupId: string | null = null,
 ): { nodes: Node[]; edges: Edge[] } {
-  if (!selectedId) {
-    const dirty = rfNodes.some((n) => {
-      const data = n.data as EquipmentNodeData | undefined
-      return Boolean(data?.neighbor || data?.hotPorts?.length)
-    })
-    if (!dirty) return { nodes: rfNodes, edges: rfEdges }
-    return {
-      nodes: rfNodes.map((n) => {
-        const data = n.data as EquipmentNodeData | undefined
-        if (!data?.neighbor && !data?.hotPorts?.length) return n
-        return { ...n, className: undefined, data: { ...data, neighbor: false, hotPorts: [] } }
-      }),
-      edges: rfEdges,
+  const ids = Array.isArray(selectedIds) ? selectedIds : selectedIds ? [selectedIds] : []
+  const selectedSet = new Set(ids)
+  const primary = ids.length === 1 ? ids[0] : null
+  const related = new Set<string>()
+  const hotByNode = new Map<string, Set<string>>()
+  if (primary) {
+    related.add(primary)
+    const addHot = (nodeId: string, handle?: string | null) => {
+      if (!handle) return
+      const set = hotByNode.get(nodeId) ?? new Set<string>()
+      set.add(handle)
+      hotByNode.set(nodeId, set)
+    }
+    for (const e of rfEdges) {
+      if (e.source !== primary && e.target !== primary) continue
+      related.add(e.source)
+      related.add(e.target)
+      addHot(e.source, e.sourceHandle)
+      addHot(e.target, e.targetHandle)
     }
   }
-  const related = new Set<string>([selectedId])
-  const hotByNode = new Map<string, Set<string>>()
-  const addHot = (nodeId: string, handle?: string | null) => {
-    if (!handle) return
-    const set = hotByNode.get(nodeId) ?? new Set<string>()
-    set.add(handle)
-    hotByNode.set(nodeId, set)
-  }
-  for (const e of rfEdges) {
-    if (e.source !== selectedId && e.target !== selectedId) continue
-    related.add(e.source)
-    related.add(e.target)
-    addHot(e.source, e.sourceHandle)
-    addHot(e.target, e.targetHandle)
-  }
-  const dirty = new Set(related)
-  for (const n of rfNodes) {
+
+  const nodes = rfNodes.map((n) => {
+    const isSelected = selectedSet.has(n.id) || n.id === selectedGroupId
     const data = n.data as EquipmentNodeData | undefined
-    if (data?.neighbor || data?.hotPorts?.length) dirty.add(n.id)
+    if (n.type !== 'equipment') {
+      const className = isSelected ? 'is-pack-selected' : undefined
+      if (n.selected === isSelected && n.className === className) return n
+      return { ...n, selected: isSelected, className }
+    }
+    const neighbor = Boolean(primary) && related.has(n.id) && !isSelected
+    const hotPorts = [...(hotByNode.get(n.id) ?? [])]
+    const className = [isSelected ? 'is-pack-selected' : '', neighbor ? 'is-neighbor' : ''].filter(Boolean).join(' ') || undefined
+    const same =
+      n.selected === isSelected &&
+      n.className === className &&
+      data?.neighbor === neighbor &&
+      data?.selected === isSelected &&
+      portsKey(data?.hotPorts) === portsKey(hotPorts)
+    if (same) return n
+    return {
+      ...n,
+      selected: isSelected,
+      className,
+      data: {
+        ...data,
+        neighbor,
+        hotPorts,
+        selected: isSelected,
+      },
+    }
+  })
+
+  if (!primary) {
+    return { nodes, edges: rfEdges }
   }
+
   return {
-    nodes: rfNodes.map((n) => {
-      if (n.type !== 'equipment' || !dirty.has(n.id)) return n
-      const data = n.data as EquipmentNodeData
-      const neighbor = related.has(n.id) && n.id !== selectedId
-      return {
-        ...n,
-        className: neighbor ? 'is-neighbor' : undefined,
-        data: {
-          ...data,
-          neighbor,
-          hotPorts: [...(hotByNode.get(n.id) ?? [])],
-        },
-      }
-    }),
+    nodes,
     edges: rfEdges.map((e) => {
-      const on = e.source === selectedId || e.target === selectedId
+      const on = e.source === primary || e.target === primary
       return {
         ...e,
         data: {

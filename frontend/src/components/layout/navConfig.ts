@@ -142,18 +142,11 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
       badgeKey: 'requestsActive',
       items: [
         {
-          to: '/requests',
-          end: true,
-          icon: IconPencil,
-          labelKey: 'nav.requestNew',
-          keywords: ['создание', 'создать', 'new'],
-        },
-        {
           to: '/requests/database',
           end: true,
           icon: IconTicket,
           labelKey: 'nav.requestList',
-          keywords: ['база заявок', 'все заявки', 'list'],
+          keywords: ['база заявок', 'все заявки', 'list', 'создание', 'создать', 'new'],
           badgeKey: 'requestsActive',
         },
         { to: '/requests/templates', end: true, icon: IconBook, labelKey: 'nav.requestTemplates' },

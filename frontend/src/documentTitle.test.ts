@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { titleForPath } from './documentTitle'
 
 describe('titleForPath', () => {
+  it('resolves ticket list for /requests and /requests/database', () => {
+    expect(titleForPath('/requests', 'ru')).toMatch(/заяв/i)
+    expect(titleForPath('/requests/database', 'ru')).toMatch(/заяв/i)
+    expect(titleForPath('/requests', 'en')).toMatch(/ticket/i)
+  })
+
   it('resolves dashboard and notes', () => {
     expect(titleForPath('/', 'ru')).toContain('Дашборд')
     expect(titleForPath('/knowledge-base/notes', 'ru')).toMatch(/Заметк/)

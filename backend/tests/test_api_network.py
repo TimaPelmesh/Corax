@@ -190,3 +190,38 @@ def test_network_map_scene_and_manual_links(client: TestClient, auth_headers: di
     finally:
         client.delete(f"/api/v1/network/devices/{id_a}", headers=auth_headers)
         client.delete(f"/api/v1/network/devices/{id_b}", headers=auth_headers)
+
+
+def test_network_map_scene_delete(client: TestClient, auth_headers: dict[str, str]):
+    first = client.post(
+        "/api/v1/network/map-scenes",
+        headers=auth_headers,
+        json={"title": "pytest-map-keep", "mode": "blank"},
+    )
+    second = client.post(
+        "/api/v1/network/map-scenes",
+        headers=auth_headers,
+        json={"title": "pytest-map-delete", "mode": "blank"},
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    keep_id = first.json()["id"]
+    drop_id = second.json()["id"]
+    try:
+        missing_route = client.delete("/api/v1/network/map-scenes/0", headers=auth_headers)
+        assert missing_route.status_code == 404
+
+        deleted = client.delete(f"/api/v1/network/map-scenes/{drop_id}", headers=auth_headers)
+        assert deleted.status_code == 204, deleted.text
+
+        gone = client.get(f"/api/v1/network/map-scenes/{drop_id}", headers=auth_headers)
+        assert gone.status_code == 404
+
+        listed = client.get("/api/v1/network/map-scenes", headers=auth_headers)
+        assert listed.status_code == 200
+        ids = {row["id"] for row in listed.json()}
+        assert drop_id not in ids
+        assert keep_id in ids
+    finally:
+        client.delete(f"/api/v1/network/map-scenes/{drop_id}", headers=auth_headers)
+        client.delete(f"/api/v1/network/map-scenes/{keep_id}", headers=auth_headers)

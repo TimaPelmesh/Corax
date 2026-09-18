@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   collectScene,
+  decorateSelection,
   equipmentHeight,
   equipmentWidth,
+  followPackLeader,
+  isMultiSelectEvent,
+  nextCanvasPackIds,
+  addToCanvasPack,
+  portsForPicker,
   releaseNodeFromGroup,
   toFlowEdges,
   toFlowNodes,
@@ -178,5 +184,88 @@ describe('export crop', () => {
     const bounds = contentBounds(boxes, 20)
     expect(bounds.width).toBeLessThan(400)
     expect(bounds.height).toBeLessThan(200)
+  })
+})
+
+describe('portsForPicker', () => {
+  it('keeps a short unique list of named ports', () => {
+    expect(
+      portsForPicker([
+        { id: '1', name: 'Gi1/0/1', up: true },
+        { id: '2', name: 'Gi1/0/1', up: false },
+        { id: '3', name: '  ' },
+        { id: '4', name: 'Gi1/0/2' },
+      ]),
+    ).toEqual([
+      { id: '1', name: 'Gi1/0/1', up: true },
+      { id: '4', name: 'Gi1/0/2', up: undefined },
+    ])
+  })
+})
+
+describe('decorateSelection', () => {
+  it('keeps equipment selected after a click so jacks stay interactive', () => {
+    const nodes = [
+      { id: 'sw', type: 'equipment', position: { x: 0, y: 0 }, data: { stencil: 'switch', title: 'sw' }, selected: false },
+      { id: 'fw', type: 'equipment', position: { x: 80, y: 0 }, data: { stencil: 'firewall', title: 'fw' }, selected: true },
+    ]
+    const out = decorateSelection(nodes, [], ['sw'])
+    expect(out.nodes.find((n) => n.id === 'sw')?.selected).toBe(true)
+    expect(out.nodes.find((n) => n.id === 'fw')?.selected).toBe(false)
+  })
+
+  it('clears selection when nothing is picked', () => {
+    const nodes = [
+      { id: 'sw', type: 'equipment', position: { x: 0, y: 0 }, data: { stencil: 'switch', title: 'sw' }, selected: true },
+    ]
+    const out = decorateSelection(nodes, [], [])
+    expect(out.nodes[0].selected).toBe(false)
+  })
+
+  it('marks every shift-selected node', () => {
+    const nodes = [
+      { id: 'sw', type: 'equipment', position: { x: 0, y: 0 }, data: { stencil: 'switch', title: 'sw' } },
+      { id: 'fw', type: 'equipment', position: { x: 80, y: 0 }, data: { stencil: 'firewall', title: 'fw' } },
+    ]
+    const out = decorateSelection(nodes, [], ['sw', 'fw'])
+    expect(out.nodes.filter((n) => n.selected).map((n) => n.id)).toEqual(['sw', 'fw'])
+    expect(out.nodes.every((n) => n.className?.includes('is-pack-selected'))).toBe(true)
+    expect(out.nodes.every((n) => (n.data as { selected?: boolean }).selected)).toBe(true)
+  })
+})
+
+describe('canvas pack helpers', () => {
+  it('treats Shift and Ctrl as additive modifiers', () => {
+    expect(isMultiSelectEvent({ shiftKey: true })).toBe(true)
+    expect(isMultiSelectEvent({ ctrlKey: true })).toBe(true)
+    expect(isMultiSelectEvent({ metaKey: true })).toBe(true)
+    expect(isMultiSelectEvent({ shiftKey: true, ctrlKey: true })).toBe(true)
+    expect(isMultiSelectEvent({})).toBe(false)
+  })
+
+  it('adds ids to the pack without toggling them off', () => {
+    expect(addToCanvasPack(['sw'], 'fw')).toEqual(['sw', 'fw'])
+    expect(addToCanvasPack(['sw', 'fw'], 'fw')).toEqual(['sw', 'fw'])
+  })
+
+  it('can still replace or toggle a pack in isolation', () => {
+    expect(nextCanvasPackIds(['sw'], 'fw', true)).toEqual(['sw', 'fw'])
+    expect(nextCanvasPackIds(['sw', 'fw'], 'fw', true)).toEqual(['sw'])
+    expect(nextCanvasPackIds(['sw', 'fw'], 'ap', false)).toEqual(['ap'])
+  })
+
+  it('moves every pack member with the leader', () => {
+    const moved = followPackLeader(
+      [
+        { id: 'sw', x: 10, y: 20 },
+        { id: 'fw', x: 40, y: 80 },
+      ],
+      { x: 10, y: 20 },
+      { id: 'sw', x: 30, y: 50 },
+    )
+    expect(moved).toEqual([
+      { id: 'sw', x: 30, y: 50 },
+      { id: 'fw', x: 60, y: 110 },
+    ])
   })
 })

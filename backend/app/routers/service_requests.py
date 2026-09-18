@@ -371,8 +371,8 @@ async def ai_suggest_service_request(
 ):
     """Classify category + suggest a cleaner title. Does not overwrite title.
 
-    persist=false is used by the close dialog: show recommendations first,
-    apply them only when the operator confirms close.
+    persist=false is used by the ticket form: show recommendations first,
+    apply them only when the operator accepts the suggestion.
     """
     from app.routers.ticket_handler import _get_or_create_config
     from app.ticket_handler_runtime import enrich_service_request

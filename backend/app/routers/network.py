@@ -1152,6 +1152,9 @@ async def trace_map_scene(
     await db.commit()
     await db.refresh(row)
     return _scene_out(row)
+
+
+@router.delete("/map-scenes/{scene_id}", status_code=204)
 async def delete_map_scene(
     scene_id: int,
     _: User = Depends(get_current_editor_or_superuser),

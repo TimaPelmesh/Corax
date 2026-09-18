@@ -14,7 +14,15 @@
   box-shadow: 0 0 0 1px rgb(15 23 42 / 0.06);
 }
 
+.network-map-canvas .react-flow__handle.network-map-jack::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
 .network-map-canvas .react-flow__node.selected .network-map-jack,
+.network-map-canvas .react-flow__node.is-pack-selected .network-map-jack,
+.network-map-canvas .react-flow__node-equipment:hover .network-map-jack,
 .network-map-canvas .react-flow__node.is-neighbor .network-map-jack,
 .network-map-canvas.is-linking .react-flow__handle.network-map-jack {
   opacity: 1;
@@ -31,9 +39,23 @@
   pointer-events: none;
   position: absolute;
   inset: -8px;
-  border: 1.5px solid var(--color-primary);
+  border: 2px solid var(--color-primary);
   border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   z-index: 1;
+}
+
+.network-map-canvas .react-flow__node.selected,
+.network-map-canvas .react-flow__node.is-pack-selected {
+  z-index: 6;
+}
+
+.network-map-canvas .react-flow__node-equipment.is-pack-selected {
+  z-index: 6;
+}
+
+.network-map-inline-rename {
+  max-width: 100%;
 }
 
 .network-map-canvas .react-flow__edge.is-related .react-flow__edge-path {
