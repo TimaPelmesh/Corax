@@ -345,23 +345,10 @@ export function ComputerDetailModal({
     }
   }, [detail, t, toast])
 
-  // Seed from DB cache immediately so the card matches the list before live ping returns.
+  // Cache is last known only. Never mark it checked — that looked like a live ICMP reply.
   useEffect(() => {
-    if (!detail) return
-    const st = (detail.ping_status || '').toLowerCase()
-    if (st === 'online' || st === 'offline') {
-      setPingResult({
-        computer_id: detail.id,
-        hostname: detail.hostname,
-        ip_address: detail.ip_address ?? null,
-        online: st === 'online',
-        checked: true,
-        message: st === 'online' ? t('computerDetail.pingOnline') : t('computerDetail.pingOffline'),
-      })
-    } else {
-      setPingResult(null)
-    }
-  }, [detail, t])
+    setPingResult(null)
+  }, [detail?.id])
 
   // Live ping after first paint so ICMP does not compete with the detail request.
   useEffect(() => {
@@ -393,12 +380,10 @@ export function ComputerDetailModal({
 
   const cachedOnline = (detail?.ping_status || '').toLowerCase() === 'online'
   const cachedOffline = (detail?.ping_status || '').toLowerCase() === 'offline'
-  const isOnline =
-    (pingResult?.checked === true && pingResult.online === true) ||
-    (pingResult == null && cachedOnline)
-  const isOffline =
-    (pingResult?.checked === true && pingResult.online === false) ||
-    (pingResult == null && cachedOffline)
+  const liveOnline = pingResult?.checked === true && pingResult.online === true
+  const liveOffline = pingResult?.checked === true && pingResult.online === false
+  const isOnline = !pingBusy && (liveOnline || (pingResult == null && cachedOnline))
+  const isOffline = !pingBusy && (liveOffline || (pingResult == null && cachedOffline))
   const canShowWake =
     Boolean(wolStatus?.user_may_wake) &&
     Boolean(wolStatus?.can_wake) &&
@@ -532,17 +517,27 @@ export function ComputerDetailModal({
                           {t('computerDetail.pingTitle')}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-                          {pingBusy && !pingResult ? (
+                          {pingBusy ? (
                             <span className="text-[var(--color-fg-muted)]">{t('computerDetail.pingChecking')}</span>
-                          ) : isOnline ? (
+                          ) : liveOnline ? (
                             <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
                               <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
                               {t('computerDetail.pingOnline')}
                             </span>
-                          ) : isOffline ? (
+                          ) : liveOffline ? (
                             <span className="inline-flex items-center gap-1.5 font-medium text-rose-700">
                               <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden />
                               {t('computerDetail.pingOffline')}
+                            </span>
+                          ) : cachedOnline ? (
+                            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
+                              <span className="h-2 w-2 rounded-full bg-emerald-400/70" aria-hidden />
+                              {t('computerDetail.pingCachedOnline')}
+                            </span>
+                          ) : cachedOffline ? (
+                            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
+                              <span className="h-2 w-2 rounded-full bg-rose-400/70" aria-hidden />
+                              {t('computerDetail.pingCachedOffline')}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">

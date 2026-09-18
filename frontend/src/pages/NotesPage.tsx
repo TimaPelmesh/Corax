@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type NoteColor, type NoteListItem, type NoteMark, type NoteRow, type User } from '../api'
 import { useAuth } from '../AuthContext'
@@ -6,6 +6,7 @@ import { DashboardCalendar } from '../components/dashboard/DashboardCalendar'
 import { IconBook, IconClose, IconPencil, IconTrash } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
+import { sanitizeNoteHtml } from '../lib/notesHtml'
 import { formatNotePlanRange } from '../lib/notesPlan'
 
 const NOTE_COLORS: NoteColor[] = ['blue', 'green', 'amber', 'rose', 'violet', 'slate']
@@ -26,35 +27,6 @@ const MARK_GLYPH: Record<NoteMark, string> = {
   star: '★',
 }
 
-function sanitizeNoteHtml(html: string): string {
-  if (!html) return ''
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  const banned = new Set(['SCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'FORM', 'INPUT', 'BUTTON', 'SVG', 'STYLE'])
-  const walk = (node: ParentNode) => {
-    ;[...node.childNodes].forEach((child) => {
-      if (child.nodeType !== Node.ELEMENT_NODE) return
-      const el = child as HTMLElement
-      if (banned.has(el.tagName)) {
-        el.remove()
-        return
-      }
-      for (const attr of [...el.attributes]) {
-        const name = attr.name.toLowerCase()
-        if (name.startsWith('on') || name === 'style' || name === 'src' || name === 'srcset') {
-          el.removeAttribute(attr.name)
-        }
-      }
-      if (el.tagName === 'A') {
-        const href = (el.getAttribute('href') || '').trim()
-        if (href && !/^(https?:|mailto:|\/|#)/i.test(href)) el.removeAttribute('href')
-      }
-      walk(el)
-    })
-  }
-  walk(doc.body)
-  return doc.body.innerHTML
-}
-
 function execCmd(cmd: string, value?: string) {
   try {
     document.execCommand(cmd, false, value)
@@ -62,6 +34,43 @@ function execCmd(cmd: string, value?: string) {
     /* ignore */
   }
 }
+
+const NoteBodyEditor = memo(function NoteBodyEditor({
+  noteId,
+  canEdit,
+  initialHtml,
+  onHtmlChange,
+}: {
+  noteId: number
+  canEdit: boolean
+  initialHtml: string
+  onHtmlChange: (html: string, source: 'edit' | 'blur' | 'unmount') => void
+}) {
+  const elRef = useRef<HTMLDivElement>(null)
+  const onHtmlChangeRef = useRef(onHtmlChange)
+  onHtmlChangeRef.current = onHtmlChange
+  const initialRef = useRef(initialHtml)
+  initialRef.current = initialHtml
+
+  useEffect(() => {
+    const el = elRef.current
+    if (el) el.innerHTML = sanitizeNoteHtml(initialRef.current || '')
+    return () => {
+      onHtmlChangeRef.current(elRef.current?.innerHTML ?? '', 'unmount')
+    }
+  }, [noteId])
+
+  return (
+    <div
+      ref={elRef}
+      className="notes-editor min-h-[14rem] flex-1 px-5 py-4 text-[15px] leading-relaxed text-[var(--color-fg)] outline-none [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
+      contentEditable={canEdit}
+      suppressContentEditableWarning
+      onInput={() => onHtmlChangeRef.current(elRef.current?.innerHTML ?? '', 'edit')}
+      onBlur={() => onHtmlChangeRef.current(elRef.current?.innerHTML ?? '', 'blur')}
+    />
+  )
+})
 
 export function NotesPage() {
   const t = useT()
@@ -85,8 +94,8 @@ export function NotesPage() {
   const [shareDraft, setShareDraft] = useState<{ user_id: number; can_edit: boolean }[]>([])
   const [saving, setSaving] = useState(false)
   const [saveLabel, setSaveLabel] = useState<string | null>(null)
-  const editorRef = useRef<HTMLDivElement>(null)
   const saveTimer = useRef<number | null>(null)
+  const persistInFlight = useRef<Promise<void> | null>(null)
   const titleRef = useRef(title)
   const planStartRef = useRef(planStart)
   const planEndRef = useRef(planEnd)
@@ -94,7 +103,7 @@ export function NotesPage() {
   const markRef = useRef(mark)
   const noteRef = useRef(note)
   const bodyHtmlRef = useRef('')
-  const persistNowRef = useRef<() => Promise<void>>(async () => {})
+  const persistNowRef = useRef<(opts?: { keepalive?: boolean }) => Promise<void>>(async () => {})
 
   titleRef.current = title
   planStartRef.current = planStart
@@ -128,7 +137,7 @@ export function NotesPage() {
     }
   }, [t, toast])
 
-  const persistNow = useCallback(async () => {
+  const persistNow = useCallback(async (opts?: { keepalive?: boolean }) => {
     const row = noteRef.current
     if (!row?.can_edit) return
     const id = row.id
@@ -136,30 +145,53 @@ export function NotesPage() {
       window.clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    const body_html = editorRef.current?.innerHTML ?? bodyHtmlRef.current
-    bodyHtmlRef.current = body_html
-    setSaving(true)
-    try {
-      const updated = await api.updateNote(id, {
-        title: titleRef.current,
-        body_html,
-        plan_start: planStartRef.current || null,
-        plan_end: planEndRef.current || null,
-        color: colorRef.current,
-        mark: markRef.current,
-      })
-      if (noteRef.current?.id === id) {
-        setNote(updated)
-        setSaveLabel(t('notes.saved'))
-      }
-      setCalendarTick((n) => n + 1)
-      await reloadList()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('notes.saveFailed'))
-    } finally {
-      setSaving(false)
-      window.setTimeout(() => setSaveLabel(null), 2000)
+    const body_html = bodyHtmlRef.current
+    const payload = {
+      title: titleRef.current,
+      body_html,
+      plan_start: planStartRef.current || null,
+      plan_end: planEndRef.current || null,
+      color: colorRef.current,
+      mark: markRef.current,
     }
+    const keepalive =
+      Boolean(opts?.keepalive) && new Blob([JSON.stringify(payload)]).size < 60_000
+    if (persistInFlight.current) await persistInFlight.current
+    if (!opts?.keepalive) setSaving(true)
+    const run = (async () => {
+      try {
+        const updated = await api.updateNote(id, payload, keepalive ? { keepalive: true } : undefined)
+        if (opts?.keepalive) return
+        if (noteRef.current?.id === id) {
+          setNote((prev) =>
+            prev && prev.id === id
+              ? {
+                  ...prev,
+                  title: updated.title,
+                  plan_start: updated.plan_start,
+                  plan_end: updated.plan_end,
+                  color: updated.color,
+                  mark: updated.mark,
+                  updated_at: updated.updated_at,
+                }
+              : prev,
+          )
+          setSaveLabel(t('notes.saved'))
+        }
+        setCalendarTick((n) => n + 1)
+        await reloadList()
+      } catch (e) {
+        if (!opts?.keepalive) toast.error(e instanceof Error ? e.message : t('notes.saveFailed'))
+      } finally {
+        if (!opts?.keepalive) {
+          setSaving(false)
+          window.setTimeout(() => setSaveLabel(null), 2000)
+        }
+      }
+    })()
+    persistInFlight.current = run
+    await persistInFlight.current
+    persistInFlight.current = null
   }, [reloadList, t, toast])
 
   persistNowRef.current = persistNow
@@ -170,13 +202,13 @@ export function NotesPage() {
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
       void persistNowRef.current()
-    }, 450)
+    }, 600)
   }, [])
 
   useEffect(() => {
     if (!selectedId) {
+      void persistNowRef.current()
       setNote(null)
-      bodyHtmlRef.current = ''
       return
     }
     let cancelled = false
@@ -195,7 +227,6 @@ export function NotesPage() {
         setMark(row.mark ?? null)
         setShareDraft(row.shares.map((s) => ({ user_id: s.user_id, can_edit: s.can_edit })))
         bodyHtmlRef.current = row.body_html || ''
-        if (editorRef.current) editorRef.current.innerHTML = sanitizeNoteHtml(bodyHtmlRef.current)
       } catch (e) {
         if (!cancelled) {
           toast.error(e instanceof Error ? e.message : t('notes.loadFailed'))
@@ -207,22 +238,24 @@ export function NotesPage() {
       cancelled = true
       void persistNowRef.current()
     }
-  }, [selectedId, setSearchParams])
+  }, [selectedId, setSearchParams, t, toast])
 
   const canEdit = Boolean(note?.can_edit)
   const isOwner = Boolean(note?.is_owner)
 
   useEffect(() => {
     const flush = () => {
-      void persistNowRef.current()
+      void persistNowRef.current({ keepalive: true })
     }
     const onHide = () => {
       if (document.visibilityState === 'hidden') flush()
     }
     window.addEventListener('pagehide', flush)
+    window.addEventListener('beforeunload', flush)
     document.addEventListener('visibilitychange', onHide)
     return () => {
       window.removeEventListener('pagehide', flush)
+      window.removeEventListener('beforeunload', flush)
       document.removeEventListener('visibilitychange', onHide)
       flush()
     }
@@ -484,7 +517,8 @@ export function NotesPage() {
                       onMouseDown={(e) => {
                         e.preventDefault()
                         fn()
-                        bodyHtmlRef.current = editorRef.current?.innerHTML ?? bodyHtmlRef.current
+                        const el = document.querySelector('.notes-editor')
+                        if (el instanceof HTMLElement) bodyHtmlRef.current = el.innerHTML
                         scheduleSave()
                       }}
                     >
@@ -498,18 +532,16 @@ export function NotesPage() {
                 </div>
               )}
 
-              <div
-                ref={editorRef}
-                className="notes-editor min-h-[14rem] flex-1 px-5 py-4 text-[15px] leading-relaxed text-[var(--color-fg)] outline-none [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
-                contentEditable={canEdit}
-                suppressContentEditableWarning
-                onInput={() => {
-                  bodyHtmlRef.current = editorRef.current?.innerHTML ?? ''
-                  scheduleSave()
-                }}
-                onBlur={() => {
-                  bodyHtmlRef.current = editorRef.current?.innerHTML ?? bodyHtmlRef.current
-                  void persistNowRef.current()
+              <NoteBodyEditor
+                key={note.id}
+                noteId={note.id}
+                canEdit={canEdit}
+                initialHtml={note.body_html || ''}
+                onHtmlChange={(html, source) => {
+                  bodyHtmlRef.current = html
+                  if (!canEdit) return
+                  if (source === 'edit') scheduleSave()
+                  if (source === 'blur') void persistNowRef.current()
                 }}
               />
 

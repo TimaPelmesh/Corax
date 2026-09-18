@@ -96,6 +96,7 @@ function DocumentTitle() {
   const { pathname } = useLocation()
   const { locale } = useLocale()
   useEffect(() => {
+    if (pathname === '/h' || pathname === '/r') return
     document.title = titleForPath(pathname, locale)
   }, [pathname, locale])
   return null
@@ -178,7 +179,7 @@ export default function App() {
         <Route path="settings/agent-bundle" element={<AgentBundlePage />} />
         <Route path="settings/wol" element={<SettingsWolPage />} />
         <Route path="settings/https" element={<SettingsHttpsPage />} />
-        <Route path="knowledge-base" element={<Navigate to="/knowledge-base/sitemap" replace />} />
+        <Route path="knowledge-base" element={<Navigate to="/knowledge-base/wikirag" replace />} />
         <Route path="knowledge-base/sitemap" element={<KnowledgeSitemapPage />} />
         <Route path="knowledge-base/guide" element={<GuidePage />} />
         <Route path="knowledge-base/wikirag" element={<WikiRagPage />} />

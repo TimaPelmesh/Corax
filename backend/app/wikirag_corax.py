@@ -452,6 +452,7 @@ def _device_role(dev: NetworkDevice) -> str:
         sys_name=dev.sys_name,
         device_type=dev.device_type,
         source=dev.source,
+        extras_json=getattr(dev, "extras_json", None),
     )
 
 
@@ -1746,6 +1747,32 @@ def _build_md_documents(data: dict[str, Any], *, generated_at: str) -> dict[str,
     ]
     if snmp_bad:
         network_parts.append("- " + _hosts_line(snmp_bad))
+    network_parts.append("")
+    network_parts.append("## Каталог (IP → устройство)")
+    network_parts.append("")
+    network_parts.append(
+        "Ищи по IP, hostname или типу. Полная карточка — заголовок `## имя (network_id=N)` ниже."
+    )
+    network_parts.append("")
+    if network_devices:
+        for dev in sorted(network_devices, key=lambda d: str(d.ip_address or "")):
+            role = _device_role(dev)
+            title = _net_title(dev)
+            bits = [
+                f"`{dev.ip_address or '—'}`",
+                title,
+                str(dev.device_type or role or "unknown"),
+            ]
+            if role and role != (dev.device_type or ""):
+                bits.append(f"роль {role}")
+            if (dev.vendor or "").strip():
+                bits.append(str(dev.vendor).strip())
+            if (dev.snmp_status or "").strip():
+                bits.append(f"SNMP {dev.snmp_status}")
+            bits.append(f"network_id={dev.id}")
+            network_parts.append("- " + " · ".join(bits))
+    else:
+        network_parts.append("- (пусто)")
     network_parts.append("")
     # Группы шлюз / DNS в начале файла — удобно для RAG
     for role_key, role_title in (("gateway", "Шлюзы (gateway)"), ("dns", "DNS-серверы"), ("firewall", "Межсетевые экраны")):

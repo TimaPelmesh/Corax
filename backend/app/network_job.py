@@ -108,10 +108,10 @@ class NetworkJobRunner:
             self.state.error = None
         except Exception as e:
             self.state.phase = "error"
-            self.state.error = str(e)[:400]
-            self.state.message = f"Ошибка: {self.state.error}"
+            self.state.error = "poll_failed"
+            self.state.message = "Опрос сети не завершился. Устройства, которые успели сохраниться, на месте."
             self.state.progress = 100
-            log.warning("job error: %s", e)
+            log.warning("job error: %s", type(e).__name__)
         finally:
             self.state.running = False
             self.state.finished_at = datetime.now(timezone.utc)

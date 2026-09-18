@@ -341,10 +341,10 @@ async def resolve_client_identity(
 
 
 def normalize_intake_status(raw: str | None) -> str:
-    """Public /h tickets start in work so IT sees them immediately."""
-    status = (raw or "in_progress").strip().lower() or "in_progress"
-    if status in {"new", "open"}:
-        return "in_progress"
+    """New /h tickets wait until IT takes them (assignee or in_progress)."""
+    status = (raw or "open").strip().lower() or "open"
+    if status in {"new", "in_progress"}:
+        return "open"
     return status[:64]
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import platform
 import re
 import time
@@ -17,15 +18,21 @@ ProgressCb = Callable[[str, int, str], Awaitable[None] | None]  # noqa: UP007
 
 from app.async_pool import run_async_pool
 from app.models import NetworkDevice, NetworkPollConfig
+from app.text_sanitize import deep_strip_nul, pg_text
 from app.network_classify import NETWORK_DEVICE_TYPES, network_dedupe_key_for_ip
-from app.network_link_builder import rebuild_all_links
+from app.network_link_builder import build_host_index, rebuild_all_links, rebuild_links_for_device
 from app.network_poll_config import get_effective_network_poll_config, get_network_poll_config_row
 from app.network_snmp import NetworkSnmpSnapshot, fetch_network_snmp, probe_network_snmp
-from app.network_snmp_discover import discover_network_devices, upsert_discovered_device
+from app.network_snmp_discover import discover_network_devices, sync_printer_from_network_snap, upsert_discovered_device
 from app.printer_poll_config import get_effective_printer_poll_config
 
 _WIN32 = platform.system().lower() == "windows"
 _IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
+_LOG = logging.getLogger("corax.network_poll")
+
+
+def _clip_str(value: object, limit: int) -> str | None:
+    return pg_text(value, max_len=limit)
 
 
 @dataclass
@@ -50,22 +57,34 @@ class NetworkPollResult:
 
 async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
     if snap.sys_name:
-        row.sys_name = snap.sys_name
-        row.hostname = snap.sys_name[:255]
+        name = _clip_str(snap.sys_name, 255)
+        row.sys_name = name
+        row.hostname = name
     if snap.sys_descr:
-        row.sys_descr = snap.sys_descr
+        row.sys_descr = pg_text(snap.sys_descr)
     if snap.sys_object_id:
-        row.sys_object_id = snap.sys_object_id
+        row.sys_object_id = _clip_str(snap.sys_object_id, 255)
     if snap.sys_location:
-        row.location = snap.sys_location
-    if snap.device_type and snap.device_type != "printer":
+        row.location = _clip_str(snap.sys_location, 255)
+    extras: dict[str, Any] = {}
+    prev: dict[str, Any] = {}
+    if getattr(row, "extras_json", None):
+        try:
+            loaded = json.loads(row.extras_json)
+            if isinstance(loaded, dict):
+                prev = loaded
+        except json.JSONDecodeError:
+            prev = {}
+    if snap.device_type and not bool(prev.get("type_manual")):
         row.device_type = snap.device_type if snap.device_type in NETWORK_DEVICE_TYPES else "unknown"
     if snap.vendor:
-        row.vendor = snap.vendor
-    row.interfaces_json = json.dumps([i.to_dict() for i in snap.interfaces], ensure_ascii=False)
-    row.neighbors_json = json.dumps([n.to_dict() for n in snap.neighbors], ensure_ascii=False)
-    row.fdb_json = json.dumps([f.to_dict() for f in snap.fdb], ensure_ascii=False)
-    extras: dict[str, Any] = {}
+        row.vendor = _clip_str(snap.vendor, 128)
+    row.interfaces_json = json.dumps(deep_strip_nul([i.to_dict() for i in snap.interfaces]), ensure_ascii=False, default=str)
+    row.neighbors_json = json.dumps(deep_strip_nul([n.to_dict() for n in snap.neighbors]), ensure_ascii=False, default=str)
+    row.fdb_json = json.dumps(deep_strip_nul([f.to_dict() for f in snap.fdb]), ensure_ascii=False, default=str)
+    for key in ("zabbix", "trace_route", "trace_routes", "type_manual"):
+        if key in prev:
+            extras[key] = prev[key]
     if getattr(snap, "sys_uptime_ticks", None) is not None:
         extras["sys_uptime_ticks"] = snap.sys_uptime_ticks
         extras["sys_uptime_human"] = getattr(snap, "sys_uptime_human", None)
@@ -96,14 +115,13 @@ async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
     extras["neighbor_protocols"] = sorted({n.protocol for n in snap.neighbors if n.protocol})
     extras["fdb_total"] = len(snap.fdb)
     if hasattr(row, "extras_json"):
-        row.extras_json = json.dumps(extras, ensure_ascii=False)
+        row.extras_json = json.dumps(deep_strip_nul(extras), ensure_ascii=False, default=str)
     row.last_snmp_at = now
+    row.snmp_error = pg_text(snap.error, max_len=2000)
     if snap.error and not snap.sys_descr:
         row.snmp_status = "error"
-        row.snmp_error = snap.error
     else:
         row.snmp_status = "ok"
-        row.snmp_error = snap.error
         row.last_seen_at = now
 
 
@@ -228,6 +246,7 @@ async def seed_devices_from_neighbors(
     async def probe_one(ip: str) -> None:
         snap = await probe_network_snmp(ip, community=community, timeout=timeout)
         if snap.device_type == "printer":
+            probed.append((ip, snap))
             return
         if snap.sys_descr or snap.sys_name or snap.sys_object_id:
             probed.append((ip, snap))
@@ -288,19 +307,40 @@ async def poll_single_device(
     row = (await db.execute(select(NetworkDevice).where(NetworkDevice.id == device_id))).scalar_one_or_none()
     if row is None:
         raise LookupError("device not found")
-    snap = await fetch_network_snmp(
-        row.ip_address,
-        community=community or cfg.snmp_community,
-        timeout=timeout or cfg.snmp_timeout_seconds,
-    )
+    try:
+        snap = await fetch_network_snmp(
+            row.ip_address,
+            community=community or cfg.snmp_community,
+            timeout=timeout or cfg.snmp_timeout_seconds,
+        )
+    except Exception as exc:
+        snap = NetworkSnmpSnapshot(error=f"SNMP: {type(exc).__name__}: {exc}"[:240])
     now = datetime.now(timezone.utc)
     await _apply_snapshot(row, snap, now)
+    if snap.device_type == "printer":
+        await sync_printer_from_network_snap(
+            db,
+            row.ip_address,
+            snap,
+            now=now,
+            snmp_status="error" if snap.error and not snap.sys_descr else "ok",
+        )
     await db.commit()
     await db.refresh(row)
     if rebuild_links:
-        await seed_devices_from_neighbors(db, community=cfg.snmp_community)
-        await rebuild_all_links(db)
-        await db.refresh(row)
+        try:
+            idx = await build_host_index(db)
+            await rebuild_links_for_device(db, row, idx, clear_auto=True)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            _LOG.exception("link rebuild after single SNMP poll failed")
+        try:
+            await db.refresh(row)
+        except Exception:
+            row = (
+                await db.execute(select(NetworkDevice).where(NetworkDevice.id == device_id))
+            ).scalar_one_or_none() or row
     return row
 
 
@@ -371,8 +411,9 @@ async def run_network_poll_cycle(
         nonlocal done_count
         # ПК без SNMP (инвентарь / ping): не тратим бюджет и не красим offline.
         src = (dev.source or "").strip().lower()
+        dtype = (dev.device_type or "").strip().lower()
         has_snmp_identity = bool((dev.sys_descr or "").strip() or (dev.sys_object_id or "").strip())
-        if not has_snmp_identity and src in {"inventory", "ping", "zabbix"}:
+        if dtype in {"host", "pc", "computer"} and not has_snmp_identity and src in {"inventory", "ping", "zabbix"}:
             done_count += 1
             pct = 40 + int(40 * done_count / total)
             await _emit(progress_cb, "deep_poll", pct, f"Опрос SNMP {done_count}/{total}…")
@@ -406,6 +447,14 @@ async def run_network_poll_cycle(
             continue
         result.polled += 1
         await _apply_snapshot(row, snap, now)
+        if snap.device_type == "printer":
+            await sync_printer_from_network_snap(
+                db,
+                row.ip_address,
+                snap,
+                now=now,
+                snmp_status="error" if snap.error and not snap.sys_descr else "ok",
+            )
         if snap.error and not snap.sys_descr:
             result.snmp_error += 1
             result.offline += 1

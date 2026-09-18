@@ -3,8 +3,8 @@ import ReactFlow, {
   Background,
   BackgroundVariant,
   ConnectionLineType,
+  ConnectionMode,
   Controls,
-  MiniMap,
   ReactFlowProvider,
   addEdge,
   useEdgesState,
@@ -20,40 +20,59 @@ import ReactFlow, {
   type OnNodesDelete,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { api, type NetworkMapLiveItem, type NetworkMapSceneDto, type NetworkPrinter, type NetworkTopology } from '../api'
+import { api, type NetworkDevice, type NetworkMapLiveItem, type NetworkMapSceneDto, type NetworkPrinter, type NetworkTopology } from '../api'
 import { useAuth } from '../AuthContext'
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { NetworkDeviceDetailModal } from '../components/NetworkDeviceDetailModal'
 import { PrinterDetailModal } from '../components/PrinterDetailModal'
 import { useLocale } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
-import { NetworkMapEquipmentNode, NetworkMapGroupNode } from './network-map/NetworkMapCanvasNode'
+import { NetworkMapEquipmentNode, NetworkMapGroupNode, type EquipmentNodeData } from './network-map/NetworkMapCanvasNode'
 import { NetworkMapCableEdge } from './network-map/NetworkMapCableEdge'
 import { NetworkMapClearDialog } from './network-map/NetworkMapClearDialog'
-import { NETWORK_MAP_DND, NetworkMapPalette, type PaletteDrag } from './network-map/NetworkMapPalette'
+import { NetworkMapConfirmDialog } from './network-map/NetworkMapConfirmDialog'
+import { NetworkMapDock } from './network-map/NetworkMapDock'
 import { NetworkMapInspector } from './network-map/NetworkMapInspector'
 import { NetworkMapScenesBar } from './network-map/NetworkMapScenesBar'
-import { collectScene, decorateSelection, equipmentHeight, equipmentWidth, groupAtPoint, toFlowEdges, toFlowNodes, viewportFlowCenter } from './network-map/flow'
+import { NetworkMapTray } from './network-map/NetworkMapTray'
+import {
+  applyFrameMembership,
+  collectScene,
+  decorateFocus,
+  decorateSelection,
+  equipmentHeight,
+  equipmentWidth,
+  toFlowEdges,
+  toFlowNodes,
+  toWorldScene,
+  viewportFlowCenter,
+} from './network-map/flow'
 import { compressMapImage } from './network-map/image'
-import { bindsFromScene, hydrateScene } from './network-map/mergeScene'
+import { bindsFromScene, deviceTypeForStencil, hydrateScene } from './network-map/mergeScene'
 import { applyNeighborCluster, offersFromTopology } from './network-map/neighborsAround'
 import { exportNetworkMapPng } from './network-map/exportPng'
 import { onMapNodeResized } from './network-map/NetworkMapResizer'
+import { cloneScene, gearNotOnMap, ipv4Slash24, matchMapQuery, subnetLayers, type TrayGear } from './network-map/inventory'
+import { createUndoStack } from './network-map/undo'
 import './network-map/network-map.css'
 import {
   MAX_MAP_IMAGES,
+  NETWORK_MAP_DND,
+  bindKey,
   emptyNetworkMapScene,
   type MapLiveItem,
   type MergedCanvasNode,
   type NetworkMapBind,
   type NetworkMapScene,
   type NetworkMapStencil,
+  type PaletteDrag,
 } from './network-map/types'
 
 const NODE_TYPES: NodeTypes = { equipment: NetworkMapEquipmentNode, groupFrame: NetworkMapGroupNode }
 const EDGE_TYPES: EdgeTypes = { cable: NetworkMapCableEdge }
 const RF_PRO = { hideAttribution: true }
 const SCENE_STORE_KEY = 'corax-network-map-scene-id'
+const TRAY_STORE_KEY = 'corax-network-map-tray-open'
 
 function newId(prefix: string): string {
   return `${prefix}:${crypto.randomUUID()}`
@@ -112,6 +131,19 @@ function NetworkMapEditor() {
   const [exporting, setExporting] = useState(false)
   const [traceTarget, setTraceTarget] = useState('')
   const [tracing, setTracing] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [trayQuery, setTrayQuery] = useState('')
+  const [inventory, setInventory] = useState<NetworkDevice[]>([])
+  const [activeCidr, setActiveCidr] = useState<string | null>(null)
+  const [layoutConfirm, setLayoutConfirm] = useState(false)
+  const [undoEpoch, setUndoEpoch] = useState(0)
+  const [trayOpen, setTrayOpen] = useState(() => {
+    try {
+      return localStorage.getItem(TRAY_STORE_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
   const paneRef = useRef<HTMLDivElement>(null)
 
   const sceneRef = useRef(scene)
@@ -127,6 +159,10 @@ function NetworkMapEditor() {
   const tRef = useRef(t)
   tRef.current = t
   const loadedOnce = useRef(false)
+  const groupDrag = useRef<{ id: string; x: number; y: number; members: Array<{ id: string; x: number; y: number }> } | null>(
+    null,
+  )
+  const undoRef = useRef(createUndoStack())
 
   const selected = useMemo(
     () => mergedNodes.find((n) => n.id === selectedId) ?? null,
@@ -136,33 +172,41 @@ function NetworkMapEditor() {
     () => scene.groups.find((g) => g.id === selectedGroupId) ?? null,
     [scene.groups, selectedGroupId],
   )
-  const shown = useMemo(() => decorateSelection(nodes, edges, selectedId), [nodes, edges, selectedId])
+  const shown = useMemo(() => {
+    const selectedView = decorateSelection(nodes, edges, selectedId)
+    return decorateFocus(selectedView.nodes, selectedView.edges, mergedNodes, searchQuery, activeCidr)
+  }, [nodes, edges, selectedId, mergedNodes, searchQuery, activeCidr])
   const neighborOffers = useMemo(
     () => offersFromTopology(selected?.bind, scene, topology),
     [selected?.bind, scene, topology],
   )
+  const trayGear = useMemo(() => gearNotOnMap(inventory, scene), [inventory, scene])
+  const layers = useMemo(() => subnetLayers(mergedNodes), [mergedNodes])
 
   const paint = useCallback(
     (next: NetworkMapScene, live = liveRef.current) => {
-      const hydrated = hydrateScene(next, live)
+      const world = toWorldScene(next)
+      const hydrated = hydrateScene(world, live)
       setMergedNodes(hydrated.nodes)
       setNodes(toFlowNodes(hydrated.groups, hydrated.nodes))
-      setEdges(toFlowEdges(hydrated.edges))
-      setScene(next)
-      sceneRef.current = next
+      setEdges(toFlowEdges(hydrated.edges, hydrated.groups, hydrated.nodes))
+      setScene(world)
+      sceneRef.current = world
     },
     [setEdges, setNodes],
   )
 
   const persist = useCallback(
-    (next: NetworkMapScene, immediate = false, skipPaint = false) => {
+    (next: NetworkMapScene, immediate = false, skipPaint = false, recordUndo = true) => {
       if (!canEdit) return
+      if (recordUndo) undoRef.current.push(cloneScene(sceneRef.current))
       if (skipPaint) {
         setScene(next)
         sceneRef.current = next
       } else {
         paint(next)
       }
+      setUndoEpoch((n) => n + 1)
       if (saveTimer.current) window.clearTimeout(saveTimer.current)
       const run = () => {
         setSaving(true)
@@ -210,7 +254,7 @@ function NetworkMapEditor() {
   }, [paint])
 
   const sceneFromCanvas = useCallback(() => {
-    const fromRf = collectScene(getNodes(), getEdges(), sceneRef.current.hiddenNodeIds, getViewport())
+    const fromRf = collectScene(getNodes(), getEdges(), sceneRef.current, getViewport())
     if (
       fromRf.nodes.length === 0 &&
       fromRf.groups.length === 0 &&
@@ -234,6 +278,10 @@ function NetworkMapEditor() {
         /* ignore */
       }
       paint(next)
+      undoRef.current.clear()
+      setUndoEpoch((n) => n + 1)
+      setSearchQuery('')
+      setActiveCidr(null)
       if (next.viewport) setViewport(next.viewport)
       void refreshLive(next)
       if (listed) setScenes(listed)
@@ -278,6 +326,21 @@ function NetworkMapEditor() {
   }, [applySceneDto, canEdit, t])
 
   useEffect(() => {
+    let cancelled = false
+    void api
+      .networkDevices({ limit: 200 })
+      .then((rows) => {
+        if (!cancelled) setInventory(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setInventory([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     const binds = bindsFromScene(scene)
     if (!binds.length) return
     const timer = window.setInterval(() => void refreshLive(sceneRef.current), 45_000)
@@ -315,10 +378,70 @@ function NetworkMapEditor() {
     })
   }, [canEdit, persist, sceneFromCanvas])
 
-  const onNodeDragStop = useCallback(() => {
-    if (!canEdit) return
-    persist(sceneFromCanvas(), false, true)
-  }, [canEdit, persist, sceneFromCanvas])
+  const onNodeDragStart = useCallback((_: unknown, node: Node) => {
+    if (node.type !== 'groupFrame') {
+      groupDrag.current = null
+      return
+    }
+    groupDrag.current = {
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      members: sceneRef.current.nodes
+        .filter((n) => n.parentGroupId === node.id)
+        .map((n) => ({ id: n.id, x: n.x, y: n.y })),
+    }
+  }, [])
+
+  const onNodeDrag = useCallback(
+    (_: unknown, node: Node) => {
+      const start = groupDrag.current
+      if (!start || node.id !== start.id) return
+      const dx = node.position.x - start.x
+      const dy = node.position.y - start.y
+      const byId = new Map(start.members.map((m) => [m.id, m]))
+      setNodes((nds) =>
+        nds.map((n) => {
+          const mem = byId.get(n.id)
+          if (!mem) return n
+          return { ...n, position: { x: mem.x + dx, y: mem.y + dy } }
+        }),
+      )
+    },
+    [setNodes],
+  )
+
+  const onNodeDragStop = useCallback(
+    (_: unknown, node: Node) => {
+      if (!canEdit) return
+      const start = groupDrag.current
+      groupDrag.current = null
+      if (node.type === 'groupFrame' && start && start.id === node.id) {
+        const dx = node.position.x - start.x
+        const dy = node.position.y - start.y
+        const current = sceneFromCanvas()
+        const byId = new Map(start.members.map((m) => [m.id, m]))
+        current.nodes = current.nodes.map((n) => {
+          if (n.parentGroupId !== node.id) return n
+          const mem = byId.get(n.id)
+          return mem ? { ...n, x: mem.x + dx, y: mem.y + dy } : { ...n, x: n.x + dx, y: n.y + dy }
+        })
+        persist(current, false, true)
+        return
+      }
+      if (node.type === 'equipment') {
+        const current = sceneFromCanvas()
+        current.nodes = current.nodes.map((n) =>
+          n.id === node.id ? { ...n, x: node.position.x, y: node.position.y } : n,
+        )
+        const nested = applyFrameMembership(current, node.id, getNodes())
+        persist(nested)
+        return
+      }
+      persist(sceneFromCanvas(), false, true)
+    },
+    [canEdit, getNodes, persist, sceneFromCanvas],
+  )
 
   const onMoveEnd = useCallback(() => {
     persistViewport()
@@ -333,20 +456,16 @@ function NetworkMapEditor() {
   }, [getViewport])
 
   const placeAt = useCallback(
-    (partial: MergedCanvasNode, flowPos: { x: number; y: number }, nestGroup = false) => {
+    (partial: MergedCanvasNode, flowPos: { x: number; y: number }) => {
       const current = sceneFromCanvas()
       const w = equipmentWidth(partial.stencil, partial.label, partial.width, partial.portCount)
       const h = equipmentHeight(partial.stencil, partial.label, partial.height)
-      const group = nestGroup ? groupAtPoint(getNodes(), flowPos, { width: w, height: h }) : null
-      const pos = group
-        ? { x: flowPos.x - group.position.x, y: flowPos.y - group.position.y }
-        : flowPos
       current.nodes.push({
         id: partial.id,
         stencil: partial.stencil,
-        x: pos.x,
-        y: pos.y,
-        parentGroupId: group?.id ?? null,
+        x: flowPos.x,
+        y: flowPos.y,
+        parentGroupId: null,
         bind: partial.bind ?? null,
         label: partial.label,
         imageSrc: partial.imageSrc ?? null,
@@ -364,7 +483,27 @@ function NetworkMapEditor() {
       })
       if (partial.bind) void refreshLive(current)
     },
-    [getNodes, getViewport, persist, refreshLive, sceneFromCanvas, setCenter],
+    [getViewport, persist, refreshLive, sceneFromCanvas, setCenter],
+  )
+
+  const placeGear = useCallback(
+    (item: TrayGear, pos?: { x: number; y: number }) => {
+      const flowPos = pos ?? canvasCenter()
+      placeAt(
+        {
+          id: bindKey(item.bind),
+          stencil: item.stencil,
+          x: flowPos.x,
+          y: flowPos.y,
+          label: item.label,
+          bind: item.bind,
+          kind: 'network_device',
+          missing: false,
+        },
+        flowPos,
+      )
+    },
+    [canvasCenter, placeAt],
   )
 
   const placeGroup = useCallback(
@@ -394,9 +533,22 @@ function NetworkMapEditor() {
   )
 
   const placePayload = useCallback(
-    (payload: PaletteDrag, pos: { x: number; y: number }, nestGroup = false) => {
+    (payload: PaletteDrag, pos: { x: number; y: number }) => {
       if (payload.kind === 'group') {
         placeGroup(payload.groupKind, pos)
+        return
+      }
+      if (payload.kind === 'inventory') {
+        placeGear(
+          {
+            bind: payload.bind,
+            label: payload.label,
+            ip: payload.ip || null,
+            stencil: payload.stencil,
+            deviceType: null,
+          },
+          pos,
+        )
         return
       }
       placeAt(
@@ -410,10 +562,9 @@ function NetworkMapEditor() {
           missing: false,
         },
         pos,
-        nestGroup,
       )
     },
-    [placeAt, placeGroup, t],
+    [placeAt, placeGear, placeGroup, t],
   )
 
   const placeImage = useCallback(
@@ -489,7 +640,7 @@ function NetworkMapEditor() {
       } catch {
         return
       }
-      placePayload(payload, screenToFlowPosition({ x: event.clientX, y: event.clientY }), true)
+      placePayload(payload, screenToFlowPosition({ x: event.clientX, y: event.clientY }))
     },
     [canEdit, placeImage, placePayload, screenToFlowPosition],
   )
@@ -517,6 +668,21 @@ function NetworkMapEditor() {
       window.setTimeout(() => persist(sceneFromCanvas()), 0)
     },
     [canEdit, persist, sceneFromCanvas, setEdges],
+  )
+
+  const isValidConnection = useCallback(
+    (connection: Connection) => {
+      if (!canEdit || !connection.source || !connection.target || connection.source === connection.target) return false
+      const nodes = getNodes()
+      const source = nodes.find((n) => n.id === connection.source)
+      const target = nodes.find((n) => n.id === connection.target)
+      if (source?.type !== 'equipment' || target?.type !== 'equipment') return false
+      const srcStencil = (source.data as EquipmentNodeData | undefined)?.stencil
+      const tgtStencil = (target.data as EquipmentNodeData | undefined)?.stencil
+      if (srcStencil === 'note' || srcStencil === 'image' || tgtStencil === 'note' || tgtStencil === 'image') return false
+      return true
+    },
+    [canEdit, getNodes],
   )
 
   const onEdgesDelete: OnEdgesDelete = useCallback(
@@ -557,16 +723,10 @@ function NetworkMapEditor() {
   const onDeleteGroup = () => {
     if (!selectedGroup) return
     const current = sceneFromCanvas()
-    const group = current.groups.find((g) => g.id === selectedGroup.id)
     current.groups = current.groups.filter((g) => g.id !== selectedGroup.id)
     current.nodes = current.nodes.map((n) => {
       if (n.parentGroupId !== selectedGroup.id) return n
-      return {
-        ...n,
-        parentGroupId: null,
-        x: n.x + (group?.x ?? 0),
-        y: n.y + (group?.y ?? 0),
-      }
+      return { ...n, parentGroupId: null }
     })
     setSelectedGroupId(null)
     persist(current)
@@ -583,9 +743,20 @@ function NetworkMapEditor() {
 
   const onStencil = (stencil: NetworkMapStencil) => {
     if (!selected) return
+    setNodes((ns) =>
+      ns.map((n) => (n.id === selected.id ? { ...n, data: { ...n.data, stencil } } : n)),
+    )
+    setMergedNodes((ns) => ns.map((n) => (n.id === selected.id ? { ...n, stencil } : n)))
     const current = sceneFromCanvas()
     current.nodes = current.nodes.map((n) => (n.id === selected.id ? { ...n, stencil } : n))
     persist(current)
+    const bind = selected.bind
+    const dtype = deviceTypeForStencil(stencil)
+    if (canEdit && bind?.type === 'network_device' && dtype) {
+      void api.patchNetworkDevice(bind.id, { device_type: dtype }).catch((e) => {
+        toastRef.current.error(e instanceof Error ? e.message : tRef.current('network.saveFailed'))
+      })
+    }
   }
 
   const onBind = (bind: NetworkMapBind | null, extra?: { label?: string; ip?: string | null; stencil?: NetworkMapStencil }) => {
@@ -669,19 +840,66 @@ function NetworkMapEditor() {
     }
   }
 
+  const applyUndo = useCallback(
+    (direction: 'undo' | 'redo') => {
+      if (!canEdit) return
+      const current = sceneFromCanvas()
+      const next = direction === 'undo' ? undoRef.current.undo(current) : undoRef.current.redo(current)
+      if (!next) return
+      paint(next)
+      setUndoEpoch((n) => n + 1)
+      if (saveTimer.current) window.clearTimeout(saveTimer.current)
+      saveTimer.current = window.setTimeout(() => {
+        setSaving(true)
+        void api
+          .saveNetworkMapScene({ scene: next, title: sceneTitleRef.current }, sceneIdRef.current)
+          .catch((e) => toastRef.current.error(e instanceof Error ? e.message : tRef.current('networkMap.saveFailed')))
+          .finally(() => setSaving(false))
+      }, 280)
+    },
+    [canEdit, paint, sceneFromCanvas],
+  )
+
   const fitAround = useCallback(
     (ids: string[]) => {
       const unique = [...new Set(ids.filter(Boolean))]
       if (!unique.length) return
       fitView({
         nodes: unique.map((id) => ({ id })),
-        padding: 0.35,
+        padding: 0.22,
         duration: 0,
-        maxZoom: 1.05,
+        maxZoom: 1.35,
       })
     },
     [fitView],
   )
+
+  const jumpSearch = useCallback(() => {
+    const hits = mergedNodes.filter((n) => matchMapQuery(n, searchQuery))
+    if (!hits.length) return
+    setSelectedId(hits[0].id)
+    setSelectedGroupId(null)
+    fitAround(hits.map((n) => n.id).slice(0, 12))
+  }, [fitAround, mergedNodes, searchQuery])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return
+      const key = event.key.toLowerCase()
+      if ((event.ctrlKey || event.metaKey) && key === 'z') {
+        event.preventDefault()
+        applyUndo(event.shiftKey ? 'redo' : 'undo')
+        return
+      }
+      if ((event.ctrlKey || event.metaKey) && key === 'y') {
+        event.preventDefault()
+        applyUndo('redo')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [applyUndo])
 
   const applyCluster = useCallback(
     (mode: 'place-missing' | 'gather-all', onlyTopoId?: string) => {
@@ -709,6 +927,9 @@ function NetworkMapEditor() {
     setExporting(true)
     pane?.classList.add('is-exporting')
     try {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      })
       await exportNetworkMapPng({ viewportEl, nodes: getNodes(), title: sceneTitleRef.current })
       toastRef.current.ok(tRef.current('networkMap.exportPngOk'))
     } catch {
@@ -790,30 +1011,62 @@ function NetworkMapEditor() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
-      <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
-        <NetworkMapScenesBar
+      <NetworkMapScenesBar
+        canEdit={canEdit}
+        scenes={scenes}
+        activeId={sceneId}
+        title={sceneTitle}
+        busy={loading || saving}
+        saving={saving}
+        search={searchQuery}
+        onSearch={setSearchQuery}
+        onSearchSubmit={jumpSearch}
+        onSelect={(id) => void openScene(id)}
+        onCreateBlank={() => void createScene('blank')}
+        onCreateTopology={() => void createScene('topology')}
+        onLayout={() => setLayoutConfirm(true)}
+        onClear={() => setClearOpen(true)}
+        onRename={(title, id) => void renameScene(title, id)}
+        onDelete={(id) => void deleteActive(id)}
+        onExportPng={() => void exportMap()}
+        exporting={exporting}
+        traceValue={traceTarget}
+        onTraceValue={setTraceTarget}
+        onTrace={() => void runTrace()}
+        tracing={tracing}
+        onUndo={() => applyUndo('undo')}
+        onRedo={() => applyUndo('redo')}
+        canUndo={undoEpoch >= 0 && undoRef.current.canUndo}
+        canRedo={undoRef.current.canRedo}
+      />
+      <div className="flex min-h-0 flex-1 overflow-hidden border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+        <NetworkMapTray
           canEdit={canEdit}
-          scenes={scenes}
-          activeId={sceneId}
-          title={sceneTitle}
-          busy={loading || saving}
-          saving={saving}
-          onSelect={(id) => void openScene(id)}
-          onCreateBlank={() => void createScene('blank')}
-          onCreateTopology={() => void createScene('topology')}
-          onLayout={() => void layoutActive()}
-          onRename={(title, id) => void renameScene(title, id)}
-          onDelete={(id) => void deleteActive(id)}
-          onExportPng={() => void exportMap()}
-          exporting={exporting}
-          traceValue={traceTarget}
-          onTraceValue={setTraceTarget}
-          onTrace={() => void runTrace()}
-          tracing={tracing}
+          open={trayOpen}
+          onOpenChange={(open) => {
+            setTrayOpen(open)
+            try {
+              localStorage.setItem(TRAY_STORE_KEY, open ? '1' : '0')
+            } catch {
+              /* ignore */
+            }
+          }}
+          trayQuery={trayQuery}
+          onTrayQuery={setTrayQuery}
+          gear={trayGear}
+          layers={layers}
+          activeCidr={activeCidr}
+          onFilterCidr={(cidr) => {
+            setActiveCidr(cidr)
+            if (!cidr) return
+            const ids = mergedNodes.filter((n) => ipv4Slash24(n.ip) === cidr).map((n) => n.id)
+            if (ids.length) fitAround(ids)
+          }}
+          onPlaceGear={(item) => placeGear(item)}
         />
-        <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <div ref={paneRef} className="network-map-canvas relative min-h-0 flex-1">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="relative min-h-0 flex-1">
+            <div ref={paneRef} className="network-map-canvas relative h-full min-h-0">
             {loading ? (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-bg)] text-sm text-[var(--color-fg-subtle)]">
                 {t('common.loading')}
@@ -832,14 +1085,19 @@ function NetworkMapEditor() {
               edgeTypes={EDGE_TYPES}
               defaultEdgeOptions={{ type: 'cable' }}
               connectionLineType={ConnectionLineType.SmoothStep}
-              connectionLineStyle={{ stroke: 'var(--color-primary)', strokeWidth: 1.6 }}
+              connectionLineStyle={{ stroke: 'var(--color-primary)', strokeWidth: 2.2 }}
+              connectionMode={ConnectionMode.Loose}
+              connectionRadius={36}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
+              onNodeDragStart={onNodeDragStart}
+              onNodeDrag={onNodeDrag}
               onNodeDragStop={onNodeDragStop}
               onMoveEnd={onMoveEnd}
               onConnectStart={() => setLinking(true)}
               onConnectEnd={() => setLinking(false)}
               onConnect={onConnect}
+              isValidConnection={isValidConnection}
               onEdgesDelete={onEdgesDelete}
               onNodesDelete={onNodesDelete}
               onDrop={onDrop}
@@ -866,7 +1124,7 @@ function NetworkMapEditor() {
               snapToGrid
               snapGrid={[20, 20]}
               minZoom={0.08}
-              maxZoom={1.8}
+              maxZoom={2.4}
               fitView={!scene.viewport}
               fitViewOptions={{ padding: 0.18 }}
               proOptions={RF_PRO}
@@ -878,73 +1136,42 @@ function NetworkMapEditor() {
                 color="color-mix(in srgb, var(--color-fg) 7%, transparent)"
               />
               <Controls showInteractive={false} />
-              {!empty ? (
-                <MiniMap
-                  pannable
-                  zoomable
-                  nodeStrokeWidth={0}
-                  nodeColor="var(--color-fg-muted)"
-                  maskColor="color-mix(in srgb, var(--color-bg) 55%, transparent)"
-                  style={{ background: 'var(--color-surface)' }}
-                />
-              ) : null}
             </ReactFlow>
-            {!empty ? (
-              <div className="network-map-legend pointer-events-none absolute bottom-3 left-3 z-10 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/92 px-2.5 py-2 text-[10px] leading-4 text-[var(--color-fg-muted)]">
-                <div className="mb-1 font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                  {t('networkMap.legendTitle')}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-block h-px w-5 bg-[var(--color-primary)]" />
-                  {t('networkMap.legendLldp')}
-                </div>
-                <div className="mt-0.5 flex items-center gap-1.5">
-                  <span className="inline-block h-px w-5 bg-[var(--color-fg)]" />
-                  {t('networkMap.legendManual')}
-                </div>
-                <div className="mt-0.5 flex items-center gap-1.5">
-                  <span className="inline-block w-5 border-t border-dashed border-[var(--color-fg-muted)]" />
-                  {t('networkMap.legendLan')}
-                </div>
-                <div className="mt-0.5 flex items-center gap-1.5">
-                  <span className="inline-block h-px w-5 bg-[#7c3aed]" />
-                  {t('networkMap.legendTrace')}
+          </div>
+            {selected || selectedGroup ? (
+              <div className="network-map-inspector-overlay pointer-events-none absolute inset-y-2 right-2 z-20 flex max-h-full justify-end">
+                <div className="pointer-events-auto max-h-full">
+                  <NetworkMapInspector
+                    overlay
+                    canEdit={canEdit}
+                    node={selected}
+                    group={selected ? null : selectedGroup}
+                    neighbors={neighborOffers}
+                    neighborsBusy={neighborsBusy}
+                    onLabel={onLabel}
+                    onStencil={onStencil}
+                    onBind={onBind}
+                    onDelete={onDelete}
+                    onOpenCard={onOpenCard}
+                    onGroupTitle={onGroupTitle}
+                    onDeleteGroup={onDeleteGroup}
+                    onReplaceImage={(file) => void replaceSelectedImage(file)}
+                    onPlaceNeighbor={(topoId) => applyCluster('place-missing', topoId)}
+                    onFocusNeighbor={(canvasId) => {
+                      setSelectedId(canvasId)
+                      setSelectedGroupId(null)
+                      fitAround([canvasId, selectedId || canvasId])
+                    }}
+                    onPlaceAllNeighbors={() => applyCluster('place-missing')}
+                    onGatherNeighbors={() => applyCluster('gather-all')}
+                  />
                 </div>
               </div>
             ) : null}
           </div>
-          <NetworkMapPalette
-            canEdit={canEdit}
-            onPick={(payload) => placePayload(payload, canvasCenter())}
-            onRequestBlank={() => setClearOpen(true)}
-            onImportImage={(file) => void placeImage(file)}
-          />
-        </div>
-        {selected || selectedGroup ? (
-          <NetworkMapInspector
-            canEdit={canEdit}
-            node={selected}
-            group={selected ? null : selectedGroup}
-            neighbors={neighborOffers}
-            neighborsBusy={neighborsBusy}
-            onLabel={onLabel}
-            onStencil={onStencil}
-            onBind={onBind}
-            onDelete={onDelete}
-            onOpenCard={onOpenCard}
-            onGroupTitle={onGroupTitle}
-            onDeleteGroup={onDeleteGroup}
-            onReplaceImage={(file) => void replaceSelectedImage(file)}
-            onPlaceNeighbor={(topoId) => applyCluster('place-missing', topoId)}
-            onFocusNeighbor={(canvasId) => {
-              setSelectedId(canvasId)
-              setSelectedGroupId(null)
-              fitAround([canvasId, selectedId || canvasId])
-            }}
-            onPlaceAllNeighbors={() => applyCluster('place-missing')}
-            onGatherNeighbors={() => applyCluster('gather-all')}
-          />
-        ) : null}
+          {canEdit ? (
+            <NetworkMapDock onPick={(payload) => placePayload(payload, canvasCenter())} onImportImage={(file) => void placeImage(file)} />
+          ) : null}
         </div>
       </div>
       {detail?.kind === 'network_device' ? (
@@ -965,6 +1192,18 @@ function NetworkMapEditor() {
         <PrinterDetailModal printer={detail.printer} onClose={() => setDetail(null)} />
       ) : null}
       <NetworkMapClearDialog open={clearOpen} onClose={() => setClearOpen(false)} onConfirm={onBlank} />
+      <NetworkMapConfirmDialog
+        open={layoutConfirm}
+        title={t('networkMap.sceneLayoutConfirmTitle')}
+        body={t('networkMap.sceneLayoutConfirmBody')}
+        confirmLabel={t('networkMap.sceneLayoutConfirmBtn')}
+        onClose={() => setLayoutConfirm(false)}
+        onConfirm={() => {
+          setLayoutConfirm(false)
+          void layoutActive()
+        }}
+      />
     </div>
   )
 }
+

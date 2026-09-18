@@ -37,11 +37,11 @@ def test_dockerish_and_sam_account():
     assert sam_account("ivanov@corp.local") == "ivanov"
 
 
-def test_intake_status_starts_in_progress():
-    assert normalize_intake_status(None) == "in_progress"
-    assert normalize_intake_status("new") == "in_progress"
-    assert normalize_intake_status("open") == "in_progress"
-    assert normalize_intake_status("in_progress") == "in_progress"
+def test_intake_status_starts_open():
+    assert normalize_intake_status(None) == "open"
+    assert normalize_intake_status("new") == "open"
+    assert normalize_intake_status("open") == "open"
+    assert normalize_intake_status("in_progress") == "open"
     assert normalize_intake_status("done") == "done"
 
 

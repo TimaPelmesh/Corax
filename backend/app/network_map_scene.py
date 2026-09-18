@@ -8,6 +8,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.text_sanitize import pg_text
+
 SCENE_VERSION = 1
 SCENE_MAX_BYTES = 2_500_000
 MAX_GROUPS = 80
@@ -39,7 +41,7 @@ _IMAGE_DATA_RE = re.compile(
     r"^data:image/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/]+={0,2})$",
     re.IGNORECASE,
 )
-GROUP_KINDS = frozenset({"room", "rack"})
+GROUP_KINDS = frozenset({"room", "rack", "subnet"})
 BIND_TYPES = frozenset({"network_device", "computer", "printer", "corax", "zabbix"})
 LINK_ENDPOINT_TYPES = frozenset({"network_device", "computer", "printer", "corax"})
 SCENE_LINK_TYPES = frozenset(
@@ -73,10 +75,8 @@ def _num(value: object, *, default: float = 0.0, lo: float | None = None, hi: fl
 
 
 def _str(value: object, *, max_len: int, default: str = "") -> str:
-    if value is None:
-        return default
-    s = str(value).strip()
-    return s[:max_len] if s else default
+    cleaned = pg_text(value, max_len=max_len)
+    return cleaned if cleaned is not None else default
 
 
 def _opt_str(value: object, *, max_len: int) -> str | None:
@@ -158,17 +158,22 @@ def normalize_scene(raw: object) -> dict[str, Any]:
         kind = _str(item.get("kind"), max_len=16, default="room").lower()
         if kind not in GROUP_KINDS:
             kind = "room"
-        groups.append(
-            {
-                "id": gid,
-                "title": _str(item.get("title"), max_len=120, default="Серверная"),
-                "kind": kind,
-                "x": _num(item.get("x")),
-                "y": _num(item.get("y")),
-                "width": _num(item.get("width"), default=420, lo=160, hi=2400),
-                "height": _num(item.get("height"), default=280, lo=120, hi=1800),
-            }
-        )
+        default_title = "Подсеть" if kind == "subnet" else "Серверная"
+        group: dict[str, Any] = {
+            "id": gid,
+            "title": _str(item.get("title"), max_len=120, default=default_title),
+            "kind": kind,
+            "x": _num(item.get("x")),
+            "y": _num(item.get("y")),
+            "width": _num(item.get("width"), default=420, lo=160, hi=2400),
+            "height": _num(item.get("height"), default=280, lo=120, hi=1800),
+        }
+        cidr = _opt_str(item.get("cidr"), max_len=64)
+        if cidr:
+            group["cidr"] = cidr
+        if item.get("collapsed"):
+            group["collapsed"] = True
+        groups.append(group)
 
     nodes: list[dict[str, Any]] = []
     seen_nodes: set[str] = set()

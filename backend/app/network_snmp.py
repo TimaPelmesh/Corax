@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover
         SnmpV1 = None
 
 from app.network_classify import ClassifyHints, build_hints_from_interfaces, classify_device, normalize_mac
+from app.text_sanitize import pg_text
 from app.network_snmp_vendors import (
     OID_DOT1Q_FDB_PORT,
     OID_IF_ALIAS,
@@ -201,12 +202,11 @@ def _oid_to_str(oid: Any) -> str:
 
 def _decode_snmp_scalar(raw: Any) -> Any:
     if isinstance(raw, bytes):
-        for enc in ("utf-8", "cp866", "cp1251", "latin-1"):
-            try:
-                return raw.decode(enc).strip("\x00").strip()
-            except UnicodeDecodeError:
-                continue
-        return raw
+        cleaned = pg_text(raw)
+        return cleaned if cleaned is not None else ""
+    if isinstance(raw, str):
+        cleaned = pg_text(raw)
+        return cleaned if cleaned is not None else ""
     return raw
 
 
@@ -518,7 +518,10 @@ async def fetch_network_snmp(
             _walk_oid_map(client, OID_IF_SPEED, walk_timeout),
             _walk_oid_map(client, OID_IF_PHYS, walk_timeout),
         )
-        keys = sorted(set(if_descr) | set(if_name) | set(if_type) | set(if_oper), key=lambda k: int(k) if k.isdigit() else k)
+        keys = sorted(
+            set(if_descr) | set(if_name) | set(if_type) | set(if_oper),
+            key=lambda k: (0, int(k)) if str(k).isdigit() else (1, str(k)),
+        )
         for key in keys[:256]:
             try:
                 itype = int(if_type[key]) if key in if_type and if_type[key] is not None else None
@@ -533,8 +536,8 @@ async def fetch_network_snmp(
             except (TypeError, ValueError):
                 speed = None
             mac = normalize_mac(if_phys.get(key))
-            name = str(if_name.get(key) or "").strip() or None
-            descr = str(if_descr.get(key) or "").strip() or None
+            name = pg_text(if_name.get(key), max_len=128)
+            descr = pg_text(if_descr.get(key), max_len=255)
             snap.interfaces.append(
                 SnmpInterface(
                     if_index=key,
@@ -562,9 +565,9 @@ async def fetch_network_snmp(
             _walk_oid_map(client, OID_IF_ALIAS, walk_timeout),
         )
         for iface in snap.interfaces:
-            alias = str(if_alias.get(iface.if_index) or "").strip()
+            alias = pg_text(if_alias.get(iface.if_index), max_len=128)
             if alias and not iface.name:
-                iface.name = alias[:128]
+                iface.name = alias
         man_by_rem: dict[str, str] = {}
         for key, val in lldp_man.items():
             idx = _lldp_rem_index(key)
@@ -577,9 +580,9 @@ async def fetch_network_snmp(
             local_port = None
             if local_if and local_if in if_by_index:
                 local_port = if_by_index[local_if].name or if_by_index[local_if].descr
-            rem_name = str(lldp_name.get(key) or "").strip() or None
-            rem_port = str(lldp_port.get(key) or lldp_pdesc.get(key) or "").strip() or None
-            rem_desc = str(lldp_sdesc.get(key) or "").strip() or None
+            rem_name = pg_text(lldp_name.get(key), max_len=128)
+            rem_port = pg_text(lldp_port.get(key) or lldp_pdesc.get(key), max_len=128)
+            rem_desc = pg_text(lldp_sdesc.get(key), max_len=255)
             rem_ip = man_by_rem.get(key) or man_by_rem.get(_lldp_rem_index(key) or "")
             rem_ch = normalize_mac(lldp_ch.get(key))
             if not rem_name and not rem_port and not rem_ip and not rem_ch:
@@ -610,9 +613,9 @@ async def fetch_network_snmp(
             local_port = None
             if local_if and local_if in if_by_index:
                 local_port = if_by_index[local_if].name or if_by_index[local_if].descr
-            rem_name = str(cdp_id.get(key) or "").strip() or None
-            rem_port = str(cdp_port.get(key) or "").strip() or None
-            rem_desc = str(cdp_plat.get(key) or "").strip() or None
+            rem_name = pg_text(cdp_id.get(key), max_len=128)
+            rem_port = pg_text(cdp_port.get(key), max_len=128)
+            rem_desc = pg_text(cdp_plat.get(key), max_len=255)
             rem_ip = _bytes_or_str_ip(cdp_addr.get(key))
             if not rem_name and not rem_ip:
                 continue
@@ -666,7 +669,7 @@ async def fetch_network_snmp(
             if not mac:
                 continue
             port_raw = fdb_port.get(key)
-            port_str = str(port_raw).strip() if port_raw is not None else None
+            port_str = pg_text(port_raw, max_len=32) if port_raw is not None else None
             if_index = port_to_if.get(port_str) if port_str else None
             snap.fdb.append(SnmpFdbEntry(mac=mac, port=port_str, if_index=if_index))
             if len(snap.fdb) >= 4000:

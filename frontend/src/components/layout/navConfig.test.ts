@@ -13,25 +13,39 @@ describe('buildNavSections', () => {
     expect(settings?.items.at(-1)?.to).toBe('/settings/https')
   })
 
-  it('keeps knowledge-base tabs that the Guide documents', () => {
+  it('puts the floor map and Zabbix with inventory, next to risks and the network map', () => {
+    const sections = buildNavSections({ is_superuser: true })
+    const inventory = (sections.find((s) => s.titleKey === 'nav.inventory')?.items ?? []).map((i) => i.to)
+    expect(inventory).toEqual([
+      '/',
+      '/risks',
+      '/knowledge-base/zabbix',
+      '/computers',
+      '/software',
+      '/printers',
+      '/network',
+      '/network-map',
+      '/knowledge-base/sitemap',
+      '/warehouse',
+    ])
+  })
+
+  it('keeps knowledge as WikiRAG, the guide, and notes', () => {
     const sections = buildNavSections({ is_superuser: true })
     const kb = sections.find((s) => s.titleKey === 'nav.knowledge')
     const paths = (kb?.items ?? []).map((i) => i.to)
-    expect(paths).toEqual([
-      '/knowledge-base/sitemap',
-      '/knowledge-base/guide',
-      '/knowledge-base/wikirag',
-      '/knowledge-base/notes',
-      '/knowledge-base/zabbix',
-    ])
+    expect(paths).toEqual(['/knowledge-base/wikirag', '/knowledge-base/guide', '/knowledge-base/notes'])
   })
 })
 
 describe('prefsNavItems', () => {
-  it('includes guide and zabbix data for every role', () => {
+  it('still lists every moved tab so hidden-nav prefs keep working', () => {
     const paths = prefsNavItems({ role: 'observer' }).map((i) => i.path)
     expect(paths).toContain('/knowledge-base/guide')
     expect(paths).toContain('/knowledge-base/zabbix')
+    expect(paths).toContain('/knowledge-base/sitemap')
+    expect(paths).toContain('/knowledge-base/notes')
+    expect(paths).toContain('/knowledge-base/wikirag')
     expect(paths).not.toContain('/users')
   })
 })

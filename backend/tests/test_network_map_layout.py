@@ -44,6 +44,70 @@ def test_layout_keeps_pc_with_lldp():
     assert "computer:2" in ids
 
 
+def test_layout_keeps_pc_with_fdb():
+    scene = layout_topology_scene(
+        [
+            {"id": "network_device:1", "kind": "network_device", "ref_id": 1, "label": "sw", "device_type": "switch"},
+            {"id": "computer:2", "kind": "computer", "ref_id": 2, "label": "pc", "device_type": "computer"},
+        ],
+        [{"id": "e1", "source": "network_device:1", "target": "computer:2", "link_type": "fdb"}],
+    )
+    ids = {n["id"] for n in scene["nodes"]}
+    assert "computer:2" in ids
+
+
+def test_layout_groups_multiple_subnets_around_gateway():
+    scene = layout_topology_scene(
+        [
+            {
+                "id": "network_device:1",
+                "kind": "network_device",
+                "ref_id": 1,
+                "label": "gw-core",
+                "device_type": "router",
+                "ip_address": "10.0.0.1",
+                "ip_addresses": ["10.0.0.1", "10.1.0.1"],
+                "ip_forwarding": True,
+            },
+            {
+                "id": "network_device:2",
+                "kind": "network_device",
+                "ref_id": 2,
+                "label": "sw-a",
+                "device_type": "switch",
+                "ip_address": "10.0.0.10",
+            },
+            {
+                "id": "network_device:3",
+                "kind": "network_device",
+                "ref_id": 3,
+                "label": "sw-b",
+                "device_type": "switch",
+                "ip_address": "10.1.0.10",
+            },
+            {"id": "corax:self", "kind": "corax", "ref_id": 0, "label": "Corax", "device_type": "corax", "ip_address": "10.0.0.5"},
+        ],
+        [{"id": "e1", "source": "network_device:1", "target": "network_device:2", "link_type": "lldp"}],
+    )
+    groups = scene["groups"]
+    assert groups == []
+    by_id = {n["id"]: n for n in scene["nodes"]}
+    assert by_id["network_device:1"].get("parentGroupId") in (None, "")
+    assert by_id["network_device:2"].get("parentGroupId") in (None, "")
+    assert by_id["network_device:3"].get("parentGroupId") in (None, "")
+    assert by_id["network_device:2"]["x"] != by_id["network_device:3"]["x"] or by_id["network_device:2"]["y"] != by_id["network_device:3"]["y"]
+    assert any(e.get("link_type") == "subnet" for e in scene["edges"])
+    scene = layout_topology_scene(
+        [
+            {"id": "network_device:1", "kind": "network_device", "ref_id": 1, "label": "sw", "device_type": "switch"},
+            {"id": "computer:2", "kind": "computer", "ref_id": 2, "label": "pc", "device_type": "computer"},
+        ],
+        [{"id": "e1", "source": "network_device:1", "target": "computer:2", "link_type": "lldp"}],
+    )
+    ids = {n["id"] for n in scene["nodes"]}
+    assert "computer:2" in ids
+
+
 def test_layout_wraps_wide_switch_row():
     nodes = [
         {"id": f"network_device:{i}", "kind": "network_device", "ref_id": i, "label": f"sw{i}", "device_type": "switch"}
@@ -52,7 +116,7 @@ def test_layout_wraps_wide_switch_row():
     scene = layout_topology_scene(nodes, [])
     xs = [n["x"] for n in scene["nodes"]]
     ys = [n["y"] for n in scene["nodes"]]
-    assert max(xs) - min(xs) < 168 * 8
+    assert max(xs) - min(xs) < 196 * 8
     assert max(ys) > min(ys)
 
 

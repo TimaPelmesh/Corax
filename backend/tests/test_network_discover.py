@@ -34,9 +34,9 @@ def test_accept_vague_snmp_gateway():
     assert _accept_discovered(snap)
 
 
-def test_reject_printer():
+def test_accept_printer():
     snap = NetworkSnmpSnapshot(sys_descr="HP LaserJet", device_type="printer", is_network_gear=False)
-    assert not _accept_discovered(snap)
+    assert _accept_discovered(snap)
 
 
 def test_merge_communities_only_configured():

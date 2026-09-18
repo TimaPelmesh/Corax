@@ -31,6 +31,7 @@ type RoleFilter =
   | 'camera'
   | 'modem'
   | 'host'
+  | 'printer'
   | 'unknown'
 
 function fmtWhen(iso: string | null | undefined, locale: string) {
@@ -84,6 +85,8 @@ function roleTone(role: string) {
       return 'bg-rose-500/15 text-rose-800 dark:text-rose-200'
     case 'modem':
       return 'bg-orange-500/15 text-orange-800 dark:text-orange-200'
+    case 'printer':
+      return 'bg-stone-600/15 text-stone-800 dark:text-stone-200'
     case 'host':
       return 'bg-blue-500/15 text-blue-900 dark:text-blue-200'
     default:
@@ -173,7 +176,11 @@ export function NetworkPage() {
           jobWasRunning.current = false
           await reload()
           const msg = (st.last_result?.message as string) || st.message || t('network.pollDone')
-          toast.info(msg)
+          if (st.phase === 'error' || st.error) {
+            toast.error(t('network.pollFailed'))
+          } else {
+            toast.info(msg)
+          }
         }
       } catch {
         /* ignore status blips */
@@ -285,6 +292,7 @@ export function NetworkPage() {
     'controller',
     'server',
     'host',
+    'printer',
     'nas',
     'voip',
     'ups',

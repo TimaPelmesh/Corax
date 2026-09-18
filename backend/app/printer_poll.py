@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import platform
+import re
 import subprocess
 import time
 from dataclasses import asdict, dataclass
@@ -19,6 +20,14 @@ from app.printer_cleanup import snmp_tab_clause
 from app.printer_snmp_discover import discover_snmp_printers
 
 _WIN32 = platform.system().lower() == "windows"
+# Echo reply only. Windows exit 0 also covers "Destination host unreachable" from the gateway.
+_ECHO_TTL = re.compile(rb"(?i)(?<![A-Za-z])TTL\s*=\s*\d+")
+_CREATE_NO_WINDOW = 0x08000000
+
+
+def icmp_echo_ok(output: bytes | None) -> bool:
+    """True only when ping printed an ICMP echo TTL — not a gateway unreachable."""
+    return bool(output) and _ECHO_TTL.search(output) is not None
 
 
 def _poll_concurrency(cfg: EffectivePrinterPollConfig) -> int:
@@ -79,7 +88,7 @@ def format_poll_message(stats: PrinterPollStats) -> str:
 async def ping_ip(ip: str, timeout_ms: int = 1200) -> bool:
     system = platform.system().lower()
     if system == "windows":
-        cmd = ["ping", "-n", "1", "-w", str(timeout_ms), ip]
+        cmd = ["ping", "-n", "1", "-4", "-w", str(max(200, int(timeout_ms))), ip]
     else:
         sec = max(1, int(round(timeout_ms / 1000)))
         cmd = ["ping", "-c", "1", "-W", str(sec), ip]
@@ -87,12 +96,15 @@ async def ping_ip(ip: str, timeout_ms: int = 1200) -> bool:
     def run() -> bool:
         try:
             # Не text=True: ping на Windows RU отдаёт cp866, UTF-8 decode падает в _readerthread.
-            r = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=max(2, timeout_ms / 1000 + 1),
-            )
-            return r.returncode == 0
+            run_kw: dict = {
+                "capture_output": True,
+                "timeout": max(2, timeout_ms / 1000 + 1),
+            }
+            if system == "windows":
+                run_kw["creationflags"] = _CREATE_NO_WINDOW
+            r = subprocess.run(cmd, **run_kw)
+            blob = (r.stdout or b"") + b"\n" + (r.stderr or b"")
+            return icmp_echo_ok(blob)
         except (OSError, subprocess.TimeoutExpired):
             return False
 

@@ -33,10 +33,16 @@ export function contentBounds(
   for (const node of nodes) {
     const w = Number(node.width || node.style?.width || 176)
     const h = Number(node.height || node.style?.height || 80)
-    minX = Math.min(minX, node.position.x)
-    minY = Math.min(minY, node.position.y)
-    maxX = Math.max(maxX, node.position.x + w)
-    maxY = Math.max(maxY, node.position.y + h)
+    const x = Number(node.position?.x)
+    const y = Number(node.position?.y)
+    if (!Number.isFinite(w) || !Number.isFinite(h) || !Number.isFinite(x) || !Number.isFinite(y)) continue
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
+    maxX = Math.max(maxX, x + w)
+    maxY = Math.max(maxY, y + h)
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return { x: 0, y: 0, width: 1200, height: 800 }
   }
   return {
     x: minX - pad,
@@ -51,6 +57,7 @@ export function absoluteExportBoxes(
     id: string
     type?: string
     parentNode?: string
+    hidden?: boolean
     position: { x: number; y: number }
     positionAbsolute?: { x: number; y: number }
     width?: number | null
@@ -75,8 +82,9 @@ export function absoluteExportBoxes(
     }
     return { x, y }
   }
-  const gear = nodes.filter((n) => n.type === 'equipment')
-  const source = gear.length ? gear : nodes.filter((n) => n.type === 'equipment' || n.type === 'groupFrame')
+  const visible = nodes.filter((n) => n.hidden !== true)
+  const gear = visible.filter((n) => n.type === 'equipment')
+  const source = gear.length ? gear : visible.filter((n) => n.type === 'groupFrame')
   return source.map((n) => ({
     position: abs(n),
     width: Number(n.width || n.style?.width || 176),

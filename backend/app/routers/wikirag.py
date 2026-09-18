@@ -50,6 +50,7 @@ from app.wikirag_corax import (
     CORAX_INDEX_FILENAME,
     CORAX_LEGACY_FILENAMES,
     CORAX_NETWORK_MD,
+    CORAX_PRINTERS_MD,
     CORAX_README_FILENAME,
     CORAX_SOFTWARE_MD,
     CORAX_SOFTWARE_STATS_MD,
@@ -595,6 +596,8 @@ def _doc_excerpt_limit(
     cap = max_chars or 10_000
     if fn in (Path(CORAX_COMPUTERS_MD).name.lower(), Path(CORAX_HARDWARE_MD).name.lower()) and question_focus == "os_hardware":
         return min(6000, cap)
+    if fn == Path(CORAX_NETWORK_MD).name.lower() and question_focus == "network":
+        return min(8000, cap)
     if fn.startswith("corax_") and fn.endswith(".md"):
         return min(2200, cap)
     if fn == "00_system_index.md":
@@ -707,11 +710,24 @@ _HARDWARE_DOC_PRIORITY = (
 )
 
 
+_NETWORK_DOC_PRIORITY = (
+    CORAX_NETWORK_MD,
+    CORAX_PRINTERS_MD,
+    CORAX_COMPUTERS_MD,
+    CORAX_INDEX_FILENAME,
+    CORAX_HARDWARE_MD,
+    f"{CORAX_FOLDER}/CORAX_теги.md",
+)
+
+
 def _doc_priority_for_question(question: str) -> tuple[str, ...]:
     from app.wikirag_lm import classify_wikirag_question
 
-    if classify_wikirag_question(question) == "os_hardware":
+    focus = classify_wikirag_question(question)
+    if focus == "os_hardware":
         return _HARDWARE_DOC_PRIORITY
+    if focus == "network":
+        return _NETWORK_DOC_PRIORITY
     return _CORAX_DOC_PRIORITY
 
 
@@ -846,7 +862,7 @@ async def _prepare_chat_messages(
     )
     # Fit into token budget without deleting retrieved context first.
     if estimate_messages_tokens(messages) > prompt_token_budget():
-        messages = shrink_messages(messages, prompt_token_budget())
+        messages = shrink_messages(messages)
         corax_stats["shrunk"] = True
 
     return messages, mode, doc_meta, corax_stats, "", rag_sources

@@ -169,6 +169,8 @@ class TopologyNode(BaseModel):
     vendor: str | None = None
     snmp_status: str | None = None
     role: str | None = None
+    ip_addresses: list[str] = []
+    ip_forwarding: bool | None = None
 
 
 class TopologyEdge(BaseModel):
@@ -295,6 +297,22 @@ def _parse_json_list(raw: str | None) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         return []
     return [x for x in data if isinstance(x, dict)]
+
+
+def _topology_l3(extras: dict[str, Any], ip: str | None) -> tuple[list[str], bool | None]:
+    ips: list[str] = []
+    seen: set[str] = set()
+    raw_ips = extras.get("ip_addresses")
+    extra_list = raw_ips if isinstance(raw_ips, list) else []
+    for raw in [ip, *extra_list]:
+        value = str(raw or "").strip().split("/")[0]
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        ips.append(value)
+    fwd = extras.get("ip_forwarding")
+    forwarding = fwd if isinstance(fwd, bool) else None
+    return ips[:32], forwarding
 
 
 def _parse_extras(raw: str | None) -> dict[str, Any]:
@@ -440,13 +458,14 @@ def _scene_meta(row: NetworkMapScene) -> NetworkMapSceneMeta:
 
 def _device_out(row: NetworkDevice, *, include_details: bool = False) -> NetworkDeviceOut:
     dtype = row.device_type or "unknown"
+    extras = _parse_extras(getattr(row, "extras_json", None))
     role = infer_network_role(
         hostname=row.hostname,
         sys_name=row.sys_name,
         device_type=dtype,
         source=row.source,
+        extras_json=getattr(row, "extras_json", None),
     )
-    extras = _parse_extras(getattr(row, "extras_json", None))
     interfaces = _parse_json_list(row.interfaces_json) if include_details else []
     neighbors = _parse_json_list(row.neighbors_json) if include_details else []
     port_ifaces = interfaces if include_details else _parse_json_list(row.interfaces_json)
@@ -569,8 +588,16 @@ async def create_device(
             from app.network_poll import _apply_snapshot
 
             await _apply_snapshot(row, snap, now)
-            if snap.device_type and snap.device_type != "printer":
-                row.device_type = snap.device_type
+            if snap.device_type == "printer":
+                from app.network_snmp_discover import sync_printer_from_network_snap
+
+                await sync_printer_from_network_snap(
+                    db,
+                    row.ip_address,
+                    snap,
+                    now=now,
+                    snmp_status="error" if snap.error and not snap.sys_descr else "ok",
+                )
             await db.commit()
             await db.refresh(row)
     except Exception:
@@ -600,6 +627,34 @@ async def patch_device(
         if dtype not in _DEVICE_TYPES:
             raise HTTPException(status_code=400, detail="Некорректный тип устройства")
         row.device_type = dtype
+        extras: dict[str, Any] = {}
+        if getattr(row, "extras_json", None):
+            try:
+                loaded = json.loads(row.extras_json)
+                if isinstance(loaded, dict):
+                    extras = loaded
+            except (TypeError, json.JSONDecodeError):
+                extras = {}
+        extras["type_manual"] = True
+        row.extras_json = json.dumps(extras, ensure_ascii=False)
+        if dtype == "printer" and row.ip_address:
+            from app.network_snmp import NetworkSnmpSnapshot
+            from app.network_snmp_discover import sync_printer_from_network_snap
+
+            snap = NetworkSnmpSnapshot(
+                sys_name=row.sys_name or row.hostname,
+                sys_descr=row.sys_descr,
+                device_type="printer",
+                vendor=row.vendor,
+                sys_location=row.location,
+            )
+            await sync_printer_from_network_snap(
+                db,
+                row.ip_address,
+                snap,
+                now=datetime.now(timezone.utc),
+                snmp_status=(row.snmp_status or "ok"),
+            )
     if "location" in patch:
         loc = patch["location"]
         row.location = (loc or "").strip()[:255] or None
@@ -698,6 +753,8 @@ async def poll_device(
         row = await poll_single_device(db, device_id)
     except LookupError:
         raise HTTPException(status_code=404, detail="Устройство не найдено") from None
+    except Exception:
+        raise HTTPException(status_code=502, detail="SNMP-опрос не удался") from None
     return _device_out(row, include_details=True)
 
 
@@ -775,6 +832,8 @@ async def get_topology(
         if dtype in {"host", "pc"} and d.id not in linked_device_ids:
             continue
         nid = f"network_device:{d.id}"
+        extras = _parse_extras(getattr(d, "extras_json", None))
+        extra_ips, forwarding = _topology_l3(extras, d.ip_address)
         nodes[nid] = TopologyNode(
             id=nid,
             kind="network_device",
@@ -789,7 +848,10 @@ async def get_topology(
                 sys_name=d.sys_name,
                 device_type=d.device_type,
                 source=d.source,
+                extras_json=getattr(d, "extras_json", None),
             ),
+            ip_addresses=extra_ips,
+            ip_forwarding=forwarding,
         )
 
     # Inventory endpoints only when they already have a discovery link — map is gear-first.

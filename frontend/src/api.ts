@@ -72,7 +72,7 @@ function shouldAttachCsrf(method?: string): boolean {
 }
 
 function formatApiDetail(detail: unknown): string {
-  if (typeof detail === 'string') return detail
+  if (typeof detail === 'string') return sanitizeClientError(detail)
   if (Array.isArray(detail)) {
     const parts = detail
       .map((item) => {
@@ -84,21 +84,36 @@ function formatApiDetail(detail: unknown): string {
         return loc ? `${loc}: ${msg}` : msg
       })
       .filter((part): part is string => Boolean(part))
-    if (parts.length) return parts.join('; ')
+    if (parts.length) return sanitizeClientError(parts.join('; '))
   }
   if (detail == null) return ''
   try {
-    return JSON.stringify(detail)
+    return sanitizeClientError(JSON.stringify(detail))
   } catch {
-    return String(detail)
+    return sanitizeClientError(String(detail))
   }
+}
+
+function sanitizeClientError(message: string): string {
+  const low = message.toLowerCase()
+  if (
+    low.includes('sqlalchemy') ||
+    low.includes('asyncpg') ||
+    low.includes('psycopg') ||
+    low.includes('characternotinrepertoire') ||
+    (low.includes('utf8') && low.includes('0x00')) ||
+    low.includes('internal server error')
+  ) {
+    return 'Сервер не смог сохранить данные. Повторите действие.'
+  }
+  return message
 }
 
 async function request<T>(
   path: string,
   options: RequestInit & { json?: unknown; timeout_ms?: number } = {},
 ): Promise<T> {
-  const { json, timeout_ms, ...fetchOpts } = options
+  const { json, timeout_ms, keepalive, ...fetchOpts } = options
   const headers = new Headers(options.headers)
   if (json !== undefined) {
     headers.set('Content-Type', 'application/json')
@@ -108,16 +123,18 @@ async function request<T>(
     if (csrf) headers.set('X-CSRF-Token', csrf)
   }
 
-  const ctrl = new AbortController()
+  const persistAcrossUnload = Boolean(keepalive)
+  const ctrl = persistAcrossUnload ? null : new AbortController()
   const timeoutMs = timeout_ms ?? REQUEST_TIMEOUT_MS
-  const tid = window.setTimeout(() => ctrl.abort(), timeoutMs)
+  const tid = persistAcrossUnload ? 0 : window.setTimeout(() => ctrl?.abort(), timeoutMs)
   let res: Response
   try {
     res = await fetch(apiUrl(path), {
       ...fetchOpts,
       credentials: 'include',
       headers,
-      signal: ctrl.signal,
+      keepalive: persistAcrossUnload,
+      signal: ctrl?.signal,
       body: json !== undefined ? JSON.stringify(json) : options.body,
     })
   } catch (e) {
@@ -137,7 +154,7 @@ async function request<T>(
     }
     throw e instanceof Error ? e : new Error(raw)
   } finally {
-    window.clearTimeout(tid)
+    if (tid) window.clearTimeout(tid)
   }
   if (!res.ok) {
     const parsed = await res.json().catch(() => null)
@@ -1810,7 +1827,8 @@ export const api = {
       color?: NoteColor | null
       mark?: NoteMark | null
     },
-  ) => request<NoteRow>(`${API_PREFIX}/notes/${id}`, { method: 'PATCH', json: body }),
+    opts?: { keepalive?: boolean },
+  ) => request<NoteRow>(`${API_PREFIX}/notes/${id}`, { method: 'PATCH', json: body, keepalive: opts?.keepalive }),
 
   deleteNote: (id: number) => request<{ ok: boolean }>(`${API_PREFIX}/notes/${id}`, { method: 'DELETE' }),
 
@@ -3253,6 +3271,8 @@ export type NetworkTopologyNode = {
   vendor: string | null
   snmp_status: string | null
   role?: string | null
+  ip_addresses?: string[]
+  ip_forwarding?: boolean | null
 }
 
 export type NetworkTopologyEdge = {
@@ -3275,11 +3295,13 @@ export type NetworkMapScenePayload = {
   groups: Array<{
     id: string
     title: string
-    kind: 'room' | 'rack'
+    kind: 'room' | 'rack' | 'subnet'
     x: number
     y: number
     width: number
     height: number
+    collapsed?: boolean
+    cidr?: string | null
   }>
     nodes: Array<{
     id: string

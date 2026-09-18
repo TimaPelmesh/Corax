@@ -94,10 +94,15 @@ describe('guideCopy', () => {
     }
   })
 
-  it('covers every knowledge-base tab', () => {
+  it('documents knowledge as WikiRAG plus guide and notes; floor and Zabbix stay linked elsewhere', () => {
     const knowledge = guideCopy('ru').sections.find((s) => s.id === 'knowledge')
-    const tos = (knowledge?.links ?? []).map((l) => l.to)
-    expect(tos).toEqual(
+    expect((knowledge?.links ?? []).map((l) => l.to)).toEqual([
+      '/knowledge-base/wikirag',
+      '/knowledge-base/guide',
+      '/knowledge-base/notes',
+    ])
+    const allLinks = guideCopy('ru').sections.flatMap((s) => (s.links ?? []).map((l) => l.to))
+    expect(allLinks).toEqual(
       expect.arrayContaining([
         '/knowledge-base/sitemap',
         '/knowledge-base/guide',

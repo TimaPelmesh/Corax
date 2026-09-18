@@ -16,13 +16,14 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Computer, WikiRagDocument
+from app.models import Computer, NetworkDevice, WikiRagDocument
 from app.wikirag_corax import (
     _is_weakest_pc_question,
     _load_snapshot,
     build_inventory_analysis_hint,
     build_weakest_pcs_table,
 )
+from app.network_classify import infer_network_role
 from app.wikirag_index import build_context_from_chunks, retrieve_relevant_chunks
 from app.wikirag_lm import classify_wikirag_question
 
@@ -35,6 +36,7 @@ _WIKI_TOP_K = 15
 _HOSTNAME_RE = re.compile(
     r"\b([A-Za-z0-9][A-Za-z0-9_-]{2,31})\b"
 )
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _NOISE_HOST = {
     "win10",
     "win11",
@@ -200,6 +202,60 @@ async def tool_get_computer(db: AsyncSession, hostnames: list[str]) -> tuple[str
     return "\n".join(lines), sources
 
 
+def _guess_ips(question: str) -> list[str]:
+    return list(dict.fromkeys(_IPV4_RE.findall(question or "")))
+
+
+def _net_card(dev: NetworkDevice) -> str:
+    role = infer_network_role(
+        hostname=dev.hostname,
+        sys_name=dev.sys_name,
+        device_type=dev.device_type,
+        source=dev.source,
+        extras_json=getattr(dev, "extras_json", None),
+    )
+    return (
+        f"- network_id={dev.id} hostname={dev.hostname or '—'} sysName={dev.sys_name or '—'} "
+        f"ip={dev.ip_address or '—'} type={dev.device_type or '—'} role={role} "
+        f"vendor={dev.vendor or '—'} snmp={dev.snmp_status or '—'} location={dev.location or '—'}"
+    )
+
+
+async def tool_get_network_device(db: AsyncSession, needles: list[str]) -> tuple[str, list[RagSource]]:
+    tokens = [n.strip() for n in needles if n and n.strip()]
+    if not tokens:
+        return "", []
+    clauses = []
+    for tok in tokens[:12]:
+        clauses.append(NetworkDevice.ip_address == tok)
+        clauses.append(NetworkDevice.hostname.ilike(tok))
+        clauses.append(NetworkDevice.sys_name.ilike(tok))
+        if tok.isdigit():
+            clauses.append(NetworkDevice.id == int(tok))
+        elif "%" not in tok:
+            clauses.append(NetworkDevice.hostname.ilike(f"%{tok}%"))
+            clauses.append(NetworkDevice.sys_name.ilike(f"%{tok}%"))
+    r = await db.execute(select(NetworkDevice).where(or_(*clauses)).limit(16))
+    rows = list(r.scalars().all())
+    if not rows:
+        return "", []
+    lines: list[str] = ["### tool:get_network_device"]
+    sources: list[RagSource] = []
+    for dev in rows:
+        card = _net_card(dev)
+        lines.append(card)
+        sources.append(
+            RagSource(
+                kind="corax_tool",
+                label=f"Сеть {dev.hostname or dev.ip_address or dev.id}",
+                hostname=dev.hostname,
+                source_table="network",
+                excerpt=card[:220],
+            )
+        )
+    return "\n".join(lines), sources
+
+
 async def tool_query_corax(db: AsyncSession, question: str) -> tuple[str, list[RagSource]]:
     data = await _load_snapshot(db)
     focus = classify_wikirag_question(question)
@@ -262,6 +318,31 @@ async def tool_query_corax(db: AsyncSession, question: str) -> tuple[str, list[R
             parts.append(f"- [{status}] {title} · {host}".strip())
         return "\n".join(parts), sources
 
+    if focus == "network":
+        devices: list[NetworkDevice] = data.get("network_devices") or []
+        sources[0].excerpt = f"focus=network; devices={len(devices)}"
+        sources[0].label = f"Живой снимок сети ({len(devices)} устройств)"
+        sources[0].source_table = "network"
+        parts.append(f"Сетевых устройств в снимке: {len(devices)}")
+        ips = set(_guess_ips(question))
+        qlow = question.lower()
+        pinned: list[NetworkDevice] = []
+        rest: list[NetworkDevice] = []
+        for dev in devices:
+            ip = str(dev.ip_address or "")
+            blob = f"{dev.hostname or ''} {dev.sys_name or ''} {ip} {dev.device_type or ''}".lower()
+            if ip in ips or (qlow and any(tok in blob for tok in qlow.split() if len(tok) >= 3)):
+                pinned.append(dev)
+            else:
+                rest.append(dev)
+        show = (pinned + rest)[:80]
+        parts.append("Каталог IP · имя · тип · SNMP:")
+        for dev in show:
+            parts.append(_net_card(dev))
+        if len(devices) > 80:
+            parts.append(f"- … ещё {len(devices) - 80}")
+        return "\n".join(parts), sources
+
     # general: short park stats
     parts.append(
         f"Парк: {len(computers)} ПК, тегов={len(data.get('tags') or [])}, "
@@ -285,7 +366,7 @@ async def run_wikirag_tools(
 
     focus = classify_wikirag_question(q)
     # Для «топ слабых / железо» сначала живой рейтинг CORAX — wiki CSV только как дополнение.
-    if include_corax and focus == "os_hardware":
+    if include_corax and focus in {"os_hardware", "network"}:
         corax_block, corax_sources = await tool_query_corax(db, q)
         if corax_block:
             pack.tools_used.append("query_corax")
@@ -304,8 +385,12 @@ async def run_wikirag_tools(
     if include_corax:
         data = await _load_snapshot(db)
         computers: list[Computer] = data["computers"]
+        devices: list[NetworkDevice] = data.get("network_devices") or []
         known = {str(pc.hostname) for pc in computers if pc.hostname}
+        known.update(str(d.hostname) for d in devices if d.hostname)
+        known.update(str(d.sys_name) for d in devices if d.sys_name)
         hosts = _guess_hostnames(q, known)
+        ips = _guess_ips(q)
 
         if hosts:
             card_block, card_sources = await tool_get_computer(db, hosts)
@@ -313,6 +398,14 @@ async def run_wikirag_tools(
                 pack.tools_used.append("get_computer")
                 blocks.append(card_block)
                 pack.sources.extend(card_sources)
+
+        net_needles = list(dict.fromkeys([*ips, *hosts]))
+        if net_needles:
+            net_block, net_sources = await tool_get_network_device(db, net_needles)
+            if net_block:
+                pack.tools_used.append("get_network_device")
+                blocks.append(net_block)
+                pack.sources.extend(net_sources)
 
         if "query_corax" not in pack.tools_used:
             corax_block, corax_sources = await tool_query_corax(db, q)
@@ -322,6 +415,7 @@ async def run_wikirag_tools(
                 pack.sources.extend(corax_sources)
 
         pack.stats["computers"] = len(computers)
+        pack.stats["network_devices"] = len(devices)
         pack.stats["snapshot_at"] = datetime.now(timezone.utc).isoformat()
 
     pack.stats["tools"] = list(pack.tools_used)

@@ -378,6 +378,9 @@ def install_exception_handlers(app, *, environment: str) -> None:
             "request_id": rid,
         }
         if expose:
-            body["error"] = str(exc)
+            raw = str(exc)
+            leaky = ("sqlalchemy", "asyncpg", "psycopg", "utf8", "0x00", "password", "community", "secret")
             body["exc_type"] = type(exc).__name__
+            if not any(token in raw.lower() for token in leaky):
+                body["error"] = raw[:240]
         return JSONResponse(status_code=500, content=body, headers={"X-Request-Id": rid or "-"})

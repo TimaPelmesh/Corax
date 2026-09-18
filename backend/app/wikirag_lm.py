@@ -12,7 +12,7 @@ from app.config import settings
 from app.wikirag_context_budget import shrink_messages
 
 ChatMode = Literal["simple", "rag"]
-QuestionFocus = Literal["os_hardware", "software", "tickets", "general"]
+QuestionFocus = Literal["os_hardware", "software", "tickets", "network", "general"]
 
 WIKIRAG_SYSTEM_RAG = """Ты полезный русскоязычный ассистент базы знаний CORAX (режим Ask).
 
@@ -353,6 +353,32 @@ def classify_wikirag_question(question: str) -> QuestionFocus:
     if any(
         k in low
         for k in (
+            "шлюз",
+            "gateway",
+            "коммутатор",
+            "свитч",
+            "switch",
+            "маршрутизатор",
+            "роутер",
+            "router",
+            "vlan",
+            "подсет",
+            "lldp",
+            "cdp",
+            "сетев",
+            "mikrotik",
+            "cisco",
+            "точка доступа",
+            "access point",
+            "firewall",
+            "межсетев",
+            "network device",
+        )
+    ):
+        return "network"
+    if any(
+        k in low
+        for k in (
             "windows",
             "виндов",
             "win10",
@@ -437,6 +463,13 @@ def is_small_talk(question: str) -> bool:
         "документ",
         "файл",
         "md",
+        "шлюз",
+        "коммутатор",
+        "свитч",
+        "роутер",
+        "vlan",
+        "lldp",
+        "сетев",
     )
     if any(k in q for k in inventory_keys):
         return False

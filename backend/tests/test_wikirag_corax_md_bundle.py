@@ -187,6 +187,7 @@ def test_corax_bundle_lives_under_inventory_folder():
     assert "1C:Enterprise" in users
     assert "## sw-core (network_id=3)" in network
     assert "192.168.1.1" in network
+    assert "Каталог" in network
     assert "Роль" in network or "Сводка по ролям" in network
     assert "Gi1/0/1" in network
     assert "PC-ACC-01" in network

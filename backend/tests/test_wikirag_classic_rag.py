@@ -19,6 +19,8 @@ def test_recursive_split_small_chunks_still_works():
 def test_classify_installed_software_not_hardware():
     assert classify_wikirag_question("У кого установлено Chrome?") == "software"
     assert classify_wikirag_question("кому ставить windows 10") == "os_hardware"
+    assert classify_wikirag_question("какой шлюз в сети") == "network"
+    assert classify_wikirag_question("где коммутатор cisco") == "network"
 
 
 def test_inventory_questions_are_not_small_talk():

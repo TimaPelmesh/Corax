@@ -1,25 +1,39 @@
 .network-map-canvas {
-  background:
-    radial-gradient(1100px 620px at 50% 30%, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent 68%),
-    var(--color-surface);
+  background: var(--color-surface);
 }
 
-.network-map-canvas .react-flow__handle {
+.network-map-canvas .react-flow__handle.network-map-jack {
+  width: 14px;
+  height: 14px;
+  background: var(--color-surface);
+  border: 2px solid var(--color-primary);
+  border-radius: 999px;
   opacity: 0;
   pointer-events: none;
-  transform: scale(0.65);
-  transition:
-    opacity 80ms ease,
-    transform 80ms ease;
+  z-index: 22;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.06);
 }
 
-.network-map-canvas .react-flow__node.selected .react-flow__handle,
-.network-map-canvas .react-flow__node.is-neighbor .react-flow__handle,
-.network-map-canvas .is-hot-port .react-flow__handle,
-.network-map-canvas.is-linking .react-flow__handle {
-  opacity: 0.95;
+.network-map-canvas .react-flow__node.selected .network-map-jack,
+.network-map-canvas .react-flow__node.is-neighbor .network-map-jack,
+.network-map-canvas.is-linking .react-flow__handle.network-map-jack {
+  opacity: 1;
   pointer-events: auto;
-  transform: scale(1);
+}
+
+.network-map-canvas.is-linking .network-map-jack {
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 0 0 4px rgb(37 99 235 / 0.22);
+}
+
+.network-map-selection-box {
+  pointer-events: none;
+  position: absolute;
+  inset: -8px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: 12px;
+  z-index: 1;
 }
 
 .network-map-canvas .react-flow__edge.is-related .react-flow__edge-path {
@@ -38,14 +52,20 @@
 }
 
 .network-map-canvas .react-flow__background {
-  opacity: 0.85;
+  opacity: 0.7;
 }
 
-.network-map-canvas .react-flow__minimap {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 12px 32px -24px rgba(0, 0, 0, 0.55);
+.network-map-canvas .react-flow__node-groupFrame,
+.network-map-canvas .react-flow__node-equipment {
+  overflow: visible !important;
+}
+
+.network-map-canvas .react-flow__node-groupFrame {
+  z-index: 0;
+}
+
+.network-map-canvas .react-flow__node-equipment {
+  z-index: 2;
 }
 
 .network-map-canvas .react-flow__controls {
@@ -56,33 +76,84 @@
 }
 
 .network-map-canvas .react-flow__edge-path {
-  stroke-linecap: square;
-  stroke-linejoin: miter;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.network-map-signal-flow {
+  fill: none;
+  stroke-dasharray: 6 16;
+  stroke-linecap: round;
+  pointer-events: none;
+  animation: network-map-signal-flow 1.35s linear infinite;
+}
+
+.network-map-signal {
+  pointer-events: none;
+}
+
+@keyframes network-map-signal-flow {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .network-map-signal-flow,
+  .network-map-signal {
+    display: none;
+  }
 }
 
 .network-map-canvas.is-exporting .react-flow__handle,
-.network-map-canvas.is-exporting .react-flow__minimap,
 .network-map-canvas.is-exporting .react-flow__controls,
-.network-map-canvas.is-exporting .network-map-legend {
+.network-map-canvas.is-exporting .network-map-signal,
+.network-map-canvas.is-exporting .network-map-signal-flow,
+.network-map-canvas.is-exporting .network-map-resizer,
+.network-map-canvas.is-exporting .network-map-selection-box {
   display: none !important;
-}
-
-.network-map-legend {
-  box-shadow: 0 8px 24px -20px rgb(15 23 42 / 0.6);
 }
 
 .network-map-resizer {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 11px;
-  height: 11px;
-  cursor: nwse-resize;
+  width: 14px;
+  height: 14px;
   z-index: 24;
-  border-right: 2px solid var(--color-primary);
-  border-bottom: 2px solid var(--color-primary);
-  border-radius: 0 0 3px 0;
-  opacity: 0.85;
+  border: 2px solid var(--color-surface);
+  background: var(--color-primary);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgb(37 99 235 / 0.35);
+  opacity: 0.95;
+}
+
+.network-map-resizer::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
+.network-map-resizer.is-se {
+  right: -7px;
+  bottom: -7px;
+  cursor: nwse-resize;
+}
+
+.network-map-resizer.is-sw {
+  left: -7px;
+  bottom: -7px;
+  cursor: nesw-resize;
+}
+
+.network-map-resizer.is-ne {
+  right: -7px;
+  top: -7px;
+  cursor: nesw-resize;
+}
+
+.network-map-resizer.is-nw {
+  left: -7px;
+  top: -7px;
+  cursor: nwse-resize;
 }
 
 .network-map-scenes {
@@ -91,4 +162,8 @@
 
 .network-map-scenes-menu {
   max-height: min(24rem, 70vh);
+}
+
+.network-map-dock {
+  scrollbar-width: thin;
 }

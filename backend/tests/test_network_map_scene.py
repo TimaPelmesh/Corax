@@ -119,6 +119,31 @@ def test_normalize_scene_keeps_equipment_size():
     assert scene["edges"][0]["link_type"] == "trace"
 
 
+def test_normalize_scene_keeps_subnet_group():
+    scene = normalize_scene(
+        {
+            "version": 1,
+            "groups": [
+                {
+                    "id": "subnet:10.0.0.0/24",
+                    "title": "10.0.0.0/24",
+                    "kind": "subnet",
+                    "cidr": "10.0.0.0/24",
+                    "collapsed": True,
+                    "x": 10,
+                    "y": 20,
+                    "width": 400,
+                    "height": 300,
+                }
+            ],
+            "nodes": [],
+        }
+    )
+    assert scene["groups"][0]["kind"] == "subnet"
+    assert scene["groups"][0]["cidr"] == "10.0.0.0/24"
+    assert scene["groups"][0]["collapsed"] is True
+
+
 def test_normalize_scene_rejects_bad_version():
     with pytest.raises(HTTPException) as ei:
         normalize_scene({"version": 9, "groups": [], "nodes": [], "edges": [], "hiddenNodeIds": []})

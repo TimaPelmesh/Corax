@@ -8,6 +8,7 @@ from app.network_classify import (
     infer_network_role,
     normalize_mac,
     network_dedupe_key_for_ip,
+    network_type_is_manual,
 )
 
 
@@ -198,3 +199,26 @@ def test_infer_role_gateway_dns_infra():
     assert infer_network_role(hostname="DNS · 192.168.3.6", device_type="server") == "dns"
     assert infer_network_role(hostname="Infra · 192.168.3.1", device_type="unknown", source="arp-seed") == "infra"
     assert infer_network_role(hostname="core-sw-01", device_type="switch") == "switch"
+    assert infer_network_role(hostname="HP-M428", device_type="printer") == "printer"
+    assert infer_network_role(hostname="core-r1", device_type="gateway") == "gateway"
+    assert infer_network_role(hostname="Gateway · 10.0.0.1", device_type="printer") == "printer"
+    assert (
+        infer_network_role(
+            hostname="Gateway · 192.168.3.250",
+            device_type="switch",
+            type_manual=True,
+        )
+        == "switch"
+    )
+    assert (
+        infer_network_role(
+            hostname="DNS · 192.168.3.6",
+            device_type="ap",
+            extras_json='{"type_manual": true}',
+        )
+        == "ap"
+    )
+    assert "printer" in NETWORK_DEVICE_TYPES
+    assert "gateway" in NETWORK_DEVICE_TYPES
+    assert network_type_is_manual('{"type_manual": true}')
+    assert not network_type_is_manual(None)

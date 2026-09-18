@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Computer, NetworkDevice, NetworkLink, Printer
 from app.network_classify import normalize_mac
+from app.text_sanitize import pg_text
 
 _MAC_RE = re.compile(r"(?:[0-9a-f]{2}[:\-]){5}[0-9a-f]{2}|[0-9a-f]{12}", re.I)
 
@@ -184,6 +185,9 @@ async def upsert_link(
         from_type, to_type = to_type, from_type
         from_id, to_id = to_id, from_id
         local_port, remote_port = remote_port, local_port
+
+    local_port = pg_text(local_port, max_len=128)
+    remote_port = pg_text(remote_port, max_len=128)
 
     existing = (
         await db.execute(
@@ -547,7 +551,12 @@ async def rebuild_all_links(db: AsyncSession) -> LinkBuildResult:
     total.trace_links = await seed_trace_links(db, idx, list(devices))
     total.device_links += total.trace_links
     total.logical_links = await seed_logical_subnet_links(db, idx)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        total.message = "Связи не сохранены. Опрос устройств при этом не откатывается."
+        return total
     total.message = (
         f"Связи: устройств {total.device_links}, ПК {total.computer_links}, "
         f"принтеров {total.printer_links}, маршрутов {total.trace_links}, "

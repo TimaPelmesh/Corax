@@ -31,6 +31,19 @@ export function stencilForBind(type: NetworkMapBindType, deviceType?: string | n
   return stencilForDeviceType(deviceType)
 }
 
+export function deviceTypeForStencil(stencil: NetworkMapStencil): string | null {
+  if (stencil === 'router') return 'router'
+  if (stencil === 'switch') return 'switch'
+  if (stencil === 'ap') return 'ap'
+  if (stencil === 'firewall') return 'firewall'
+  if (stencil === 'server') return 'server'
+  if (stencil === 'nas') return 'nas'
+  if (stencil === 'printer') return 'printer'
+  if (stencil === 'pc') return 'host'
+  if (stencil === 'unknown') return 'unknown'
+  return null
+}
+
 function liveMap(items: MapLiveItem[]): Map<string, MapLiveItem> {
   const out = new Map<string, MapLiveItem>()
   for (const item of items) {

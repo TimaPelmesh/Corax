@@ -82,6 +82,12 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           keywords: ['risk', 'риски', 'security', 'безопасность', 'ai', 'ии'],
         },
         {
+          to: '/knowledge-base/zabbix',
+          icon: IconZabbix,
+          labelKey: 'nav.zabbixData',
+          keywords: ['zabbix', 'мониторинг', 'алерты', 'problems', 'hosts'],
+        },
+        {
           to: '/computers',
           icon: IconPcs,
           labelKey: 'nav.computers',
@@ -113,6 +119,13 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           icon: IconNetworkMap,
           labelKey: 'nav.networkMap',
           keywords: ['карта сети', 'topology', 'packet tracer', 'серверная', 'схема', 'lldp'],
+        },
+        {
+          to: '/knowledge-base/sitemap',
+          end: true,
+          icon: IconGraph,
+          labelKey: 'nav.sitemap',
+          keywords: ['карта знаний', 'sitemap', 'этаж', 'floor', 'здание', 'план'],
         },
         {
           to: '/warehouse',
@@ -153,11 +166,10 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
       collapsible: true,
       items: [
         {
-          to: '/knowledge-base/sitemap',
-          end: true,
-          icon: IconGraph,
-          labelKey: 'nav.sitemap',
-          keywords: ['карта знаний', 'sitemap', 'этаж', 'floor'],
+          to: '/knowledge-base/wikirag',
+          icon: IconAssistant,
+          labelKey: 'nav.wikirag',
+          keywords: ['wikirag', 'wiki', 'lm', 'rag', 'чат', 'chat'],
         },
         {
           to: '/knowledge-base/guide',
@@ -166,23 +178,11 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           keywords: ['руководство', 'справка', 'инструкция', 'guide', 'help'],
         },
         {
-          to: '/knowledge-base/wikirag',
-          icon: IconAssistant,
-          labelKey: 'nav.wikirag',
-          keywords: ['wikirag', 'wiki', 'lm', 'rag', 'чат', 'chat'],
-        },
-        {
           to: '/knowledge-base/notes',
           icon: IconPencil,
           labelKey: 'nav.notes',
           keywords: ['заметки', 'проекты', 'notes', 'plans', 'документы'],
           badgeKey: 'notes',
-        },
-        {
-          to: '/knowledge-base/zabbix',
-          icon: IconZabbix,
-          labelKey: 'nav.zabbixData',
-          keywords: ['zabbix', 'мониторинг', 'алерты', 'problems', 'hosts'],
         },
       ],
     },

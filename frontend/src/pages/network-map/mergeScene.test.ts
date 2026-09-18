@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bindsFromScene, hydrateScene } from './mergeScene'
+import { bindsFromScene, deviceTypeForStencil, hydrateScene } from './mergeScene'
 import { emptyNetworkMapScene } from './types'
 
 describe('hydrateScene', () => {
@@ -74,5 +74,15 @@ describe('hydrateScene', () => {
     expect(hydrated.nodes[0].kind).toBe('note')
     expect(hydrated.nodes[1].imageSrc).toBe('data:image/png;base64,aaa')
     expect(hydrated.nodes[1].width).toBe(180)
+  })
+})
+
+describe('deviceTypeForStencil', () => {
+  it('maps canvas stencils to stored network types', () => {
+    expect(deviceTypeForStencil('switch')).toBe('switch')
+    expect(deviceTypeForStencil('ap')).toBe('ap')
+    expect(deviceTypeForStencil('pc')).toBe('host')
+    expect(deviceTypeForStencil('note')).toBeNull()
+    expect(deviceTypeForStencil('corax')).toBeNull()
   })
 })

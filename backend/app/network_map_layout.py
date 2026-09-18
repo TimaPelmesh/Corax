@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import heapq
+import ipaddress
 import json
 import re
 from typing import Any
@@ -31,7 +32,9 @@ _LAYER = {
 _ENDPOINT_KINDS = frozenset({"computer", "printer"})
 _ENDPOINT_TYPES = frozenset({"host", "pc", "computer", "printer"})
 _STRONG_LINKS = frozenset({"lldp", "cdp", "mndp", "ndp", "fdp", "edp", "isdp", "hndp"})
+_ENDPOINT_LINKS = _STRONG_LINKS | {"fdb"}
 _PARENT_LINKS = _STRONG_LINKS | {"trace", "fdb"}
+_GATEWAY_TYPES = frozenset({"router", "gateway", "firewall", "modem"})
 _PATH_WEIGHT = {
     "lldp": 1,
     "cdp": 1,
@@ -47,15 +50,27 @@ _PATH_WEIGHT = {
     "subnet": 12,
     "lan": 16,
 }
-_PATH_GAP = 188
+_PATH_GAP = 220
 
 _MAX_LAYOUT_NODES = 240
 _MAX_ENDPOINTS = 24
-_COL_GAP = 168
-_ROW_GAP = 128
+_MAX_SUBNETS = 18
+_MAX_PER_SUBNET = 28
+_COL_GAP = 196
+_ROW_GAP = 148
 _ORIGIN_X = 80
 _ORIGIN_Y = 80
 _LAYER_WRAP = 7
+_SUBNET_GAP_X = 140
+_SUBNET_GAP_Y = 88
+_SUBNET_INNER_X = 28
+_SUBNET_INNER_Y = 52
+_SUBNET_CELL_X = 200
+_SUBNET_CELL_Y = 120
+_SUBNET_COLS = 3
+_GATEWAY_Y = 72
+_GATEWAY_GAP = 240
+_SUBNET_ROW_Y = 240
 
 
 def _stencil_for(kind: str | None, device_type: str | None) -> str:
@@ -105,11 +120,134 @@ def _bind_for(node: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def layout_topology_scene(
+def _node_ips(node: dict[str, Any]) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: object) -> None:
+        ip = _norm_ip(raw)
+        if not ip or ip in seen:
+            return
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return
+        if addr.version != 4 or addr.is_loopback or addr.is_multicast or addr.is_unspecified:
+            return
+        seen.add(ip)
+        found.append(ip)
+
+    add(node.get("ip_address") or node.get("ip"))
+    extras = node.get("extras") if isinstance(node.get("extras"), dict) else {}
+    extra_ips = extras.get("ip_addresses") if isinstance(extras.get("ip_addresses"), list) else node.get("ip_addresses")
+    if isinstance(extra_ips, list):
+        for raw in extra_ips:
+            add(raw)
+    return found
+
+
+def _slash24(ip: str) -> str | None:
+    try:
+        addr = ipaddress.ip_address(ip)
+        if addr.version != 4 or addr.is_loopback or addr.is_multicast:
+            return None
+        return str(ipaddress.ip_network(f"{addr}/24", strict=False))
+    except ValueError:
+        return None
+
+
+def _node_cidrs(node: dict[str, Any]) -> set[str]:
+    return {cidr for ip in _node_ips(node) if (cidr := _slash24(ip))}
+
+
+def _is_gateway(node: dict[str, Any], cidrs: set[str]) -> bool:
+    kind = str(node.get("kind") or "").lower()
+    if kind == "corax":
+        return True
+    dtype = str(node.get("device_type") or node.get("role") or "").lower()
+    if dtype in _GATEWAY_TYPES:
+        return True
+    extras = node.get("extras") if isinstance(node.get("extras"), dict) else {}
+    if extras.get("ip_forwarding") is True or node.get("ip_forwarding") is True:
+        return True
+    if len(cidrs) >= 2:
+        return True
+    host = str(node.get("label") or node.get("hostname") or node.get("sys_name") or "").lower()
+    if host.startswith("gw") or host.startswith("gateway") or "gateway" in host or host.startswith("router"):
+        return True
+    return False
+
+
+def _gateway_rank(node: dict[str, Any], cidrs: set[str]) -> int:
+    dtype = str(node.get("device_type") or node.get("role") or "").lower()
+    score = 10
+    if str(node.get("kind") or "").lower() == "corax":
+        score = 40
+    elif dtype == "firewall":
+        score = 90
+    elif dtype in {"router", "gateway"}:
+        score = 80
+    elif dtype == "modem":
+        score = 70
+    if node.get("ip_forwarding") or (isinstance(node.get("extras"), dict) and node["extras"].get("ip_forwarding")):
+        score += 15
+    score += min(20, len(cidrs) * 8)
+    return score
+
+
+def _scene_node(node: dict[str, Any], x: float, y: float, parent: str | None = None) -> dict[str, Any]:
+    nid = str(node["id"])
+    item: dict[str, Any] = {
+        "id": nid,
+        "stencil": _stencil_for(node.get("kind"), node.get("device_type")),
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "bind": _bind_for(node),
+        "label": (node.get("label") or nid)[:255],
+    }
+    if parent:
+        item["parentGroupId"] = parent
+    return item
+
+
+def _collect_edges(
+    edges: list[dict[str, Any]],
+    placed_ids: set[str],
+) -> list[dict[str, Any]]:
+    scene_edges: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        src = str(edge.get("source") or "")
+        tgt = str(edge.get("target") or "")
+        if src not in placed_ids or tgt not in placed_ids or src == tgt:
+            continue
+        link_type = str(edge.get("link_type") or edge.get("linkType") or "").lower()
+        if link_type == "lan" and (src.startswith("corax:") or tgt.startswith("corax:")):
+            continue
+        pair = f"{src}|{tgt}" if src < tgt else f"{tgt}|{src}"
+        if pair in seen:
+            continue
+        seen.add(pair)
+        eid = str(edge.get("id") or f"auto:{pair}")
+        scene_edges.append(
+            {
+                "id": eid[:120],
+                "source": src,
+                "target": tgt,
+                "local_port": edge.get("local_port") or edge.get("localPort"),
+                "remote_port": edge.get("remote_port") or edge.get("remotePort"),
+                "link_type": str(edge.get("link_type") or edge.get("linkType") or "manual").lower(),
+            }
+        )
+    return scene_edges
+
+
+def _select_layout_nodes(
     nodes: list[dict[str, Any]],
     edges: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Hierarchical layout: network gear first. PCs/printers only if they have a discovery link."""
+) -> list[dict[str, Any]]:
     endpoints: list[dict[str, Any]] = []
     gear: list[dict[str, Any]] = []
     for node in nodes:
@@ -120,29 +258,26 @@ def layout_topology_scene(
         else:
             gear.append(node)
 
-    linked_endpoints: list[dict[str, Any]] = []
-    strong_pairs: set[str] = set()
+    linked_ids: set[str] = set()
     for edge in edges:
         if not isinstance(edge, dict):
             continue
         src = str(edge.get("source") or "")
         tgt = str(edge.get("target") or "")
         link_type = str(edge.get("link_type") or edge.get("linkType") or "").lower()
-        if link_type in _STRONG_LINKS:
-            strong_pairs.add(src)
-            strong_pairs.add(tgt)
-    for node in endpoints:
-        nid = str(node["id"])
-        if nid in strong_pairs:
-            linked_endpoints.append(node)
-    linked_endpoints = linked_endpoints[:_MAX_ENDPOINTS]
-
+        if link_type in _ENDPOINT_LINKS:
+            linked_ids.add(src)
+            linked_ids.add(tgt)
+    linked_endpoints = [node for node in endpoints if str(node["id"]) in linked_ids][:_MAX_ENDPOINTS]
     selected = gear[:_MAX_LAYOUT_NODES]
     room = _MAX_LAYOUT_NODES - len(selected)
     if room > 0:
         selected.extend(linked_endpoints[:room])
-    selected_ids = {str(n["id"]) for n in selected}
+    return selected
 
+
+def _layout_layers(selected: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+    selected_ids = {str(n["id"]) for n in selected}
     buckets: dict[int, list[dict[str, Any]]] = {0: [], 1: [], 2: [], 3: [], 4: []}
     for node in selected:
         layer = _layer_for(node.get("kind"), node.get("device_type") or node.get("role"))
@@ -188,51 +323,127 @@ def layout_topology_scene(
                 x = _ORIGIN_X + col * _COL_GAP
                 y = _ORIGIN_Y + layer * _ROW_GAP + row * _ROW_GAP
             placed[nid] = (x, y)
-            bind = _bind_for(node)
-            scene_nodes.append(
-                {
-                    "id": nid,
-                    "stencil": _stencil_for(node.get("kind"), node.get("device_type")),
-                    "x": round(x, 1),
-                    "y": round(y, 1),
-                    "bind": bind,
-                    "label": (node.get("label") or nid)[:255],
-                }
-            )
-
-    scene_edges: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for edge in edges:
-        if not isinstance(edge, dict):
-            continue
-        src = str(edge.get("source") or "")
-        tgt = str(edge.get("target") or "")
-        if src not in placed or tgt not in placed or src == tgt:
-            continue
-        link_type = str(edge.get("link_type") or edge.get("linkType") or "").lower()
-        if link_type == "lan" and (src.startswith("corax:") or tgt.startswith("corax:")):
-            continue
-        pair = f"{src}|{tgt}" if src < tgt else f"{tgt}|{src}"
-        if pair in seen:
-            continue
-        seen.add(pair)
-        eid = str(edge.get("id") or f"auto:{pair}")
-        scene_edges.append(
-            {
-                "id": eid[:120],
-                "source": src,
-                "target": tgt,
-                "local_port": edge.get("local_port") or edge.get("localPort"),
-                "remote_port": edge.get("remote_port") or edge.get("remotePort"),
-                "link_type": str(edge.get("link_type") or edge.get("linkType") or "manual").lower(),
-            }
-        )
+            scene_nodes.append(_scene_node(node, x, y))
 
     scene = empty_scene()
     scene["nodes"] = scene_nodes
-    scene["edges"] = scene_edges
+    scene["edges"] = _collect_edges(edges, set(placed))
     scene["viewport"] = {"x": 40, "y": 40, "zoom": 0.85}
     return normalize_scene(scene)
+
+
+def _layout_subnets(selected: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, Any]:
+    cidrs_of: dict[str, set[str]] = {str(n["id"]): _node_cidrs(n) for n in selected}
+    all_cidrs = sorted({cidr for cidrs in cidrs_of.values() for cidr in cidrs})[:_MAX_SUBNETS]
+    if len(all_cidrs) < 2:
+        return _layout_layers(selected, edges)
+
+    gateways = [n for n in selected if _is_gateway(n, cidrs_of.get(str(n["id"]), set()))]
+    if not gateways:
+        ranked = sorted(selected, key=lambda n: _gateway_rank(n, cidrs_of.get(str(n["id"]), set())), reverse=True)
+        gateways = ranked[:1]
+    gateway_ids = {str(n["id"]) for n in gateways}
+
+    members: dict[str, list[dict[str, Any]]] = {cidr: [] for cidr in all_cidrs}
+    home_cidr: dict[str, str] = {}
+    for node in selected:
+        nid = str(node["id"])
+        if nid in gateway_ids:
+            continue
+        cidrs = cidrs_of.get(nid) or set()
+        if not cidrs:
+            continue
+        cidr = sorted(cidrs)[0]
+        if cidr not in members:
+            continue
+        if len(members[cidr]) >= _MAX_PER_SUBNET:
+            continue
+        members[cidr].append(node)
+        home_cidr[nid] = cidr
+
+    populated = [cidr for cidr in all_cidrs if members[cidr]]
+    if len(populated) < 2:
+        return _layout_layers(selected, edges)
+
+    scene_nodes: list[dict[str, Any]] = []
+    placed_ids: set[str] = set()
+
+    gateways.sort(key=lambda n: (-_gateway_rank(n, cidrs_of.get(str(n["id"]), set())), str(n.get("label") or "")))
+    gw_span = max(0, len(gateways) - 1)
+    gw_origin = _ORIGIN_X + max(0, (len(populated) - 1) * (248 + _SUBNET_GAP_X) / 2 - gw_span * _GATEWAY_GAP / 2)
+    for idx, node in enumerate(gateways):
+        x = gw_origin + idx * _GATEWAY_GAP
+        scene_nodes.append(_scene_node(node, x, _GATEWAY_Y))
+        placed_ids.add(str(node["id"]))
+
+    wrap = 3
+    for sidx, cidr in enumerate(populated):
+        rows = members[cidr]
+        rows.sort(key=lambda n: (_layer_for(n.get("kind"), n.get("device_type") or n.get("role")), str(n.get("label") or "")))
+        cols = min(_SUBNET_COLS, max(1, len(rows)))
+        inner_rows = (len(rows) + cols - 1) // cols
+        width = max(248.0, _SUBNET_INNER_X * 2 + cols * _SUBNET_CELL_X - 12)
+        height = max(160.0, _SUBNET_INNER_Y + inner_rows * _SUBNET_CELL_Y + 16)
+        col = sidx % wrap
+        row = sidx // wrap
+        gx = _ORIGIN_X + col * (width + _SUBNET_GAP_X)
+        gy = _SUBNET_ROW_Y + row * (height + _SUBNET_GAP_Y)
+        for midx, node in enumerate(rows):
+            mx = _SUBNET_INNER_X + (midx % cols) * _SUBNET_CELL_X
+            my = _SUBNET_INNER_Y + (midx // cols) * _SUBNET_CELL_Y
+            scene_nodes.append(_scene_node(node, gx + mx, gy + my))
+            placed_ids.add(str(node["id"]))
+
+    scene_edges = _collect_edges(edges, placed_ids)
+    seen_pairs = {
+        (f"{e['source']}|{e['target']}" if e["source"] < e["target"] else f"{e['target']}|{e['source']}")
+        for e in scene_edges
+    }
+    for cidr in populated:
+        core = members[cidr][0]
+        core_id = str(core["id"])
+        for gw in gateways:
+            gw_id = str(gw["id"])
+            gw_cidrs = cidrs_of.get(gw_id) or set()
+            kind = str(gw.get("kind") or "").lower()
+            dtype = str(gw.get("device_type") or gw.get("role") or "").lower()
+            l3 = dtype in _GATEWAY_TYPES or len(gw_cidrs) >= 2
+            if kind == "corax":
+                if cidr not in gw_cidrs:
+                    continue
+            elif cidr not in gw_cidrs and not l3:
+                continue
+            pair = f"{gw_id}|{core_id}" if gw_id < core_id else f"{core_id}|{gw_id}"
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            scene_edges.append(
+                {
+                    "id": f"subnet:{pair}"[:120],
+                    "source": gw_id,
+                    "target": core_id,
+                    "link_type": "subnet",
+                }
+            )
+
+    scene = empty_scene()
+    scene["groups"] = []
+    scene["nodes"] = scene_nodes
+    scene["edges"] = scene_edges
+    scene["viewport"] = {"x": 24, "y": 16, "zoom": 0.78}
+    return normalize_scene(scene)
+
+
+def layout_topology_scene(
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Gear-first map. Several /24s cluster spatially around identified gateways, without frames."""
+    selected = _select_layout_nodes(nodes, edges)
+    cidrs = {cidr for node in selected for cidr in _node_cidrs(node)}
+    if len(cidrs) >= 2:
+        return _layout_subnets(selected, edges)
+    return _layout_layers(selected, edges)
 
 
 def port_handle_id(name: str | None) -> str | None:

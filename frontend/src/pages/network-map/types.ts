@@ -17,12 +17,19 @@ export type NetworkMapStencil =
 
 export type NetworkMapBindType = 'network_device' | 'computer' | 'printer' | 'corax' | 'zabbix'
 
-export type NetworkMapGroupKind = 'room' | 'rack'
+export type NetworkMapGroupKind = 'room' | 'rack' | 'subnet'
 
 export type NetworkMapBind = {
   type: NetworkMapBindType
   id: number
 }
+
+export const NETWORK_MAP_DND = 'application/corax-network-map'
+
+export type PaletteDrag =
+  | { kind: 'stencil'; stencil: NetworkMapStencil }
+  | { kind: 'group'; groupKind: 'room' | 'rack' }
+  | { kind: 'inventory'; bind: NetworkMapBind; label: string; ip?: string | null; stencil: NetworkMapStencil }
 
 export type NetworkMapSceneNode = {
   id: string
@@ -45,6 +52,8 @@ export type NetworkMapGroup = {
   y: number
   width: number
   height: number
+  collapsed?: boolean
+  cidr?: string | null
 }
 
 export type NetworkMapSceneEdge = {

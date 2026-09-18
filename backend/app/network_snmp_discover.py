@@ -22,8 +22,9 @@ from app.local_ip import (
 )
 from app.computer_ip import primary_ipv4_from_raw_payload
 from app.models import Computer, NetworkDevice, Printer
-from app.network_classify import NETWORK_DEVICE_TYPES, network_dedupe_key_for_ip
+from app.network_classify import NETWORK_DEVICE_TYPES, network_dedupe_key_for_ip, network_type_is_manual
 from app.network_snmp import NetworkSnmpSnapshot, probe_has_signal, probe_network_snmp
+from app.printer_cleanup import printer_dedupe_key_for_ip, snmp_tab_clause
 from app.printer_poll import ping_ip
 
 # Full /24 = 254 hosts. Windows select() ~512 → keep concurrency under ~48.
@@ -196,10 +197,8 @@ def _hostname_from_snap(snap: NetworkSnmpSnapshot, ip: str) -> str:
 
 
 def _accept_discovered(snap: NetworkSnmpSnapshot) -> bool:
-    """Discovery recall: keep network gear and PCs; printers stay on Printers page."""
-    if snap.device_type == "printer":
-        return False
-    if snap.device_type == "host":
+    """Keep network gear, PCs and printers on the Network tab."""
+    if snap.device_type in {"printer", "host"}:
         return True
     if snap.is_network_gear:
         return True
@@ -227,7 +226,7 @@ async def upsert_discovered_device(
         )
     ).scalar_one_or_none()
     hostname = _hostname_from_snap(snap, ip)
-    dtype = "unknown" if snap.device_type == "printer" else (snap.device_type or "unknown")
+    dtype = snap.device_type or "unknown"
     if dtype not in NETWORK_DEVICE_TYPES:
         dtype = "unknown"
     light_extras: dict = {}
@@ -240,6 +239,7 @@ async def upsert_discovered_device(
     if getattr(snap, "classify_signals", None):
         light_extras["classify_signals"] = list(snap.classify_signals)[:24]
     extras_raw = json.dumps(light_extras, ensure_ascii=False) if light_extras else None
+    action = "updated"
     if existing is None:
         db.add(
             NetworkDevice(
@@ -260,32 +260,101 @@ async def upsert_discovered_device(
                 extras_json=extras_raw,
             )
         )
-        return "created"
+        action = "created"
+    else:
+        existing.dedupe_key = dedupe_key
+        existing.ip_address = ip
+        existing.hostname = hostname
+        existing.sys_name = snap.sys_name or existing.sys_name
+        existing.sys_descr = snap.sys_descr or existing.sys_descr
+        existing.sys_object_id = snap.sys_object_id or existing.sys_object_id
+        if snap.device_type and not network_type_is_manual(getattr(existing, "extras_json", None)):
+            existing.device_type = dtype
+        existing.vendor = snap.vendor or existing.vendor
+        if snap.sys_location:
+            existing.location = snap.sys_location
+        existing.snmp_status = "ok"
+        existing.snmp_error = None
+        existing.last_snmp_at = now
+        existing.last_seen_at = now
+        if extras_raw and hasattr(existing, "extras_json"):
+            try:
+                prev = json.loads(existing.extras_json) if existing.extras_json else {}
+            except (TypeError, json.JSONDecodeError):
+                prev = {}
+            if not isinstance(prev, dict):
+                prev = {}
+            prev.update(light_extras)
+            existing.extras_json = json.dumps(prev, ensure_ascii=False)
+    await sync_printer_from_network_snap(db, ip, snap, now=now, snmp_status="ok")
+    return action
+
+
+async def sync_printer_from_network_snap(
+    db: AsyncSession,
+    ip: str,
+    snap: NetworkSnmpSnapshot,
+    *,
+    now: datetime,
+    snmp_status: str = "ok",
+) -> None:
+    """Keep the Printers tab in sync when Network SNMP classifies a printer."""
+    if (snap.device_type or "") != "printer":
+        return
+    ip = (ip or "").strip()
+    if not ip:
+        return
+    dedupe_key = printer_dedupe_key_for_ip(ip)
+    existing = (
+        await db.execute(
+            select(Printer).where((Printer.ip_address == ip) | (Printer.dedupe_key == dedupe_key)).limit(1)
+        )
+    ).scalar_one_or_none()
+    model = (getattr(snap, "model", None) or snap.sys_name or "").strip() or None
+    title = (model or snap.sys_name or f"SNMP printer {ip}").splitlines()[0].strip()[:512]
+    if existing is None:
+        db.add(
+            Printer(
+                dedupe_key=dedupe_key,
+                name=title,
+                ip_address=ip,
+                is_network=True,
+                source="snmp",
+                poll_status="online" if snmp_status == "ok" else "offline",
+                snmp_status=snmp_status,
+                snmp_error=None if snmp_status == "ok" else (snap.error or None),
+                snmp_model=model,
+                snmp_sys_name=snap.sys_name,
+                location=snap.sys_location,
+                last_seen_at=now,
+                last_poll_at=now,
+                last_snmp_at=now,
+            )
+        )
+        return
     existing.dedupe_key = dedupe_key
     existing.ip_address = ip
-    existing.hostname = hostname
-    existing.sys_name = snap.sys_name or existing.sys_name
-    existing.sys_descr = snap.sys_descr or existing.sys_descr
-    existing.sys_object_id = snap.sys_object_id or existing.sys_object_id
-    if snap.device_type and snap.device_type != "printer":
-        existing.device_type = dtype
-    existing.vendor = snap.vendor or existing.vendor
-    if snap.sys_location:
-        existing.location = snap.sys_location
-    existing.snmp_status = "ok"
-    existing.snmp_error = None
-    existing.last_snmp_at = now
+    existing.is_network = True
+    if existing.source in {None, "", "agent"}:
+        existing.source = "snmp"
+    existing.poll_status = "online" if snmp_status == "ok" else (existing.poll_status or "offline")
+    existing.snmp_status = snmp_status
+    if snmp_status == "ok":
+        existing.snmp_error = None
+    elif snap.error:
+        existing.snmp_error = snap.error
+    if model:
+        existing.snmp_model = model
+    if snap.sys_name:
+        existing.snmp_sys_name = snap.sys_name
+    if snap.sys_location and not (existing.location or "").strip():
+        existing.location = snap.sys_location[:255]
     existing.last_seen_at = now
-    if extras_raw and hasattr(existing, "extras_json"):
-        try:
-            prev = json.loads(existing.extras_json) if existing.extras_json else {}
-        except (TypeError, json.JSONDecodeError):
-            prev = {}
-        if not isinstance(prev, dict):
-            prev = {}
-        prev.update(light_extras)
-        existing.extras_json = json.dumps(prev, ensure_ascii=False)
-    return "updated"
+    existing.last_poll_at = now
+    existing.last_snmp_at = now
+    current = (existing.name or "").strip()
+    if not current or current == ip:
+        existing.name = title
 
 
 def _merge_communities(primary: str, extra: list[str] | None) -> list[str]:
@@ -437,6 +506,10 @@ async def discover_network_devices(
     result.created += inv_created
     result.updated += inv_updated
     found_ips |= inventory_ip_set
+
+    pr_created, pr_updated = await _seed_inventory_printers(db, found_ips=found_ips, now=now)
+    result.created += pr_created
+    result.updated += pr_updated
 
     # Аккуратный ICMP: живые хосты без SNMP (ПК, IoT…) — в базу как устройства.
     ping_alive, ping_created = await _ping_sweep_unknown_hosts(
@@ -695,11 +768,73 @@ async def _seed_inventory_hosts(
     return created, updated
 
 
-async def _known_host_labels(db: AsyncSession) -> dict[str, str]:
-    """IP → человекочитаемое имя из парка ПК / принтеров."""
-    labels: dict[str, str] = {}
+async def _seed_inventory_printers(
+    db: AsyncSession,
+    *,
+    found_ips: set[str],
+    now: datetime,
+) -> tuple[int, int]:
+    """Put network printers on the Network tab with type printer, not host."""
+    rows = (
+        await db.execute(
+            select(Printer).where(snmp_tab_clause(), Printer.ip_address.is_not(None), Printer.ip_address != "")
+        )
+    ).scalars().all()
+    created = 0
+    updated = 0
+    for pr in rows:
+        ip = (pr.ip_address or "").strip()
+        if not ip:
+            continue
+        title = (pr.snmp_model or pr.name or ip).splitlines()[0].strip()
+        label = f"Принтер · {title}"[:255]
+        dedupe = network_dedupe_key_for_ip(ip)
+        existing = (
+            await db.execute(
+                select(NetworkDevice).where(
+                    (NetworkDevice.ip_address == ip) | (NetworkDevice.dedupe_key == dedupe)
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            existing.last_seen_at = now
+            if existing.device_type in {None, "", "unknown", "host"}:
+                existing.device_type = "printer"
+            host = (existing.hostname or "").strip()
+            if not host or host.startswith("Host ·") or host.startswith("ПК ·"):
+                existing.hostname = label
+            if existing.snmp_status in {None, "", "unknown"} and pr.snmp_status:
+                existing.snmp_status = pr.snmp_status
+            if not existing.last_snmp_at and pr.last_snmp_at:
+                existing.last_snmp_at = pr.last_snmp_at
+            if not existing.vendor and pr.snmp_model:
+                existing.vendor = (pr.snmp_model or "")[:128]
+            updated += 1
+            continue
+        db.add(
+            NetworkDevice(
+                dedupe_key=dedupe,
+                ip_address=ip,
+                hostname=label,
+                device_type="printer",
+                vendor=(pr.snmp_model or None) and (pr.snmp_model or "")[:128],
+                location=pr.location,
+                snmp_status=pr.snmp_status or "unknown",
+                last_snmp_at=pr.last_snmp_at,
+                source="inventory",
+                last_seen_at=now,
+            )
+        )
+        found_ips.add(ip)
+        created += 1
+    return created, updated
+
+
+async def _known_host_labels(db: AsyncSession) -> dict[str, tuple[str, str]]:
+    """IP → (label, device_type) from PCs / printers."""
+    labels: dict[str, tuple[str, str]] = {}
     for ip, hostname in await _inventory_pc_entries(db, networks=None):
-        labels[ip] = f"ПК · {hostname}"[:255]
+        labels[ip] = (f"ПК · {hostname}"[:255], "host")
     pr_r = await db.execute(
         select(Printer.ip_address, Printer.name, Printer.snmp_model).where(
             Printer.ip_address.is_not(None),
@@ -711,7 +846,7 @@ async def _known_host_labels(db: AsyncSession) -> dict[str, str]:
         if not ip_s or ip_s in labels:
             continue
         title = (str(model or "").strip() or str(name or "").strip() or ip_s)
-        labels[ip_s] = f"Принтер · {title}"[:255]
+        labels[ip_s] = (f"Принтер · {title}"[:255], "printer")
     return labels
 
 
@@ -784,21 +919,21 @@ async def _ping_sweep_unknown_hosts(
         if existing is not None:
             existing.last_seen_at = now
             if existing.snmp_status in {None, "", "unknown"} and not existing.sys_name:
-                # Обновить ярлык, если появился ПК в инвентаре
-                label = labels.get(ip)
-                if label:
-                    existing.hostname = label
+                info = labels.get(ip)
+                if info:
+                    existing.hostname = info[0]
                     if existing.device_type in {None, "", "unknown"}:
-                        existing.device_type = "host"
+                        existing.device_type = info[1]
             continue
-        hostname = labels.get(ip) or f"Host · {ip}"
-        is_pc = ip in labels
+        info = labels.get(ip)
+        hostname = info[0] if info else f"Host · {ip}"
+        dtype = info[1] if info else "unknown"
         db.add(
             NetworkDevice(
                 dedupe_key=dedupe,
                 ip_address=ip,
                 hostname=hostname[:255],
-                device_type="host" if is_pc else "unknown",
+                device_type=dtype,
                 snmp_status="unknown",
                 source="ping",
                 last_seen_at=now,

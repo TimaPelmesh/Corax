@@ -212,7 +212,16 @@ function markerCircleFill(kind: FloorIconKind): string {
   if (kind === 'server') return 'rgb(15,23,42)'
   if (kind === 'ap') return 'rgb(225,29,72)'
   if (kind === 'printer') return 'rgb(202,138,4)'
+  if (kind === 'switch') return 'rgb(8,145,178)'
   return 'rgb(37,99,235)'
+}
+
+function markerMetaAfterKindChange(prev: FloorIconMarker, kind: FloorIconKind): FloorIconMarker['meta'] {
+  const meta = { ...(prev.meta ?? {}) }
+  if (kind !== 'pc') meta.computer_id = ''
+  if (kind !== 'printer') meta.printer_id = ''
+  if (!isOutletKind(kind)) meta.connected_pc_id = ''
+  return meta
 }
 
 function markerCircleRadius(kind: FloorIconKind): number {
@@ -586,6 +595,17 @@ function EquipmentGlyph({ kind }: { kind: FloorIconKind }) {
         <rect x="-5.6" y="-6.3" width="11.2" height="12.6" rx="2.1" fill="white" />
         <circle cx="0" cy="0" r="2.2" fill="rgba(15,23,42,0.35)" />
         <rect x="-0.85" y="-3.9" width="1.7" height="2.5" rx="0.4" fill="rgba(255,255,255,0.92)" />
+      </>
+    )
+  }
+  if (kind === 'switch') {
+    return (
+      <>
+        <rect x="-16" y="-9" width="32" height="18" rx="3.5" fill="white" />
+        <rect x="-11" y="-3.2" width="4" height="6.4" rx="1" fill="rgba(15,23,42,0.38)" />
+        <rect x="-4.5" y="-3.2" width="4" height="6.4" rx="1" fill="rgba(15,23,42,0.38)" />
+        <rect x="2" y="-3.2" width="4" height="6.4" rx="1" fill="rgba(15,23,42,0.38)" />
+        <rect x="8.5" y="-3.2" width="4" height="6.4" rx="1" fill="rgba(15,23,42,0.38)" />
       </>
     )
   }
@@ -1197,14 +1217,21 @@ export function KnowledgeSitemapPage() {
     if (!canEdit) return
     setLayout((current) => ({
       ...current,
-      icons: (current.icons ?? []).map((m) => (m.id === id ? { ...m, ...patch } : m)),
+      icons: (current.icons ?? []).map((m) => {
+        if (m.id !== id) return m
+        const next = { ...m, ...patch }
+        if (patch.kind && patch.kind !== m.kind) {
+          next.meta = { ...markerMetaAfterKindChange(m, patch.kind), ...(patch.meta ?? {}) }
+        }
+        return next
+      }),
     }))
   }
 
   const updateOutletMarker = (
     id: string,
     patch: Partial<FloorIconMarker>,
-    opts?: { prevConnectedPcId?: string },
+    opts?: { prevConnectedPcId?: string; prevKind?: FloorIconKind },
   ) => {
     if (!canEdit) return
     setLayout((current) => {
@@ -1217,12 +1244,15 @@ export function KnowledgeSitemapPage() {
         }
       })
       const outlet = icons.find((m) => m.id === id)
+      const prevKind = opts?.prevKind
+      const prevPc = (opts?.prevConnectedPcId ?? '').trim()
+      const nextPc = outlet && isOutletKind(outlet.kind) ? (outlet.meta?.connected_pc_id ?? '').trim() : ''
+      if (prevPc && prevPc !== nextPc && prevKind && isOutletKind(prevKind)) {
+        icons = clearPcOutletField(icons, prevPc, prevKind)
+      } else if (outlet && isOutletKind(outlet.kind) && prevPc && prevPc !== nextPc) {
+        icons = clearPcOutletField(icons, prevPc, outlet.kind)
+      }
       if (outlet && isOutletKind(outlet.kind)) {
-        const prevPc = (opts?.prevConnectedPcId ?? '').trim()
-        const nextPc = (outlet.meta?.connected_pc_id ?? '').trim()
-        if (prevPc && prevPc !== nextPc) {
-          icons = clearPcOutletField(icons, prevPc, outlet.kind)
-        }
         icons = syncOutletNumberToPc(icons, id)
       }
       return { ...current, icons }
@@ -2638,7 +2668,20 @@ export function KnowledgeSitemapPage() {
                 </span>
                 <select
                   value={selectedMarker.kind}
-                  onChange={(e) => updateMarker(selectedMarker.id, { kind: e.target.value as FloorIconKind })}
+                  onChange={(e) => {
+                    const kind = e.target.value as FloorIconKind
+                    if (kind === selectedMarker.kind) return
+                    if (isOutletKind(selectedMarker.kind) || isOutletKind(kind)) {
+                      const prevPc = selectedMarker.meta?.connected_pc_id ?? undefined
+                      updateOutletMarker(
+                        selectedMarker.id,
+                        { kind, meta: markerMetaAfterKindChange(selectedMarker, kind) },
+                        { prevConnectedPcId: prevPc, prevKind: selectedMarker.kind },
+                      )
+                      return
+                    }
+                    updateMarker(selectedMarker.id, { kind })
+                  }}
                   className="app-input mt-0.5 !min-h-0 !py-2"
                   disabled={!canEdit}
                 >

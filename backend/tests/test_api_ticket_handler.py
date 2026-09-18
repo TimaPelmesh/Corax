@@ -28,7 +28,9 @@ def test_ticket_handler_public_context_and_intake(client: TestClient, agent_head
 
     after = client.get("/api/v1/ticket-handler/public/tickets", params={"hostname": hostname})
     assert after.status_code == 200, after.text
-    assert any(row["id"] == out["request_id"] for row in after.json()["items"])
+    created_row = next(row for row in after.json()["items"] if row["id"] == out["request_id"])
+    assert created_row["status"] == "open"
+    assert created_row["assignees"] == []
 
 
 def test_ticket_handler_intake_rejects_short_title(client: TestClient):

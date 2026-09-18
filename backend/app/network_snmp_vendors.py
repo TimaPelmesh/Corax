@@ -19,6 +19,7 @@ import re
 from typing import Any
 
 from app.network_classify import normalize_mac
+from app.text_sanitize import pg_text
 
 # IEEE LLDP extras (beyond the core remSysName/port walks in network_snmp.py)
 OID_LLDP_REM_CHASSIS = "1.0.8802.1.1.2.1.4.1.1.5"
@@ -124,15 +125,8 @@ def _txt(raw: Any) -> str | None:
     if raw is None:
         return None
     if isinstance(raw, bytes):
-        for enc in ("utf-8", "cp866", "cp1251", "latin-1"):
-            try:
-                s = raw.decode(enc).strip("\x00").strip()
-            except UnicodeDecodeError:
-                continue
-            return s or None
-        return None
-    s = str(raw).strip()
-    return s or None
+        return pg_text(raw, max_len=255)
+    return pg_text(raw, max_len=255)
 
 
 def _ip(raw: Any) -> str | None:
@@ -301,7 +295,7 @@ def parse_qbridge_fdb(port_map: dict[str, Any]) -> list[dict[str, Any]]:
         if not mac or mac in seen:
             continue
         seen.add(mac)
-        port_str = str(port_raw).strip() if port_raw is not None else None
+        port_str = pg_text(port_raw, max_len=32)
         out.append({"mac": mac, "port": port_str, "if_index": port_str})
         if len(out) >= 4000:
             break

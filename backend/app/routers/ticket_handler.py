@@ -129,7 +129,7 @@ def _row_to_out(row: TicketHandlerConfig, *, reveal_secret: bool = True) -> Tick
         auto_create_ticket=bool(row.auto_create_ticket),
         default_priority=(row.default_priority or "normal").strip() or "normal",
         default_category=(row.default_category or "").strip(),
-        default_status=(row.default_status or "in_progress").strip() or "in_progress",
+        default_status=(row.default_status or "open").strip() or "open",
         system_prompt=(row.system_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT,
         pipeline=_parse_pipeline(row.pipeline_json),
         updated_at=row.updated_at,
@@ -160,7 +160,7 @@ async def _get_or_create_config(db: AsyncSession) -> TicketHandlerConfig:
             auto_create_ticket=True,
             default_priority="normal",
             default_category="",
-            default_status="in_progress",
+            default_status="open",
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             pipeline_json=_default_pipeline_json(),
         )
@@ -204,8 +204,8 @@ async def _get_or_create_config(db: AsyncSession) -> TicketHandlerConfig:
         row.default_category = ""
         healed = True
     status = (row.default_status or "").strip().lower()
-    if not status or status in {"new", "open"}:
-        row.default_status = "in_progress"
+    if not status or status in {"new", "in_progress"}:
+        row.default_status = "open"
         healed = True
     if not (row.llm_base_url or "").strip():
         row.llm_base_url = (settings.lm_studio_base_url or "").strip() or "http://127.0.0.1:11434/v1"
@@ -287,7 +287,7 @@ async def update_ticket_handler_config(
     if "default_category" in patch and patch["default_category"] is not None:
         row.default_category = str(patch["default_category"] or "").strip()
     if "default_status" in patch and patch["default_status"] is not None:
-        row.default_status = str(patch["default_status"] or "").strip() or "new"
+        row.default_status = str(patch["default_status"] or "").strip() or "open"
     if "system_prompt" in patch and patch["system_prompt"] is not None:
         row.system_prompt = str(patch["system_prompt"] or "").strip()
     if "pipeline" in patch and patch["pipeline"] is not None:

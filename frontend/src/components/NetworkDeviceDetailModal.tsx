@@ -94,6 +94,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
         notes: notes.trim() || null,
       })
       setRow(d)
+      setDeviceType(d.device_type || deviceType)
       onChanged()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('network.saveFailed'))
@@ -304,11 +305,13 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
                       {[
                         'switch',
                         'router',
+                        'gateway',
                         'ap',
                         'firewall',
                         'controller',
                         'server',
                         'host',
+                        'printer',
                         'nas',
                         'voip',
                         'ups',

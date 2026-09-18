@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
-# Types stored/shown on the Network tab (printers stay on their own page).
+# Types stored/shown on the Network tab.
 NETWORK_DEVICE_TYPES = frozenset(
     {
         "switch",
         "router",
+        "gateway",
         "ap",
         "firewall",
         "controller",
@@ -19,6 +21,7 @@ NETWORK_DEVICE_TYPES = frozenset(
         "camera",
         "modem",
         "host",
+        "printer",
         "unknown",
     }
 )
@@ -705,17 +708,37 @@ def network_dedupe_key_for_ip(ip: str) -> str:
     return f"snmp:{ip.strip()}"
 
 
+def network_type_is_manual(extras_json: str | None) -> bool:
+    if not extras_json:
+        return False
+    try:
+        data = json.loads(extras_json)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return isinstance(data, dict) and bool(data.get("type_manual"))
+
+
 def infer_network_role(
     *,
     hostname: str | None,
     sys_name: str | None = None,
     device_type: str | None = None,
     source: str | None = None,
+    type_manual: bool = False,
+    extras_json: str | None = None,
 ) -> str:
     """
     UI role label derived from stored name/type/source (no secrets).
     Special roles: gateway, dns, infra — otherwise device_type.
+    Explicit printer/gateway types win over auto hostname seeds.
+    A user-set type (type_manual) wins over ARP hostname labels.
     """
+    dtype = (device_type or "unknown").strip().lower()
+    if dtype in {"printer", "gateway"}:
+        return dtype
+    manual = bool(type_manual) or network_type_is_manual(extras_json)
+    if manual and dtype in NETWORK_DEVICE_TYPES:
+        return dtype
     blob = f"{hostname or ''} {sys_name or ''}".strip().lower()
     src = (source or "").strip().lower()
     if blob.startswith("gateway") or re.search(r"\bgateway\b", blob):
@@ -724,7 +747,6 @@ def infer_network_role(
         return "dns"
     if blob.startswith("infra") or (src == "arp-seed" and (device_type or "") == "unknown"):
         return "infra"
-    dtype = (device_type or "unknown").strip().lower()
     if dtype in NETWORK_DEVICE_TYPES:
         return dtype
     return "unknown"

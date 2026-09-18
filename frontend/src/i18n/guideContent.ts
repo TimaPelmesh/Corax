@@ -89,7 +89,10 @@ const GUIDE_RU: GuideCopy = {
           body: 'Редактор может запросить комментарий локальной модели по рассчитанной сводке — без выдуманных уязвимостей.',
         },
       ],
-      links: [{ to: '/risks', label: 'Центр рисков' }],
+      links: [
+        { to: '/risks', label: 'Центр рисков' },
+        { to: '/knowledge-base/zabbix', label: 'Данные Zabbix' },
+      ],
     },
     {
       id: 'computers',
@@ -352,7 +355,7 @@ const GUIDE_RU: GuideCopy = {
       steps: [
         {
           title: '/h — оставить заявку',
-          body: 'Единственная публичная форма. Заявка создаётся сразу; AI в фоне ставит категорию и предлагает тему. Включается в настройках обработчика. Старый адрес /r только перенаправляет сюда.',
+          body: 'Единственная публичная форма. Заявка создаётся сразу со статусом «ожидает». После отправки на той же странице видны все заявки с этого ПК: принята, взята в работу или сделана. AI в фоне ставит категорию. Старый адрес /r только перенаправляет сюда.',
         },
         {
           title: 'Ярлык на рабочем столе',
@@ -363,19 +366,17 @@ const GUIDE_RU: GuideCopy = {
     {
       id: 'knowledge',
       title: 'База знаний',
-      summary: 'Пять вкладок: карта здания, это руководство, WikiRAG, заметки, данные Zabbix.',
+      summary: 'WikiRAG, это руководство и заметки команды.',
       steps: [
         {
           title: 'Вкладки',
-          body: 'База знаний → Карта здания (планировки), Руководство (этот текст), Wiki / Ассистент (чат по документам), Заметки, Zabbix (данные мониторинга по хостам). Склад вынесен в парк: /warehouse.',
+          body: 'База знаний → Wiki / Ассистент (чат по документам), Руководство (этот текст), Заметки. Карта здания стоит в инвентаре рядом с картой сети. Данные Zabbix — рядом с центром рисков. Склад: /warehouse.',
         },
       ],
       links: [
-        { to: '/knowledge-base/sitemap', label: 'Карта здания' },
-        { to: '/knowledge-base/guide', label: 'Руководство' },
         { to: '/knowledge-base/wikirag', label: 'WikiRAG' },
+        { to: '/knowledge-base/guide', label: 'Руководство' },
         { to: '/knowledge-base/notes', label: 'Заметки' },
-        { to: '/knowledge-base/zabbix', label: 'Zabbix' },
       ],
     },
     {
@@ -401,7 +402,7 @@ const GUIDE_RU: GuideCopy = {
     {
       id: 'sitemap',
       title: 'Карта здания',
-      summary: 'Планировки этажей и привязка объектов.',
+      summary: 'Планировки этажей в инвентаре, рядом с картой сети.',
       steps: [
         {
           title: 'Этажи',
@@ -456,11 +457,11 @@ const GUIDE_RU: GuideCopy = {
     {
       id: 'zabbix',
       title: 'Zabbix',
-      summary: 'Данные мониторинга в базе знаний и подключение сервера в настройках.',
+      summary: 'Данные мониторинга рядом с центром рисков; подключение сервера в настройках.',
       steps: [
         {
           title: 'Данные',
-          body: 'База знаний → Zabbix: проблемы и метрики по хостам, которые сопоставлены с ПК CORAX. С карточки ПК есть переход сюда.',
+          body: 'В инвентаре, рядом с центром рисков: проблемы и метрики по хостам, которые сопоставлены с ПК CORAX. С карточки ПК есть переход сюда.',
         },
         {
           title: 'Подключение',
@@ -602,7 +603,10 @@ const GUIDE_EN: GuideCopy = {
           body: 'Editors can ask the local model to comment on the calculated summary — it must not invent vulnerabilities.',
         },
       ],
-      links: [{ to: '/risks', label: 'Risk center' }],
+      links: [
+        { to: '/risks', label: 'Risk center' },
+        { to: '/knowledge-base/zabbix', label: 'Zabbix data' },
+      ],
     },
     {
       id: 'computers',
@@ -865,7 +869,7 @@ const GUIDE_EN: GuideCopy = {
       steps: [
         {
           title: '/h — leave a ticket',
-          body: 'The only public form. The ticket is created immediately; AI later sets the category and suggests a title. Enable it in ticket-handler settings. The old /r URL only redirects here.',
+          body: 'The only public form. The ticket is created immediately as “waiting”. After sending, the same page lists tickets from this PC: accepted, taken into work, or done. AI later sets the category. The old /r URL only redirects here.',
         },
         {
           title: 'Desktop shortcut',
@@ -876,19 +880,17 @@ const GUIDE_EN: GuideCopy = {
     {
       id: 'knowledge',
       title: 'Knowledge base',
-      summary: 'Five tabs: building map, this guide, WikiRAG, notes, Zabbix data.',
+      summary: 'WikiRAG, this guide, and team notes.',
       steps: [
         {
           title: 'Tabs',
-          body: 'Knowledge base → Building map (floor plans), Guide (this text), Wiki / Assistant (chat over documents), Notes, Zabbix (monitoring data for matched hosts). Warehouse lives under the fleet: /warehouse.',
+          body: 'Knowledge base → Wiki / Assistant (chat over documents), Guide (this text), Notes. The building map sits in inventory next to the network map. Zabbix data sits next to the risk center. Warehouse: /warehouse.',
         },
       ],
       links: [
-        { to: '/knowledge-base/sitemap', label: 'Building map' },
-        { to: '/knowledge-base/guide', label: 'Guide' },
         { to: '/knowledge-base/wikirag', label: 'WikiRAG' },
+        { to: '/knowledge-base/guide', label: 'Guide' },
         { to: '/knowledge-base/notes', label: 'Notes' },
-        { to: '/knowledge-base/zabbix', label: 'Zabbix' },
       ],
     },
     {
@@ -914,7 +916,7 @@ const GUIDE_EN: GuideCopy = {
     {
       id: 'sitemap',
       title: 'Building map',
-      summary: 'Floor plans and object placement.',
+      summary: 'Floor plans in inventory, next to the network map.',
       steps: [
         {
           title: 'Floors',
@@ -969,11 +971,11 @@ const GUIDE_EN: GuideCopy = {
     {
       id: 'zabbix',
       title: 'Zabbix',
-      summary: 'Monitoring data in the knowledge base and the server connection under Settings.',
+      summary: 'Monitoring data next to the risk center; server connection under Settings.',
       steps: [
         {
           title: 'Data',
-          body: 'Knowledge base → Zabbix: problems and metrics for hosts matched to CORAX PCs. The PC card links here.',
+          body: 'In inventory, next to the risk center: problems and metrics for hosts matched to CORAX PCs. The PC card links here.',
         },
         {
           title: 'Connection',
