@@ -1,0 +1,25 @@
+{
+  "agent_version": "3.1.0-linux",
+  "profile": "full",
+  "modules": {
+    "patches": true,
+    "network": true,
+    "domain_sessions": true,
+    "bitlocker": false,
+    "tpm_secureboot": true,
+    "antivirus": false,
+    "startup": true,
+    "services": true,
+    "storage_health": true,
+    "battery": true,
+    "windows_features": false,
+    "office": false,
+    "usb_history": false,
+    "docker_wsl": true
+  },
+  "limits": {
+    "software_max": 12000,
+    "services_max": 400,
+    "patches_max": 500
+  }
+}

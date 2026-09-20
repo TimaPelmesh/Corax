@@ -1,0 +1,487 @@
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { Navigate } from 'react-router-dom'
+import { api, type LdapConfig, type LdapSyncResult, type User } from '../api'
+import { useAuth } from '../AuthContext'
+import { IconKey } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
+import { useT } from '../i18n/LocaleContext'
+import { useToast } from '../ToastContext'
+
+function fieldTrim(v: string) {
+  return v.replace(/\s+/g, ' ').trim()
+}
+
+export function SettingsLdapPage() {
+  const t = useT()
+  const toast = useToast()
+  const { user } = useAuth()
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<LdapSyncResult | null>(null)
+  const [users, setUsers] = useState<User[]>([])
+
+  const [loaded, setLoaded] = useState<LdapConfig | null>(null)
+  const [enabled, setEnabled] = useState(false)
+  const [allowAnonymous, setAllowAnonymous] = useState(false)
+  const [uri, setUri] = useState('')
+  const [bindDn, setBindDn] = useState('')
+  const [bindPassword, setBindPassword] = useState('')
+  const [userSearchBase, setUserSearchBase] = useState('')
+  const [userFilter, setUserFilter] = useState('(&(objectClass=user)(objectCategory=person))')
+  const [usernameAttr, setUsernameAttr] = useState('sAMAccountName')
+  const [displayNameAttr, setDisplayNameAttr] = useState('displayName')
+  const [emailAttr, setEmailAttr] = useState('mail')
+  const [syncLimit, setSyncLimit] = useState(500)
+  const [probeUsername, setProbeUsername] = useState('')
+
+  const bindPasswordSet = loaded?.bind_password_set ?? false
+
+  const configured = useMemo(() => {
+    if (!enabled) return false
+    if (!fieldTrim(uri) || !fieldTrim(userSearchBase)) return false
+    if (allowAnonymous) return true
+    const pSet = bindPassword.trim().length > 0 || bindPasswordSet
+    return Boolean(fieldTrim(bindDn) && pSet)
+  }, [enabled, allowAnonymous, uri, bindDn, bindPassword, bindPasswordSet, userSearchBase])
+  const ldapUsers = useMemo(() => users.filter((u) => u.is_ldap), [users])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [cfg, usersRows] = await Promise.all([api.ldapConfig(), api.users()])
+      setLoaded(cfg)
+      setUsers(usersRows)
+      setEnabled(Boolean(cfg.enabled))
+      setAllowAnonymous(Boolean(cfg.allow_anonymous))
+      setUri(cfg.uri ?? '')
+      setBindDn(cfg.bind_dn ?? '')
+      setBindPassword('')
+      setUserSearchBase(cfg.user_search_base ?? '')
+      setUserFilter(cfg.user_filter ?? '(&(objectClass=user)(objectCategory=person))')
+      setUsernameAttr(cfg.username_attr ?? 'sAMAccountName')
+      setDisplayNameAttr(cfg.display_name_attr ?? 'displayName')
+      setEmailAttr(cfg.email_attr ?? 'mail')
+      setSyncLimit(cfg.sync_limit ?? 500)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    } finally {
+      setLoading(false)
+    }
+  }, [t, toast])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  if (!user?.is_superuser) {
+    return <Navigate to="/" replace />
+  }
+
+  async function onSave(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const body = {
+        enabled,
+        allow_anonymous: allowAnonymous,
+        uri: fieldTrim(uri),
+        bind_dn: fieldTrim(bindDn),
+        bind_password: bindPassword === '' ? null : bindPassword, // null => keep current
+        user_search_base: fieldTrim(userSearchBase),
+        user_filter: userFilter.trim() || '(&(objectClass=user)(objectCategory=person))',
+        username_attr: usernameAttr.trim() || 'sAMAccountName',
+        display_name_attr: displayNameAttr.trim() || 'displayName',
+        email_attr: emailAttr.trim() || 'mail',
+        sync_limit: Number.isFinite(syncLimit) ? syncLimit : 500,
+      } as const
+      const cfg = await api.updateLdapConfig(body)
+      setLoaded(cfg)
+      setBindPassword('')
+      toast.ok(
+        t('settingsLdap.saveSummary', {
+          uri: cfg.uri || '—',
+          baseDn: cfg.user_search_base || '—',
+          bindDn: cfg.bind_dn || '—',
+          passwordStatus: cfg.bind_password_set
+            ? t('settingsLdap.passwordSaved')
+            : t('settingsLdap.passwordMissing'),
+        }),
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function onTestBind() {
+    if (!allowAnonymous && !bindPassword.trim() && !bindPasswordSet) {
+      toast.error(t('settingsLdap.bindPasswordMissing'))
+      return
+    }
+    setTesting(true)
+    setSyncResult(null)
+    try {
+      const r = await api.testLdapConfig({
+        allow_anonymous: allowAnonymous,
+        uri: fieldTrim(uri) || undefined,
+        bind_dn: fieldTrim(bindDn) || undefined,
+        bind_password: bindPassword.trim() || undefined,
+        user_search_base: fieldTrim(userSearchBase) || undefined,
+        user_filter: userFilter.trim() || undefined,
+        username_attr: usernameAttr.trim() || undefined,
+        display_name_attr: displayNameAttr.trim() || undefined,
+        email_attr: emailAttr.trim() || undefined,
+        probe_username: null,
+      })
+      toast.info(r.ok ? r.message : t('settingsLdap.testFailed'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  async function onTestSearch() {
+    const probe = fieldTrim(probeUsername)
+    if (!probe) return
+    if (!allowAnonymous && !bindPassword.trim() && !bindPasswordSet) {
+      toast.error(t('settingsLdap.bindPasswordMissing'))
+      return
+    }
+    setTesting(true)
+    setSyncResult(null)
+    try {
+      const r = await api.testLdapConfig({
+        allow_anonymous: allowAnonymous,
+        uri: fieldTrim(uri) || undefined,
+        bind_dn: fieldTrim(bindDn) || undefined,
+        bind_password: bindPassword.trim() || undefined,
+        user_search_base: fieldTrim(userSearchBase) || undefined,
+        user_filter: userFilter.trim() || undefined,
+        username_attr: usernameAttr.trim() || undefined,
+        display_name_attr: displayNameAttr.trim() || undefined,
+        email_attr: emailAttr.trim() || undefined,
+        probe_username: probe,
+      })
+      toast.info(
+        t('settingsLdap.testSearchResult', {
+          message: r.message,
+          found: r.found,
+          sampleDn: r.sample_dn ? t('settingsLdap.sampleDn', { dn: r.sample_dn }) : '',
+        }),
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
+      <PageHeader
+        icon={<IconKey className="h-7 w-7" />}
+        title={t('titles.ldap')}
+        subtitle={t('pages.ldapSubtitle')}
+      />
+
+      {syncResult ? (
+        <div className="app-alert app-alert-info text-sm">
+          <div className="font-medium">
+            {t('settingsLdap.syncSummary', {
+              created: syncResult.created_count,
+              skipped: syncResult.skipped_count,
+            })}
+          </div>
+          {typeof syncResult.scanned_count === 'number' || typeof syncResult.missing_username_attr === 'number' ? (
+            <div className="mt-1 text-xs text-[var(--color-fg-muted)]">
+              {typeof syncResult.scanned_count === 'number' ? (
+                <>{t('settingsLdap.syncScanned', { count: syncResult.scanned_count })} </>
+              ) : null}
+              {typeof syncResult.missing_username_attr === 'number' ? (
+                <>
+                  {t('settingsLdap.syncMissingUsernameAttr', {
+                    attr: usernameAttr || 'username',
+                    count: syncResult.missing_username_attr,
+                  })}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {syncResult.entries.length ? (
+            <div className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-[var(--color-surface-muted)] p-3 font-mono text-xs text-[var(--color-fg)]">
+              {syncResult.entries.slice(0, 200).map((e) => (
+                <div key={`${e.username}-${String(e.created)}`}>
+                  {e.username}
+                  {e.created && e.one_time_password ? (
+                    <span className="text-[var(--color-fg)]">
+                      {t('settingsLdap.entryPassword')}
+                      <strong>{e.one_time_password}</strong>
+                    </span>
+                  ) : (
+                    <span className="text-[var(--color-fg-muted)]">{t('settingsLdap.entryExists')}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <form onSubmit={onSave} className="app-card w-full space-y-5 p-6 sm:p-7 lg:p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] pb-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-[var(--color-fg)]">
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            {t('settingsLdap.enable')}
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-[var(--color-fg)]">
+            <input
+              type="checkbox"
+              checked={allowAnonymous}
+              onChange={(e) => setAllowAnonymous(e.target.checked)}
+            />
+            {t('settingsLdap.anonymousBind')}
+          </label>
+          <div className="text-xs font-medium text-[var(--color-fg-muted)]">
+            {t('settingsLdap.statusLabel')}{' '}
+            {configured ? (
+              <span className="text-emerald-700">{t('settingsLdap.configured')}</span>
+            ) : (
+              <span>{t('settingsLdap.notConfigured')}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="sm:col-span-2 xl:col-span-3">
+            <label className="app-label">{t('settingsLdap.ldapUriLabel')}</label>
+            <input
+              value={uri}
+              onChange={(e) => setUri(e.target.value)}
+              placeholder={t('settingsLdap.ldapUriPlaceholder')}
+              className="app-input"
+            />
+          </div>
+          <div className="xl:col-span-1">
+            <label className="app-label">{t('settingsLdap.bindDnLabel')}</label>
+            <input
+              value={bindDn}
+              onChange={(e) => setBindDn(e.target.value)}
+              placeholder={t('settingsLdap.bindDnPlaceholder')}
+              disabled={allowAnonymous}
+              className="app-input"
+            />
+          </div>
+          <div className="xl:col-span-2">
+            <label className="app-label">{t('settingsLdap.bindPasswordLabel')}</label>
+            <input
+              type="password"
+              value={bindPassword}
+              onChange={(e) => setBindPassword(e.target.value)}
+              placeholder={
+                bindPasswordSet
+                  ? t('settingsLdap.bindPasswordPlaceholderSet')
+                  : t('settingsLdap.bindPasswordPlaceholderUnset')
+              }
+              disabled={allowAnonymous}
+              className="app-input"
+            />
+            <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+              {allowAnonymous ? (
+                <>{t('settingsLdap.anonymousBindHint')}</>
+              ) : (
+                <>{t('settingsLdap.keepPasswordHint')}</>
+              )}
+            </p>
+          </div>
+          <div className="sm:col-span-2 xl:col-span-3">
+            <label className="app-label">
+              {t('settingsLdap.userSearchBaseLabel')}
+            </label>
+            <input
+              value={userSearchBase}
+              onChange={(e) => setUserSearchBase(e.target.value)}
+              placeholder={t('settingsLdap.userSearchBasePlaceholder')}
+              className="app-input"
+            />
+          </div>
+          <div className="sm:col-span-2 xl:col-span-3">
+            <label className="app-label">
+              {t('settingsLdap.userFilterLabel')}
+            </label>
+            <input
+              value={userFilter}
+              onChange={(e) => setUserFilter(e.target.value)}
+              placeholder="(&(objectClass=user)(objectCategory=person))"
+              className="app-input font-mono text-xs"
+            />
+          </div>
+          <div>
+            <label className="app-label">
+              {t('settingsLdap.usernameAttrLabel')}
+            </label>
+            <input
+              value={usernameAttr}
+              onChange={(e) => setUsernameAttr(e.target.value)}
+              placeholder="sAMAccountName"
+              className="app-input font-mono text-xs"
+            />
+          </div>
+          <div>
+            <label className="app-label">
+              {t('settingsLdap.displayNameAttrLabel')}
+            </label>
+            <input
+              value={displayNameAttr}
+              onChange={(e) => setDisplayNameAttr(e.target.value)}
+              placeholder="displayName"
+              className="app-input font-mono text-xs"
+            />
+          </div>
+          <div>
+            <label className="app-label">
+              {t('settingsLdap.emailAttrLabel')}
+            </label>
+            <input
+              value={emailAttr}
+              onChange={(e) => setEmailAttr(e.target.value)}
+              placeholder="mail"
+              className="app-input font-mono text-xs"
+            />
+          </div>
+          <div>
+            <label className="app-label">
+              {t('settingsLdap.syncLimitLabel')}
+            </label>
+            <input
+              type="number"
+              value={syncLimit}
+              onChange={(e) => setSyncLimit(Number(e.target.value))}
+              min={1}
+              max={5000}
+              className="app-input"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3 border-t border-[var(--color-border)] pt-5">
+          <button
+            type="submit"
+            disabled={saving || loading}
+            className="app-btn app-btn-primary"
+          >
+            {saving ? t('settingsLdap.saveBusy') : t('common.save')}
+          </button>
+          <button
+            type="button"
+            disabled={testing || loading}
+            onClick={() => void onTestBind()}
+            className="app-btn app-btn-secondary"
+          >
+            {testing ? t('settingsLdap.testBusy') : t('settingsLdap.testBind')}
+          </button>
+          <button
+            type="button"
+            disabled={syncing || loading || !configured}
+            onClick={() => {
+              void (async () => {
+                setSyncing(true)
+                setSyncResult(null)
+                try {
+                  const r = await api.ldapSync()
+                  setSyncResult(r)
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : t('common.error'))
+                } finally {
+                  setSyncing(false)
+                }
+              })()
+            }}
+            className="app-btn app-btn-secondary"
+            title={!configured ? t('settingsLdap.syncDisabledTitle') : t('settingsLdap.syncEnabledTitle')}
+          >
+            {syncing ? t('settingsLdap.syncBusy') : t('settingsLdap.syncUsers')}
+          </button>
+          <div className="hidden min-h-[1px] min-w-[1rem] flex-1 lg:block" />
+          <div className="flex w-full min-w-0 flex-wrap items-end gap-2 lg:w-auto lg:max-w-md lg:flex-1">
+            <div className="min-w-0 flex-1">
+              <label className="app-label">
+                {t('settingsLdap.probeSearchLabel')}
+              </label>
+              <input
+                value={probeUsername}
+                onChange={(e) => setProbeUsername(e.target.value)}
+                placeholder="jdoe"
+                className="app-input"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={testing || loading || !probeUsername.trim()}
+              onClick={() => void onTestSearch()}
+              className="app-btn app-btn-secondary shrink-0"
+            >
+              {t('settingsLdap.probeSearchButton')}
+            </button>
+          </div>
+        </div>
+
+        {loading ? <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p> : null}
+      </form>
+
+      <div className="app-card w-full overflow-hidden p-0">
+        <div className="border-b border-[var(--color-border)] px-5 py-3.5">
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">
+            {t('settingsLdap.ldapUsersTitle')}
+          </h2>
+        </div>
+        <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[560px] w-full text-left text-sm">
+            <thead className="app-table-head">
+              <tr>
+                <th className="px-4 py-3">{t('settingsLdap.tableId')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableUsername')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableFullName')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableRole')}</th>
+                <th className="px-4 py-3">{t('settingsLdap.tableStatus')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100">
+              {ldapUsers.map((u) => (
+                <tr key={u.id} className="app-table-row">
+                  <td className="px-4 py-3 font-mono text-[var(--color-fg-muted)]">{u.id}</td>
+                  <td className="px-4 py-3 font-medium text-[var(--color-fg)]">{u.username}</td>
+                  <td className="px-4 py-3 text-[var(--color-fg-muted)]">{u.full_name ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {u.is_superuser ? (
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-[var(--color-fg)]">
+                        {t('settingsLdap.adminRole')}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--color-fg-muted)]">{u.role}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.is_active ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                        {t('settingsLdap.statusActive')}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-fg-muted)]">
+                        {t('settingsLdap.statusInactive')}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CORAX</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <div class="scene" aria-hidden="true">
+      <span class="mesh"></span>
+      <span class="glow glow-a"></span>
+      <span class="glow glow-b"></span>
+    </div>
+    <section class="card">
+      <button type="button" class="hide" id="hide-btn" aria-label="Свернуть в трей">
+        ×
+      </button>
+      <header class="head" data-tauri-drag-region>
+        <p class="brand">CORAX</p>
+        <h1 id="hello">Агент в трее</h1>
+        <p class="lead" id="pc">Этот компьютер</p>
+      </header>
+      <div class="body">
+        <div class="status" id="status-box">
+          <p class="status-label">Последний отчёт</p>
+          <pre id="status">Ещё не запускался. ZIP-агент пишет corax-last-run.txt — тогда статус появится здесь.</pre>
+        </div>
+        <button type="button" class="primary" id="ticket-btn">Оставить заявку</button>
+        <p class="hint">
+          Окно можно закрыть — агент останется в трее и почти не занимает память, пока карточка закрыта.
+        </p>
+      </div>
+    </section>
+  </body>
+</html>

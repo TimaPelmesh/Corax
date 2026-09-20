@@ -1,0 +1,10 @@
+[Unit]
+Description=CORAX inventory agent weekly timer
+
+[Timer]
+OnCalendar=Mon *-*-* 09:15:00
+Persistent=true
+Unit=corax-agent.service
+
+[Install]
+WantedBy=timers.target
