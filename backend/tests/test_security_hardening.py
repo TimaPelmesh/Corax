@@ -33,6 +33,19 @@ def test_notes_html_strips_script():
     assert "ok" in cleaned
 
 
+def test_notes_html_keeps_toolbar_span_styles_and_comments():
+    cleaned = sanitize_html(
+        '<p><span style="font-weight:700">жирный</span>'
+        '<!-- комментарий --><span style="font-style:italic">курсив</span></p>'
+    )
+    assert "жирный" in cleaned
+    assert "курсив" in cleaned
+    assert "комментарий" in cleaned
+    assert "<strong>" in cleaned
+    assert "<em>" in cleaned
+    assert "script" not in cleaned.lower()
+
+
 def test_ticket_handler_unknown_host_rejected(client: TestClient):
     r = client.get("/api/v1/ticket-handler/public/context", params={"hostname": "no-such-pc-xyz"})
     assert r.status_code == 403

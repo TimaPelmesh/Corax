@@ -2645,10 +2645,10 @@ export const api = {
   createNetworkMapScene: (body: { title?: string; mode?: 'blank' | 'topology' }) =>
     request<NetworkMapSceneDto>(`${API_PREFIX}/network/map-scenes`, { method: 'POST', json: body }),
 
-  saveNetworkMapScene: (body: { title?: string; scene: NetworkMapScenePayload }, id?: number) =>
+  saveNetworkMapScene: (body: { title?: string; scene: NetworkMapScenePayload }, id?: number, opts?: { keepalive?: boolean }) =>
     request<NetworkMapSceneDto>(
       id && id > 0 ? `${API_PREFIX}/network/map-scenes/${id}` : `${API_PREFIX}/network/map-scene`,
-      { method: 'PUT', json: body },
+      { method: 'PUT', json: body, keepalive: opts?.keepalive },
     ),
 
   layoutNetworkMapScene: (id: number) =>

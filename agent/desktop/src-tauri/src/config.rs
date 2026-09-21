@@ -151,45 +151,36 @@ fn read_json_file(path: &Path) -> JsonBits {
 
 pub fn load_config() -> AgentConfig {
     let mut cfg = AgentConfig::default();
-    if let Ok(v) = std::env::var("INVENTORY_SERVER") {
-        cfg.server_url = v.trim().trim_end_matches('/').to_string();
+    let env_server = std::env::var("INVENTORY_SERVER")
+        .ok()
+        .map(|v| v.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(ref s) = env_server {
+        cfg.server_url = s.clone();
     }
 
-    let candidates = [
-        exe_dir().join("desktop.json"),
+    ensure_sidecar_copies();
+
+    let bundle = [
         exe_dir().join("agent.json"),
+        program_data_dir().join("agent.json"),
+    ];
+    let prefs = [
+        exe_dir().join("desktop.json"),
         program_data_dir().join("desktop.json"),
     ];
-    for path in candidates {
-        if !path.exists() {
-            continue;
-        }
-        if path.extension().and_then(|s| s.to_str()) != Some("json") {
-            continue;
-        }
-        let bits = read_json_file(&path);
-        if cfg.server_url.is_empty() {
-            cfg.server_url = bits.server.trim().trim_end_matches('/').to_string();
-        }
-        if let Some((h, m)) = bits.daily {
-            cfg.daily_hour = h;
-            cfg.daily_minute = m;
-        }
-        if let Some(a) = bits.autostart {
-            cfg.autostart = a;
-        }
-        if cfg.last_ok_date.is_empty() {
-            if let Some(d) = bits.last_ok {
-                cfg.last_ok_date = d;
-            }
-        }
+
+    for path in bundle {
+        apply_bundle(&mut cfg, &read_json_file(&path));
     }
-    if cfg.token.is_empty() {
-        let beside = read_json_file(&exe_dir().join("agent.json")).token;
-        if looks_like_agent_token(&beside) {
-            cfg.token = beside;
-        }
+    for path in prefs {
+        apply_prefs_file(&mut cfg, &read_json_file(&path));
     }
+    if let Some(s) = env_server {
+        cfg.server_url = s;
+    }
+
+    // Legacy: older panel ZIPs stamped the sealed token into the PE. New packs never do that.
     if cfg.token.is_empty() {
         if let Some(t) = token_from_current_exe() {
             if looks_like_agent_token(&t) {
@@ -198,6 +189,57 @@ pub fn load_config() -> AgentConfig {
         }
     }
     cfg
+}
+
+fn apply_bundle(cfg: &mut AgentConfig, bits: &JsonBits) {
+    if cfg.token.is_empty() && looks_like_agent_token(&bits.token) {
+        cfg.token = bits.token.clone();
+    }
+    if cfg.server_url.is_empty() {
+        cfg.server_url = bits.server.trim().trim_end_matches('/').to_string();
+    }
+    if let Some((h, m)) = bits.daily {
+        cfg.daily_hour = h;
+        cfg.daily_minute = m;
+    }
+    if let Some(a) = bits.autostart {
+        cfg.autostart = a;
+    }
+    if cfg.last_ok_date.is_empty() {
+        if let Some(d) = bits.last_ok.clone() {
+            cfg.last_ok_date = d;
+        }
+    }
+}
+
+fn apply_prefs_file(cfg: &mut AgentConfig, bits: &JsonBits) {
+    let server = bits.server.trim().trim_end_matches('/');
+    if !server.is_empty() {
+        cfg.server_url = server.to_string();
+    }
+    if let Some((h, m)) = bits.daily {
+        cfg.daily_hour = h;
+        cfg.daily_minute = m;
+    }
+    if let Some(a) = bits.autostart {
+        cfg.autostart = a;
+    }
+    if let Some(d) = bits.last_ok.clone() {
+        cfg.last_ok_date = d;
+    }
+}
+
+fn ensure_sidecar_copies() {
+    let src = exe_dir().join("agent.json");
+    if !src.is_file() {
+        return;
+    }
+    let dest_dir = program_data_dir();
+    let _ = fs::create_dir_all(&dest_dir);
+    let dst = dest_dir.join("agent.json");
+    if !dst.is_file() {
+        let _ = fs::copy(&src, &dst);
+    }
 }
 
 fn prefs_path() -> PathBuf {

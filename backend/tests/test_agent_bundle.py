@@ -187,7 +187,7 @@ def test_dockerfile_copies_windows_agent_wrapper():
     assert "COPY --chown=corax:corax agent/desktop/prebuilt ./agent/desktop/prebuilt" in text
 
 
-def test_desktop_bundle_seals_token_and_omits_plaintext(tmp_path):
+def test_desktop_bundle_seals_token_and_leaves_exe_untouched(tmp_path):
     import json
 
     from app.agent_desktop import empty_seal_slot, pack_desktop_zip, seal_agent_token, stamp_desktop_exe
@@ -195,21 +195,23 @@ def test_desktop_bundle_seals_token_and_omits_plaintext(tmp_path):
     fake = tmp_path / "CORAX-Agent.exe"
 
     slot = empty_seal_slot()
-    fake.write_bytes(b"MZ" + slot + b"\0" * 60_000)
+    original = b"MZ" + slot + b"\0" * 60_000
+    fake.write_bytes(original)
     secret = "aabbccdd.super-secret-token-value"
-    data = pack_desktop_zip(fake, secret)
+    data = pack_desktop_zip(fake, secret, "http://192.168.1.10:3000")
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         names = zf.namelist()
         assert set(names) == {"CORAX-Agent.exe", "agent.json", "Install.bat", "README.txt"}
         exe = zf.read("CORAX-Agent.exe")
+        assert exe == original
         assert secret.encode("utf-8") not in exe
-        assert b"<<<CORAX_DESKTOP_SEAL_BEGIN>>>" in exe
         raw = zf.read("agent.json").decode("utf-8")
         assert secret not in raw
         cfg = json.loads(raw)
         assert "token_enc" in cfg
         assert cfg["token_prefix"] == "aabbccdd"
-        assert cfg["token_enc"]["wrap"].encode("ascii") in exe
+        assert cfg["server_url"] == "http://192.168.1.10:3000"
+        assert cfg["token_enc"]["wrap"].encode("ascii") not in exe
         assert "token" not in cfg
         from app.agent_desktop import unseal_agent_token
 
@@ -218,6 +220,8 @@ def test_desktop_bundle_seals_token_and_omits_plaintext(tmp_path):
         assert cfg["autostart"] is True
         bat = zf.read("Install.bat").decode("utf-8")
         assert "CurrentVersion\\Run" in bat
+        assert "agent.json" in bat
+        assert "errorlevel" in bat
         readme = zf.read("README.txt").decode("utf-8")
         assert "прототип" not in readme.lower()
         assert "Windows 10/11" in readme

@@ -10,9 +10,11 @@ import {
   IconRouter,
   IconServer,
   IconSwitch,
+  IconVm,
   IconWarehouse,
 } from '../../components/icons'
 import { useLocale } from '../../i18n/LocaleContext'
+import { chassisPortLayout, portHandleId } from './chassis'
 import type { NetworkMapGroupKind, NetworkMapStencil } from './types'
 import { NetworkMapResizer } from './NetworkMapResizer'
 
@@ -146,6 +148,58 @@ function CableJacks() {
   )
 }
 
+function PortStrip({
+  ports,
+  width,
+}: {
+  ports: Array<{ id: string; name: string; up?: boolean | null }>
+  width: number
+}) {
+  const { t } = useLocale()
+  const { cols } = chassisPortLayout(ports.length)
+  if (!ports.length || cols <= 0) return null
+  const inner = Math.max(48, width - 16)
+  const cell = inner / cols
+  return (
+    <>
+      {ports.map((port, index) => {
+        const col = index % cols
+        const row = Math.floor(index / cols)
+        const left = 8 + col * cell + cell / 2
+        const top = 44 + row * 16
+        const hid = portHandleId(port.name) || port.id
+        return (
+          <Fragment key={port.id}>
+            <span
+              className={`network-map-rj45 ${port.up === true ? 'is-up' : port.up === false ? 'is-down' : ''}`}
+              title={port.name}
+              style={{ left, top, width: Math.max(6, cell - 3) }}
+            />
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id={hid}
+              className="network-map-jack is-chassis nodrag nopan"
+              style={{ left, top, transform: 'translate(-50%, -50%)' }}
+              title={port.name || t('networkMap.connectCable')}
+              isConnectable
+            />
+            <Handle
+              type="target"
+              position={Position.Top}
+              id={`${hid}-tgt`}
+              className="network-map-jack is-chassis nodrag nopan"
+              style={{ left, top, transform: 'translate(-50%, -50%)' }}
+              title={port.name || t('networkMap.connectCable')}
+              isConnectable
+            />
+          </Fragment>
+        )
+      })}
+    </>
+  )
+}
+
 export type EquipmentNodeData = {
   stencil: NetworkMapStencil
   title: string
@@ -201,6 +255,8 @@ function stencilIcon(stencil: NetworkMapStencil): ReactNode {
       return <IconCloud className={cls} />
     case 'pc':
       return <IconPcs className={cls} />
+    case 'vm':
+      return <IconVm className={cls} />
     default:
       return <IconPcs className={cls} />
   }
@@ -258,19 +314,22 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
       </div>
     )
   }
-  const chassis = data.stencil === 'switch' && (data.portCount || 0) > 8
+  const ports = data.ports || []
+  const chassis = ports.length > 0
+  const nodeWidth = data.width || 112
   return (
-    <div className={`network-map-gear relative h-full w-full ${picked ? 'is-selected' : ''}`}>
+    <div className={`network-map-gear relative h-full w-full ${picked ? 'is-selected' : ''} ${chassis ? 'is-chassis' : ''}`}>
       {picked ? <span className="network-map-selection-box" aria-hidden /> : null}
       <CableJacks />
+      {chassis ? <PortStrip ports={ports} width={nodeWidth} /> : null}
       <div
-        className={`flex h-full w-full flex-col items-center justify-center gap-1 px-1 ${
+        className={`flex h-full w-full flex-col items-center ${chassis ? 'justify-start pt-1' : 'justify-center'} gap-1 px-1 ${
           data.missing ? 'opacity-70' : ''
         } ${data.neighbor ? 'is-neighbor-node' : ''}`}
       >
         <span
           className={`flex items-center justify-center rounded-lg border bg-[var(--color-surface)] text-[var(--color-fg)] ${
-            chassis ? 'h-8 w-[calc(100%-8px)]' : 'h-9 w-9'
+            chassis ? 'h-7 w-[calc(100%-8px)]' : 'h-9 w-9'
           } ${
             picked
               ? 'border-[var(--color-primary)]'
@@ -293,7 +352,7 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
           ) : null}
         </div>
       </div>
-      <NetworkMapResizer visible={picked} minWidth={chassis ? 140 : 88} minHeight={72} maxWidth={640} maxHeight={280} />
+      <NetworkMapResizer visible={picked} minWidth={chassis ? 140 : 88} minHeight={72} maxWidth={760} maxHeight={280} />
     </div>
   )
 })

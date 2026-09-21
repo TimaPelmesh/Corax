@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { api, type NetworkDevice } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconClose } from './icons'
+import { NetworkTypeIcon, NETWORK_DEVICE_TYPE_OPTIONS } from './NetworkTypeIcon'
 import { useLocale } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -112,11 +113,21 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
       <button type="button" className="absolute inset-0 cursor-default" aria-label={t('common.close')} onClick={onClose} />
       <div className="relative z-10 flex max-h-[min(92dvh,52rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl sm:rounded-2xl">
         <header className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold text-[var(--color-fg)]">
-              {row?.hostname || row?.ip_address || t('network.device')}
-            </h2>
-            <p className="mt-0.5 font-mono text-sm text-[var(--color-fg-subtle)]">{row?.ip_address}</p>
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg)]">
+              <NetworkTypeIcon type={row?.device_type || deviceType} className="h-6 w-6" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold text-[var(--color-fg)]">
+                {row?.hostname || row?.ip_address || t('network.device')}
+              </h2>
+              <p className="mt-0.5 font-mono text-sm text-[var(--color-fg-subtle)]">{row?.ip_address}</p>
+              {row ? (
+                <p className="mt-1 text-xs font-medium text-[var(--color-fg-muted)]">
+                  {t(`network.type.${row.device_type}` as 'network.type.switch')}
+                </p>
+              ) : null}
+            </div>
           </div>
           <button
             type="button"
@@ -302,23 +313,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
                       value={deviceType}
                       onChange={(e) => setDeviceType(e.target.value)}
                     >
-                      {[
-                        'switch',
-                        'router',
-                        'gateway',
-                        'ap',
-                        'firewall',
-                        'controller',
-                        'server',
-                        'host',
-                        'printer',
-                        'nas',
-                        'voip',
-                        'ups',
-                        'camera',
-                        'modem',
-                        'unknown',
-                      ].map((k) => (
+                      {[...NETWORK_DEVICE_TYPE_OPTIONS].map((k) => (
                         <option key={k} value={k}>
                           {t(`network.type.${k}` as 'network.type.switch')}
                         </option>

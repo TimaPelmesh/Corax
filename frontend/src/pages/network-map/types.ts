@@ -8,6 +8,7 @@ export type NetworkMapStencil =
   | 'server'
   | 'nas'
   | 'pc'
+  | 'vm'
   | 'printer'
   | 'cloud'
   | 'corax'
@@ -42,6 +43,7 @@ export type NetworkMapSceneNode = {
   imageSrc?: string | null
   width?: number | null
   height?: number | null
+  portCount?: number | null
 }
 
 export type NetworkMapGroup = {
@@ -63,6 +65,7 @@ export type NetworkMapSceneEdge = {
   local_port?: string | null
   remote_port?: string | null
   link_type?: string | null
+  points?: Array<{ x: number; y: number }> | null
 }
 
 export type NetworkMapViewport = {
@@ -109,6 +112,7 @@ export type MergedCanvasEdge = {
   remotePort?: string | null
   persisted: boolean
   linkDbId?: number | null
+  points?: Array<{ x: number; y: number }>
 }
 
 export type MapLiveItem = {
@@ -135,8 +139,10 @@ export const STENCILS = [
   'firewall',
   'ap',
   'server',
+  'corax',
   'nas',
   'pc',
+  'vm',
   'printer',
   'cloud',
 ] as const

@@ -26,7 +26,7 @@ const fn make_seal_slot() -> [u8; SEAL_SLOT_LEN] {
     b
 }
 
-/// Padded PE slot. The panel ZIP packer writes AES-GCM JSON between the markers.
+/// Padded PE slot kept for older stamped EXEs. New panel ZIPs never write here.
 #[used]
 #[no_mangle]
 pub static CORAX_DESKTOP_SEAL: [u8; SEAL_SLOT_LEN] = make_seal_slot();

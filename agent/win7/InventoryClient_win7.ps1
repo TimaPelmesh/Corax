@@ -77,10 +77,8 @@ function Install-CoraxHelpdeskShortcut {
     $pc = [uri]::EscapeDataString($Hostname.Trim())
     $url = $base + '/h#pc=' + $pc
     $nl = "`r`n"
-    $icon = Join-Path $env:SystemRoot 'System32\imageres.dll'
-    if (-not (Test-Path $icon)) { $icon = Join-Path $env:SystemRoot 'System32\shell32.dll' }
-    $idx = 14
-    if ($icon -match 'imageres') { $idx = 81 }
+    $icon = Join-Path $env:SystemRoot 'System32\SHELL32.dll'
+    $idx = 1
     $body = '[InternetShortcut]' + $nl + 'URL=' + $url + $nl
     if (Test-Path $icon) {
         $body = $body + 'IconFile=' + $icon + $nl + 'IconIndex=' + $idx + $nl

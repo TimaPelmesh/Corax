@@ -77,7 +77,20 @@ export function gearNotOnMap(
       deviceType: dtype || null,
     })
   }
-  return out.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+  if (!placed.has('corax:self')) {
+    out.unshift({
+      bind: { type: 'corax', id: 0 },
+      label: 'Corax',
+      ip: null,
+      stencil: 'corax',
+      deviceType: 'corax',
+    })
+  }
+  return out.sort((a, b) => {
+    if (a.stencil === 'corax') return -1
+    if (b.stencil === 'corax') return 1
+    return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })
+  })
 }
 
 export function cloneScene(scene: NetworkMapScene): NetworkMapScene {

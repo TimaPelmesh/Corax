@@ -32,36 +32,50 @@ import { NetworkMapEquipmentNode, NetworkMapGroupNode, type EquipmentNodeData, t
 import { NetworkMapCableEdge } from './network-map/NetworkMapCableEdge'
 import { NetworkMapClearDialog } from './network-map/NetworkMapClearDialog'
 import { NetworkMapConfirmDialog } from './network-map/NetworkMapConfirmDialog'
+import { NetworkMapContextMenu, type MapContextAction } from './network-map/NetworkMapContextMenu'
 import { NetworkMapDock } from './network-map/NetworkMapDock'
 import { NetworkMapInspector } from './network-map/NetworkMapInspector'
+import { NetworkMapPortMenu, type MapPortOption } from './network-map/NetworkMapPortMenu'
 import { NetworkMapPortPicker } from './network-map/NetworkMapPortPicker'
 import { NetworkMapScenesBar } from './network-map/NetworkMapScenesBar'
 import { NetworkMapTray } from './network-map/NetworkMapTray'
 import {
   addToCanvasPack,
   applyFrameMembership,
+  applySceneFrameMembership,
+  chassisPorts,
+  clampPortCount,
   collectScene,
   decorateFocus,
   decorateSelection,
+  defaultStencilPortCount,
   equipmentHeight,
   equipmentWidth,
   followPackLeader,
   isMultiSelectEvent,
+  MAX_CHASSIS_PORTS,
   nextCanvasPackIds,
+  nextDiagramSlot,
+  nextSlotInGroup,
+  occupiedBoxes,
   portHandleId,
   portsForPicker,
+  RACK_SIZE,
+  ROOM_SIZE,
   toFlowEdges,
   toFlowNodes,
   toWorldScene,
   viewportFlowCenter,
 } from './network-map/flow'
+import { usedPortsForNode } from './network-map/cables'
 import { compressMapImage } from './network-map/image'
-import { bindsFromScene, deviceTypeForStencil, hydrateScene } from './network-map/mergeScene'
+import { bindsFromScene, deviceTypeForStencil, hydrateScene, overlayLiveOnMerged } from './network-map/mergeScene'
 import { applyNeighborCluster, offersFromTopology } from './network-map/neighborsAround'
 import { exportNetworkMapPng } from './network-map/exportPng'
 import { onMapNodeResized } from './network-map/NetworkMapResizer'
 import { cloneScene, gearNotOnMap, ipv4Slash24, matchMapQuery, subnetLayers, type TrayGear } from './network-map/inventory'
 import { createUndoStack } from './network-map/undo'
+import { randomId } from '../lib/randomId'
 import './network-map/network-map.css'
 import {
   MAX_MAP_IMAGES,
@@ -83,7 +97,43 @@ const SCENE_STORE_KEY = 'corax-network-map-scene-id'
 const TRAY_STORE_KEY = 'corax-network-map-tray-open'
 
 function newId(prefix: string): string {
-  return `${prefix}:${crypto.randomUUID()}`
+  return `${prefix}:${randomId()}`
+}
+
+function overlayLiveOnFlow(nodes: Node[], live: MapLiveItem[]): Node[] {
+  const byKey = new Map(live.map((item) => [bindKey({ type: item.type, id: item.id }), item]))
+  return nodes.map((n) => {
+    if (n.type !== 'equipment') return n
+    const data = n.data as EquipmentNodeData
+    if (!data.bind) return n
+    const hit = byKey.get(bindKey(data.bind))
+    if (!hit) return n
+    const portCount = data.portCount ?? hit.portCount ?? hit.ports?.length ?? null
+    return {
+      ...n,
+      data: {
+        ...data,
+        title: hit.label || data.title,
+        subtitle: hit.ip || data.subtitle,
+        status: hit.status,
+        missing: hit.missing,
+        ports: chassisPorts(hit.ports ?? data.ports, portCount),
+        portCount,
+      },
+    }
+  })
+}
+
+function portFromConnectionHandle(
+  handle: string | null | undefined,
+  ports: Array<{ id: string; name: string }>,
+): string | null {
+  if (!handle) return null
+  const raw = handle.replace(/-(src|tgt)$/, '')
+  const byId = ports.find((p) => p.id === raw || p.id === handle)
+  if (byId) return byId.name
+  if (!raw.startsWith('p:')) return null
+  return ports.find((p) => portHandleId(p.name) === raw)?.name || null
 }
 
 function toLive(items: NetworkMapLiveItem[]): MapLiveItem[] {
@@ -120,6 +170,7 @@ function NetworkMapEditor() {
   const [mergedNodes, setMergedNodes] = useState<MergedCanvasNode[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [pendingCable, setPendingCable] = useState<{
     source: string
     target: string
@@ -129,7 +180,31 @@ function NetworkMapEditor() {
     targetLabel: string
     sourcePorts: Array<{ id: string; name: string; up?: boolean | null }>
     targetPorts: Array<{ id: string; name: string; up?: boolean | null }>
+    edgeId?: string
+    initialLocal?: string | null
+    initialRemote?: string | null
   } | null>(null)
+  const [linkArmed, setLinkArmed] = useState(false)
+  const [linkFrom, setLinkFrom] = useState<{ id: string; port: string | null; label: string; x?: number; y?: number } | null>(null)
+  const [portMenu, setPortMenu] = useState<{
+    nodeId: string
+    label: string
+    ports: MapPortOption[]
+    used: string[]
+    x: number
+    y: number
+    role: 'from' | 'to'
+    targetId?: string
+    targetLabel?: string
+    edgeId?: string
+  } | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{
+    x: number
+    y: number
+    kind: 'node' | 'group' | 'edge' | 'pane'
+    id?: string
+  } | null>(null)
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null)
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [clearOpen, setClearOpen] = useState(false)
@@ -177,6 +252,7 @@ function NetworkMapEditor() {
   const tRef = useRef(t)
   tRef.current = t
   const loadedOnce = useRef(false)
+  const loadingRef = useRef(true)
   const groupDrag = useRef<{ id: string; x: number; y: number; members: Array<{ id: string; x: number; y: number }> } | null>(
     null,
   )
@@ -191,8 +267,10 @@ function NetworkMapEditor() {
   } | null>(null)
   const renameNodeRef = useRef<(id: string, label: string) => void>(() => undefined)
   const renameGroupRef = useRef<(id: string, title: string) => void>(() => undefined)
+  const persistRef = useRef<() => void>(() => undefined)
   const selectedId = selectedIds.length ? selectedIds[selectedIds.length - 1] : null
   selectedIdsRef.current = selectedIds
+  loadingRef.current = loading
 
   const selected = useMemo(
     () => mergedNodes.find((n) => n.id === selectedId) ?? null,
@@ -202,8 +280,29 @@ function NetworkMapEditor() {
     () => scene.groups.find((g) => g.id === selectedGroupId) ?? null,
     [scene.groups, selectedGroupId],
   )
+  const selectedCable = useMemo(() => {
+    if (!selectedEdgeId) return null
+    const sceneEdge = scene.edges.find((e) => e.id === selectedEdgeId)
+    const rfEdge = edges.find((e) => e.id === selectedEdgeId)
+    const source = sceneEdge?.source || rfEdge?.source
+    const target = sceneEdge?.target || rfEdge?.target
+    if (!source || !target) return null
+    const sourceNode = mergedNodes.find((n) => n.id === source)
+    const targetNode = mergedNodes.find((n) => n.id === target)
+    const data = rfEdge?.data as { linkType?: string } | undefined
+    return {
+      id: selectedEdgeId,
+      source,
+      target,
+      sourceLabel: sourceNode?.label || source,
+      targetLabel: targetNode?.label || target,
+      localPort: sceneEdge?.local_port ?? null,
+      remotePort: sceneEdge?.remote_port ?? null,
+      linkType: sceneEdge?.link_type || data?.linkType || 'manual',
+    }
+  }, [selectedEdgeId, scene.edges, edges, mergedNodes])
   const shown = useMemo(() => {
-    const selectedView = decorateSelection(nodes, edges, selectedIds, selectedGroupId)
+    const selectedView = decorateSelection(nodes, edges, selectedIds, selectedGroupId, selectedEdgeId)
     const focused = decorateFocus(selectedView.nodes, selectedView.edges, mergedNodes, searchQuery, activeCidr)
     if (!canEdit) return focused
     return {
@@ -230,9 +329,16 @@ function NetworkMapEditor() {
         }
         return n
       }),
-      edges: focused.edges,
+      edges: focused.edges.map((edge) => ({
+        ...edge,
+        data: {
+          ...(edge.data as Record<string, unknown>),
+          canEdit,
+          persistRef,
+        },
+      })),
     }
-  }, [nodes, edges, selectedIds, selectedGroupId, mergedNodes, searchQuery, activeCidr, canEdit])
+  }, [nodes, edges, selectedIds, selectedGroupId, selectedEdgeId, mergedNodes, searchQuery, activeCidr, canEdit])
   const neighborOffers = useMemo(
     () => offersFromTopology(selected?.bind, scene, topology),
     [selected?.bind, scene, topology],
@@ -303,12 +409,14 @@ function NetworkMapEditor() {
     }
     try {
       const live = await api.networkMapLive(binds)
-      liveRef.current = toLive(live.items)
-      paint(next, liveRef.current)
+      const items = toLive(live.items)
+      liveRef.current = items
+      setMergedNodes((ns) => overlayLiveOnMerged(ns, items))
+      setNodes((ns) => overlayLiveOnFlow(ns, items))
     } catch {
       /* scene already visible */
     }
-  }, [paint])
+  }, [setNodes])
 
   const sceneFromCanvas = useCallback(() => {
     const fromRf = collectScene(getNodes(), getEdges(), sceneRef.current, getViewport())
@@ -321,6 +429,45 @@ function NetworkMapEditor() {
     }
     return fromRf
   }, [getEdges, getNodes, getViewport])
+
+  const flushSave = useCallback(
+    (opts?: { keepalive?: boolean }) => {
+      if (!canEdit || loadingRef.current || !sceneIdRef.current) return
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current)
+        saveTimer.current = null
+      }
+      const payload = { ...sceneFromCanvas(), viewport: getViewport() }
+      sceneRef.current = payload
+      const body = { scene: payload, title: sceneTitleRef.current }
+      let keepalive = Boolean(opts?.keepalive)
+      if (keepalive) {
+        try {
+          keepalive = new Blob([JSON.stringify(body)]).size < 60_000
+        } catch {
+          keepalive = false
+        }
+      }
+      void api.saveNetworkMapScene(body, sceneIdRef.current, keepalive ? { keepalive: true } : undefined)
+    },
+    [canEdit, getViewport, sceneFromCanvas],
+  )
+
+  useEffect(() => {
+    const onUnload = () => flushSave({ keepalive: true })
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushSave()
+    }
+    window.addEventListener('pagehide', onUnload)
+    window.addEventListener('beforeunload', onUnload)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('pagehide', onUnload)
+      window.removeEventListener('beforeunload', onUnload)
+      document.removeEventListener('visibilitychange', onHide)
+      flushSave({ keepalive: true })
+    }
+  }, [flushSave])
 
   const applySceneDto = useCallback(
     (dto: NetworkMapSceneDto, listed?: typeof scenes) => {
@@ -436,6 +583,7 @@ function NetworkMapEditor() {
   }, [canEdit, persist, sceneFromCanvas])
 
   const selectCanvasNode = useCallback((node: Node, mode: 'replace' | 'add' | 'toggle' = 'replace') => {
+    setSelectedEdgeId(null)
     if (node.type === 'groupFrame') {
       if (mode !== 'replace') return
       setSelectedGroupId(node.id)
@@ -458,6 +606,7 @@ function NetworkMapEditor() {
     if (!root) return
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return
+      if (linkArmed || linkFrom) return
       const nodeEl = (event.target as HTMLElement | null)?.closest?.('.react-flow__node')
       if (!(nodeEl instanceof HTMLElement)) return
       const id = nodeEl.getAttribute('data-id')
@@ -475,7 +624,7 @@ function NetworkMapEditor() {
     }
     root.addEventListener('pointerdown', onPointerDown, true)
     return () => root.removeEventListener('pointerdown', onPointerDown, true)
-  }, [getNodes, selectCanvasNode])
+  }, [getNodes, linkArmed, linkFrom, selectCanvasNode])
 
   const onNodeDragStart = useCallback((event: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }, node: Node) => {
     skipNodeClickRef.current = true
@@ -640,6 +789,8 @@ function NetworkMapEditor() {
     persistViewport()
   }, [persistViewport])
 
+  persistRef.current = () => persist(sceneFromCanvas(), false, true)
+
   const canvasCenter = useCallback(() => {
     const pane = paneRef.current
     return viewportFlowCenter(getViewport(), {
@@ -651,72 +802,107 @@ function NetworkMapEditor() {
   const placeAt = useCallback(
     (partial: MergedCanvasNode, flowPos: { x: number; y: number }) => {
       const current = sceneFromCanvas()
-      const w = equipmentWidth(partial.stencil, partial.label, partial.width, partial.portCount)
-      const h = equipmentHeight(partial.stencil, partial.label, partial.height)
-      current.nodes.push({
-        id: partial.id,
-        stencil: partial.stencil,
-        x: flowPos.x,
-        y: flowPos.y,
-        parentGroupId: null,
-        bind: partial.bind ?? null,
-        label: partial.label,
-        imageSrc: partial.imageSrc ?? null,
-        width: partial.width ?? w,
-        height: partial.height ?? h,
-      })
-      persist(current)
+      const portCount = partial.portCount ?? defaultStencilPortCount(partial.stencil)
+      const w = equipmentWidth(partial.stencil, partial.label, partial.width, portCount)
+      const h = equipmentHeight(partial.stencil, partial.label, partial.height, portCount)
+      const nestedProbe = applySceneFrameMembership(
+        {
+          ...current,
+          nodes: [
+            ...current.nodes,
+            {
+              id: partial.id,
+              stencil: partial.stencil,
+              x: flowPos.x,
+              y: flowPos.y,
+              parentGroupId: null,
+              bind: partial.bind ?? null,
+              label: partial.label,
+              imageSrc: partial.imageSrc ?? null,
+              width: partial.width ?? w,
+              height: partial.height ?? h,
+              portCount,
+            },
+          ],
+        },
+        partial.id,
+      )
+      const placed = nestedProbe.nodes.find((n) => n.id === partial.id)
+      const parentId = placed?.parentGroupId
+      const slotted = parentId
+        ? nextSlotInGroup(nestedProbe, parentId, { width: w, height: h }, flowPos)
+        : nextDiagramSlot(occupiedBoxes(current), flowPos, { width: w, height: h })
+      const next = {
+        ...nestedProbe,
+        nodes: nestedProbe.nodes.map((n) => (n.id === partial.id ? { ...n, x: slotted.x, y: slotted.y } : n)),
+      }
+      persist(next)
       setSelectedIds([partial.id])
       setSelectedGroupId(null)
       window.requestAnimationFrame(() => {
-        setCenter(flowPos.x + w / 2, flowPos.y + h / 2, {
+        setCenter(slotted.x + w / 2, slotted.y + h / 2, {
           duration: 0,
           zoom: Math.max(0.7, Math.min(1.2, getViewport().zoom || 1)),
         })
       })
-      if (partial.bind) void refreshLive(current)
+      if (partial.bind) void refreshLive(next)
     },
     [getViewport, persist, refreshLive, sceneFromCanvas, setCenter],
   )
 
   const placeGear = useCallback(
     (item: TrayGear, pos?: { x: number; y: number }) => {
+      const current = sceneFromCanvas()
+      const key = bindKey(item.bind)
+      const existing = current.nodes.find((n) => n.bind && bindKey(n.bind) === key)
+      if (existing) {
+        setSelectedIds([existing.id])
+        setSelectedGroupId(null)
+        setCenter(existing.x + 56, existing.y + 40, {
+          duration: 180,
+          zoom: Math.max(0.7, Math.min(1.2, getViewport().zoom || 1)),
+        })
+        return
+      }
       const flowPos = pos ?? canvasCenter()
       placeAt(
         {
-          id: bindKey(item.bind),
+          id: key,
           stencil: item.stencil,
           x: flowPos.x,
           y: flowPos.y,
           label: item.label,
           bind: item.bind,
-          kind: 'network_device',
+          kind: item.bind.type,
           missing: false,
+          portCount: defaultStencilPortCount(item.stencil),
         },
         flowPos,
       )
     },
-    [canvasCenter, placeAt],
+    [canvasCenter, getViewport, placeAt, sceneFromCanvas, setCenter],
   )
 
   const placeGroup = useCallback(
     (kind: 'room' | 'rack', pos: { x: number; y: number }) => {
       const current = sceneFromCanvas()
       const id = newId('group')
+      const size = kind === 'rack' ? RACK_SIZE : ROOM_SIZE
+      const slot = nextDiagramSlot(occupiedBoxes(current), pos, size)
       current.groups.push({
         id,
         title: kind === 'rack' ? t('networkMap.addRack') : t('networkMap.addRoom'),
         kind,
-        x: pos.x,
-        y: pos.y,
-        width: kind === 'rack' ? 280 : 480,
-        height: kind === 'rack' ? 420 : 300,
+        x: slot.x,
+        y: slot.y,
+        width: size.width,
+        height: size.height,
       })
       persist(current)
       setSelectedIds([])
       setSelectedGroupId(id)
       window.requestAnimationFrame(() => {
-        setCenter(pos.x + (kind === 'rack' ? 140 : 240), pos.y + (kind === 'rack' ? 210 : 150), {
+        setCenter(slot.x + size.width / 2, slot.y + size.height / 2, {
           duration: 0,
           zoom: Math.max(0.55, Math.min(1, getViewport().zoom || 1)),
         })
@@ -744,6 +930,19 @@ function NetworkMapEditor() {
         )
         return
       }
+      if (payload.stencil === 'corax') {
+        placeGear(
+          {
+            bind: { type: 'corax', id: 0 },
+            label: t('networkMap.stencil.corax'),
+            ip: null,
+            stencil: 'corax',
+            deviceType: 'corax',
+          },
+          pos,
+        )
+        return
+      }
       placeAt(
         {
           id: newId('logical'),
@@ -753,6 +952,7 @@ function NetworkMapEditor() {
           label: t(`networkMap.stencil.${payload.stencil}` as 'networkMap.stencil.switch'),
           kind: 'logical',
           missing: false,
+          portCount: defaultStencilPortCount(payload.stencil),
         },
         pos,
       )
@@ -848,8 +1048,25 @@ function NetworkMapEditor() {
       connection: Connection,
       localPort: string | null,
       remotePort: string | null,
+      edgeId?: string,
     ) => {
       if (!connection.source || !connection.target) return
+      if (edgeId) {
+        const current = sceneFromCanvas()
+        current.edges = current.edges.map((e) =>
+          e.id === edgeId
+            ? {
+                ...e,
+                source: connection.source as string,
+                target: connection.target as string,
+                local_port: localPort,
+                remote_port: remotePort,
+              }
+            : e,
+        )
+        persist(current)
+        return
+      }
       setEdges((eds) =>
         addEdge(
           {
@@ -869,32 +1086,166 @@ function NetworkMapEditor() {
     [persist, sceneFromCanvas, setEdges],
   )
 
+  const clearCableJob = useCallback(() => {
+    setLinkArmed(false)
+    setLinkFrom(null)
+    setPortMenu(null)
+    setLinking(false)
+    setPendingCable(null)
+  }, [])
+
+  const portsOfNode = useCallback((node: Node | undefined): MapPortOption[] => {
+    const data = node?.data as EquipmentNodeData | undefined
+    return portsForPicker(chassisPorts(data?.ports, data?.portCount), MAX_CHASSIS_PORTS)
+  }, [])
+
+  const openPortMenu = useCallback(
+    (
+      node: Node,
+      client: { x: number; y: number },
+      role: 'from' | 'to',
+      extra?: { targetId?: string; targetLabel?: string; edgeId?: string },
+    ) => {
+      const data = node.data as EquipmentNodeData | undefined
+      if (!data || data.stencil === 'note' || data.stencil === 'image') return
+      const ports = portsOfNode(node)
+      setPortMenu({
+        nodeId: node.id,
+        label: data.title || node.id,
+        ports,
+        used: [...usedPortsForNode(sceneRef.current.edges, node.id, extra?.edgeId)],
+        x: client.x,
+        y: client.y,
+        role,
+        targetId: extra?.targetId,
+        targetLabel: extra?.targetLabel,
+        edgeId: extra?.edgeId,
+      })
+    },
+    [portsOfNode],
+  )
+
+  const finishCable = useCallback(
+    (sourceId: string, targetId: string, localPort: string | null, remotePort: string | null, edgeId?: string) => {
+      commitCable(
+        {
+          source: sourceId,
+          target: targetId,
+          sourceHandle: localPort ? portHandleId(localPort) ?? null : null,
+          targetHandle: remotePort ? portHandleId(remotePort) ?? null : null,
+        },
+        localPort,
+        remotePort,
+        edgeId,
+      )
+      clearCableJob()
+    },
+    [clearCableJob, commitCable],
+  )
+
+  const onPickPort = useCallback(
+    (port: string | null) => {
+      if (!portMenu) return
+      if (portMenu.role === 'from') {
+        const sourceId = portMenu.nodeId
+        const sourceLabel = portMenu.label
+        const pendingTarget = portMenu.targetId
+        const box = paneRef.current?.getBoundingClientRect()
+        setLinkFrom({
+          id: sourceId,
+          port,
+          label: sourceLabel,
+          x: portMenu.x - (box?.left || 0),
+          y: portMenu.y - (box?.top || 0),
+        })
+        setLinkArmed(true)
+        if (pendingTarget) {
+          const target = getNodes().find((n) => n.id === pendingTarget)
+          if (target) {
+            openPortMenu(target, { x: portMenu.x + 16, y: portMenu.y + 16 }, 'to', {
+              edgeId: portMenu.edgeId,
+            })
+            return
+          }
+        }
+        setPortMenu(null)
+        return
+      }
+      if (!linkFrom || linkFrom.id === portMenu.nodeId) {
+        setPortMenu(null)
+        return
+      }
+      finishCable(linkFrom.id, portMenu.nodeId, linkFrom.port, port, portMenu.edgeId)
+    },
+    [finishCable, getNodes, linkFrom, openPortMenu, portMenu],
+  )
+
+  const beginCableOnNode = useCallback(
+    (node: Node, client: { x: number; y: number }) => {
+      const data = node.data as EquipmentNodeData | undefined
+      if (node.type !== 'equipment' || !data || data.stencil === 'note' || data.stencil === 'image') return
+      setLinking(true)
+      setCtxMenu(null)
+      if (!linkFrom) {
+        setLinkArmed(true)
+        openPortMenu(node, client, 'from')
+        return
+      }
+      if (linkFrom.id === node.id) {
+        openPortMenu(node, client, 'from')
+        return
+      }
+      openPortMenu(node, client, 'to')
+    },
+    [linkFrom, openPortMenu],
+  )
+
+  const armCableTool = useCallback(() => {
+    if (linkArmed || linkFrom) {
+      clearCableJob()
+      return
+    }
+    setLinkArmed(true)
+    setLinkFrom(null)
+    setPortMenu(null)
+    setCtxMenu(null)
+    setSelectedEdgeId(null)
+    setLinking(true)
+  }, [clearCableJob, linkArmed, linkFrom])
+
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
       if (!canEdit || !connection.source || !connection.target) return
       const rf = getNodes()
       const source = rf.find((n) => n.id === connection.source)
       const target = rf.find((n) => n.id === connection.target)
-      const sourceData = source?.data as EquipmentNodeData | undefined
-      const targetData = target?.data as EquipmentNodeData | undefined
-      const sourcePorts = portsForPicker(sourceData?.ports)
-      const targetPorts = portsForPicker(targetData?.ports)
-      if (!sourcePorts.length && !targetPorts.length) {
-        commitCable(connection, null, null)
+      if (!source || !target) return
+      const sourcePorts = portsOfNode(source)
+      const targetPorts = portsOfNode(target)
+      const sourcePort = portFromConnectionHandle(connection.sourceHandle, sourcePorts)
+      const targetPort = portFromConnectionHandle(connection.targetHandle, targetPorts)
+      if ((sourcePort || !sourcePorts.length) && (targetPort || !targetPorts.length)) {
+        finishCable(connection.source, connection.target, sourcePort, targetPort)
         return
       }
-      setPendingCable({
-        source: connection.source,
-        target: connection.target,
-        sourceHandle: connection.sourceHandle,
-        targetHandle: connection.targetHandle,
-        sourceLabel: sourceData?.title || connection.source,
-        targetLabel: targetData?.title || connection.target,
-        sourcePorts,
-        targetPorts,
+      setLinkArmed(true)
+      setLinking(true)
+      if (sourcePort || !sourcePorts.length) {
+        setLinkFrom({
+          id: connection.source,
+          port: sourcePort,
+          label: (source.data as EquipmentNodeData).title || connection.source,
+        })
+        openPortMenu(target, { x: window.innerWidth / 2, y: window.innerHeight / 2 }, 'to')
+        return
+      }
+      setLinkFrom(null)
+      openPortMenu(source, { x: window.innerWidth / 2, y: window.innerHeight / 2 }, 'from', {
+        targetId: connection.target,
+        targetLabel: (target.data as EquipmentNodeData).title || connection.target,
       })
     },
-    [canEdit, commitCable, getNodes],
+    [canEdit, finishCable, getNodes, openPortMenu, portsOfNode],
   )
 
   const isValidConnection = useCallback(
@@ -913,8 +1264,10 @@ function NetworkMapEditor() {
   )
 
   const onEdgesDelete: OnEdgesDelete = useCallback(
-    (_removed: Edge[]) => {
+    (removed: Edge[]) => {
       if (!canEdit) return
+      const gone = new Set(removed.map((e) => e.id))
+      setSelectedEdgeId((id) => (id && gone.has(id) ? null : id))
       window.setTimeout(() => persist(sceneFromCanvas()), 0)
     },
     [canEdit, persist, sceneFromCanvas],
@@ -930,22 +1283,109 @@ function NetworkMapEditor() {
           .filter((n) => !removedIds.has(n.id))
           .map((n) => (n.parentGroupId && removedIds.has(n.parentGroupId) ? { ...n, parentGroupId: null } : n))
         current.groups = current.groups.filter((g) => !removedIds.has(g.id))
+        current.edges = current.edges.filter((e) => !removedIds.has(e.source) && !removedIds.has(e.target) && !removedIds.has(e.id))
         persist(current)
       }, 0)
       setSelectedIds([])
       setSelectedGroupId(null)
+      setSelectedEdgeId(null)
     },
     [canEdit, persist, sceneFromCanvas],
   )
 
   const onDelete = () => {
     const ids = new Set(selectedIds.length ? selectedIds : selected ? [selected.id] : [])
-    if (!ids.size) return
+    const groupIds = new Set(selectedGroupId ? [selectedGroupId] : [])
+    if (!ids.size && !groupIds.size) return
     const current = sceneFromCanvas()
-    current.nodes = current.nodes.filter((n) => !ids.has(n.id))
+    current.nodes = current.nodes
+      .filter((n) => !ids.has(n.id))
+      .map((n) => (n.parentGroupId && groupIds.has(n.parentGroupId) ? { ...n, parentGroupId: null } : n))
+    current.groups = current.groups.filter((g) => !groupIds.has(g.id))
     current.edges = current.edges.filter((e) => !ids.has(e.source) && !ids.has(e.target))
     setSelectedIds([])
+    setSelectedGroupId(null)
+    setSelectedEdgeId(null)
     persist(current)
+  }
+
+  const onDeleteCable = () => {
+    if (!canEdit || !selectedEdgeId) return
+    const current = sceneFromCanvas()
+    current.edges = current.edges.filter((e) => e.id !== selectedEdgeId)
+    setSelectedEdgeId(null)
+    persist(current)
+  }
+
+  const onEditCablePorts = () => {
+    if (!canEdit || !selectedCable) return
+    const source = getNodes().find((n) => n.id === selectedCable.source)
+    if (!source) return
+    setLinkArmed(true)
+    setLinkFrom(null)
+    openPortMenu(source, { x: window.innerWidth / 2 - 40, y: 120 }, 'from', {
+      targetId: selectedCable.target,
+      targetLabel: selectedCable.targetLabel,
+      edgeId: selectedCable.id,
+    })
+  }
+
+  const onResetCableBend = () => {
+    if (!canEdit || !selectedEdgeId) return
+    const current = sceneFromCanvas()
+    current.edges = current.edges.map((e) => (e.id === selectedEdgeId ? { ...e, points: [] } : e))
+    persist(current)
+  }
+
+  const onPortCount = (count: number | null) => {
+    if (!selected) return
+    const portCount = clampPortCount(count)
+    const w = equipmentWidth(selected.stencil, selected.label, null, portCount)
+    const h = equipmentHeight(selected.stencil, selected.label, null, portCount)
+    const ports = chassisPorts(selected.ports, portCount)
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === selected.id
+          ? {
+              ...n,
+              data: { ...n.data, portCount, ports, width: w, height: h },
+              style: { ...n.style, width: w, height: h },
+            }
+          : n,
+      ),
+    )
+    setMergedNodes((ns) => ns.map((n) => (n.id === selected.id ? { ...n, portCount, ports, width: w, height: h } : n)))
+    const current = sceneFromCanvas()
+    current.nodes = current.nodes.map((n) => (n.id === selected.id ? { ...n, portCount, width: w, height: h } : n))
+    persist(current)
+  }
+
+  const onGroupSize = (width: number, height: number) => {
+    if (!selectedGroup) return
+    const current = sceneFromCanvas()
+    current.groups = current.groups.map((g) => (g.id === selectedGroup.id ? { ...g, width, height } : g))
+    persist(current)
+  }
+
+  const duplicateNode = (id: string) => {
+    const current = sceneFromCanvas()
+    const node = current.nodes.find((n) => n.id === id)
+    if (!node) return
+    const copyId = newId('logical')
+    const w = equipmentWidth(node.stencil, node.label || '', node.width, node.portCount)
+    const h = equipmentHeight(node.stencil, node.label || '', node.height, node.portCount)
+    const slot = nextDiagramSlot(occupiedBoxes(current), { x: node.x + 36, y: node.y + 28 }, { width: w, height: h })
+    current.nodes.push({
+      ...node,
+      id: copyId,
+      x: slot.x,
+      y: slot.y,
+      bind: null,
+      label: node.label ? `${node.label} 2` : node.id,
+    })
+    persist(applySceneFrameMembership(current, copyId))
+    setSelectedIds([copyId])
+    setSelectedGroupId(null)
   }
 
   const onDeleteGroup = () => {
@@ -1027,11 +1467,135 @@ function NetworkMapEditor() {
     }
   }
 
+  const ctxActions = useMemo((): MapContextAction[] => {
+    if (!ctxMenu || !canEdit) return []
+    if (ctxMenu.kind === 'pane') {
+      return [
+        { id: 'cable', label: t('networkMap.ctxConnect') },
+        { id: 'room', label: t('networkMap.addRoom') },
+        { id: 'rack', label: t('networkMap.addRack') },
+      ]
+    }
+    if (ctxMenu.kind === 'edge') {
+      return [
+        { id: 'ports', label: t('networkMap.editCablePorts') },
+        { id: 'unbend', label: t('networkMap.resetCableBend') },
+        { id: 'delete', label: t('networkMap.deleteCable'), danger: true },
+      ]
+    }
+    if (ctxMenu.kind === 'group') {
+      return [
+        { id: 'select-inside', label: t('networkMap.ctxSelectInside') },
+        { id: 'delete-group', label: t('networkMap.remove'), danger: true },
+      ]
+    }
+    const node = mergedNodes.find((n) => n.id === ctxMenu.id)
+    const connectable = node && node.stencil !== 'note' && node.stencil !== 'image'
+    return [
+      ...(connectable ? [{ id: 'connect', label: t('networkMap.ctxConnect') }] : []),
+      { id: 'duplicate', label: t('networkMap.ctxDuplicate') },
+      ...(node?.bind && node.bind.type !== 'corax' && node.bind.type !== 'zabbix'
+        ? [{ id: 'card', label: t('networkMap.openCard') }]
+        : []),
+      { id: 'delete', label: t('networkMap.remove'), danger: true },
+    ]
+  }, [canEdit, ctxMenu, mergedNodes, t])
+
+  const runContext = (action: string) => {
+    const menu = ctxMenu
+    setCtxMenu(null)
+    if (!menu) return
+    const flowPos = screenToFlowPosition({ x: menu.x, y: menu.y })
+    if (action === 'cable') {
+      armCableTool()
+      return
+    }
+    if (action === 'room') {
+      placeGroup('room', flowPos)
+      return
+    }
+    if (action === 'rack') {
+      placeGroup('rack', flowPos)
+      return
+    }
+    if (action === 'connect' && menu.id) {
+      const node = getNodes().find((n) => n.id === menu.id)
+      if (node) beginCableOnNode(node, { x: menu.x, y: menu.y })
+      return
+    }
+    if (action === 'duplicate' && menu.id) {
+      duplicateNode(menu.id)
+      return
+    }
+    if (action === 'card' && menu.id) {
+      setSelectedIds([menu.id])
+      setSelectedGroupId(null)
+      const node = mergedNodes.find((n) => n.id === menu.id)
+      if (!node?.bind) return
+      if (node.bind.type === 'network_device') setDetail({ kind: 'network_device', id: node.bind.id })
+      if (node.bind.type === 'computer') setDetail({ kind: 'computer', id: node.bind.id })
+      return
+    }
+    if (action === 'delete' && menu.kind === 'node' && menu.id) {
+      setSelectedIds([menu.id])
+      setSelectedGroupId(null)
+      const current = sceneFromCanvas()
+      current.nodes = current.nodes.filter((n) => n.id !== menu.id)
+      current.edges = current.edges.filter((e) => e.source !== menu.id && e.target !== menu.id)
+      persist(current)
+      setSelectedIds([])
+      return
+    }
+    if (action === 'ports' && menu.id) {
+      const edge = sceneRef.current.edges.find((e) => e.id === menu.id)
+      const source = getNodes().find((n) => n.id === edge?.source)
+      if (source && edge) {
+        setSelectedEdgeId(edge.id)
+        setLinkArmed(true)
+        setLinkFrom(null)
+        openPortMenu(source, { x: menu.x, y: menu.y }, 'from', {
+          targetId: edge.target,
+          edgeId: edge.id,
+        })
+      }
+      return
+    }
+    if (action === 'unbend' && menu.id) {
+      const current = sceneFromCanvas()
+      current.edges = current.edges.map((e) => (e.id === menu.id ? { ...e, points: [] } : e))
+      persist(current)
+      return
+    }
+    if (action === 'delete' && menu.kind === 'edge' && menu.id) {
+      const current = sceneFromCanvas()
+      current.edges = current.edges.filter((e) => e.id !== menu.id)
+      setSelectedEdgeId(null)
+      persist(current)
+      return
+    }
+    if (action === 'select-inside' && menu.id) {
+      const ids = sceneRef.current.nodes.filter((n) => n.parentGroupId === menu.id).map((n) => n.id)
+      setSelectedGroupId(menu.id)
+      setSelectedIds(ids)
+      setSelectedEdgeId(null)
+      return
+    }
+    if (action === 'delete-group' && menu.id) {
+      setSelectedGroupId(menu.id)
+      const current = sceneFromCanvas()
+      current.groups = current.groups.filter((g) => g.id !== menu.id)
+      current.nodes = current.nodes.map((n) => (n.parentGroupId === menu.id ? { ...n, parentGroupId: null } : n))
+      persist(current)
+      setSelectedGroupId(null)
+    }
+  }
+
   const onBlank = () => {
     if (!canEdit) return
     liveRef.current = []
     setSelectedIds([])
     setSelectedGroupId(null)
+    setSelectedEdgeId(null)
     setClearOpen(false)
     persist(emptyNetworkMapScene(), true)
   }
@@ -1126,11 +1690,27 @@ function NetworkMapEditor() {
       if ((event.ctrlKey || event.metaKey) && key === 'y') {
         event.preventDefault()
         applyUndo('redo')
+        return
+      }
+      if (canEdit && (event.key === 'Escape')) {
+        if (linkArmed || linkFrom || portMenu) {
+          event.preventDefault()
+          clearCableJob()
+        }
+        setCtxMenu(null)
+        return
+      }
+      if (canEdit && (event.key === 'Delete' || event.key === 'Backspace') && selectedEdgeId) {
+        event.preventDefault()
+        const current = sceneFromCanvas()
+        current.edges = current.edges.filter((e) => e.id !== selectedEdgeId)
+        setSelectedEdgeId(null)
+        persist(current)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [applyUndo])
+  }, [applyUndo, canEdit, clearCableJob, linkArmed, linkFrom, persist, portMenu, sceneFromCanvas, selectedEdgeId])
 
   const applyCluster = useCallback(
     (mode: 'place-missing' | 'gather-all', onlyTopoId?: string) => {
@@ -1297,7 +1877,13 @@ function NetworkMapEditor() {
         />
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
-            <div ref={paneRef} className="network-map-canvas relative h-full min-h-0">
+            <div
+              ref={paneRef}
+              className="network-map-canvas relative h-full min-h-0"
+              onMouseMove={(event) => {
+                if (linkFrom) setCursor({ x: event.clientX - event.currentTarget.getBoundingClientRect().left, y: event.clientY - event.currentTarget.getBoundingClientRect().top })
+              }}
+            >
             {loading ? (
               <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-bg)] text-sm text-[var(--color-fg-subtle)]">
                 {t('common.loading')}
@@ -1313,8 +1899,31 @@ function NetworkMapEditor() {
                 {t('networkMap.selectedCount', { n: selectedIds.length })}
               </div>
             ) : null}
+            {linkArmed || linkFrom || portMenu ? (
+              <div className="network-map-link-hint rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] shadow-sm">
+                {portMenu
+                  ? t('networkMap.cablePickPort', { name: portMenu.label })
+                  : linkFrom
+                    ? t('networkMap.cablePickSecond')
+                    : t('networkMap.cablePickDevice')}
+                <span className="ml-2 text-[11px] font-normal text-[var(--color-fg-subtle)]">{t('networkMap.cableCancel')}</span>
+              </div>
+            ) : null}
+            {linkFrom && cursor && !portMenu ? (
+              <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full">
+                <line
+                  x1={linkFrom.x ?? cursor.x}
+                  y1={linkFrom.y ?? cursor.y}
+                  x2={cursor.x}
+                  y2={cursor.y}
+                  stroke="var(--color-primary)"
+                  strokeWidth="2"
+                  strokeDasharray="6 6"
+                />
+              </svg>
+            ) : null}
             <ReactFlow
-              className={`network-map-canvas h-full ${linking ? 'is-linking' : ''} ${exporting ? 'is-exporting' : ''}`}
+              className={`network-map-canvas h-full ${linking || linkArmed || linkFrom ? 'is-linking is-cabling' : ''} ${exporting ? 'is-exporting' : ''}`}
               nodes={shown.nodes}
               edges={shown.edges}
               nodeTypes={NODE_TYPES}
@@ -1331,7 +1940,9 @@ function NetworkMapEditor() {
               onNodeDragStop={onNodeDragStop}
               onMoveEnd={onMoveEnd}
               onConnectStart={() => setLinking(true)}
-              onConnectEnd={() => setLinking(false)}
+              onConnectEnd={() => {
+                if (!linkArmed && !linkFrom) setLinking(false)
+              }}
               onConnect={onConnect}
               isValidConnection={isValidConnection}
               onEdgesDelete={onEdgesDelete}
@@ -1340,6 +1951,10 @@ function NetworkMapEditor() {
               onDragOver={onDragOver}
               onNodeClick={(event, n) => {
                 event.stopPropagation()
+                if (linkArmed || linkFrom) {
+                  beginCableOnNode(n, { x: event.clientX, y: event.clientY })
+                  return
+                }
                 if (skipNodeClickRef.current) {
                   skipNodeClickRef.current = false
                   return
@@ -1353,19 +1968,58 @@ function NetworkMapEditor() {
                 }
                 selectCanvasNode(n, 'replace')
               }}
-              onPaneClick={(event) => {
-                const target = event.target as HTMLElement | null
-                if (target?.closest('.react-flow__node')) return
+              onNodeContextMenu={(event, n) => {
+                if (!canEdit) return
+                event.preventDefault()
+                event.stopPropagation()
+                setCtxMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  kind: n.type === 'groupFrame' ? 'group' : 'node',
+                  id: n.id,
+                })
+              }}
+              onEdgeContextMenu={(event, edge) => {
+                if (!canEdit) return
+                event.preventDefault()
+                event.stopPropagation()
+                setSelectedEdgeId(edge.id)
+                setCtxMenu({ x: event.clientX, y: event.clientY, kind: 'edge', id: edge.id })
+              }}
+              onPaneContextMenu={(event) => {
+                if (!canEdit) return
+                event.preventDefault()
+                setCtxMenu({ x: event.clientX, y: event.clientY, kind: 'pane' })
+              }}
+              onEdgeClick={(event, edge) => {
+                event.stopPropagation()
+                if (linkArmed || linkFrom) return
                 setSelectedIds([])
                 selectedIdsRef.current = []
                 setSelectedGroupId(null)
+                setSelectedEdgeId(edge.id)
+              }}
+              onPaneClick={(event) => {
+                const target = event.target as HTMLElement | null
+                if (target?.closest('.react-flow__node')) return
+                if (target?.closest('.react-flow__edge')) return
+                if (linkArmed || linkFrom || portMenu) {
+                  clearCableJob()
+                  return
+                }
+                setSelectedIds([])
+                selectedIdsRef.current = []
+                setSelectedGroupId(null)
+                setSelectedEdgeId(null)
+                setCtxMenu(null)
               }}
               nodesDraggable={canEdit}
               nodesConnectable={canEdit}
               elementsSelectable
+              edgesFocusable
               selectNodesOnDrag={false}
               selectionOnDrag={false}
-              selectionKeyCode={null}
+              selectionKeyCode="Shift"
               nodeDragThreshold={5}
               multiSelectionKeyCode={['Shift', 'Control', 'Meta']}
               deleteKeyCode={canEdit ? ['Backspace', 'Delete'] : null}
@@ -1388,7 +2042,7 @@ function NetworkMapEditor() {
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>
-            {selected || selectedGroup ? (
+            {selected || selectedGroup || selectedCable ? (
               <div className="network-map-inspector-overlay pointer-events-none absolute inset-y-2 right-2 z-20 flex max-h-full justify-end">
                 <div className="pointer-events-auto max-h-full">
                   <NetworkMapInspector
@@ -1396,6 +2050,7 @@ function NetworkMapEditor() {
                     canEdit={canEdit}
                     node={selected}
                     group={selected ? null : selectedGroup}
+                    edge={selected ? null : selectedCable}
                     neighbors={neighborOffers}
                     neighborsBusy={neighborsBusy}
                     onLabel={onLabel}
@@ -1405,22 +2060,34 @@ function NetworkMapEditor() {
                     onOpenCard={onOpenCard}
                     onGroupTitle={onGroupTitle}
                     onDeleteGroup={onDeleteGroup}
+                    onDeleteCable={onDeleteCable}
+                    onEditCablePorts={onEditCablePorts}
                     onReplaceImage={(file) => void replaceSelectedImage(file)}
                     onPlaceNeighbor={(topoId) => applyCluster('place-missing', topoId)}
                     onFocusNeighbor={(canvasId) => {
                       setSelectedIds([canvasId])
                       setSelectedGroupId(null)
+                      setSelectedEdgeId(null)
                       fitAround([canvasId, selectedId || canvasId])
                     }}
                     onPlaceAllNeighbors={() => applyCluster('place-missing')}
                     onGatherNeighbors={() => applyCluster('gather-all')}
+                    selectionCount={selectedIds.length + (selectedGroupId ? 1 : 0)}
+                    onPortCount={onPortCount}
+                    onGroupSize={onGroupSize}
+                    onResetCableBend={onResetCableBend}
                   />
                 </div>
               </div>
             ) : null}
           </div>
           {canEdit ? (
-            <NetworkMapDock onPick={(payload) => placePayload(payload, canvasCenter())} onImportImage={(file) => void placeImage(file)} />
+            <NetworkMapDock
+              onPick={(payload) => placePayload(payload, canvasCenter())}
+              onImportImage={(file) => void placeImage(file)}
+              onCableTool={armCableTool}
+              cableActive={linkArmed || Boolean(linkFrom) || Boolean(portMenu)}
+            />
           ) : null}
         </div>
       </div>
@@ -1442,14 +2109,45 @@ function NetworkMapEditor() {
         <PrinterDetailModal printer={detail.printer} onClose={() => setDetail(null)} />
       ) : null}
       <NetworkMapClearDialog open={clearOpen} onClose={() => setClearOpen(false)} onConfirm={onBlank} />
+      {portMenu ? (
+        <NetworkMapPortMenu
+          open
+          title={portMenu.label}
+          hint={t('networkMap.cablePickPort', { name: portMenu.label })}
+          ports={portMenu.ports}
+          used={portMenu.used}
+          x={portMenu.x}
+          y={portMenu.y}
+          onPick={onPickPort}
+          onClose={() => {
+            if (portMenu.role === 'to' && linkFrom) {
+              setPortMenu(null)
+              return
+            }
+            clearCableJob()
+          }}
+        />
+      ) : null}
+      {ctxMenu && ctxActions.length ? (
+        <NetworkMapContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          actions={ctxActions}
+          onPick={runContext}
+          onClose={() => setCtxMenu(null)}
+        />
+      ) : null}
       {pendingCable ? (
         <NetworkMapPortPicker
-          key={`${pendingCable.source}:${pendingCable.target}`}
+          key={`${pendingCable.edgeId || 'new'}:${pendingCable.source}:${pendingCable.target}`}
           open
           sourceLabel={pendingCable.sourceLabel}
           targetLabel={pendingCable.targetLabel}
           sourcePorts={pendingCable.sourcePorts}
           targetPorts={pendingCable.targetPorts}
+          initialLocal={pendingCable.initialLocal}
+          initialRemote={pendingCable.initialRemote}
+          confirmLabel={pendingCable.edgeId ? t('networkMap.portPickSave') : undefined}
           onClose={() => setPendingCable(null)}
           onConfirm={(localPort, remotePort) => {
             commitCable(
@@ -1461,6 +2159,7 @@ function NetworkMapEditor() {
               },
               localPort,
               remotePort,
+              pendingCable.edgeId,
             )
             setPendingCable(null)
           }}

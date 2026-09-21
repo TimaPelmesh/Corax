@@ -56,6 +56,7 @@ class _Sanitizer(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._out: list[str] = []
         self._skip = 0
+        self._span_extra: list[list[str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         t = tag.lower()
@@ -63,6 +64,22 @@ class _Sanitizer(HTMLParser):
             self._skip += 1
             return
         if self._skip or t not in _ALLOWED:
+            return
+        if t == "span":
+            style = ""
+            for name, value in attrs:
+                if (name or "").lower() == "style":
+                    style = (value or "").lower()
+                    break
+            extra: list[str] = []
+            if re.search(r"font-weight\s*:\s*(bold|[6-9]00|bolder)", style):
+                extra.append("strong")
+            if re.search(r"font-style\s*:\s*italic", style):
+                extra.append("em")
+            self._out.append("<span>")
+            for e in extra:
+                self._out.append(f"<{e}>")
+            self._span_extra.append(extra)
             return
         allowed_attrs = _ATTR_OK.get(t, frozenset())
         bits = [t]
@@ -89,7 +106,20 @@ class _Sanitizer(HTMLParser):
             return
         if self._skip or t not in _ALLOWED or t in _VOID:
             return
+        if t == "span":
+            extra = self._span_extra.pop() if self._span_extra else []
+            for e in reversed(extra):
+                self._out.append(f"</{e}>")
+            self._out.append("</span>")
+            return
         self._out.append(f"</{t}>")
+
+    def handle_comment(self, data: str) -> None:
+        if self._skip:
+            return
+        text = (data or "").strip()
+        if text:
+            self._out.append(_escape(text))
 
     def handle_data(self, data: str) -> None:
         if self._skip:

@@ -34,9 +34,9 @@ $pc = [uri]::EscapeDataString($hostName)
 $url = $base + '/h#pc=' + $pc
 $nl = "`r`n"
 $body = '[InternetShortcut]' + $nl + 'URL=' + $url + $nl
-$icon = Join-Path $here 'CORAX-Agent.exe'
+$icon = Join-Path $env:SystemRoot 'System32\SHELL32.dll'
 if (Test-Path -LiteralPath $icon) {
-    $body += 'IconFile=' + $icon + $nl + 'IconIndex=0' + $nl
+    $body += 'IconFile=' + $icon + $nl + 'IconIndex=1' + $nl
 }
 
 $name = 'Оставить заявку.url'

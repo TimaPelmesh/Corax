@@ -2,8 +2,8 @@ use crate::config::{load_config, next_report_label, save_user_prefs};
 use crate::shortcut::create_helpdesk_shortcut;
 use crate::state::{Flags, RunOutcome, SharedState};
 use eframe::egui::{
-    self, Color32, CornerRadius, FontId, Frame, Margin, Pos2, Rect, RichText, Sense,
-    Stroke, TextureHandle, Ui, Vec2, ViewportCommand,
+    self, Color32, CornerRadius, FontId, Frame, Margin, Pos2, Rect, RichText, Sense, Stroke,
+    TextureHandle, Ui, Vec2, ViewportCommand,
 };
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::SyncSender;
@@ -82,18 +82,30 @@ fn wire_tray_handlers(ctx: egui::Context, flags: Flags, kick: SyncSender<()>) {
     }));
 }
 
-const BG: Color32 = Color32::from_rgb(236, 244, 255);
-const CARD: Color32 = Color32::WHITE;
-const CARD_HI: Color32 = Color32::from_rgb(247, 250, 255);
-const LINE: Color32 = Color32::from_rgb(210, 224, 244);
-const TEXT: Color32 = Color32::from_rgb(15, 23, 42);
-const MUTED: Color32 = Color32::from_rgb(100, 116, 139);
-const ACCENT: Color32 = Color32::from_rgb(37, 99, 235);
-const PEACH: Color32 = Color32::from_rgb(251, 146, 60);
-const OK: Color32 = Color32::from_rgb(16, 185, 129);
-const BAD: Color32 = Color32::from_rgb(239, 68, 68);
-const WARN: Color32 = Color32::from_rgb(245, 158, 11);
+// WinUI / Fluent 2 light
+const BG0: Color32 = Color32::from_rgb(243, 243, 243);
+const BG1: Color32 = Color32::from_rgb(233, 242, 252);
+const CARD: Color32 = Color32::from_rgba_unmultiplied(255, 255, 255, 242);
+const CARD_SOLID: Color32 = Color32::WHITE;
+const LINE: Color32 = Color32::from_rgba_unmultiplied(0, 0, 0, 22);
+const TEXT: Color32 = Color32::from_rgb(27, 27, 27);
+const MUTED: Color32 = Color32::from_rgb(96, 94, 92);
+const ACCENT: Color32 = Color32::from_rgb(0, 95, 184);
+const ACCENT_SOFT: Color32 = Color32::from_rgb(96, 205, 255);
+const OK: Color32 = Color32::from_rgb(15, 123, 15);
+const BAD: Color32 = Color32::from_rgb(196, 43, 28);
+const WARN: Color32 = Color32::from_rgb(157, 93, 0);
 const ON_ACCENT: Color32 = Color32::WHITE;
+
+const COLLECT_PHASES: [&str; 7] = [
+    "Читаю систему",
+    "Процессор и память",
+    "Диски и тома",
+    "Сеть",
+    "Программы",
+    "Мониторы и периферия",
+    "Отправляю отчёт",
+];
 
 fn load_tray_icon(bytes: &[u8]) -> Icon {
     let img = image::load_from_memory(bytes)
@@ -111,6 +123,20 @@ fn load_color_image(bytes: &[u8]) -> egui::ColorImage {
     egui::ColorImage::from_rgba_unmultiplied(size, &img.into_raw())
 }
 
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+}
+
+fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    Color32::from_rgba_unmultiplied(
+        (a.r() as f32 + (b.r() as f32 - a.r() as f32) * t) as u8,
+        (a.g() as f32 + (b.g() as f32 - a.g() as f32) * t) as u8,
+        (a.b() as f32 + (b.b() as f32 - a.b() as f32) * t) as u8,
+        (a.a() as f32 + (b.a() as f32 - a.a() as f32) * t) as u8,
+    )
+}
+
 pub struct CoraxApp {
     state: SharedState,
     kick: SyncSender<()>,
@@ -121,12 +147,19 @@ pub struct CoraxApp {
     logo: Option<TextureHandle>,
     last_outcome: Option<RunOutcome>,
     tab: u8,
+    painted_tab: u8,
+    enter_at: f64,
+    collect_at: f64,
+    was_collecting: bool,
+    reveal_at: f64,
+    toggle_t: f32,
     host: String,
     port: String,
     https: bool,
     daily_hour: u32,
     daily_minute: u32,
     autostart: bool,
+    has_token: bool,
     shortcut_note: String,
 }
 
@@ -159,6 +192,7 @@ impl CoraxApp {
             .ok();
         let cfg = load_config();
         let (host, port, https) = split_server(&cfg.server_url);
+        let need_setup = cfg.server_url.is_empty();
         Self {
             state,
             kick,
@@ -168,13 +202,20 @@ impl CoraxApp {
             busy_icon,
             logo: None,
             last_outcome: None,
-            tab: if cfg.server_url.is_empty() { 2 } else { 0 },
+            tab: if need_setup { 2 } else { 0 },
+            painted_tab: if need_setup { 2 } else { 0 },
+            enter_at: 0.0,
+            collect_at: 0.0,
+            was_collecting: false,
+            reveal_at: 0.0,
+            toggle_t: if cfg.autostart { 1.0 } else { 0.0 },
             host,
             port,
             https,
             daily_hour: cfg.daily_hour,
             daily_minute: cfg.daily_minute,
             autostart: cfg.autostart,
+            has_token: !cfg.token.is_empty(),
             shortcut_note: String::new(),
         }
     }
@@ -183,19 +224,15 @@ impl CoraxApp {
         let Some(tray) = self.tray.as_ref() else { return };
         if collecting {
             let _ = tray.set_icon(Some(self.busy_icon.clone()));
-            let _ = tray.set_tooltip(Some("CORAX · сбор инвентаря"));
+            let _ = tray.set_tooltip(Some("CORAX · спокойно собираю этот ПК"));
             return;
         }
-        if self.last_outcome == Some(outcome) {
-            let _ = tray.set_icon(Some(self.idle_icon.clone()));
-        } else {
-            let _ = tray.set_icon(Some(self.idle_icon.clone()));
-            self.last_outcome = Some(outcome);
-        }
+        let _ = tray.set_icon(Some(self.idle_icon.clone()));
+        self.last_outcome = Some(outcome);
         let tip = match outcome {
-            RunOutcome::Sent => "CORAX · инвентарь OK",
+            RunOutcome::Sent => "CORAX · инвентарь на сервере",
             RunOutcome::NeedConfig => "CORAX · укажите сервер",
-            RunOutcome::Failed => "CORAX · ошибка отчёта",
+            RunOutcome::Failed => "CORAX · отчёт не ушёл",
         };
         let _ = tray.set_tooltip(Some(tip));
     }
@@ -210,7 +247,7 @@ impl CoraxApp {
 
 impl eframe::App for CoraxApp {
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        BG.to_normalized_gamma_f32()
+        BG0.to_normalized_gamma_f32()
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -269,83 +306,139 @@ impl eframe::App for CoraxApp {
         };
         self.sync_tray(collecting, snap.outcome);
 
+        let t = ctx.input(|i| i.time);
+        if collecting && !self.was_collecting {
+            self.collect_at = t;
+        }
+        if !collecting && self.was_collecting {
+            self.reveal_at = t;
+        }
+        self.was_collecting = collecting;
+
+        let target_toggle = if self.autostart { 1.0 } else { 0.0 };
+        self.toggle_t += (target_toggle - self.toggle_t) * 0.22;
+        if (self.toggle_t - target_toggle).abs() > 0.002 {
+            ctx.request_repaint();
+        }
+
+        if self.tab != self.painted_tab {
+            self.painted_tab = self.tab;
+            self.enter_at = t;
+        }
+        let enter = ease_out(((t - self.enter_at) / 0.38) as f32);
+
         if self.logo.is_none() {
             let img = load_color_image(include_bytes!("../icons/128x128.png"));
             self.logo = Some(ctx.load_texture("raven", img, egui::TextureOptions::LINEAR));
         }
 
         egui::CentralPanel::default()
-            .frame(Frame::NONE.fill(BG).inner_margin(Margin::same(0)))
+            .frame(Frame::NONE.fill(BG0).inner_margin(Margin::same(0)))
             .show(ctx, |ui| {
+                paint_mica(ui, t);
                 draw_chrome(ui, ctx, &mut self.tab);
-                ui.add_space(4.0);
+                ui.add_space(6.0);
                 ui.allocate_ui_with_layout(
                     ui.available_size(),
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
-                        ui.set_max_width(380.0);
-                        if self.tab == 2 || (self.host.is_empty() && load_config().server_url.is_empty()) {
+                        ui.set_max_width(392.0);
+                        ui.set_opacity(0.35 + 0.65 * enter);
+                        ui.add_space((1.0 - enter) * 14.0);
+                        if self.tab == 2 || (self.host.is_empty() && load_config().server_url.is_empty())
+                        {
                             self.tab = 2;
                             setup_panel(ui, self);
                         } else if self.tab == 1 {
                             settings_panel(ui, self);
                         } else {
-                            hero(ui, self.logo.as_ref(), collecting, ctx);
-                            ui.add_space(18.0);
-                            status_card(ui, collecting, &snap);
-                            ui.add_space(12.0);
-                            specs_card(ui, &snap);
-                            ui.add_space(18.0);
-                            collect_button(ui, collecting, &self.kick);
-                            ui.add_space(14.0);
-                            footer(ui, &snap, collecting);
+                            home(ui, self, collecting, &snap, t);
                         }
                     },
                 );
             });
 
-        if collecting {
-            ctx.request_repaint();
+        ctx.request_repaint_after(std::time::Duration::from_millis(if collecting {
+            16
         } else {
-            ctx.request_repaint_after(std::time::Duration::from_millis(400));
-        }
+            33
+        }));
     }
 }
 
 fn apply_theme(ctx: &egui::Context) {
     let mut visuals = egui::Visuals::light();
-    visuals.panel_fill = BG;
-    visuals.window_fill = CARD;
+    visuals.panel_fill = BG0;
+    visuals.window_fill = CARD_SOLID;
     visuals.extreme_bg_color = Color32::WHITE;
-    visuals.faint_bg_color = CARD_HI;
+    visuals.faint_bg_color = BG1;
     visuals.override_text_color = Some(TEXT);
     visuals.hyperlink_color = ACCENT;
-    visuals.selection.bg_fill = Color32::from_rgb(219, 234, 254);
+    visuals.selection.bg_fill = Color32::from_rgb(209, 232, 255);
     visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
-    visuals.widgets.noninteractive.bg_fill = CARD;
+    visuals.widgets.noninteractive.bg_fill = CARD_SOLID;
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, MUTED);
     visuals.widgets.inactive.bg_fill = Color32::WHITE;
     visuals.widgets.inactive.weak_bg_fill = Color32::WHITE;
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, LINE);
     visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT);
-    visuals.widgets.hovered.bg_fill = Color32::from_rgb(239, 246, 255);
-    visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(239, 246, 255);
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(243, 249, 255);
+    visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(243, 249, 255);
     visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, TEXT);
     visuals.widgets.active.bg_fill = ACCENT;
     visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, ON_ACCENT);
     visuals.widgets.open.bg_fill = Color32::WHITE;
-    visuals.window_corner_radius = CornerRadius::same(16);
-    visuals.widgets.inactive.corner_radius = CornerRadius::same(10);
-    visuals.widgets.hovered.corner_radius = CornerRadius::same(10);
-    visuals.widgets.active.corner_radius = CornerRadius::same(10);
+    visuals.window_corner_radius = CornerRadius::same(8);
+    visuals.widgets.inactive.corner_radius = CornerRadius::same(4);
+    visuals.widgets.hovered.corner_radius = CornerRadius::same(4);
+    visuals.widgets.active.corner_radius = CornerRadius::same(4);
     visuals.window_shadow = egui::Shadow::NONE;
     visuals.popup_shadow = egui::Shadow::NONE;
     ctx.set_visuals(visuals);
 }
 
+fn paint_mica(ui: &mut Ui, t: f64) {
+    let rect = ui.max_rect();
+    let p = ui.painter();
+    p.rect_filled(rect, CornerRadius::ZERO, BG0);
+    let a = Pos2::new(
+        rect.left() + 70.0 + (t * 0.31).sin() as f32 * 36.0,
+        rect.top() + 90.0 + (t * 0.23).cos() as f32 * 22.0,
+    );
+    let b = Pos2::new(
+        rect.right() - 40.0 + (t * 0.19).cos() as f32 * 28.0,
+        rect.bottom() - 120.0 + (t * 0.27).sin() as f32 * 30.0,
+    );
+    let c = Pos2::new(
+        rect.center().x + (t * 0.14).sin() as f32 * 50.0,
+        rect.center().y - 40.0 + (t * 0.17).cos() as f32 * 18.0,
+    );
+    p.circle_filled(a, 130.0, Color32::from_rgba_unmultiplied(0, 95, 184, 18));
+    p.circle_filled(b, 150.0, Color32::from_rgba_unmultiplied(96, 205, 255, 22));
+    p.circle_filled(c, 90.0, Color32::from_rgba_unmultiplied(251, 146, 60, 12));
+    let step = 28.0;
+    let fade = Color32::from_rgba_unmultiplied(0, 95, 184, 10);
+    let mut x = rect.left();
+    while x < rect.right() {
+        p.line_segment(
+            [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
+            Stroke::new(1.0, fade),
+        );
+        x += step;
+    }
+    let mut y = rect.top();
+    while y < rect.bottom() {
+        p.line_segment(
+            [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+            Stroke::new(1.0, fade),
+        );
+        y += step;
+    }
+}
+
 fn draw_chrome(ui: &mut Ui, ctx: &egui::Context, tab: &mut u8) {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click_and_drag());
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 46.0), Sense::click_and_drag());
     if resp.dragged() {
         ctx.send_viewport_cmd(ViewportCommand::StartDrag);
     }
@@ -353,8 +446,15 @@ fn draw_chrome(ui: &mut Ui, ctx: &egui::Context, tab: &mut u8) {
         Pos2::new(rect.left() + 18.0, rect.center().y),
         egui::Align2::LEFT_CENTER,
         "CORAX",
-        FontId::proportional(14.0),
+        FontId::proportional(13.0),
         ACCENT,
+    );
+    ui.painter().text(
+        Pos2::new(rect.left() + 78.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        "Agent",
+        FontId::proportional(13.0),
+        MUTED,
     );
     ui.painter()
         .hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0_f32, LINE));
@@ -371,86 +471,129 @@ fn draw_chrome(ui: &mut Ui, ctx: &egui::Context, tab: &mut u8) {
 
 fn icon_hit(ui: &mut Ui, bar: Rect, x_from_right: f32, glyph: &str) -> egui::Response {
     let c = Pos2::new(bar.right() + x_from_right, bar.center().y);
-    let r = Rect::from_center_size(c, Vec2::splat(28.0));
+    let r = Rect::from_center_size(c, Vec2::splat(30.0));
     let resp = ui.allocate_rect(r, Sense::click());
     let fill = if resp.hovered() {
-        Color32::from_rgba_unmultiplied(251, 146, 60, 40)
+        Color32::from_rgba_unmultiplied(0, 0, 0, 16)
     } else {
         Color32::TRANSPARENT
     };
-    ui.painter()
-        .rect_filled(r, CornerRadius::same(8), fill);
+    ui.painter().rect_filled(r, CornerRadius::same(4), fill);
     ui.painter().text(
         c,
         egui::Align2::CENTER_CENTER,
         glyph,
-        FontId::proportional(18.0),
+        FontId::proportional(16.0),
         if resp.hovered() { TEXT } else { MUTED },
     );
     resp
 }
 
-fn hero(ui: &mut Ui, logo: Option<&TextureHandle>, collecting: bool, ctx: &egui::Context) {
-    let t = ctx.input(|i| i.time);
-    let (rect, _) = ui.allocate_exact_size(Vec2::splat(112.0), Sense::hover());
-    let c = rect.center();
-    let pulse = if collecting {
-        ((t * 3.2).sin() as f32 + 1.0) * 0.5
-    } else {
-        0.12
-    };
-    ui.painter().circle_filled(
-        c,
-        52.0 + pulse * 7.0,
-        Color32::from_rgba_unmultiplied(251, 146, 60, (10.0 + pulse * 18.0) as u8),
-    );
-    ui.painter().circle_filled(
-        c,
-        46.0 + pulse * 5.0,
-        Color32::from_rgba_unmultiplied(37, 99, 235, (16.0 + pulse * 28.0) as u8),
-    );
-    ui.painter().circle_stroke(
-        c,
-        42.0 + pulse * 3.0,
-        Stroke::new(1.2_f32, Color32::from_rgba_unmultiplied(37, 99, 235, (40.0 + pulse * 70.0) as u8)),
-    );
-    if let Some(tex) = logo {
-        let logo_r = Rect::from_center_size(c, Vec2::splat(72.0));
-        egui::Image::new(tex)
-            .corner_radius(CornerRadius::same(18))
-            .paint_at(ui, logo_r);
-    }
-    ui.add_space(6.0);
-    ui.label(RichText::new("этот компьютер").size(12.0).color(ACCENT).strong());
+fn home(ui: &mut Ui, app: &mut CoraxApp, collecting: bool, snap: &crate::state::Snapshot, t: f64) {
+    hero(ui, app.logo.as_ref(), collecting, t, app.collect_at);
+    ui.add_space(10.0);
+    status_card(ui, collecting, snap, t, app.collect_at);
+    ui.add_space(10.0);
+    let reveal = ease_out(((t - app.reveal_at) / 0.55) as f32);
+    specs_card(ui, snap, if collecting { 0.35 } else { 0.55 + 0.45 * reveal });
+    ui.add_space(14.0);
+    collect_button(ui, collecting, &app.kick);
+    ui.add_space(12.0);
+    footer(ui, snap, collecting);
 }
 
-fn status_card(ui: &mut Ui, collecting: bool, snap: &crate::state::Snapshot) {
+fn hero(ui: &mut Ui, logo: Option<&TextureHandle>, collecting: bool, t: f64, collect_at: f64) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 128.0), Sense::hover());
+    let c = rect.center();
+    let breath = ((t * 1.15).sin() as f32 + 1.0) * 0.5;
+    if collecting {
+        let elapsed = (t - collect_at).max(0.0);
+        progress_ring(ui, c, 54.0 + breath * 2.0, elapsed, ACCENT);
+        progress_ring(ui, c, 42.0, elapsed * 1.35 + 1.1, ACCENT_SOFT);
+        let pulse = ((elapsed * 3.2).sin() as f32 + 1.0) * 0.5;
+        ui.painter().circle_filled(
+            c,
+            34.0 + pulse * 3.0,
+            Color32::from_rgba_unmultiplied(0, 95, 184, 18 + (pulse * 20.0) as u8),
+        );
+    } else {
+        ui.painter().circle_filled(
+            c,
+            56.0 + breath * 4.0,
+            Color32::from_rgba_unmultiplied(0, 95, 184, 10 + (breath * 10.0) as u8),
+        );
+        ui.painter().circle_stroke(
+            c,
+            48.0,
+            Stroke::new(1.1_f32, Color32::from_rgba_unmultiplied(0, 95, 184, 40)),
+        );
+    }
+    if let Some(tex) = logo {
+        let logo_r = Rect::from_center_size(c, Vec2::splat(68.0));
+        egui::Image::new(tex)
+            .corner_radius(CornerRadius::same(12))
+            .paint_at(ui, logo_r);
+    }
+}
+
+fn progress_ring(ui: &mut Ui, center: Pos2, radius: f32, t: f64, color: Color32) {
+    let start = t * 2.35;
+    let sweep = 4.2 + 1.1 * (t * 1.6).sin();
+    let n = 42;
+    let painter = ui.painter();
+    for i in 0..n {
+        let k = i as f64 / n as f64;
+        let a0 = start + sweep * k;
+        let a1 = start + sweep * ((i + 1) as f64 / n as f64);
+        let fade = (k as f32).powf(0.65);
+        let p0 = center + Vec2::new((a0 as f32).cos(), (a0 as f32).sin()) * radius;
+        let p1 = center + Vec2::new((a1 as f32).cos(), (a1 as f32).sin()) * radius;
+        painter.line_segment(
+            [p0, p1],
+            Stroke::new(
+                3.2,
+                Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (18.0 + fade * 200.0) as u8),
+            ),
+        );
+    }
+}
+
+fn collect_phase(elapsed: f64) -> &'static str {
+    let i = ((elapsed / 0.72) as usize).min(COLLECT_PHASES.len() - 1);
+    COLLECT_PHASES[i]
+}
+
+fn status_card(ui: &mut Ui, collecting: bool, snap: &crate::state::Snapshot, t: f64, collect_at: f64) {
     let (title, sub, color) = if collecting {
         (
-            "Собираю этот ПК".to_string(),
-            "Железо, диски, софт, аудио, мониторы".to_string(),
+            collect_phase(t - collect_at).to_string(),
+            "Собираю этот компьютер — можно свернуть в трей".to_string(),
             ACCENT,
         )
     } else {
         match snap.outcome {
             RunOutcome::Sent => (
-                "Всё отправлено".into(),
+                "Инвентарь на сервере".into(),
                 if snap.at.is_empty() {
-                    "Отчёт на сервере".into()
+                    "Отчёт ушёл спокойно".into()
                 } else {
                     format!("Последний отчёт  {}", snap.at)
                 },
                 OK,
             ),
             RunOutcome::NeedConfig => (
-                "Укажите адрес сервера".into(),
-                "Токен уже вшит. Нужен только IP CORAX".into(),
+                "Нужен адрес сервера".into(),
+                if snap.detail.is_empty() {
+                    "Токен уже в agent.json рядом с программой".into()
+                } else {
+                    snap.detail.clone()
+                },
                 WARN,
             ),
             RunOutcome::Failed => (
                 "Отчёт не ушёл".into(),
                 if snap.detail.is_empty() {
-                    "Проверьте сервер и токен".into()
+                    "Проверьте сеть и токен".into()
                 } else {
                     snap.detail.clone()
                 },
@@ -458,33 +601,40 @@ fn status_card(ui: &mut Ui, collecting: bool, snap: &crate::state::Snapshot) {
             ),
         }
     };
-    Frame::new()
-        .fill(CARD)
-        .stroke(Stroke::new(1.0_f32, LINE))
-        .corner_radius(CornerRadius::same(16))
-        .inner_margin(Margin::symmetric(18, 16))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
-                ui.painter().circle_filled(dot.center(), 5.0, color);
-                ui.add_space(8.0);
-                ui.vertical(|ui| {
-                    ui.label(RichText::new(title).size(18.0).color(TEXT).strong());
-                    ui.add_space(2.0);
-                    ui.label(RichText::new(sub).size(12.5).color(MUTED));
-                });
+    fluent_card(ui, |ui| {
+        ui.horizontal(|ui| {
+            let (dot, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+            let pulse = if collecting {
+                ((t * 4.0).sin() as f32 + 1.0) * 0.5
+            } else {
+                1.0
+            };
+            ui.painter().circle_filled(
+                dot.center(),
+                4.0 + pulse,
+                Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (80.0 + pulse * 140.0) as u8),
+            );
+            ui.painter().circle_filled(dot.center(), 3.2, color);
+            ui.add_space(10.0);
+            ui.vertical(|ui| {
+                ui.label(RichText::new(title).size(17.0).color(TEXT).strong());
+                ui.add_space(2.0);
+                ui.label(RichText::new(sub).size(12.0).color(MUTED));
             });
         });
+    });
 }
 
-fn specs_card(ui: &mut Ui, snap: &crate::state::Snapshot) {
-    Frame::new()
-        .fill(CARD)
-        .stroke(Stroke::new(1.0_f32, LINE))
-        .corner_radius(CornerRadius::same(16))
-        .inner_margin(Margin::symmetric(18, 14))
-        .show(ui, |ui| {
-            ui.label(RichText::new(snap.hostname.to_uppercase()).size(13.0).color(ACCENT).strong());
+fn specs_card(ui: &mut Ui, snap: &crate::state::Snapshot, opacity: f32) {
+    ui.scope(|ui| {
+        ui.set_opacity(opacity.clamp(0.2, 1.0));
+        fluent_card(ui, |ui| {
+            ui.label(
+                RichText::new(snap.hostname.to_uppercase())
+                    .size(12.0)
+                    .color(ACCENT)
+                    .strong(),
+            );
             ui.add_space(8.0);
             spec(ui, "процессор", &snap.cpu);
             spec(ui, "память", &snap.ram);
@@ -497,20 +647,17 @@ fn specs_card(ui: &mut Ui, snap: &crate::state::Snapshot) {
             spec(ui, "мониторы", &snap.monitors);
             spec(ui, "аудио", &snap.audio);
         });
+    });
 }
 
 fn spec(ui: &mut Ui, k: &str, v: &str) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(k).size(12.0).color(MUTED));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                RichText::new(truncate(v, 32))
-                    .size(12.5)
-                    .color(TEXT),
-            );
+            ui.label(RichText::new(truncate(v, 34)).size(12.5).color(TEXT));
         });
     });
-    ui.add_space(3.0);
+    ui.add_space(4.0);
 }
 
 fn truncate(s: &str, n: usize) -> String {
@@ -523,21 +670,41 @@ fn truncate(s: &str, n: usize) -> String {
     }
 }
 
+fn fluent_card(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    Frame::new()
+        .fill(CARD)
+        .stroke(Stroke::new(1.0_f32, LINE))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(16, 14))
+        .shadow(egui::Shadow {
+            offset: [0, 1],
+            blur: 8,
+            spread: 0,
+            color: Color32::from_rgba_unmultiplied(0, 0, 0, 18),
+        })
+        .show(ui, add);
+}
+
+fn fluent_button(ui: &mut Ui, label: &str, enabled: bool) -> egui::Response {
+    let fill = if enabled { ACCENT } else { Color32::from_rgb(186, 212, 239) };
+    let btn = egui::Button::new(RichText::new(label).size(14.5).color(ON_ACCENT).strong())
+        .fill(fill)
+        .corner_radius(CornerRadius::same(6))
+        .min_size(Vec2::new(ui.available_width(), 40.0));
+    let resp = ui.add_enabled(enabled, btn);
+    if resp.hovered() && enabled {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
+}
+
 fn collect_button(ui: &mut Ui, collecting: bool, kick: &SyncSender<()>) {
     let label = if collecting {
-        "Сбор…"
+        "Собираю…"
     } else {
         "Собрать сейчас"
     };
-    let btn = egui::Button::new(RichText::new(label).size(16.0).color(ON_ACCENT).strong())
-        .fill(if collecting { Color32::from_rgb(147, 197, 253) } else { ACCENT })
-        .corner_radius(CornerRadius::same(22))
-        .min_size(Vec2::new(ui.available_width(), 50.0));
-    let resp = ui.add_enabled(!collecting, btn);
-    if resp.hovered() && !collecting {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-    }
-    if resp.clicked() {
+    if fluent_button(ui, label, !collecting).clicked() {
         let _ = kick.try_send(());
     }
 }
@@ -601,26 +768,22 @@ fn apply_prefs(app: &mut CoraxApp) {
 }
 
 fn setup_panel(ui: &mut Ui, app: &mut CoraxApp) {
-    ui.add_space(24.0);
+    ui.add_space(18.0);
     ui.label(RichText::new("Установка").size(22.0).color(TEXT).strong());
     ui.add_space(6.0);
     ui.label(
-        RichText::new(if load_config().token.is_empty() {
-            "В этом файле токена нет. Скачайте ZIP со страницы «Сборка агента» в панели CORAX."
+        RichText::new(if app.has_token {
+            "Токен уже лежит рядом в agent.json — EXE не менялся. Укажите IP сервера, если его нет в сборке."
         } else {
-            "Токен уже внутри этого EXE и зашифрован. Укажите IP сервера CORAX в вашей сети."
+            "В этой папке нет agent.json с токеном. Скачайте ZIP со страницы «Сборка агента»."
         })
-            .size(13.0)
-            .color(MUTED),
+        .size(13.0)
+        .color(MUTED),
     );
-    ui.add_space(18.0);
+    ui.add_space(16.0);
     server_fields(ui, app);
-    ui.add_space(18.0);
-    let go = egui::Button::new(RichText::new("Готово").size(16.0).color(ON_ACCENT).strong())
-        .fill(ACCENT)
-        .corner_radius(CornerRadius::same(14))
-        .min_size(Vec2::new(ui.available_width(), 46.0));
-    if ui.add_enabled(!app.host.trim().is_empty(), go).clicked() {
+    ui.add_space(16.0);
+    if fluent_button(ui, "Готово — собрать этот ПК", !app.host.trim().is_empty()).clicked() {
         apply_prefs(app);
     }
 }
@@ -634,7 +797,7 @@ fn settings_panel(ui: &mut Ui, app: &mut CoraxApp) {
 }
 
 fn settings_panel_inner(ui: &mut Ui, app: &mut CoraxApp) {
-    ui.add_space(8.0);
+    ui.add_space(6.0);
     ui.label(RichText::new("Настройки").size(18.0).color(TEXT).strong());
     ui.add_space(12.0);
     server_fields(ui, app);
@@ -661,18 +824,15 @@ fn settings_panel_inner(ui: &mut Ui, app: &mut CoraxApp) {
     });
     ui.add_space(6.0);
     ui.label(
-        RichText::new("По локальным часам ПК. Если в это время компьютер был выключен — отчёт уйдёт при следующем запуске.")
+        RichText::new("По часам этого ПК. Если компьютер был выключен — отчёт уйдёт при следующем запуске.")
             .size(11.0)
             .color(MUTED),
     );
-    ui.add_space(12.0);
-    ui.checkbox(
-        &mut app.autostart,
-        RichText::new("Запускать вместе с Windows").size(13.0).color(TEXT),
-    );
-    ui.add_space(8.0);
+    ui.add_space(14.0);
+    fluent_toggle(ui, app);
+    ui.add_space(6.0);
     ui.label(
-        RichText::new("Без автозапуска суточный отчёт не уйдёт, пока пользователь не откроет агент.")
+        RichText::new("Без автозапуска суточный отчёт не уйдёт, пока агент не откроют.")
             .size(11.0)
             .color(MUTED),
     );
@@ -687,14 +847,14 @@ fn settings_panel_inner(ui: &mut Ui, app: &mut CoraxApp) {
     ui.add_space(8.0);
     let shortcut_btn = egui::Button::new(
         RichText::new("Создать ярлык «Оставить заявку»")
-            .size(13.5)
+            .size(13.0)
             .color(ACCENT)
             .strong(),
     )
-    .fill(CARD_HI)
-    .stroke(Stroke::new(1.2_f32, PEACH))
-    .corner_radius(CornerRadius::same(14))
-    .min_size(Vec2::new(ui.available_width(), 42.0));
+    .fill(Color32::from_rgb(243, 249, 255))
+    .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 95, 184, 50)))
+    .corner_radius(CornerRadius::same(6))
+    .min_size(Vec2::new(ui.available_width(), 38.0));
     if ui.add(shortcut_btn).clicked() {
         let url = join_server(app.https, &app.host, &app.port);
         app.shortcut_note = match create_helpdesk_shortcut(&url) {
@@ -704,20 +864,43 @@ fn settings_panel_inner(ui: &mut Ui, app: &mut CoraxApp) {
     }
     if !app.shortcut_note.is_empty() {
         ui.add_space(6.0);
-        ui.label(RichText::new(&app.shortcut_note).size(11.0).color(if app.shortcut_note.starts_with("готово") { OK } else { BAD }));
+        ui.label(RichText::new(&app.shortcut_note).size(11.0).color(
+            if app.shortcut_note.starts_with("готово") {
+                OK
+            } else {
+                BAD
+            },
+        ));
     }
     ui.add_space(16.0);
-    if ui
-        .add(
-            egui::Button::new(RichText::new("Сохранить").size(15.0).color(ON_ACCENT).strong())
-                .fill(ACCENT)
-                .corner_radius(CornerRadius::same(16))
-                .min_size(Vec2::new(ui.available_width(), 44.0)),
-        )
-        .clicked()
-    {
+    if fluent_button(ui, "Сохранить", true).clicked() {
         apply_prefs(app);
     }
+}
+
+fn fluent_toggle(ui: &mut Ui, app: &mut CoraxApp) {
+    ui.horizontal(|ui| {
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(40.0, 20.0), Sense::click());
+        if resp.clicked() {
+            app.autostart = !app.autostart;
+        }
+        let t = app.toggle_t;
+        let track = lerp_color(
+            Color32::from_rgb(200, 198, 196),
+            ACCENT,
+            t,
+        );
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(10), track);
+        let knob_x = rect.left() + 10.0 + t * 20.0;
+        ui.painter().circle_filled(
+            Pos2::new(knob_x, rect.center().y),
+            8.0,
+            Color32::WHITE,
+        );
+        ui.add_space(10.0);
+        ui.label(RichText::new("Запускать вместе с Windows").size(13.0).color(TEXT));
+    });
 }
 
 fn server_fields(ui: &mut Ui, app: &mut CoraxApp) {
@@ -751,9 +934,9 @@ fn server_fields(ui: &mut Ui, app: &mut CoraxApp) {
 pub fn native_options() -> eframe::NativeOptions {
     let icon = eframe::icon_data::from_png_bytes(include_bytes!("../icons/128x128.png")).ok();
     let mut viewport = egui::ViewportBuilder::default()
-        .with_inner_size([420.0, 800.0])
-        .with_min_inner_size([400.0, 700.0])
-        .with_max_inner_size([480.0, 900.0])
+        .with_inner_size([428.0, 720.0])
+        .with_min_inner_size([400.0, 640.0])
+        .with_max_inner_size([480.0, 860.0])
         .with_decorations(false)
         .with_resizable(false)
         .with_title("CORAX")

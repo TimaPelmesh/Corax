@@ -25,6 +25,7 @@ type RoleFilter =
   | 'firewall'
   | 'controller'
   | 'server'
+  | 'vm'
   | 'nas'
   | 'voip'
   | 'ups'
@@ -75,6 +76,8 @@ function roleTone(role: string) {
       return 'bg-cyan-500/15 text-cyan-800 dark:text-cyan-200'
     case 'server':
       return 'bg-indigo-500/15 text-indigo-800 dark:text-indigo-200'
+    case 'vm':
+      return 'bg-violet-500/15 text-violet-800 dark:text-violet-200'
     case 'nas':
       return 'bg-blue-500/15 text-blue-800 dark:text-blue-200'
     case 'voip':
@@ -291,6 +294,7 @@ export function NetworkPage() {
     'firewall',
     'controller',
     'server',
+    'vm',
     'host',
     'printer',
     'nas',

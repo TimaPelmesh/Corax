@@ -1,15 +1,18 @@
 import { useRef, type DragEvent, type ReactNode } from 'react'
 import {
   IconAccessPoint,
+  IconCable,
   IconCloud,
   IconFirewall,
   IconImage,
+  IconNetworkMap,
   IconPcs,
   IconPencil,
   IconPrinter,
   IconRouter,
   IconServer,
   IconSwitch,
+  IconVm,
   IconWarehouse,
 } from '../../components/icons'
 import { useT, type MessageKey } from '../../i18n/LocaleContext'
@@ -21,8 +24,10 @@ const STENCIL_ICON: Record<(typeof STENCILS)[number], typeof IconSwitch> = {
   firewall: IconFirewall,
   ap: IconAccessPoint,
   server: IconServer,
+  corax: IconNetworkMap,
   nas: IconWarehouse,
   pc: IconPcs,
+  vm: IconVm,
   printer: IconPrinter,
   cloud: IconCloud,
 }
@@ -30,6 +35,8 @@ const STENCIL_ICON: Record<(typeof STENCILS)[number], typeof IconSwitch> = {
 type Props = {
   onPick: (payload: PaletteDrag) => void
   onImportImage?: (file: File) => void
+  onCableTool?: () => void
+  cableActive?: boolean
 }
 
 function dragPayload(e: DragEvent, payload: PaletteDrag) {
@@ -42,11 +49,13 @@ function DockButton({
   label,
   onClick,
   onDragStart,
+  active,
   children,
 }: {
   label: string
   onClick: () => void
   onDragStart?: (e: DragEvent) => void
+  active?: boolean
   children: ReactNode
 }) {
   return (
@@ -56,7 +65,11 @@ function DockButton({
       draggable={Boolean(onDragStart)}
       onClick={onClick}
       onDragStart={onDragStart}
-      className="flex h-[3.35rem] w-[3.35rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]"
+      className={`flex h-[3.35rem] w-[3.35rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md ${
+        active
+          ? 'bg-[var(--color-fg)] text-[var(--color-surface)]'
+          : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]'
+      }`}
     >
       {children}
       <span className="max-w-full truncate px-0.5 text-[9px] leading-none tracking-wide">{label}</span>
@@ -64,12 +77,18 @@ function DockButton({
   )
 }
 
-export function NetworkMapDock({ onPick, onImportImage }: Props) {
+export function NetworkMapDock({ onPick, onImportImage, onCableTool, cableActive }: Props) {
   const t = useT()
   const fileRef = useRef<HTMLInputElement>(null)
 
   return (
     <div className="network-map-dock flex shrink-0 items-stretch gap-2 overflow-x-auto border-t border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5">
+      <div className="flex items-center gap-0.5">
+        <DockButton label={t('networkMap.cableTool')} onClick={() => onCableTool?.()} active={cableActive}>
+          <IconCable className="h-5 w-5" />
+        </DockButton>
+      </div>
+      <div className="my-1 w-px shrink-0 bg-[var(--color-border)]" />
       <div className="flex items-center gap-0.5">
         {STENCILS.map((stencil) => {
           const Icon = STENCIL_ICON[stencil]

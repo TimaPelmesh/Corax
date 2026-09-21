@@ -25,12 +25,13 @@ _LAYER = {
     "camera": 3,
     "pc": 4,
     "host": 4,
+    "vm": 4,
     "printer": 4,
     "unknown": 4,
 }
 
 _ENDPOINT_KINDS = frozenset({"computer", "printer"})
-_ENDPOINT_TYPES = frozenset({"host", "pc", "computer", "printer"})
+_ENDPOINT_TYPES = frozenset({"host", "pc", "computer", "printer", "vm"})
 _STRONG_LINKS = frozenset({"lldp", "cdp", "mndp", "ndp", "fdp", "edp", "isdp", "hndp"})
 _ENDPOINT_LINKS = _STRONG_LINKS | {"fdb"}
 _PARENT_LINKS = _STRONG_LINKS | {"trace", "fdb"}
@@ -85,8 +86,10 @@ def _stencil_for(kind: str | None, device_type: str | None) -> str:
         return "router"
     if dtype == "controller":
         return "switch"
-    if dtype in {"switch", "firewall", "ap", "server", "nas", "pc", "printer", "cloud", "corax"}:
+    if dtype in {"switch", "firewall", "ap", "server", "nas", "pc", "printer", "cloud", "corax", "vm"}:
         return dtype
+    if dtype == "host":
+        return "pc"
     return "unknown"
 
 

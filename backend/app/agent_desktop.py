@@ -1,4 +1,8 @@
-"""Windows 10/11 tray EXE bundle (encrypted token stamped into EXE)."""
+"""Windows 10/11 tray EXE bundle.
+
+The EXE stays byte-identical so Authenticode / the installer checksum do not
+break. The sealed token and server URL live in agent.json next to the EXE.
+"""
 
 from __future__ import annotations
 
@@ -86,7 +90,7 @@ def _pick_seal_span(exe_bytes: bytes) -> tuple[int, int]:
 
 
 def stamp_desktop_exe(exe_bytes: bytes, sealed: dict) -> bytes:
-    """Write AES-GCM token JSON into the PE slot. Plaintext token never enters the file."""
+    """Legacy PE-slot writer. New bundles never call this — it would break signatures."""
     begin, end = _pick_seal_span(exe_bytes)
     payload_start = begin + len(_SEAL_BEGIN)
     capacity = end - payload_start
@@ -103,60 +107,85 @@ def stamp_desktop_exe(exe_bytes: bytes, sealed: dict) -> bytes:
 def _install_bat() -> str:
     return (
         "@echo off\r\n"
+        "setlocal EnableExtensions\r\n"
         "chcp 65001 >nul\r\n"
-        "set DEST=%LOCALAPPDATA%\\CORAX\\desktop\r\n"
+        "set \"SRC=%~dp0\"\r\n"
+        "set \"DEST=%LOCALAPPDATA%\\CORAX\\desktop\"\r\n"
         "mkdir \"%DEST%\" 2>nul\r\n"
-        "copy /Y \"%~dp0CORAX-Agent.exe\" \"%DEST%\\CORAX-Agent.exe\" >nul\r\n"
-        "if exist \"%~dp0agent.json\" copy /Y \"%~dp0agent.json\" \"%DEST%\\agent.json\" >nul\r\n"
+        "copy /Y \"%SRC%CORAX-Agent.exe\" \"%DEST%\\CORAX-Agent.exe\" >nul\r\n"
+        "if errorlevel 1 (\r\n"
+        "  echo Не удалось скопировать CORAX-Agent.exe\r\n"
+        "  pause\r\n"
+        "  exit /b 1\r\n"
+        ")\r\n"
+        "if exist \"%SRC%agent.json\" (\r\n"
+        "  copy /Y \"%SRC%agent.json\" \"%DEST%\\agent.json\" >nul\r\n"
+        "  if errorlevel 1 (\r\n"
+        "    echo Не удалось скопировать agent.json — без токена отчёт не уйдёт.\r\n"
+        "    pause\r\n"
+        "    exit /b 1\r\n"
+        "  )\r\n"
+        ")\r\n"
         "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"CORAX Agent\" /t REG_SZ /d \"\\\"%DEST%\\CORAX-Agent.exe\\\"\" /f >nul\r\n"
         "start \"\" \"%DEST%\\CORAX-Agent.exe\"\r\n"
         "echo CORAX Agent установлен в %DEST%\r\n"
-        "echo Токен уже вшит в EXE. При первом запуске укажите IP сервера.\r\n"
-        "echo Отчёт уходит раз в сутки. Время — в настройках агента.\r\n"
+        "echo EXE не изменялся. Токен — в agent.json рядом.\r\n"
+        "echo Агент сам соберёт инвентарь этого ПК.\r\n"
     )
 
 
 def _readme() -> str:
     return (
-        "CORAX Agent — Windows 10/11 (окно + трей)\r\n"
-        "=========================================\r\n"
+        "CORAX Agent — Windows 10/11\r\n"
+        "===========================\r\n"
         "\r\n"
-        "1. Запустите Install.bat или сразу CORAX-Agent.exe.\r\n"
-        "2. Токен уже вшит в EXE. В agent.json только префикс (как в панели), не секрет.\r\n"
-        "3. В окне укажите IP сервера CORAX (например 192.168.1.10) и порт 3000.\r\n"
-        "4. Крестик прячет в трей. Выход — из меню иконки.\r\n"
-        "5. Отчёт уходит сам раз в сутки (по умолчанию 09:00 по часам ПК).\r\n"
-        "6. Если ПК был выключен в это время, отчёт уйдёт при следующем старте.\r\n"
+        "1. Запустите Install.bat (или сразу CORAX-Agent.exe из этой папки).\r\n"
+        "2. EXE не патчится: подпись и установщик не ломаются.\r\n"
+        "3. Токен зашифрован в agent.json. URL сервера тоже, если сборка с панели.\r\n"
+        "4. После установки агент сам собирает инвентарь и уходит в трей.\r\n"
+        "5. Крестик прячет окно. Выход — из меню иконки.\r\n"
+        "6. Отчёт раз в сутки (по умолчанию 09:00). Если ПК был выключен — при следующем старте.\r\n"
     )
 
 
-def pack_desktop_zip(exe: Path, token: str) -> bytes:
+def pack_desktop_zip(exe: Path, token: str, server_url: str = "") -> bytes:
+    """Pack an unmodified EXE with a sidecar token. Never writes into the PE."""
     sealed = seal_agent_token(token)
-    stamped = stamp_desktop_exe(exe.read_bytes(), sealed)
-    if token.encode("utf-8") in stamped:
-        raise RuntimeError("plaintext token leaked into EXE")
+    raw_exe = exe.read_bytes()
+    secret = token.encode("utf-8")
+    if secret in raw_exe:
+        raise RuntimeError("plaintext token leaked into EXE template")
     prefix = token.split(".", 1)[0]
-    agent_json = {
+    agent_json: dict = {
         "token_enc": sealed,
         "token_prefix": prefix,
         "daily_at": "09:00",
         "autostart": True,
     }
+    server = (server_url or "").strip().rstrip("/")
+    if server:
+        agent_json["server_url"] = server
+    sidecar = (json.dumps(agent_json, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if secret in sidecar:
+        raise RuntimeError("plaintext token leaked into agent.json")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("CORAX-Agent.exe", stamped)
-        zf.writestr(
-            "agent.json",
-            json.dumps(agent_json, ensure_ascii=False, indent=2) + "\n",
-        )
+        zf.writestr("CORAX-Agent.exe", raw_exe)
+        zf.writestr("agent.json", sidecar)
         zf.writestr("Install.bat", _install_bat())
         zf.writestr("README.txt", _readme())
-    return buf.getvalue()
+    packed = buf.getvalue()
+    if secret in packed:
+        raise RuntimeError("plaintext token leaked into ZIP")
+    return packed
 
 
 async def build_desktop_bundle(db: AsyncSession, body: AgentBundleCreate) -> tuple[bytes, str]:
     token, _ = await _resolve_agent_token(db, body)
+    server = body.server_url.strip().rstrip("/")
+    if not server.lower().startswith(("http://", "https://")):
+        raise ValueError("server_url должен начинаться с http:// или https://")
     exe = _desktop_exe_path()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
     filename = f"corax-agent-desktop-{stamp}.zip"
-    return pack_desktop_zip(exe, token), filename
+    return pack_desktop_zip(exe, token, server), filename

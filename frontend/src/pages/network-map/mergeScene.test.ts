@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bindsFromScene, deviceTypeForStencil, hydrateScene } from './mergeScene'
+import { bindsFromScene, deviceTypeForStencil, hydrateScene, overlayLiveOnMerged, stencilForDeviceType } from './mergeScene'
 import { emptyNetworkMapScene } from './types'
 
 describe('hydrateScene', () => {
@@ -75,6 +75,44 @@ describe('hydrateScene', () => {
     expect(hydrated.nodes[1].imageSrc).toBe('data:image/png;base64,aaa')
     expect(hydrated.nodes[1].width).toBe(180)
   })
+
+  it('keeps two cables between the same pair', () => {
+    const scene = emptyNetworkMapScene()
+    scene.nodes = [
+      { id: 'sw', stencil: 'switch', x: 0, y: 0, label: 'sw' },
+      { id: 'ap', stencil: 'ap', x: 80, y: 0, label: 'ap' },
+    ]
+    scene.edges = [
+      { id: 'e1', source: 'sw', target: 'ap', local_port: 'Gi1/0/1' },
+      { id: 'e2', source: 'sw', target: 'ap', local_port: 'Gi1/0/2' },
+    ]
+    expect(hydrateScene(scene).edges.map((e) => e.id)).toEqual(['e1', 'e2'])
+  })
+})
+
+describe('overlayLiveOnMerged', () => {
+  it('updates status without moving the node', () => {
+    const nodes = [
+      {
+        id: 'sw',
+        stencil: 'switch' as const,
+        x: 40,
+        y: 80,
+        label: 'old',
+        bind: { type: 'network_device' as const, id: 1 },
+        kind: 'network_device',
+        missing: false,
+      },
+    ]
+    const out = overlayLiveOnMerged(nodes, [
+      { type: 'network_device', id: 1, label: 'sw-core', ip: '10.0.0.1', status: 'ok', missing: false },
+    ])
+    expect(out[0].x).toBe(40)
+    expect(out[0].y).toBe(80)
+    expect(out[0].label).toBe('sw-core')
+    expect(out[0].ip).toBe('10.0.0.1')
+    expect(out[0].status).toBe('ok')
+  })
 })
 
 describe('deviceTypeForStencil', () => {
@@ -82,6 +120,8 @@ describe('deviceTypeForStencil', () => {
     expect(deviceTypeForStencil('switch')).toBe('switch')
     expect(deviceTypeForStencil('ap')).toBe('ap')
     expect(deviceTypeForStencil('pc')).toBe('host')
+    expect(deviceTypeForStencil('vm')).toBe('vm')
+    expect(stencilForDeviceType('vm')).toBe('vm')
     expect(deviceTypeForStencil('note')).toBeNull()
     expect(deviceTypeForStencil('corax')).toBeNull()
   })

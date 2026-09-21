@@ -10,6 +10,9 @@ type Props = {
   targetLabel: string
   sourcePorts: MapPortOption[]
   targetPorts: MapPortOption[]
+  initialLocal?: string | null
+  initialRemote?: string | null
+  confirmLabel?: string
   onClose: () => void
   onConfirm: (localPort: string | null, remotePort: string | null) => void
 }
@@ -66,12 +69,15 @@ export function NetworkMapPortPicker({
   targetLabel,
   sourcePorts,
   targetPorts,
+  initialLocal,
+  initialRemote,
+  confirmLabel,
   onClose,
   onConfirm,
 }: Props) {
   const t = useT()
-  const [localPort, setLocalPort] = useState(sourcePorts[0]?.name || '')
-  const [remotePort, setRemotePort] = useState(targetPorts[0]?.name || '')
+  const [localPort, setLocalPort] = useState(initialLocal || '')
+  const [remotePort, setRemotePort] = useState(initialRemote || '')
 
   if (!open) return null
   return createPortal(
@@ -117,7 +123,7 @@ export function NetworkMapPortPicker({
             onClick={() => onConfirm(localPort || null, remotePort || null)}
             className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white"
           >
-            {t('networkMap.portPickConfirm')}
+            {confirmLabel || t('networkMap.portPickConfirm')}
           </button>
         </div>
       </div>

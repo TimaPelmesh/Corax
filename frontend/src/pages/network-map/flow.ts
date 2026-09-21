@@ -1,8 +1,39 @@
 import { type Edge, type Node } from 'reactflow'
-import { laneForEdges } from './cables'
+import { laneForEdges, sanitizeCablePoints } from './cables'
+import {
+  chassisPortLayout,
+  chassisPorts,
+  clampPortCount,
+  defaultStencilPortCount,
+  equipmentHeight,
+  equipmentWidth,
+  MAX_CHASSIS_PORTS,
+  nextDiagramSlot,
+  nextSlotInGroup,
+  occupiedBoxes,
+  portHandleId,
+  RACK_SIZE,
+  ROOM_SIZE,
+} from './chassis'
 import { ipv4Slash24, matchMapQuery } from './inventory'
 import type { MergedCanvasEdge, MergedCanvasNode, NetworkMapGroup, NetworkMapScene } from './types'
 import type { EquipmentNodeData, GroupNodeData } from './NetworkMapCanvasNode'
+
+export {
+  chassisPortLayout,
+  chassisPorts,
+  clampPortCount,
+  defaultStencilPortCount,
+  equipmentHeight,
+  equipmentWidth,
+  MAX_CHASSIS_PORTS,
+  nextDiagramSlot,
+  nextSlotInGroup,
+  occupiedBoxes,
+  portHandleId,
+  RACK_SIZE,
+  ROOM_SIZE,
+}
 
 export const RF_SNAP = [16, 16] as const
 export const COLLAPSED_GROUP_SIZE = { width: 248, height: 88 }
@@ -53,11 +84,19 @@ export function toWorldScene(scene: NetworkMapScene): NetworkMapScene {
 
 export function groupContainsNode(
   group: NetworkMapGroup,
-  node: { x: number; y: number; stencil?: string; label?: string | null; width?: number | null; height?: number | null },
+  node: {
+    x: number
+    y: number
+    stencil?: string
+    label?: string | null
+    width?: number | null
+    height?: number | null
+    portCount?: number | null
+  },
 ): boolean {
   const box = groupDisplaySize(group)
-  const w = equipmentWidth(node.stencil || 'unknown', node.label || '', node.width)
-  const h = equipmentHeight(node.stencil || 'unknown', node.label || '', node.height)
+  const w = equipmentWidth(node.stencil || 'unknown', node.label || '', node.width, node.portCount)
+  const h = equipmentHeight(node.stencil || 'unknown', node.label || '', node.height, node.portCount)
   const cx = node.x + w / 2
   const cy = node.y + h / 2
   return cx >= group.x && cy >= group.y && cx <= group.x + box.width && cy <= group.y + box.height
@@ -74,46 +113,14 @@ export function releaseNodeFromGroup(scene: NetworkMapScene, nodeId: string): Ne
   }
 }
 
-export function portHandleId(name: string | null | undefined): string | undefined {
-  const raw = (name || '').trim()
-  if (!raw) return undefined
-  const slug = raw.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48)
-  return slug ? `p:${slug}` : undefined
-}
-
 function portNameFromHandle(node: Node | undefined, handle: string | null | undefined): string | null {
   if (!handle) return null
+  const raw = handle.replace(/-(src|tgt)$/, '')
   const ports = (node?.data as EquipmentNodeData | undefined)?.ports
-  const hit = ports?.find((p) => p.id === handle)
+  const hit = ports?.find((p) => p.id === raw || p.id === handle || portHandleId(p.name) === raw)
   if (hit?.name) return hit.name
-  if (handle.startsWith('p:')) return handle.slice(2).replace(/-/g, '/')
+  if (raw.startsWith('p:')) return raw.slice(2).replace(/-/g, '/')
   return null
-}
-
-export function equipmentWidth(
-  stencil: string,
-  label = '',
-  width?: number | null,
-  portCount?: number | null,
-): number {
-  if (width && width > 0) return Math.max(80, Math.min(1600, width))
-  if (stencil === 'note') {
-    const longest = label.split('\n').reduce((max, line) => Math.max(max, line.length), 0)
-    return Math.max(96, Math.min(420, longest * 11 + 20))
-  }
-  if (stencil === 'image') return 220
-  if (stencil === 'switch' && (portCount || 0) > 8) {
-    return Math.min(460, Math.max(120, Number(portCount) * 8 + 36))
-  }
-  return 112
-}
-
-export function equipmentHeight(stencil: string, label = '', height?: number | null): number {
-  if (height && height > 0) return Math.max(48, Math.min(1200, height))
-  if (stencil === 'note') return Math.max(36, Math.min(240, label.split('\n').length * 28 + 8))
-  if (stencil === 'image') return 140
-  if (stencil === 'switch' && label.length > 18) return 96
-  return 90
 }
 
 export function viewportFlowCenter(
@@ -190,7 +197,7 @@ export function toFlowNodes(
       },
       style: {
         width: equipmentWidth(n.stencil, n.label, n.width, n.portCount ?? n.ports?.length),
-        height: equipmentHeight(n.stencil, n.label, n.height),
+        height: equipmentHeight(n.stencil, n.label, n.height, n.portCount ?? n.ports?.length),
         padding: 0,
         border: 'none',
         background: 'transparent',
@@ -259,8 +266,12 @@ export function toFlowEdges(
           linkType: e.linkType,
           lane: lanes.get(e.id) || 0,
           signal,
+          points: e.points || [],
         },
         label: caption || undefined,
+        selectable: true,
+        focusable: true,
+        interactionWidth: 28,
         animated: false,
         zIndex: traced ? 4 : manual ? 3 : 2,
         style: {
@@ -335,21 +346,26 @@ export function decorateSelection(
   rfNodes: Node[],
   rfEdges: Edge[],
   selectedIds: string[] | string | null,
-  selectedGroupId: string | null = null,
+  selectedGroupId: string | string[] | null = null,
+  selectedEdgeId: string | null = null,
 ): { nodes: Node[]; edges: Edge[] } {
   const ids = Array.isArray(selectedIds) ? selectedIds : selectedIds ? [selectedIds] : []
   const selectedSet = new Set(ids)
+  const groupIds = new Set(
+    Array.isArray(selectedGroupId) ? selectedGroupId : selectedGroupId ? [selectedGroupId] : [],
+  )
   const primary = ids.length === 1 ? ids[0] : null
+  const cable = !primary && selectedEdgeId ? rfEdges.find((e) => e.id === selectedEdgeId) : undefined
   const related = new Set<string>()
   const hotByNode = new Map<string, Set<string>>()
+  const addHot = (nodeId: string, handle?: string | null) => {
+    if (!handle) return
+    const set = hotByNode.get(nodeId) ?? new Set<string>()
+    set.add(handle)
+    hotByNode.set(nodeId, set)
+  }
   if (primary) {
     related.add(primary)
-    const addHot = (nodeId: string, handle?: string | null) => {
-      if (!handle) return
-      const set = hotByNode.get(nodeId) ?? new Set<string>()
-      set.add(handle)
-      hotByNode.set(nodeId, set)
-    }
     for (const e of rfEdges) {
       if (e.source !== primary && e.target !== primary) continue
       related.add(e.source)
@@ -357,17 +373,22 @@ export function decorateSelection(
       addHot(e.source, e.sourceHandle)
       addHot(e.target, e.targetHandle)
     }
+  } else if (cable) {
+    related.add(cable.source)
+    related.add(cable.target)
+    addHot(cable.source, cable.sourceHandle)
+    addHot(cable.target, cable.targetHandle)
   }
 
   const nodes = rfNodes.map((n) => {
-    const isSelected = selectedSet.has(n.id) || n.id === selectedGroupId
+    const isSelected = selectedSet.has(n.id) || groupIds.has(n.id)
     const data = n.data as EquipmentNodeData | undefined
     if (n.type !== 'equipment') {
       const className = isSelected ? 'is-pack-selected' : undefined
       if (n.selected === isSelected && n.className === className) return n
       return { ...n, selected: isSelected, className }
     }
-    const neighbor = Boolean(primary) && related.has(n.id) && !isSelected
+    const neighbor = related.has(n.id) && !isSelected
     const hotPorts = [...(hotByNode.get(n.id) ?? [])]
     const className = [isSelected ? 'is-pack-selected' : '', neighbor ? 'is-neighbor' : ''].filter(Boolean).join(' ') || undefined
     const same =
@@ -390,21 +411,22 @@ export function decorateSelection(
     }
   })
 
-  if (!primary) {
+  if (!primary && !cable) {
     return { nodes, edges: rfEdges }
   }
 
   return {
     nodes,
     edges: rfEdges.map((e) => {
-      const on = e.source === primary || e.target === primary
+      const on = cable ? e.id === cable.id : e.source === primary || e.target === primary
       return {
         ...e,
+        selected: cable ? e.id === cable.id : Boolean(e.selected),
         data: {
           ...(e.data as Record<string, unknown> | undefined),
           highlight: on ? 'related' : 'dim',
         },
-        className: on ? 'is-related' : 'is-dim',
+        className: on ? (cable ? 'is-related is-cable-selected' : 'is-related') : 'is-dim',
         animated: false,
         zIndex: on ? 8 : 1,
         style: {
@@ -498,6 +520,7 @@ export function collectScene(
       imageSrc: data.imageSrc ?? null,
       width: data.width ?? (typeof n.width === 'number' ? n.width : null),
       height: data.height ?? (typeof n.height === 'number' ? n.height : null),
+      portCount: typeof data.portCount === 'number' && data.portCount > 0 ? data.portCount : prevNode.get(n.id)?.portCount ?? null,
     })
   }
   for (const node of previous.nodes) {
@@ -510,23 +533,31 @@ export function collectScene(
   }
   const byId = new Map(rfNodes.map((n) => [n.id, n]))
   const collapsedIds = new Set(groups.filter((g) => g.collapsed).map((g) => g.id))
-  const edges = (previous.edges.length ? previous.edges : []).reduce(
-    (acc, edge) => {
-      acc.set(edge.id, edge)
-      return acc
-    },
-    new Map<string, NetworkMapScene['edges'][number]>(),
-  )
+  const rfEdgeIds = new Set(rfEdges.map((e) => e.id))
+  const edges = new Map<string, NetworkMapScene['edges'][number]>()
+  const hiddenInCollapsed = (nodeId: string) => {
+    if (collapsedIds.has(nodeId)) return true
+    const parent = prevNode.get(nodeId)?.parentGroupId
+    return Boolean(parent && collapsedIds.has(parent))
+  }
+  for (const edge of previous.edges) {
+    if (!rfEdgeIds.has(edge.id)) continue
+    if (hiddenInCollapsed(edge.source) || hiddenInCollapsed(edge.target)) {
+      edges.set(edge.id, edge)
+    }
+  }
   for (const e of rfEdges) {
     if (!e.source || !e.target || e.source === e.target) continue
     if (collapsedIds.has(e.source) || collapsedIds.has(e.target)) continue
+    const prev = previous.edges.find((x) => x.id === e.id)
     edges.set(e.id, {
       id: e.id,
       source: e.source,
       target: e.target,
-      local_port: portNameFromHandle(byId.get(e.source), e.sourceHandle) || null,
-      remote_port: portNameFromHandle(byId.get(e.target), e.targetHandle) || null,
-      link_type: String((e.data as { linkType?: string } | undefined)?.linkType || 'manual'),
+      local_port: portNameFromHandle(byId.get(e.source), e.sourceHandle) || prev?.local_port || null,
+      remote_port: portNameFromHandle(byId.get(e.target), e.targetHandle) || prev?.remote_port || null,
+      link_type: String((e.data as { linkType?: string } | undefined)?.linkType || prev?.link_type || 'manual'),
+      points: sanitizeCablePoints((e.data as { points?: unknown } | undefined)?.points ?? prev?.points),
     })
   }
   return {
@@ -562,11 +593,28 @@ export function groupAtPoint(
 export function applyFrameMembership(scene: NetworkMapScene, nodeId: string, rfNodes: Node[]): NetworkMapScene {
   const node = scene.nodes.find((n) => n.id === nodeId)
   if (!node) return scene
-  const w = equipmentWidth(node.stencil, node.label || '', node.width)
-  const h = equipmentHeight(node.stencil, node.label || '', node.height)
+  const w = equipmentWidth(node.stencil, node.label || '', node.width, node.portCount)
+  const h = equipmentHeight(node.stencil, node.label || '', node.height, node.portCount)
   const hit = groupAtPoint(rfNodes, { x: node.x + w / 2, y: node.y + h / 2 })
   const kind = (hit?.data as GroupNodeData | undefined)?.kind
   const gid = hit && (kind === 'room' || kind === 'rack') ? hit.id : null
+  if ((node.parentGroupId || null) === gid) return scene
+  return {
+    ...scene,
+    nodes: scene.nodes.map((n) => (n.id === nodeId ? { ...n, parentGroupId: gid } : n)),
+  }
+}
+
+/** Nest a dropped node into the room/rack under its centre — no extra drag. */
+export function applySceneFrameMembership(scene: NetworkMapScene, nodeId: string): NetworkMapScene {
+  const node = scene.nodes.find((n) => n.id === nodeId)
+  if (!node) return scene
+  const hit = scene.groups.find((g) => {
+    if (g.kind !== 'room' && g.kind !== 'rack') return false
+    if (g.collapsed) return false
+    return groupContainsNode(g, node)
+  })
+  const gid = hit?.id ?? null
   if ((node.parentGroupId || null) === gid) return scene
   return {
     ...scene,

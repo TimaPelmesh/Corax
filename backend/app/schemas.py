@@ -662,8 +662,8 @@ class AgentBundleCreate(BaseModel):
     schedule: AgentBundleSchedule | None = None
 
     @model_validator(mode="after")
-    def server_url_required_unless_desktop(self):
-        if self.target != "desktop" and len((self.server_url or "").strip()) < 8:
+    def server_url_required(self):
+        if len((self.server_url or "").strip()) < 8:
             raise ValueError("Укажите server_url")
         return self
 

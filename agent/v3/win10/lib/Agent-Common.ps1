@@ -342,14 +342,9 @@ function Install-CoraxHelpdeskShortcut {
     $base = Convert-CoraxServerUrl -BaseUrl $ServerUrl
     $pc = [uri]::EscapeDataString($hostName)
     $url = "$base/h#pc=$pc"
-    $icon = $IconPath
-    $idx = 81
-    if (-not $icon -or -not (Test-Path -LiteralPath $icon)) {
-        $sys = Join-Path $env:SystemRoot 'System32'
-        $tryIcon = Join-Path $sys 'imageres.dll'
-        if (Test-Path -LiteralPath $tryIcon) { $icon = $tryIcon; $idx = 81 }
-        else { $icon = Join-Path $sys 'shell32.dll'; $idx = 14 }
-    }
+    $icon = Join-Path $env:SystemRoot 'System32\SHELL32.dll'
+    $idx = 1
+    if ($IconPath -and (Test-Path -LiteralPath $IconPath)) { $icon = $IconPath; $idx = 0 }
     $names = @(
         'Оставить заявку.lnk',
         'Оставить заявку.url'

@@ -220,5 +220,23 @@ def test_infer_role_gateway_dns_infra():
     )
     assert "printer" in NETWORK_DEVICE_TYPES
     assert "gateway" in NETWORK_DEVICE_TYPES
+    assert "vm" in NETWORK_DEVICE_TYPES
     assert network_type_is_manual('{"type_manual": true}')
     assert not network_type_is_manual(None)
+
+
+def test_classify_vmware_guest_is_vm():
+    c = classify_device("Windows 10 Pro", sys_name="VMware Virtual Platform")
+    assert c.device_type == "vm"
+    assert not c.is_network_gear
+
+
+def test_classify_esxi_is_server_not_vm():
+    c = classify_device("VMware ESXi 8.0.0 [Releasebuild-22380479]")
+    assert c.device_type == "server"
+    assert c.is_network_gear
+
+
+def test_classify_qemu_guest_is_vm():
+    c = classify_device("Linux", sys_name="QEMU Standard PC (i440FX)")
+    assert c.device_type == "vm"

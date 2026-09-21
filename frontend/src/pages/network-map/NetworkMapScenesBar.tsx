@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconDownload, IconPencil, IconTrash } from '../../components/icons'
+import { IconDownload, IconPencil, IconRedo, IconTrash, IconUndo } from '../../components/icons'
 import { useT } from '../../i18n/LocaleContext'
 import type { NetworkMapSceneMeta } from '../../api'
 
@@ -291,10 +291,11 @@ export function NetworkMapScenesBar({
             type="button"
             disabled={!canUndo}
             title={t('networkMap.undo')}
+            aria-label={t('networkMap.undo')}
             onClick={onUndo}
-            className="rounded-md px-2 py-1.5 text-[11px] text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] disabled:opacity-40"
+            className="rounded-md p-1.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)] disabled:opacity-40"
           >
-            {t('networkMap.undo')}
+            <IconUndo className="h-4 w-4" />
           </button>
         ) : null}
         {canEdit && onRedo ? (
@@ -302,10 +303,11 @@ export function NetworkMapScenesBar({
             type="button"
             disabled={!canRedo}
             title={t('networkMap.redo')}
+            aria-label={t('networkMap.redo')}
             onClick={onRedo}
-            className="rounded-md px-2 py-1.5 text-[11px] text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] disabled:opacity-40"
+            className="rounded-md p-1.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)] disabled:opacity-40"
           >
-            {t('networkMap.redo')}
+            <IconRedo className="h-4 w-4" />
           </button>
         ) : null}
         {onExportPng ? (

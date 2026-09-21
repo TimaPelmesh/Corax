@@ -10,6 +10,7 @@ import {
   addToCanvasPack,
   portsForPicker,
   releaseNodeFromGroup,
+  applySceneFrameMembership,
   toFlowEdges,
   toFlowNodes,
   toWorldScene,
@@ -100,6 +101,20 @@ describe('free group membership', () => {
     }
     expect(releaseNodeFromGroup(outside, 'sw').nodes[0].parentGroupId).toBeNull()
     expect(releaseNodeFromGroup(collected, 'sw').nodes[0].parentGroupId).toBe('room-1')
+  })
+
+  it('nests a dropped node into the room under it', () => {
+    const scene = {
+      ...emptyNetworkMapScene(),
+      groups,
+      nodes: [{ id: 'sw', stencil: 'switch' as const, x: 120, y: 260, label: 'sw' }],
+    }
+    expect(applySceneFrameMembership(scene, 'sw').nodes[0].parentGroupId).toBe('room-1')
+    const outside = {
+      ...scene,
+      nodes: [{ id: 'sw', stencil: 'switch' as const, x: 900, y: 40, label: 'sw' }],
+    }
+    expect(applySceneFrameMembership(outside, 'sw').nodes[0].parentGroupId).toBeNull()
   })
 })
 
@@ -232,6 +247,19 @@ describe('decorateSelection', () => {
     expect(out.nodes.every((n) => n.className?.includes('is-pack-selected'))).toBe(true)
     expect(out.nodes.every((n) => (n.data as { selected?: boolean }).selected)).toBe(true)
   })
+
+  it('highlights a selected cable without selecting nodes', () => {
+    const nodes = [
+      { id: 'sw', type: 'equipment', position: { x: 0, y: 0 }, data: { stencil: 'switch', title: 'sw' } },
+      { id: 'fw', type: 'equipment', position: { x: 80, y: 0 }, data: { stencil: 'firewall', title: 'fw' } },
+    ]
+    const edges = [{ id: 'e1', source: 'sw', target: 'fw', sourceHandle: 'p:Gi1', targetHandle: 'p:Gi2' }]
+    const out = decorateSelection(nodes, edges, [], null, 'e1')
+    expect(out.nodes.every((n) => n.selected)).toBe(false)
+    expect(out.nodes.every((n) => (n.data as { neighbor?: boolean }).neighbor)).toBe(true)
+    expect(out.edges[0].selected).toBe(true)
+    expect(out.edges[0].className).toContain('is-cable-selected')
+  })
 })
 
 describe('canvas pack helpers', () => {
@@ -267,5 +295,87 @@ describe('canvas pack helpers', () => {
       { id: 'sw', x: 30, y: 50 },
       { id: 'fw', x: 60, y: 110 },
     ])
+  })
+})
+
+describe('collectScene cables', () => {
+  const sw = {
+    id: 'sw',
+    stencil: 'switch' as const,
+    x: 0,
+    y: 0,
+    label: 'sw',
+    kind: 'network_device' as const,
+    missing: false,
+  }
+  const ap = {
+    id: 'ap',
+    stencil: 'ap' as const,
+    x: 80,
+    y: 0,
+    label: 'ap',
+    kind: 'network_device' as const,
+    missing: false,
+  }
+
+  it('does not resurrect a cable removed from the canvas', () => {
+    const previous = {
+      ...emptyNetworkMapScene(),
+      nodes: [
+        { id: 'sw', stencil: 'switch' as const, x: 0, y: 0, label: 'sw' },
+        { id: 'ap', stencil: 'ap' as const, x: 80, y: 0, label: 'ap' },
+      ],
+      edges: [{ id: 'e1', source: 'sw', target: 'ap', link_type: 'manual', local_port: 'Gi1', remote_port: 'Gi2' }],
+    }
+    const collected = collectScene(toFlowNodes([], [sw, ap]), [], previous, { x: 0, y: 0, zoom: 1 })
+    expect(collected.edges).toEqual([])
+  })
+
+  it('keeps a cable that is only visible on a collapsed group', () => {
+    const groups = [
+      { id: 'subnet:10.0.0.0/24', title: '10.0.0.0/24', kind: 'subnet' as const, x: 0, y: 0, width: 400, height: 280, collapsed: true },
+    ]
+    const members = [
+      { ...sw, parentGroupId: 'subnet:10.0.0.0/24' },
+      { id: 'gw', stencil: 'router' as const, x: 80, y: 20, label: 'gw', kind: 'network_device' as const, missing: false },
+    ]
+    const previous = {
+      ...emptyNetworkMapScene(),
+      groups,
+      nodes: [
+        { id: 'sw', stencil: 'switch' as const, x: 0, y: 0, parentGroupId: 'subnet:10.0.0.0/24', label: 'sw' },
+        { id: 'gw', stencil: 'router' as const, x: 80, y: 20, label: 'gw' },
+      ],
+      edges: [{ id: 'e1', source: 'sw', target: 'gw', link_type: 'manual' }],
+    }
+    const rfEdges = toFlowEdges(
+      [{ id: 'e1', source: 'sw', target: 'gw', linkType: 'manual', persisted: false }],
+      groups,
+      members,
+    )
+    const collected = collectScene(toFlowNodes(groups, members), rfEdges, previous, { x: 0, y: 0, zoom: 1 })
+    expect(collected.edges.map((e) => e.id)).toEqual(['e1'])
+    expect(collected.edges[0]).toMatchObject({ source: 'sw', target: 'gw' })
+  })
+
+  it('drops a collapsed-group cable after it is deleted on the canvas', () => {
+    const groups = [
+      { id: 'subnet:10.0.0.0/24', title: '10.0.0.0/24', kind: 'subnet' as const, x: 0, y: 0, width: 400, height: 280, collapsed: true },
+    ]
+    const members = [
+      { ...sw, parentGroupId: 'subnet:10.0.0.0/24' },
+      { id: 'gw', stencil: 'router' as const, x: 80, y: 20, label: 'gw', kind: 'network_device' as const, missing: false },
+    ]
+    const previous = {
+      ...emptyNetworkMapScene(),
+      groups,
+      nodes: [
+        { id: 'sw', stencil: 'switch' as const, x: 0, y: 0, parentGroupId: 'subnet:10.0.0.0/24', label: 'sw' },
+        { id: 'gw', stencil: 'router' as const, x: 80, y: 20, label: 'gw' },
+      ],
+      edges: [{ id: 'e1', source: 'sw', target: 'gw', link_type: 'manual' }],
+    }
+    const collected = collectScene(toFlowNodes(groups, members), [], previous, { x: 0, y: 0, zoom: 1 })
+    expect(collected.edges).toEqual([])
   })
 })

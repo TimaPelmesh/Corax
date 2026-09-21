@@ -9,6 +9,8 @@ import type {
   NetworkMapStencil,
 } from './types'
 import { bindKey, emptyNetworkMapScene } from './types'
+import { sanitizeCablePoints } from './cables'
+import { chassisPorts } from './chassis'
 
 export function stencilForDeviceType(deviceType?: string | null): NetworkMapStencil {
   const dtype = (deviceType || '').toLowerCase()
@@ -20,6 +22,7 @@ export function stencilForDeviceType(deviceType?: string | null): NetworkMapSten
   if (dtype === 'switch' || dtype === 'controller') return 'switch'
   if (dtype === 'printer') return 'printer'
   if (dtype === 'computer' || dtype === 'pc' || dtype === 'host') return 'pc'
+  if (dtype === 'vm') return 'vm'
   return 'unknown'
 }
 
@@ -40,6 +43,7 @@ export function deviceTypeForStencil(stencil: NetworkMapStencil): string | null 
   if (stencil === 'nas') return 'nas'
   if (stencil === 'printer') return 'printer'
   if (stencil === 'pc') return 'host'
+  if (stencil === 'vm') return 'vm'
   if (stencil === 'unknown') return 'unknown'
   return null
 }
@@ -74,8 +78,8 @@ export function hydrateScene(scene: NetworkMapScene | null | undefined, live: Ma
       imageSrc: sn.imageSrc ?? null,
       width: sn.width ?? null,
       height: sn.height ?? null,
-      ports: liveHit?.ports,
-      portCount: liveHit?.portCount ?? null,
+      ports: chassisPorts(liveHit?.ports, sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length),
+      portCount: sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length ?? null,
     }
   })
   const placed = new Set(nodes.map((n) => n.id))
@@ -83,9 +87,8 @@ export function hydrateScene(scene: NetworkMapScene | null | undefined, live: Ma
   const seen = new Set<string>()
   for (const e of base.edges) {
     if (!placed.has(e.source) || !placed.has(e.target) || e.source === e.target) continue
-    const pk = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`
-    if (seen.has(pk)) continue
-    seen.add(pk)
+    if (seen.has(e.id)) continue
+    seen.add(e.id)
     edges.push({
       id: e.id,
       source: e.source,
@@ -95,6 +98,7 @@ export function hydrateScene(scene: NetworkMapScene | null | undefined, live: Ma
       remotePort: e.remote_port ?? null,
       persisted: false,
       linkDbId: null,
+      points: sanitizeCablePoints(e.points),
     })
   }
   return { groups: base.groups, nodes, edges }
@@ -115,6 +119,7 @@ export function sceneFromHydrate(result: HydratedMap, previous?: NetworkMapScene
       imageSrc: n.imageSrc ?? null,
       width: n.width ?? null,
       height: n.height ?? null,
+      portCount: n.portCount ?? null,
     })),
     edges: result.edges.map((e) => ({
       id: e.id,
@@ -123,10 +128,29 @@ export function sceneFromHydrate(result: HydratedMap, previous?: NetworkMapScene
       local_port: e.localPort ?? null,
       remote_port: e.remotePort ?? null,
       link_type: e.linkType || 'manual',
+      points: sanitizeCablePoints(e.points),
     })),
     hiddenNodeIds: previous?.hiddenNodeIds ?? [],
     viewport: previous?.viewport ?? null,
   }
+}
+
+export function overlayLiveOnMerged(nodes: MergedCanvasNode[], live: MapLiveItem[]): MergedCanvasNode[] {
+  const liveByKey = liveMap(live)
+  return nodes.map((n) => {
+    const hit = n.bind ? liveByKey.get(bindKey(n.bind)) : undefined
+    if (!hit) return n
+    return {
+      ...n,
+      label: hit.label || n.label,
+      ip: hit.ip ?? n.ip,
+      vendor: hit.vendor ?? n.vendor,
+      status: hit.status ?? n.status,
+      missing: hit.missing,
+      ports: chassisPorts(hit.ports ?? n.ports, n.portCount ?? hit.portCount),
+      portCount: n.portCount ?? hit.portCount ?? null,
+    }
+  })
 }
 
 export function bindsFromScene(scene: NetworkMapScene): NetworkMapBind[] {

@@ -3,11 +3,13 @@ import {
   IconCloud,
   IconFirewall,
   IconMenu,
+  IconNetworkMap,
   IconPcs,
   IconPrinter,
   IconRouter,
   IconServer,
   IconSwitch,
+  IconVm,
   IconWarehouse,
 } from '../../components/icons'
 import { useT } from '../../i18n/LocaleContext'
@@ -20,8 +22,10 @@ const STENCIL_ICON: Record<(typeof STENCILS)[number], typeof IconSwitch> = {
   firewall: IconFirewall,
   ap: IconAccessPoint,
   server: IconServer,
+  corax: IconNetworkMap,
   nas: IconWarehouse,
   pc: IconPcs,
+  vm: IconVm,
   printer: IconPrinter,
   cloud: IconCloud,
 }

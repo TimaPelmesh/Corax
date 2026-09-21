@@ -6,7 +6,7 @@ import { DashboardCalendar } from '../components/dashboard/DashboardCalendar'
 import { IconBook, IconClose, IconPencil, IconTrash } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
-import { sanitizeNoteHtml } from '../lib/notesHtml'
+import { readNoteEditorHtml, sanitizeNoteHtml } from '../lib/notesHtml'
 import { formatNotePlanRange } from '../lib/notesPlan'
 
 const NOTE_COLORS: NoteColor[] = ['blue', 'green', 'amber', 'rose', 'violet', 'slate']
@@ -27,8 +27,19 @@ const MARK_GLYPH: Record<NoteMark, string> = {
   star: '★',
 }
 
+function focusNoteEditor() {
+  const el = document.querySelector('.notes-editor')
+  if (el instanceof HTMLElement) el.focus()
+}
+
 function execCmd(cmd: string, value?: string) {
+  focusNoteEditor()
   try {
+    if (cmd === 'formatBlock' && value) {
+      const ok = document.execCommand('formatBlock', false, value)
+      if (!ok) document.execCommand('formatBlock', false, `<${value}>`)
+      return
+    }
     document.execCommand(cmd, false, value)
   } catch {
     /* ignore */
@@ -63,6 +74,7 @@ const NoteBodyEditor = memo(function NoteBodyEditor({
   return (
     <div
       ref={elRef}
+      data-note-id={noteId}
       className="notes-editor min-h-[14rem] flex-1 px-5 py-4 text-[15px] leading-relaxed text-[var(--color-fg)] outline-none [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
       contentEditable={canEdit}
       suppressContentEditableWarning
@@ -145,7 +157,9 @@ export function NotesPage() {
       window.clearTimeout(saveTimer.current)
       saveTimer.current = null
     }
-    const body_html = bodyHtmlRef.current
+    const live = readNoteEditorHtml(id)
+    if (live != null) bodyHtmlRef.current = live
+    const body_html = sanitizeNoteHtml(bodyHtmlRef.current)
     const payload = {
       title: titleRef.current,
       body_html,
@@ -206,13 +220,16 @@ export function NotesPage() {
   }, [])
 
   useEffect(() => {
-    if (!selectedId) {
-      void persistNowRef.current()
-      setNote(null)
-      return
-    }
     let cancelled = false
     void (async () => {
+      if (noteRef.current?.can_edit) {
+        await persistNowRef.current()
+      }
+      if (cancelled) return
+      if (!selectedId) {
+        setNote(null)
+        return
+      }
       try {
         const row = await api.note(selectedId)
         if (cancelled) return
@@ -236,7 +253,6 @@ export function NotesPage() {
     })()
     return () => {
       cancelled = true
-      void persistNowRef.current()
     }
   }, [selectedId, setSearchParams, t, toast])
 
@@ -358,13 +374,13 @@ export function NotesPage() {
   const applyColor = (next: NoteColor | null) => {
     setColor(next)
     colorRef.current = next
-    scheduleSave()
+    void persistNowRef.current()
   }
 
   const applyMark = (next: NoteMark | null) => {
     setMark(next)
     markRef.current = next
-    scheduleSave()
+    void persistNowRef.current()
   }
 
   const toggleSameDayEnd = (checked: boolean) => {
@@ -519,7 +535,7 @@ export function NotesPage() {
                         fn()
                         const el = document.querySelector('.notes-editor')
                         if (el instanceof HTMLElement) bodyHtmlRef.current = el.innerHTML
-                        scheduleSave()
+                        void persistNowRef.current()
                       }}
                     >
                       {label}
@@ -538,6 +554,10 @@ export function NotesPage() {
                 canEdit={canEdit}
                 initialHtml={note.body_html || ''}
                 onHtmlChange={(html, source) => {
+                  if (source === 'unmount') {
+                    if (html) bodyHtmlRef.current = html
+                    return
+                  }
                   bodyHtmlRef.current = html
                   if (!canEdit) return
                   if (source === 'edit') scheduleSave()

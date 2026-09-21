@@ -159,11 +159,11 @@ export function AgentBundlePage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (platform !== 'desktop' && !serverHost.trim()) {
+    if (!serverHost.trim()) {
       toast.error(t('agentBundle.serverHostRequired'))
       return
     }
-    if (platform !== 'desktop' && isDockerBridgeIp(serverHost)) {
+    if (isDockerBridgeIp(serverHost)) {
       toast.error(t('agentBundle.dockerBridgeIp'))
       return
     }
@@ -176,10 +176,7 @@ export function AgentBundlePage() {
           : platform === 'desktop'
             ? t('agentBundle.defaultTokenLabelDesktop')
             : t('agentBundle.defaultTokenLabelWin10'))
-      const server =
-        platform === 'desktop'
-          ? ''
-          : buildAgentServerUrl(serverHost, serverPort, urlScheme)
+      const server = buildAgentServerUrl(serverHost, serverPort, urlScheme)
       const filename = await api.downloadAgentBundle({
             server_url: server,
             target: platform,
@@ -251,8 +248,6 @@ export function AgentBundlePage() {
             {t('agentBundle.parametersTitle')}
           </h2>
 
-          {platform !== 'desktop' ? (
-            <>
           <div className="grid gap-3 sm:grid-cols-[1fr_7rem_6.5rem]">
             <div>
               <label className="app-label">{t('agentBundle.serverIpLabel')}</label>
@@ -321,12 +316,12 @@ export function AgentBundlePage() {
               {t('agentBundle.secureTransport')}
             </div>
           )}
-            </>
-          ) : (
+
+          {platform === 'desktop' ? (
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
               {t('agentBundle.desktopNotice')}
             </div>
-          )}
+          ) : null}
 
           {platform === 'win10' ? (
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
@@ -508,7 +503,7 @@ export function AgentBundlePage() {
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryServer')}</dt>
                 <dd className="max-w-[58%] truncate text-right font-mono text-xs text-[var(--color-fg)]" title={serverUrl}>
-                  {platform === 'desktop' ? t('agentBundle.summaryServerAtInstall') : serverUrl}
+                  {serverUrl}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
@@ -570,7 +565,7 @@ export function AgentBundlePage() {
             <button
               type="submit"
               className="app-btn app-btn-primary w-full"
-              disabled={busy || (platform !== 'desktop' && (lanLoading || !serverHost.trim()))}
+              disabled={busy || lanLoading || !serverHost.trim()}
             >
               {busy ? t('agentBundle.building') : platform === 'desktop' ? t('agentBundle.downloadDesktop') : t('agentBundle.downloadZip')}
             </button>

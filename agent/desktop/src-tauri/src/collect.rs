@@ -265,7 +265,7 @@ pub fn collect_inventory() -> Result<InventoryReport, String> {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     report.extended = json!({
-        "agent_version": "tray-1.0.0",
+        "agent_version": "tray-1.1.0",
         "profile": "tray",
         "collected_at": collected_at,
         "partial": false,

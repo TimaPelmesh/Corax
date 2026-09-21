@@ -95,13 +95,11 @@ std::wstring folder_csidl(int csidl) {
   return buf;
 }
 
-std::string exe_path_for_icon() {
-  wchar_t exe[MAX_PATH];
-  DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH);
-  if (!n) return {};
-  wchar_t shortened[MAX_PATH];
-  if (GetShortPathNameW(exe, shortened, MAX_PATH) > 0) return util::narrow(shortened);
-  return util::narrow(std::wstring(exe, n));
+std::string shell32_icon_file() {
+  wchar_t sys[MAX_PATH];
+  UINT n = GetSystemDirectoryW(sys, MAX_PATH);
+  if (!n || n >= MAX_PATH) return {};
+  return util::narrow(std::wstring(sys, n) + L"\\SHELL32.dll");
 }
 
 bool write_url(const std::wstring& dir, const std::string& url, const std::string& icon) {
@@ -112,7 +110,7 @@ bool write_url(const std::wstring& dir, const std::string& url, const std::strin
   const std::wstring path = dir + L"\\Оставить заявку.url";
   std::string body = "[InternetShortcut]\r\nURL=" + url + "\r\n";
   if (!icon.empty()) {
-    body += "IconFile=" + icon + "\r\nIconIndex=0\r\n";
+    body += "IconFile=" + icon + "\r\nIconIndex=1\r\n";
   }
   return util::write_file_utf8(util::narrow(path), body);
 }
@@ -146,7 +144,7 @@ std::string ensure_helpdesk_shortcut(const std::string& server_url, const std::s
   base = resolve_server_base(base);
 
   const std::string url = base + "/h#pc=" + percent_encode(host);
-  const std::string icon = exe_path_for_icon();
+  const std::string icon = shell32_icon_file();
   int ok = 0;
 
   if (write_url(folder_csidl(CSIDL_COMMON_DESKTOPDIRECTORY), url, icon)) ++ok;

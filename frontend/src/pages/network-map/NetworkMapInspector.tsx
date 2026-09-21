@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type Computer, type NetworkDevice, type NetworkPrinter, type ZabbixHostRow } from '../../api'
+import { NetworkTypeIcon } from '../../components/NetworkTypeIcon'
 import { useT, type MessageKey } from '../../i18n/LocaleContext'
 import { STENCILS, isDecorStencil, type MergedCanvasNode, type NetworkMapBind, type NetworkMapBindType, type NetworkMapGroup, type NetworkMapStencil } from './types'
 import { stencilForBind } from './mergeScene'
@@ -24,10 +25,20 @@ type NeighborRow = {
   canvasId: string | null
 }
 
+export type MapCableSelection = {
+  id: string
+  sourceLabel: string
+  targetLabel: string
+  localPort: string | null
+  remotePort: string | null
+  linkType: string
+}
+
 type Props = {
   canEdit: boolean
   node: MergedCanvasNode | null
   group: NetworkMapGroup | null
+  edge?: MapCableSelection | null
   embedded?: boolean
   overlay?: boolean
   neighbors?: NeighborRow[]
@@ -39,11 +50,17 @@ type Props = {
   onOpenCard: () => void
   onGroupTitle: (title: string) => void
   onDeleteGroup: () => void
+  onDeleteCable?: () => void
+  onEditCablePorts?: () => void
   onReplaceImage?: (file: File) => void
   onPlaceNeighbor?: (topoId: string) => void
   onFocusNeighbor?: (canvasId: string) => void
   onPlaceAllNeighbors?: () => void
   onGatherNeighbors?: () => void
+  selectionCount?: number
+  onPortCount?: (count: number | null) => void
+  onGroupSize?: (width: number, height: number) => void
+  onResetCableBend?: () => void
 }
 
 function statusLabel(status: string | null | undefined, t: (key: MessageKey) => string): string {
@@ -57,6 +74,7 @@ export function NetworkMapInspector({
   canEdit,
   node,
   group,
+  edge = null,
   embedded = false,
   overlay = false,
   onLabel,
@@ -66,6 +84,8 @@ export function NetworkMapInspector({
   onOpenCard,
   onGroupTitle,
   onDeleteGroup,
+  onDeleteCable,
+  onEditCablePorts,
   onReplaceImage,
   neighbors = [],
   neighborsBusy = false,
@@ -73,6 +93,10 @@ export function NetworkMapInspector({
   onFocusNeighbor,
   onPlaceAllNeighbors,
   onGatherNeighbors,
+  selectionCount = 0,
+  onPortCount,
+  onGroupSize,
+  onResetCableBend,
 }: Props) {
   const t = useT()
   const [tab, setTab] = useState<Tab>('network')
@@ -83,6 +107,9 @@ export function NetworkMapInspector({
   const [bindOpen, setBindOpen] = useState(false)
   const [labelDraft, setLabelDraft] = useState('')
   const [groupDraft, setGroupDraft] = useState('')
+  const [portDraft, setPortDraft] = useState('')
+  const [groupW, setGroupW] = useState('')
+  const [groupH, setGroupH] = useState('')
   const zabbixCache = useRef<{ ok: boolean; message: string; items: ZabbixHostRow[] } | null>(null)
 
   useEffect(() => {
@@ -92,7 +119,10 @@ export function NetworkMapInspector({
     setBindOpen(false)
     setLabelDraft(node?.label || '')
     setGroupDraft(group?.title || '')
-  }, [node?.id, group?.id, node?.label, group?.title])
+    setPortDraft(node?.portCount ? String(node.portCount) : '')
+    setGroupW(group ? String(Math.round(group.width)) : '')
+    setGroupH(group ? String(Math.round(group.height)) : '')
+  }, [node?.id, group?.id, node?.label, group?.title, node?.portCount, group?.width, group?.height])
 
   useEffect(() => {
     if (!node || !canEdit || !bindOpen) return
@@ -198,6 +228,73 @@ export function NetworkMapInspector({
       ? 'flex flex-col gap-3 px-3 py-3'
       : 'flex w-[19rem] shrink-0 flex-col gap-3 overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3'
 
+  if (selectionCount > 1) {
+    return (
+      <aside className={shell}>
+        <div className="text-sm font-semibold leading-5">{t('networkMap.selectedCount', { n: selectionCount })}</div>
+        <p className="text-[11px] leading-5 text-[var(--color-fg-subtle)]">{t('networkMap.shiftSelectHint')}</p>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+          >
+            {t('networkMap.removeSelection')}
+          </button>
+        ) : null}
+      </aside>
+    )
+  }
+
+  if (edge && !node) {
+    const ports = [edge.localPort, edge.remotePort].filter(Boolean).join(' → ')
+    return (
+      <aside className={shell}>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            {t('networkMap.cable')}
+          </div>
+          <div className="mt-1 text-sm font-semibold leading-5">
+            {edge.sourceLabel} → {edge.targetLabel}
+          </div>
+          <div className="mt-0.5 font-mono text-[11px] text-[var(--color-fg-muted)]">{ports || t('networkMap.portPickNone')}</div>
+        </div>
+        {canEdit ? (
+          <>
+            {onEditCablePorts ? (
+              <button
+                type="button"
+                onClick={onEditCablePorts}
+                className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+              >
+                {t('networkMap.editCablePorts')}
+              </button>
+            ) : null}
+            {onResetCableBend ? (
+              <button
+                type="button"
+                onClick={onResetCableBend}
+                className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+              >
+                {t('networkMap.resetCableBend')}
+              </button>
+            ) : null}
+            {onDeleteCable ? (
+              <button
+                type="button"
+                onClick={onDeleteCable}
+                className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+              >
+                {t('networkMap.deleteCable')}
+              </button>
+            ) : null}
+            <p className="text-[11px] leading-5 text-[var(--color-fg-subtle)]">{t('networkMap.cableHint')}</p>
+          </>
+        ) : null}
+      </aside>
+    )
+  }
+
   if (group && !node) {
     return (
       <aside className={shell}>
@@ -216,6 +313,45 @@ export function NetworkMapInspector({
             className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-sm disabled:opacity-60"
           />
         </label>
+        {canEdit && onGroupSize ? (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-xs">
+              {t('networkMap.groupWidth')}
+              <input
+                type="number"
+                min={160}
+                max={2400}
+                value={groupW}
+                onChange={(e) => setGroupW(e.target.value)}
+                onBlur={() => {
+                  const w = Math.max(160, Math.min(2400, Number(groupW) || group.width))
+                  const h = Math.max(88, Math.min(1800, Number(groupH) || group.height))
+                  setGroupW(String(Math.round(w)))
+                  if (w !== group.width || h !== group.height) onGroupSize(w, h)
+                }}
+                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-sm"
+              />
+            </label>
+            <label className="block text-xs">
+              {t('networkMap.groupHeight')}
+              <input
+                type="number"
+                min={88}
+                max={1800}
+                value={groupH}
+                onChange={(e) => setGroupH(e.target.value)}
+                onBlur={() => {
+                  const w = Math.max(160, Math.min(2400, Number(groupW) || group.width))
+                  const h = Math.max(88, Math.min(1800, Number(groupH) || group.height))
+                  setGroupH(String(Math.round(h)))
+                  if (w !== group.width || h !== group.height) onGroupSize(w, h)
+                }}
+                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-sm"
+              />
+            </label>
+          </div>
+        ) : null}
+        <p className="text-[11px] leading-5 text-[var(--color-fg-subtle)]">{t('networkMap.roomHint')}</p>
         {canEdit ? (
           <button
             type="button"
@@ -245,7 +381,7 @@ export function NetworkMapInspector({
     if (type === 'printer') return t('networkMap.bindPrinter')
     if (type === 'network_device') return t('networkMap.bindDevice')
     if (type === 'zabbix') return t('networkMap.bindZabbix')
-    return 'Corax'
+    return t('networkMap.bindCorax')
   }
 
   const pick = (hit: BindHit) => {
@@ -266,13 +402,20 @@ export function NetworkMapInspector({
 
   return (
     <aside className={shell}>
-      <div>
-        <div className="text-sm font-semibold leading-5">{node.label}</div>
-        {node.ip ? <div className="mt-0.5 font-mono text-[11px] text-[var(--color-fg-muted)]">{node.ip}</div> : null}
-        <div className="mt-0.5 text-[11px] text-[var(--color-fg-subtle)]">
-          {t(`networkMap.stencil.${node.stencil}` as MessageKey)}
-          {node.missing ? ` · ${t('networkMap.missing')}` : ''}
-          {!decor ? ` · ${statusLabel(node.status, t)}` : ''}
+      <div className="flex items-start gap-2.5">
+        {!decor ? (
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg)]">
+            <NetworkTypeIcon type={node.stencil} className="h-5 w-5" />
+          </span>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold leading-5">{node.label}</div>
+          {node.ip ? <div className="mt-0.5 font-mono text-[11px] text-[var(--color-fg-muted)]">{node.ip}</div> : null}
+          <div className="mt-0.5 text-[11px] text-[var(--color-fg-subtle)]">
+            {t(`networkMap.stencil.${node.stencil}` as MessageKey)}
+            {node.missing ? ` · ${t('networkMap.missing')}` : ''}
+            {!decor ? ` · ${statusLabel(node.status, t)}` : ''}
+          </div>
         </div>
       </div>
       <label className="block text-xs">
@@ -302,6 +445,31 @@ export function NetworkMapInspector({
       </label>
       {!decor ? (
         <>
+          {canEdit && onPortCount ? (
+            <label className="block text-xs">
+              {t('networkMap.portCount')}
+              <input
+                type="number"
+                min={0}
+                max={96}
+                value={portDraft}
+                placeholder="24"
+                onChange={(e) => setPortDraft(e.target.value)}
+                onBlur={() => {
+                  const raw = portDraft.trim()
+                  const next = raw === '' ? null : Math.max(0, Math.min(96, Number(raw) || 0))
+                  const current = node.portCount ?? null
+                  const normalized = next && next > 0 ? next : null
+                  setPortDraft(normalized ? String(normalized) : '')
+                  if (normalized !== current) onPortCount(normalized)
+                }}
+                className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-sm"
+              />
+              <span className="mt-1 block text-[11px] leading-4 text-[var(--color-fg-subtle)]">
+                {t('networkMap.portCountHint')}
+              </span>
+            </label>
+          ) : null}
           <div>
             <div className="text-xs text-[var(--color-fg-subtle)]">{t('networkMap.ports')}</div>
             {ports.length > 0 ? (
@@ -395,13 +563,24 @@ export function NetworkMapInspector({
             ) : null}
             {canEdit ? (
               <>
-                <button
-                  type="button"
-                  onClick={() => setBindOpen((open) => !open)}
-                  className="mt-2 text-xs text-[var(--color-primary)] hover:underline"
-                >
-                  {node.bind ? t('networkMap.changeBind') : t('networkMap.bindToInventory')}
-                </button>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setBindOpen((open) => !open)}
+                    className="text-xs text-[var(--color-primary)] hover:underline"
+                  >
+                    {node.bind ? t('networkMap.changeBind') : t('networkMap.bindToInventory')}
+                  </button>
+                </div>
+                {node.bind ? (
+                  <button
+                    type="button"
+                    onClick={() => onBind(null)}
+                    className="mt-2 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+                  >
+                    {t('networkMap.unbind')}
+                  </button>
+                ) : null}
                 {bindOpen ? (
                   <>
                     <div className="mt-2 flex gap-1">
@@ -447,15 +626,6 @@ export function NetworkMapInspector({
                       </ul>
                     ) : !busy && !zabbixNote ? (
                       <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('common.nothingFound')}</p>
-                    ) : null}
-                    {node.bind ? (
-                      <button
-                        type="button"
-                        onClick={() => onBind(null)}
-                        className="mt-2 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
-                      >
-                        {t('networkMap.unbind')}
-                      </button>
                     ) : null}
                   </>
                 ) : null}

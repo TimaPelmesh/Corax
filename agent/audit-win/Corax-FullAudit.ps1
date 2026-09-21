@@ -725,10 +725,8 @@ function Install-HelpdeskShortcut {
     if (-not $host2) { return }
     $base = Convert-ServerUrl -BaseUrl $ServerUrl
     $url = ("{0}/h#pc={1}" -f $base, [uri]::EscapeDataString($host2))
-    $sys = Join-Path $env:SystemRoot 'System32'
-    $icon = Join-Path $sys 'imageres.dll'
-    $idx = 81
-    if (-not (Test-Path -LiteralPath $icon)) { $icon = Join-Path $sys 'shell32.dll'; $idx = 14 }
+    $icon = Join-Path $env:SystemRoot 'System32\SHELL32.dll'
+    $idx = 1
 
     $dirs = New-Object System.Collections.Generic.List[string]
     foreach ($d in @(

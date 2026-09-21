@@ -1,3 +1,77 @@
+export type CablePoint = { x: number; y: number }
+
+export function sanitizeCablePoints(raw: unknown, limit = 8): CablePoint[] {
+  if (!Array.isArray(raw)) return []
+  const out: CablePoint[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const x = Number((item as { x?: unknown }).x)
+    const y = Number((item as { y?: unknown }).y)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+    out.push({ x, y })
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+/** Rounded polyline through source, user bends, and target. */
+export function cableBendPath(points: CablePoint[], radius = 14): { d: string; labelX: number; labelY: number } {
+  if (points.length < 2) return { d: '', labelX: 0, labelY: 0 }
+  if (points.length === 2) {
+    const [a, b] = points
+    return {
+      d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`,
+      labelX: (a.x + b.x) / 2,
+      labelY: (a.y + b.y) / 2,
+    }
+  }
+  const r = Math.max(2, radius)
+  let d = `M ${points[0].x} ${points[0].y}`
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const prev = points[i - 1]
+    const curr = points[i]
+    const next = points[i + 1]
+    const inX = curr.x - prev.x
+    const inY = curr.y - prev.y
+    const outX = next.x - curr.x
+    const outY = next.y - curr.y
+    const inLen = Math.hypot(inX, inY) || 1
+    const outLen = Math.hypot(outX, outY) || 1
+    const rad = Math.min(r, inLen / 2, outLen / 2)
+    d += ` L ${curr.x - (inX / inLen) * rad} ${curr.y - (inY / inLen) * rad}`
+    d += ` Q ${curr.x} ${curr.y} ${curr.x + (outX / outLen) * rad} ${curr.y + (outY / outLen) * rad}`
+  }
+  const last = points[points.length - 1]
+  d += ` L ${last.x} ${last.y}`
+  const midA = points[Math.floor((points.length - 1) / 2)]
+  const midB = points[Math.ceil((points.length - 1) / 2)]
+  return { d, labelX: (midA.x + midB.x) / 2, labelY: (midA.y + midB.y) / 2 }
+}
+
+export function usedPortsForNode(
+  edges: Array<{
+    id?: string
+    source: string
+    target: string
+    local_port?: string | null
+    remote_port?: string | null
+    localPort?: string | null
+    remotePort?: string | null
+  }>,
+  nodeId: string,
+  skipEdgeId?: string | null,
+): Set<string> {
+  const used = new Set<string>()
+  for (const edge of edges) {
+    if (skipEdgeId && edge.id === skipEdgeId) continue
+    const local = edge.local_port ?? edge.localPort ?? null
+    const remote = edge.remote_port ?? edge.remotePort ?? null
+    if (edge.source === nodeId && local) used.add(local)
+    if (edge.target === nodeId && remote) used.add(remote)
+  }
+  return used
+}
+
 export function pairKey(source: string, target: string): string {
   return source < target ? `${source}|${target}` : `${target}|${source}`
 }

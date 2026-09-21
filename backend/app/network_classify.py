@@ -15,6 +15,7 @@ NETWORK_DEVICE_TYPES = frozenset(
         "firewall",
         "controller",
         "server",
+        "vm",
         "nas",
         "voip",
         "ups",
@@ -47,7 +48,7 @@ _WORKSTATION_RE = re.compile(
 )
 
 _SERVER_RE = re.compile(
-    r"\b(windows\s*server|esxi|vcenter|proxmox|hyper-?v|xenserver|"
+    r"\b(windows\s*server|esxi|vcenter|proxmox|xenserver|"
     r"vmware\s*esx|red\s*hat\s*enterprise|rhel\s*\d|centos\s*linux\s*(7|8|9)|"
     r"ubuntu\s*server|debian\s*gnu|suse\s*linux\s*enterprise|"
     r"freebsd|openbsd|illumos|smartos|"
@@ -55,6 +56,19 @@ _SERVER_RE = re.compile(
     r"ipmi|bmc\b|out-?of-?band)\b",
     re.I,
 )
+
+_VM_RE = re.compile(
+    r"vmware\s*virtual\s*platform|innotek\s*gmbh|oracle\s*virtualbox|"
+    r"qemu\s*(standard\s*pc|virtual)|kvm\s*(guest|virtual)|"
+    r"microsoft\s*corporation\s*virtual\s*machine|"
+    r"hyper-?v\s*(virtual|guest)|virtual\s*machine|"
+    r"xen\s*(hvm|pv|domu)|parallels\s*(virtual|tools)|"
+    r"amazon\s*ec2|google\s*compute|digitalocean|"
+    r"\b(openvz|virtuozzo|lxc|bochs)\b",
+    re.I,
+)
+
+_HYPERVISOR_RE = re.compile(r"\b(esxi|vcenter|proxmox|xenserver|vmware\s*esx)\b", re.I)
 
 _NAS_RE = re.compile(
     r"\b(synology|diskstation|qnap|truenas|freenas|openmediavault|"
@@ -185,6 +199,7 @@ _HOST_AP_RE = re.compile(
 )
 _HOST_FW_RE = re.compile(r"^(fw|firewall|utm|asa|fg)[-_.]", re.I)
 _HOST_SERVER_RE = re.compile(r"^(srv|server|svc|app|db|dc|ad|fs|file|mail|mx|proxy|vpn)[-_.]", re.I)
+_HOST_VM_RE = re.compile(r"^(vm|vps|virt|kvm|lxc|qemu|guest)[-_.]", re.I)
 _HOST_NAS_RE = re.compile(r"^(nas|storage|backup|bak)[-_.]", re.I)
 _HOST_VOIP_RE = re.compile(
     r"^(voip|pbx|sip|phone|ata|ats|atc|ucm|asterisk|3cx|yeastar|telefon)[\d\-_.]",
@@ -404,7 +419,7 @@ def classify_device(
     vendor = _vendor_from_oid(sys_object_id) or _vendor_from_text(full)
     model = _extract_model(full) or hints.entity_model
     signals: list[str] = []
-    scores: dict[str, float] = {t: 0.0 for t in (*_GEAR_TYPES, "host", "printer", "unknown")}
+    scores: dict[str, float] = {t: 0.0 for t in (*_GEAR_TYPES, "host", "vm", "printer", "unknown")}
     scores["unknown"] = 0.05
 
     if _PRINTER_RE.search(full) and not (
@@ -429,6 +444,7 @@ def classify_device(
         (_VOIP_RE, "voip", 3.0, "descr_voip"),
         (_MODEM_RE, "modem", 3.0, "descr_modem"),
         (_SERVER_RE, "server", 2.8, "descr_server"),
+        (_VM_RE, "vm", 3.4, "descr_vm"),
     ):
         if regex.search(full):
             scores[key] += weight
@@ -444,6 +460,7 @@ def classify_device(
             (_HOST_ROUTER_RE, "router", 1.4, "hostname_router"),
             (_HOST_SWITCH_RE, "switch", 1.4, "hostname_switch"),
             (_HOST_SERVER_RE, "server", 1.5, "hostname_server"),
+            (_HOST_VM_RE, "vm", 1.6, "hostname_vm"),
             (_HOST_NAS_RE, "nas", 1.5, "hostname_nas"),
             (_HOST_VOIP_RE, "voip", 1.5, "hostname_voip"),
             (_HOST_UPS_RE, "ups", 1.5, "hostname_ups"),
@@ -541,8 +558,15 @@ def classify_device(
 
     gear_score = max(scores[k] for k in _GEAR_TYPES)
 
+    # Hypervisor OS is a server, not a guest VM.
+    if _HYPERVISOR_RE.search(full) and scores["server"] >= scores["vm"]:
+        scores["vm"] = min(scores["vm"], 0.4)
+        signals.append("hypervisor_not_guest")
+
     # Pure workstations — keep as host (shown on Network tab alongside gear)
     if _WORKSTATION_RE.search(full) and gear_score < 1.5 and scores["server"] < 1.5:
+        if scores.get("vm", 0) >= 2.0:
+            return DeviceClassification("vm", vendor, False, 0.9, model, (*signals, "workstation_vm")[:24])
         return DeviceClassification("host", vendor, False, 0.85, model, ("workstation_os",))
 
     best_type = max(scores.keys(), key=lambda k: scores[k])
@@ -585,17 +609,18 @@ def classify_device(
         signals.append("prefer_controller")
 
     confidence = min(0.99, best_score / 5.0)
-    is_gear = best_type not in {"printer", "host"}
+    endpoints = {"printer", "host", "vm"}
+    is_gear = best_type not in endpoints
     if is_gear and confidence < 0.35 and vendor not in _INFRA_VENDORS and not hints.has_bridge_fdb:
         is_gear = bool((sys_descr or "").strip())
 
-    if best_type not in NETWORK_DEVICE_TYPES and best_type not in {"printer", "host"}:
+    if best_type not in NETWORK_DEVICE_TYPES and best_type not in endpoints:
         best_type = "unknown"
 
     return DeviceClassification(
-        device_type=best_type if is_gear or best_type in {"printer", "host"} else "unknown",
+        device_type=best_type if is_gear or best_type in endpoints else "unknown",
         vendor=vendor,
-        is_network_gear=is_gear and best_type not in {"printer", "host"},
+        is_network_gear=is_gear and best_type not in endpoints,
         confidence=confidence,
         model=(model or None),
         signals=tuple(signals[:24]),

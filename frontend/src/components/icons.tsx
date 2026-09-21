@@ -92,6 +92,18 @@ export function IconPcs({ className, title }: Props) {
   )
 }
 
+export function IconVm({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <rect x="3.4" y="5.2" width="17.2" height="13.6" rx="2.2" {...soft} />
+      <rect x="3.4" y="5.2" width="17.2" height="13.6" rx="2.2" {...s} />
+      <rect x="6.4" y="8.1" width="11.2" height="7.8" rx="1.2" {...s} strokeDasharray="2.4 1.6" />
+      <path d="M10.2 10.4v3.4L13.8 12.1Z" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function IconUser({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
@@ -257,14 +269,15 @@ export function IconTicket({ className, title }: Props) {
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
       <path
-        d="M4.5 7.75h15a1.75 1.75 0 0 1 1.75 1.75v1.6a2.1 2.1 0 0 0 0 4.2v1.6A1.75 1.75 0 0 1 19.5 18.65h-15A1.75 1.75 0 0 1 2.75 16.9v-1.6a2.1 2.1 0 0 0 0-4.2V9.5A1.75 1.75 0 0 1 4.5 7.75Z"
+        d="M6.2 3.6h8.1L18.6 8.1v11.6A1.7 1.7 0 0 1 16.9 21.4H7.1A1.7 1.7 0 0 1 5.4 19.7V5.3A1.7 1.7 0 0 1 7.1 3.6Z"
         {...soft}
       />
       <path
-        d="M4.5 7.75h15a1.75 1.75 0 0 1 1.75 1.75v1.6a2.1 2.1 0 0 0 0 4.2v1.6A1.75 1.75 0 0 1 19.5 18.65h-15A1.75 1.75 0 0 1 2.75 16.9v-1.6a2.1 2.1 0 0 0 0-4.2V9.5A1.75 1.75 0 0 1 4.5 7.75Z"
+        d="M6.2 3.6h8.1L18.6 8.1v11.6A1.7 1.7 0 0 1 16.9 21.4H7.1A1.7 1.7 0 0 1 5.4 19.7V5.3A1.7 1.7 0 0 1 7.1 3.6Z"
         {...s}
       />
-      <path d="M8 11.5v5" {...s} strokeWidth={sw * 0.9} opacity={0.85} strokeDasharray="2.2 2.4" />
+      <path d="M14.3 3.6V8.2h4.3" {...s} />
+      <path d="M8.2 12.1h7.6M8.2 15h7.6M8.2 17.9h5.2" {...s} strokeWidth={sw * 0.9} opacity={0.85} />
     </svg>
   )
 }
@@ -605,6 +618,19 @@ export function IconCloud({ className, title }: Props) {
   )
 }
 
+export function IconCable({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <path d="M5 8.2h4.2c.7 0 1.3.6 1.3 1.3v5c0 .7.6 1.3 1.3 1.3H19" {...s} />
+      <rect x="3.2" y="6.4" width="3.2" height="3.6" rx="0.7" {...s} />
+      <rect x="17.6" y="13.8" width="3.2" height="3.6" rx="0.7" {...s} />
+      <path d="M4 6.4v-1.2M5.6 6.4v-1.2M4 10v1.2M5.6 10v1.2" {...s} />
+      <path d="M18.4 13.8v-1.2M20 13.8v-1.2M18.4 17.4v1.2M20 17.4v1.2" {...s} />
+    </svg>
+  )
+}
+
 export function IconNetworkMap({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
@@ -626,6 +652,26 @@ export function IconDownload({ className, title }: Props) {
       <path d="M12 4.5v10.2" {...s} />
       <path d="M8.2 11.6 12 15.4l3.8-3.8" {...s} />
       <path d="M5.2 18.8h13.6" {...s} />
+    </svg>
+  )
+}
+
+export function IconUndo({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <path d="M8 8.2 4.4 11.5 8 14.8" {...s} />
+      <path d="M4.6 11.5h8.6c3.4 0 6.2 2.2 6.2 5.2" {...s} />
+    </svg>
+  )
+}
+
+export function IconRedo({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <path d="M16 8.2 19.6 11.5 16 14.8" {...s} />
+      <path d="M19.4 11.5H10.8c-3.4 0-6.2 2.2-6.2 5.2" {...s} />
     </svg>
   )
 }

@@ -83,12 +83,10 @@ fn run_once() -> Snapshot {
     let cfg = load_config();
     let server = cfg.server_url.clone();
     if cfg.server_url.is_empty() || cfg.token.is_empty() {
-        let detail = if cfg.server_url.is_empty() && cfg.token.is_empty() {
-            "укажите IP сервера. Токен вшивается в EXE при скачивании с панели"
-        } else if cfg.server_url.is_empty() {
-            "укажите IP сервера CORAX"
+        let detail = if cfg.token.is_empty() {
+            "нет токена — положите рядом agent.json из ZIP «Сборка агента»"
         } else {
-            "в этом EXE нет токена — скачайте сборку со страницы «Сборка агента», не шаблон из папки"
+            "укажите IP сервера CORAX"
         };
         write_last_run(false, detail);
         let mut s = Snapshot::default();
