@@ -1,5 +1,5 @@
 import { type Edge, type Node } from 'reactflow'
-import { laneForEdges, sanitizeCablePoints } from './cables'
+import { cableStrokeColor, laneForEdges, sanitizeCablePoints } from './cables'
 import {
   chassisPortLayout,
   chassisPorts,
@@ -232,8 +232,6 @@ export function toFlowEdges(
     const source = rewrite(e.source)
     const target = rewrite(e.target)
     if (!source || !target || source === target) return []
-    const srcRewritten = source !== e.source
-    const tgtRewritten = target !== e.target
     const manual = e.linkType === 'manual'
     const lan = e.linkType === 'lan'
     const traced = e.linkType === 'trace'
@@ -257,8 +255,8 @@ export function toFlowEdges(
         id: e.id,
         source,
         target,
-        sourceHandle: srcRewritten ? undefined : portHandleId(e.localPort),
-        targetHandle: tgtRewritten ? undefined : portHandleId(e.remotePort),
+        sourceHandle: portHandleId(e.localPort) || undefined,
+        targetHandle: portHandleId(e.remotePort) || undefined,
         type: 'cable',
         data: {
           linkDbId: e.linkDbId,
@@ -275,16 +273,10 @@ export function toFlowEdges(
         animated: false,
         zIndex: traced ? 4 : manual ? 3 : 2,
         style: {
-          stroke: traced
-            ? '#7c3aed'
-            : manual
-              ? 'var(--color-fg)'
-              : lan || subnet
-                ? 'var(--color-fg-muted)'
-                : 'var(--color-primary)',
-          strokeWidth: traced || manual ? 1.9 : lldp ? 1.7 : 1.45,
+          stroke: cableStrokeColor(e.linkType),
+          strokeWidth: traced || manual ? 2.35 : lldp ? 2.1 : 1.9,
           strokeDasharray: lan || subnet ? '5 4' : undefined,
-          opacity: lan || subnet ? 0.75 : 1,
+          opacity: 1,
         },
       },
     ]
@@ -431,9 +423,9 @@ export function decorateSelection(
         zIndex: on ? 8 : 1,
         style: {
           ...e.style,
-          stroke: on ? 'var(--color-primary)' : e.style?.stroke,
-          strokeWidth: on ? 2.8 : 1.1,
-          opacity: on ? 1 : 0.16,
+          stroke: on ? '#2f7d32' : cableStrokeColor((e.data as { linkType?: string } | undefined)?.linkType, e.style?.stroke),
+          strokeWidth: on ? 2.8 : Number(e.style?.strokeWidth || 2.1),
+          opacity: on ? 1 : 0.42,
         },
       }
     }),

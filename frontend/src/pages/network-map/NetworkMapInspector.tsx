@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type Computer, type NetworkDevice, type NetworkPrinter, type ZabbixHostRow } from '../../api'
-import { NetworkTypeIcon } from '../../components/NetworkTypeIcon'
+import { NetworkMapGlyph } from './NetworkMapGlyph'
 import { useT, type MessageKey } from '../../i18n/LocaleContext'
 import { STENCILS, isDecorStencil, type MergedCanvasNode, type NetworkMapBind, type NetworkMapBindType, type NetworkMapGroup, type NetworkMapStencil } from './types'
 import { stencilForBind } from './mergeScene'
@@ -223,10 +223,10 @@ export function NetworkMapInspector({
   }, [q, node, canEdit, tab, t, bindOpen])
 
   const shell = overlay
-    ? 'flex max-h-full w-[17rem] flex-col gap-3 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.6)]'
+    ? 'network-map-inspector flex max-h-full w-[16.5rem] flex-col gap-2.5 overflow-y-auto px-3 py-2.5'
     : embedded
-      ? 'flex flex-col gap-3 px-3 py-3'
-      : 'flex w-[19rem] shrink-0 flex-col gap-3 overflow-y-auto border-l border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3'
+      ? 'flex flex-col gap-2.5 px-3 py-3'
+      : 'network-map-inspector flex w-[19rem] shrink-0 flex-col gap-2.5 overflow-y-auto border-l px-3 py-2.5'
 
   if (selectionCount > 1) {
     return (
@@ -404,9 +404,7 @@ export function NetworkMapInspector({
     <aside className={shell}>
       <div className="flex items-start gap-2.5">
         {!decor ? (
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg)]">
-            <NetworkTypeIcon type={node.stencil} className="h-5 w-5" />
-          </span>
+          <NetworkMapGlyph kind={node.stencil} size="md" className="mt-0.5" />
         ) : null}
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold leading-5">{node.label}</div>

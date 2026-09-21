@@ -1,34 +1,8 @@
-import {
-  IconAccessPoint,
-  IconCloud,
-  IconFirewall,
-  IconMenu,
-  IconNetworkMap,
-  IconPcs,
-  IconPrinter,
-  IconRouter,
-  IconServer,
-  IconSwitch,
-  IconVm,
-  IconWarehouse,
-} from '../../components/icons'
+import { IconMenu } from '../../components/icons'
 import { useT } from '../../i18n/LocaleContext'
 import type { TrayGear } from './inventory'
-import { NETWORK_MAP_DND, STENCILS, type PaletteDrag } from './types'
-
-const STENCIL_ICON: Record<(typeof STENCILS)[number], typeof IconSwitch> = {
-  switch: IconSwitch,
-  router: IconRouter,
-  firewall: IconFirewall,
-  ap: IconAccessPoint,
-  server: IconServer,
-  corax: IconNetworkMap,
-  nas: IconWarehouse,
-  pc: IconPcs,
-  vm: IconVm,
-  printer: IconPrinter,
-  cloud: IconCloud,
-}
+import { NetworkMapGlyph } from './NetworkMapGlyph'
+import { NETWORK_MAP_DND, type PaletteDrag } from './types'
 
 type Props = {
   canEdit: boolean
@@ -63,8 +37,8 @@ export function NetworkMapTray({
 
   return (
     <aside
-      className={`flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-surface)] ${
-        open ? 'w-[15.5rem]' : 'w-10'
+      className={`network-map-tray flex shrink-0 flex-col overflow-hidden border-r border-[var(--color-border)] ${
+        open ? 'w-[15rem]' : 'w-10'
       }`}
     >
       <div className={`flex items-center gap-1 border-b border-[var(--color-border)] ${open ? 'px-2 py-1.5' : 'justify-center px-1 py-2'}`}>
@@ -99,7 +73,6 @@ export function NetworkMapTray({
             ) : (
               <ul className="flex flex-col gap-0.5">
                 {shown.map((item) => {
-                  const Icon = STENCIL_ICON[item.stencil as (typeof STENCILS)[number]] || IconSwitch
                   return (
                     <li key={`${item.bind.type}:${item.bind.id}`}>
                       <button
@@ -122,7 +95,7 @@ export function NetworkMapTray({
                         }}
                         className="flex w-full items-start gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
                       >
-                        <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-fg-muted)]" />
+                        <NetworkMapGlyph kind={item.stencil} size="sm" className="mt-0.5" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-xs font-medium">{item.label}</span>
                           {item.ip ? (

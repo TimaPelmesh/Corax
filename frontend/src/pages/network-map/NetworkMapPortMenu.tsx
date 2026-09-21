@@ -38,7 +38,7 @@ export function NetworkMapPortMenu({ open, title, hint, ports, used, x, y, onPic
   return createPortal(
     <div className="fixed inset-0 z-[130]" onMouseDown={onClose} role="presentation">
       <div
-        className="network-map-port-menu absolute w-[13.5rem] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_18px_40px_-24px_rgba(0,0,0,0.55)]"
+        className="network-map-port-menu absolute w-[13.5rem] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
         style={{ left, top }}
         onMouseDown={(event) => event.stopPropagation()}
       >

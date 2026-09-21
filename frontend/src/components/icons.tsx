@@ -83,11 +83,14 @@ export function IconPcs({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
       {title ? <title>{title}</title> : null}
-      <rect x="3.5" y="4" width="17" height="12" rx="2" {...soft} />
-      <rect x="3.5" y="4" width="17" height="12" rx="2" {...s} />
-      <path d="M3.5 13.5h17" {...s} />
-      <path d="M9.5 19.5h5M12 16v3.5" {...s} />
-      <path d="M7.5 8h4.5M7.5 10.25h7" {...s} strokeWidth={sw * 0.85} opacity={0.75} />
+      <rect x="2.6" y="3.8" width="13.6" height="10.4" rx="1.6" {...soft} />
+      <rect x="2.6" y="3.8" width="13.6" height="10.4" rx="1.6" {...s} />
+      <path d="M2.6 12.2h13.6" {...s} />
+      <path d="M7.2 16.6h4.4M9.4 14.2v2.4" {...s} />
+      <rect x="17.1" y="6.2" width="4.4" height="12.4" rx="1" {...soft} />
+      <rect x="17.1" y="6.2" width="4.4" height="12.4" rx="1" {...s} />
+      <path d="M18.15 8.3h2.3M18.15 10.3h2.3M18.15 12.3h1.5" {...s} strokeWidth={sw * 0.8} opacity={0.75} />
+      <circle cx="19.3" cy="16.35" r="0.7" fill="currentColor" stroke="none" />
     </svg>
   )
 }
@@ -96,10 +99,13 @@ export function IconVm({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <rect x="3.4" y="5.2" width="17.2" height="13.6" rx="2.2" {...soft} />
-      <rect x="3.4" y="5.2" width="17.2" height="13.6" rx="2.2" {...s} />
-      <rect x="6.4" y="8.1" width="11.2" height="7.8" rx="1.2" {...s} strokeDasharray="2.4 1.6" />
-      <path d="M10.2 10.4v3.4L13.8 12.1Z" fill="currentColor" stroke="none" />
+      <rect x="4.4" y="4.1" width="15.2" height="11.2" rx="1.8" {...soft} />
+      <rect x="4.4" y="4.1" width="15.2" height="11.2" rx="1.8" {...s} strokeDasharray="2.6 1.7" />
+      <rect x="7.1" y="6.6" width="9.8" height="6.2" rx="1" {...s} />
+      <path d="M10.3 8.2v3.1L13.6 9.75Z" fill="currentColor" stroke="none" />
+      <rect x="6.2" y="16.4" width="11.6" height="3.4" rx="0.9" {...soft} />
+      <rect x="6.2" y="16.4" width="11.6" height="3.4" rx="0.9" {...s} />
+      <path d="M8.1 18.1h7.8" {...s} strokeWidth={sw * 0.8} opacity={0.7} />
     </svg>
   )
 }
@@ -545,13 +551,18 @@ export function IconRouter({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <rect x="3.5" y="10" width="17" height="9" rx="2" {...soft} />
-      <rect x="3.5" y="10" width="17" height="9" rx="2" {...s} />
-      <circle cx="7.25" cy="14.5" r="1.05" fill="currentColor" stroke="none" />
-      <circle cx="10.5" cy="14.5" r="1.05" fill="currentColor" fillOpacity={0.55} stroke="none" />
-      <circle cx="13.75" cy="14.5" r="1.05" fill="currentColor" fillOpacity={0.35} stroke="none" />
-      <path d="M8 10V7.2a4 4 0 0 1 8 0V10" {...s} />
-      <path d="M12 4.4v1.6" {...s} />
+      <path d="M7.2 10.2 6.1 3.6M16.8 10.2 17.9 3.6" {...s} />
+      <circle cx="6.05" cy="3.35" r="1.05" fill="currentColor" stroke="none" />
+      <circle cx="17.95" cy="3.35" r="1.05" fill="currentColor" stroke="none" />
+      <rect x="3.2" y="10.1" width="17.6" height="10.2" rx="2.1" {...soft} />
+      <rect x="3.2" y="10.1" width="17.6" height="10.2" rx="2.1" {...s} />
+      <rect x="5.1" y="12.15" width="6.4" height="2.5" rx="0.55" {...s} />
+      <circle cx="14.15" cy="13.4" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="16.55" cy="13.4" r="0.85" fill="currentColor" fillOpacity={0.55} stroke="none" />
+      <circle cx="18.85" cy="13.4" r="0.85" fill="currentColor" fillOpacity={0.32} stroke="none" />
+      {[0, 1, 2, 3].map((i) => (
+        <rect key={i} x={5.2 + i * 3.5} y="16.35" width="2.35" height="2.35" rx="0.4" fill="currentColor" fillOpacity={0.5} stroke="none" />
+      ))}
     </svg>
   )
 }
@@ -560,10 +571,16 @@ export function IconSwitch({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <rect x="2.75" y="7.5" width="18.5" height="9" rx="2" {...soft} />
-      <rect x="2.75" y="7.5" width="18.5" height="9" rx="2" {...s} />
-      {[0, 1, 2, 3].map((i) => (
-        <rect key={i} x={5 + i * 3.7} y="10.15" width="2.4" height="3.7" rx="0.45" fill="currentColor" fillOpacity={0.55} stroke="none" />
+      <rect x="2.4" y="6.2" width="19.2" height="11.6" rx="2" {...soft} />
+      <rect x="2.4" y="6.2" width="19.2" height="11.6" rx="2" {...s} />
+      <path d="M4.3 8.35h3.4" {...s} strokeWidth={sw * 0.85} />
+      <circle cx="9.2" cy="8.35" r="0.55" fill="currentColor" stroke="none" />
+      <circle cx="10.7" cy="8.35" r="0.55" fill="currentColor" fillOpacity={0.45} stroke="none" />
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <rect key={`a-${i}`} x={4.15 + i * 2.7} y="10.35" width="2.05" height="2.55" rx="0.35" fill="currentColor" fillOpacity={0.62} stroke="none" />
+      ))}
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <rect key={`b-${i}`} x={4.15 + i * 2.7} y="13.35" width="2.05" height="2.55" rx="0.35" fill="currentColor" fillOpacity={0.38} stroke="none" />
       ))}
     </svg>
   )
@@ -573,9 +590,13 @@ export function IconAccessPoint({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <circle cx="12" cy="16.5" r="1.7" {...soft} />
-      <circle cx="12" cy="16.5" r="1.7" {...s} />
-      <path d="M7.4 13.2a6.4 6.4 0 0 1 9.2 0M5.2 10.6a9.5 9.5 0 0 1 13.6 0M3.2 8.1a12.4 12.4 0 0 1 17.6 0" {...s} />
+      <ellipse cx="12" cy="15.6" rx="6.4" ry="3.15" {...soft} />
+      <ellipse cx="12" cy="15.6" rx="6.4" ry="3.15" {...s} />
+      <ellipse cx="12" cy="15.15" rx="3.1" ry="1.45" {...s} opacity={0.7} />
+      <circle cx="12" cy="15.1" r="0.85" fill="currentColor" stroke="none" />
+      <path d="M12 12.3V6.4" {...s} />
+      <circle cx="12" cy="5.55" r="1.15" {...s} />
+      <path d="M8.15 8.55a5.2 5.2 0 0 1 7.7 0M6.2 6.45a8 8 0 0 1 11.6 0" {...s} />
     </svg>
   )
 }
@@ -584,9 +605,10 @@ export function IconFirewall({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <path d="M12 3.4 19.4 7v5.4c0 4.35-3.05 7.55-7.4 8.6-4.35-1.05-7.4-4.25-7.4-8.6V7L12 3.4Z" {...soft} />
-      <path d="M12 3.4 19.4 7v5.4c0 4.35-3.05 7.55-7.4 8.6-4.35-1.05-7.4-4.25-7.4-8.6V7L12 3.4Z" {...s} />
-      <path d="M8.4 12.2h7.2M12 8.7v7" {...s} />
+      <rect x="3.4" y="4.4" width="17.2" height="15.2" rx="1.6" {...soft} />
+      <rect x="3.4" y="4.4" width="17.2" height="15.2" rx="1.6" {...s} />
+      <path d="M3.4 8.4h17.2M3.4 12h17.2M3.4 15.6h17.2" {...s} />
+      <path d="M12 4.4v4M8.2 8.4v3.6M15.8 8.4v3.6M12 12v3.6M8.2 15.6v3.99M15.8 15.6v3.99" {...s} />
     </svg>
   )
 }
@@ -595,15 +617,32 @@ export function IconServer({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <rect x="3.5" y="4.25" width="17" height="5.1" rx="1.2" {...soft} />
-      <rect x="3.5" y="9.45" width="17" height="5.1" rx="1.2" {...soft} />
-      <rect x="3.5" y="14.65" width="17" height="5.1" rx="1.2" {...soft} />
-      <rect x="3.5" y="4.25" width="17" height="5.1" rx="1.2" {...s} />
-      <rect x="3.5" y="9.45" width="17" height="5.1" rx="1.2" {...s} />
-      <rect x="3.5" y="14.65" width="17" height="5.1" rx="1.2" {...s} />
-      <circle cx="6.6" cy="6.8" r="0.85" fill="currentColor" stroke="none" />
-      <circle cx="6.6" cy="12" r="0.85" fill="currentColor" stroke="none" />
-      <circle cx="6.6" cy="17.2" r="0.85" fill="currentColor" stroke="none" />
+      {[0, 1, 2].map((row) => {
+        const y = 3.7 + row * 5.7
+        return (
+          <g key={row}>
+            <rect x="3.3" y={y} width="17.4" height="5" rx="1.15" {...soft} />
+            <rect x="3.3" y={y} width="17.4" height="5" rx="1.15" {...s} />
+            <circle cx="6.15" cy={y + 2.5} r="0.8" fill="currentColor" stroke="none" />
+            <rect x="8.3" y={y + 1.45} width="5.4" height="2.1" rx="0.35" fill="currentColor" fillOpacity={0.28} stroke="none" />
+            <rect x="14.2" y={y + 1.45} width="4.6" height="2.1" rx="0.35" fill="currentColor" fillOpacity={0.18} stroke="none" />
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+export function IconNas({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <rect x="3.6" y="4.2" width="16.8" height="15.6" rx="2" {...soft} />
+      <rect x="3.6" y="4.2" width="16.8" height="15.6" rx="2" {...s} />
+      <rect x="5.5" y="6.3" width="13" height="4.3" rx="0.8" {...s} />
+      <rect x="5.5" y="11.4" width="13" height="4.3" rx="0.8" {...s} />
+      <path d="M7 8.45h8.2M7 13.55h8.2" {...s} strokeWidth={sw * 0.8} opacity={0.7} />
+      <circle cx="16.2" cy="17.55" r="0.75" fill="currentColor" stroke="none" />
     </svg>
   )
 }
@@ -612,8 +651,11 @@ export function IconCloud({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <path d="M7.8 17.5h9.4A3.7 3.7 0 0 0 21 13.9c0-1.9-1.4-3.5-3.3-3.8A5.05 5.05 0 0 0 8.1 8.4 3.9 3.9 0 0 0 4 12.3c0 2.1 1.6 3.8 3.8 3.8Z" {...soft} />
-      <path d="M7.8 17.5h9.4A3.7 3.7 0 0 0 21 13.9c0-1.9-1.4-3.5-3.3-3.8A5.05 5.05 0 0 0 8.1 8.4 3.9 3.9 0 0 0 4 12.3c0 2.1 1.6 3.8 3.8 3.8Z" {...s} />
+      <path d="M7.6 17.35h9.6A3.85 3.85 0 0 0 21.1 13.6c0-2-1.45-3.65-3.4-3.95A5.15 5.15 0 0 0 8 8.15 4 4 0 0 0 3.85 12.2c0 2.2 1.7 4 3.95 4.15Z" {...soft} />
+      <path d="M7.6 17.35h9.6A3.85 3.85 0 0 0 21.1 13.6c0-2-1.45-3.65-3.4-3.95A5.15 5.15 0 0 0 8 8.15 4 4 0 0 0 3.85 12.2c0 2.2 1.7 4 3.95 4.15Z" {...s} />
+      <circle cx="9.2" cy="13.35" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="12.15" cy="13.35" r="0.85" fill="currentColor" fillOpacity={0.55} stroke="none" />
+      <circle cx="15.1" cy="13.35" r="0.85" fill="currentColor" fillOpacity={0.32} stroke="none" />
     </svg>
   )
 }
@@ -622,11 +664,13 @@ export function IconCable({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <path d="M5 8.2h4.2c.7 0 1.3.6 1.3 1.3v5c0 .7.6 1.3 1.3 1.3H19" {...s} />
-      <rect x="3.2" y="6.4" width="3.2" height="3.6" rx="0.7" {...s} />
-      <rect x="17.6" y="13.8" width="3.2" height="3.6" rx="0.7" {...s} />
-      <path d="M4 6.4v-1.2M5.6 6.4v-1.2M4 10v1.2M5.6 10v1.2" {...s} />
-      <path d="M18.4 13.8v-1.2M20 13.8v-1.2M18.4 17.4v1.2M20 17.4v1.2" {...s} />
+      <path d="M7.6 8.1c2.4 0 2.8 2.5 4.4 3.9 1.5 1.3 2.3 3.9 4.6 3.9" {...s} />
+      <rect x="2.5" y="5.7" width="5.3" height="4.8" rx="0.9" {...soft} />
+      <rect x="2.5" y="5.7" width="5.3" height="4.8" rx="0.9" {...s} />
+      <path d="M3.4 5.7V4.3M5.15 5.7V4.3M6.9 5.7V4.3" {...s} />
+      <rect x="16.2" y="13.5" width="5.3" height="4.8" rx="0.9" {...soft} />
+      <rect x="16.2" y="13.5" width="5.3" height="4.8" rx="0.9" {...s} />
+      <path d="M17.1 18.3v1.4M18.85 18.3v1.4M20.6 18.3v1.4" {...s} />
     </svg>
   )
 }
@@ -635,12 +679,42 @@ export function IconNetworkMap({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <rect x="3.2" y="3.2" width="17.6" height="17.6" rx="3" {...soft} />
-      <rect x="3.2" y="3.2" width="17.6" height="17.6" rx="3" {...s} />
-      <circle cx="8" cy="8.2" r="1.55" fill="currentColor" stroke="none" />
-      <circle cx="16.2" cy="8.6" r="1.55" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="16.1" r="1.55" fill="currentColor" stroke="none" />
-      <path d="M9.4 8.6 14.7 8.8M8.6 9.6 11.1 14.7M15.4 10 12.9 14.6" {...s} />
+      <circle cx="7.2" cy="7.4" r="2.55" {...soft} />
+      <circle cx="16.8" cy="8.1" r="2.55" {...soft} />
+      <circle cx="12" cy="16.6" r="2.7" {...soft} />
+      <circle cx="7.2" cy="7.4" r="2.55" {...s} />
+      <circle cx="16.8" cy="8.1" r="2.55" {...s} />
+      <circle cx="12" cy="16.6" r="2.7" {...s} />
+      <path d="M9.5 8.2 14.4 8.6M8.4 9.6 10.7 14.4M15.4 10.2 13.3 14.4" {...s} />
+    </svg>
+  )
+}
+
+export function IconRoom({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <path d="M4.4 5.2h15.2v13.6H4.4z" {...soft} />
+      <path d="M4.4 5.2h15.2v13.6H14.7" {...s} />
+      <path d="M9.3 18.8V15a1.4 1.4 0 0 1 1.4-1.4h2.6A1.4 1.4 0 0 1 14.7 15v3.8" {...s} />
+      <path d="M7.1 8.3h3.2M7.1 11h4.6" {...s} strokeWidth={sw * 0.85} opacity={0.75} />
+    </svg>
+  )
+}
+
+export function IconRack({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <rect x="5.2" y="3.3" width="13.6" height="17.4" rx="1.5" {...soft} />
+      <rect x="5.2" y="3.3" width="13.6" height="17.4" rx="1.5" {...s} />
+      {[0, 1, 2, 3].map((i) => (
+        <rect key={i} x="7.15" y={5.35 + i * 3.55} width="9.7" height="2.55" rx="0.45" {...s} />
+      ))}
+      <circle cx="6.55" cy="6.6" r="0.45" fill="currentColor" stroke="none" />
+      <circle cx="17.45" cy="6.6" r="0.45" fill="currentColor" stroke="none" />
+      <circle cx="6.55" cy="17.4" r="0.45" fill="currentColor" stroke="none" />
+      <circle cx="17.45" cy="17.4" r="0.45" fill="currentColor" stroke="none" />
     </svg>
   )
 }

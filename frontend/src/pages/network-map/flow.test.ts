@@ -29,9 +29,15 @@ describe('viewportFlowCenter', () => {
 })
 
 describe('equipment size', () => {
-  it('keeps a custom width for switches', () => {
-    expect(equipmentWidth('switch', 'sw', 260, 48)).toBe(260)
-    expect(equipmentHeight('switch', 'sw', 90)).toBe(90)
+  it('keeps a wider custom width for switches', () => {
+    expect(equipmentWidth('switch', 'sw', 500, 24)).toBe(500)
+    expect(equipmentHeight('switch', 'sw', 140, 1)).toBe(140)
+  })
+
+  it('sizes a switch from its port strip', () => {
+    expect(equipmentWidth('switch', 'sw', null, 24)).toBe(356)
+    expect(equipmentWidth('switch', 'sw', 96, 24)).toBe(356)
+    expect(equipmentHeight('pc', 'pc-1', null, 1)).toBe(84)
   })
 })
 

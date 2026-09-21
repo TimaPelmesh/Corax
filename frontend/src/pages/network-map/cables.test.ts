@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { contentBounds, exportPixelSize, laneForEdges, pairKey, safeFilename } from './cables'
+import { cableStrokeColor, contentBounds, exportPixelSize, laneForEdges, pairKey, safeFilename } from './cables'
+
+describe('cableStrokeColor', () => {
+  it('uses a copper-green line instead of theme-white', () => {
+    expect(cableStrokeColor('manual', 'var(--color-fg)')).toBe('#2f7d32')
+    expect(cableStrokeColor('manual', '#ffffff')).toBe('#2f7d32')
+    expect(cableStrokeColor('manual', 'white')).toBe('#2f7d32')
+  })
+
+  it('keeps logical colours quiet', () => {
+    expect(cableStrokeColor('trace')).toBe('#2f7d32')
+    expect(cableStrokeColor('lan')).toBe('#6b6b6b')
+    expect(cableStrokeColor('lldp', '#2f7d32')).toBe('#2f7d32')
+  })
+})
 
 describe('laneForEdges', () => {
   it('keeps a single cable on the center lane', () => {

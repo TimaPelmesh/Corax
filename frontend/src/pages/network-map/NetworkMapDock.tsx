@@ -1,36 +1,7 @@
-import { useRef, type DragEvent, type ReactNode } from 'react'
-import {
-  IconAccessPoint,
-  IconCable,
-  IconCloud,
-  IconFirewall,
-  IconImage,
-  IconNetworkMap,
-  IconPcs,
-  IconPencil,
-  IconPrinter,
-  IconRouter,
-  IconServer,
-  IconSwitch,
-  IconVm,
-  IconWarehouse,
-} from '../../components/icons'
+import { useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { useT, type MessageKey } from '../../i18n/LocaleContext'
-import { NETWORK_MAP_DND, STENCILS, type NetworkMapStencil, type PaletteDrag } from './types'
-
-const STENCIL_ICON: Record<(typeof STENCILS)[number], typeof IconSwitch> = {
-  switch: IconSwitch,
-  router: IconRouter,
-  firewall: IconFirewall,
-  ap: IconAccessPoint,
-  server: IconServer,
-  corax: IconNetworkMap,
-  nas: IconWarehouse,
-  pc: IconPcs,
-  vm: IconVm,
-  printer: IconPrinter,
-  cloud: IconCloud,
-}
+import { NetworkMapGlyph } from './NetworkMapGlyph'
+import { NETWORK_MAP_DND, type NetworkMapStencil, type PaletteDrag } from './types'
 
 type Props = {
   onPick: (payload: PaletteDrag) => void
@@ -38,6 +9,8 @@ type Props = {
   onCableTool?: () => void
   cableActive?: boolean
 }
+
+type DockCat = 'link' | 'network' | 'end' | 'mark'
 
 function dragPayload(e: DragEvent, payload: PaletteDrag) {
   e.dataTransfer.setData(NETWORK_MAP_DND, JSON.stringify(payload))
@@ -65,57 +38,103 @@ function DockButton({
       draggable={Boolean(onDragStart)}
       onClick={onClick}
       onDragStart={onDragStart}
-      className={`flex h-[3.35rem] w-[3.35rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md ${
+      className={`flex h-[4.1rem] w-[4.1rem] shrink-0 flex-col items-center justify-center gap-0.5 rounded-md ${
         active
-          ? 'bg-[var(--color-fg)] text-[var(--color-surface)]'
-          : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]'
+          ? 'bg-[var(--color-primary-muted)] ring-1 ring-[var(--color-primary)]'
+          : 'hover:bg-[var(--color-bg-muted)]'
       }`}
     >
       {children}
-      <span className="max-w-full truncate px-0.5 text-[9px] leading-none tracking-wide">{label}</span>
+      <span className="max-w-full truncate px-0.5 text-[10px] leading-none text-[var(--color-fg-muted)]">
+        {label}
+      </span>
     </button>
   )
 }
 
+const NETWORK: NetworkMapStencil[] = ['switch', 'router', 'firewall', 'ap']
+const ENDPOINTS: NetworkMapStencil[] = ['pc', 'server', 'nas', 'printer', 'vm', 'corax']
+
 export function NetworkMapDock({ onPick, onImportImage, onCableTool, cableActive }: Props) {
   const t = useT()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [cat, setCat] = useState<DockCat>('network')
 
   return (
-    <div className="network-map-dock flex shrink-0 items-stretch gap-2 overflow-x-auto border-t border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5">
+    <div className="network-map-dock flex shrink-0 items-stretch gap-2 overflow-x-auto border-t px-2 py-1">
       <div className="flex items-center gap-0.5">
-        <DockButton label={t('networkMap.cableTool')} onClick={() => onCableTool?.()} active={cableActive}>
-          <IconCable className="h-5 w-5" />
-        </DockButton>
+        {(
+          [
+            ['link', t('networkMap.dockLink'), 'cable'],
+            ['network', t('networkMap.dockNetwork'), 'switch'],
+            ['end', t('networkMap.dockEnd'), 'pc'],
+            ['mark', t('networkMap.dockMark'), 'note'],
+          ] as const
+        ).map(([id, label, glyph]) => (
+          <button
+            key={id}
+            type="button"
+            title={label}
+            onClick={() => setCat(id)}
+            className={`network-map-dock-cat flex h-[4.1rem] flex-col items-center justify-center gap-0.5 rounded-md px-1 ${
+              cat === id ? 'is-active' : 'hover:bg-[var(--color-bg-muted)]'
+            }`}
+          >
+            <NetworkMapGlyph kind={glyph} size="md" active={cat === id} />
+            <span className="text-[10px] leading-none text-[var(--color-fg-muted)]">{label}</span>
+          </button>
+        ))}
       </div>
       <div className="my-1 w-px shrink-0 bg-[var(--color-border)]" />
       <div className="flex items-center gap-0.5">
-        {STENCILS.map((stencil) => {
-          const Icon = STENCIL_ICON[stencil]
-          return (
+        {cat === 'link' ? (
+          <DockButton label={t('networkMap.cableTool')} onClick={() => onCableTool?.()} active={cableActive}>
+            <NetworkMapGlyph kind="cable" size="md" active={cableActive} />
+          </DockButton>
+        ) : null}
+        {cat === 'network' || cat === 'end'
+          ? (cat === 'network' ? NETWORK : ENDPOINTS).map((stencil) => (
+              <DockButton
+                key={stencil}
+                label={t(`networkMap.stencil.${stencil}` as MessageKey)}
+                onClick={() => onPick({ kind: 'stencil', stencil })}
+                onDragStart={(e) => dragPayload(e, { kind: 'stencil', stencil })}
+              >
+                <NetworkMapGlyph kind={stencil} size="md" />
+              </DockButton>
+            ))
+          : null}
+        {cat === 'mark' ? (
+          <>
             <DockButton
-              key={stencil}
-              label={t(`networkMap.stencil.${stencil}` as MessageKey)}
-              onClick={() => onPick({ kind: 'stencil', stencil })}
-              onDragStart={(e) => dragPayload(e, { kind: 'stencil', stencil })}
+              label={t('networkMap.stencil.cloud')}
+              onClick={() => onPick({ kind: 'stencil', stencil: 'cloud' })}
+              onDragStart={(e) => dragPayload(e, { kind: 'stencil', stencil: 'cloud' })}
             >
-              <Icon className="h-5 w-5" />
+              <NetworkMapGlyph kind="cloud" size="md" />
             </DockButton>
-          )
-        })}
-      </div>
-      <div className="my-1 w-px shrink-0 bg-[var(--color-border)]" />
-      <div className="flex items-center gap-0.5">
-        <DockButton
-          label={t('networkMap.stencil.note')}
-          onClick={() => onPick({ kind: 'stencil', stencil: 'note' as NetworkMapStencil })}
-          onDragStart={(e) => dragPayload(e, { kind: 'stencil', stencil: 'note' })}
-        >
-          <IconPencil className="h-5 w-5" />
-        </DockButton>
-        <DockButton label={t('networkMap.stencil.image')} onClick={() => fileRef.current?.click()}>
-          <IconImage className="h-5 w-5" />
-        </DockButton>
+            <DockButton
+              label={t('networkMap.stencil.note')}
+              onClick={() => onPick({ kind: 'stencil', stencil: 'note' as NetworkMapStencil })}
+              onDragStart={(e) => dragPayload(e, { kind: 'stencil', stencil: 'note' })}
+            >
+              <NetworkMapGlyph kind="note" size="md" />
+            </DockButton>
+            <DockButton label={t('networkMap.stencil.image')} onClick={() => fileRef.current?.click()}>
+              <NetworkMapGlyph kind="image" size="md" />
+            </DockButton>
+            {(['room', 'rack'] as const).map((kind) => (
+              <DockButton
+                key={kind}
+                label={kind === 'room' ? t('networkMap.addRoom') : t('networkMap.addRack')}
+                onClick={() => onPick({ kind: 'group', groupKind: kind })}
+                onDragStart={(e) => dragPayload(e, { kind: 'group', groupKind: kind })}
+              >
+                <NetworkMapGlyph kind={kind} size="md" />
+              </DockButton>
+            ))}
+          </>
+        ) : null}
         <input
           ref={fileRef}
           type="file"
@@ -127,21 +146,6 @@ export function NetworkMapDock({ onPick, onImportImage, onCableTool, cableActive
             if (file) onImportImage?.(file)
           }}
         />
-      </div>
-      <div className="my-1 w-px shrink-0 bg-[var(--color-border)]" />
-      <div className="flex items-center gap-0.5">
-        {(['room', 'rack'] as const).map((kind) => (
-          <DockButton
-            key={kind}
-            label={kind === 'room' ? t('networkMap.addRoom') : t('networkMap.addRack')}
-            onClick={() => onPick({ kind: 'group', groupKind: kind })}
-            onDragStart={(e) => dragPayload(e, { kind: 'group', groupKind: kind })}
-          >
-            <span className="flex h-5 w-5 items-center justify-center rounded border border-dashed border-current text-[10px] leading-none">
-              {kind === 'room' ? '□' : '▣'}
-            </span>
-          </DockButton>
-        ))}
       </div>
     </div>
   )

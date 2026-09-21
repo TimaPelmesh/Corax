@@ -118,7 +118,7 @@ export function NetworkMapScenesBar({
   }
 
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+    <header className="network-map-toolbar flex flex-wrap items-center gap-2 border-b px-3 py-1.5">
       <div ref={rootRef} className="network-map-scenes relative min-w-0">
         {editingId === 'active' ? (
           <input
@@ -138,7 +138,7 @@ export function NetworkMapScenesBar({
               type="button"
               disabled={busy}
               onClick={() => setOpen((v) => !v)}
-              className="inline-flex max-w-[min(20rem,calc(100vw-10rem))] items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-left text-sm font-semibold hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
+            className="inline-flex max-w-[min(20rem,calc(100vw-10rem))] items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-left text-sm font-semibold hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
             >
               <span className="truncate">{label}</span>
               <span className="text-[10px] text-[var(--color-fg-subtle)]" aria-hidden>
@@ -280,7 +280,7 @@ export function NetworkMapScenesBar({
           value={search}
           onChange={(e) => onSearch(e.target.value)}
           placeholder={t('networkMap.searchMap')}
-          className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-sm"
+          className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-sm"
         />
       </form>
       <div className="ml-auto flex items-center gap-1.5">
@@ -316,7 +316,7 @@ export function NetworkMapScenesBar({
             disabled={busy || exporting}
             onClick={onExportPng}
             title={t('networkMap.exportPngTitle')}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] px-2 py-1.5 text-xs hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
           >
             <IconDownload className="h-3.5 w-3.5" />
             {exporting ? t('networkMap.exportingPng') : t('networkMap.exportPng')}
@@ -326,7 +326,7 @@ export function NetworkMapScenesBar({
           <button
             type="button"
             onClick={() => setMore((v) => !v)}
-            className="rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]"
+            className="rounded-lg border border-[var(--color-border)] px-2 py-1.5 text-xs text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]"
           >
             {t('networkMap.more')}
           </button>

@@ -1,29 +1,20 @@
-import { Fragment, memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, memo, useEffect, useRef, useState } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
-import {
-  IconAccessPoint,
-  IconCloud,
-  IconFirewall,
-  IconNetworkMap,
-  IconPcs,
-  IconPrinter,
-  IconRouter,
-  IconServer,
-  IconSwitch,
-  IconVm,
-  IconWarehouse,
-} from '../../components/icons'
 import { useLocale } from '../../i18n/LocaleContext'
-import { chassisPortLayout, portHandleId } from './chassis'
+import {
+  chassisPortLayout,
+  chassisPorts,
+  defaultStencilPortCount,
+  GEAR_HEAD,
+  PORT_CELL,
+  PORT_PAD_X,
+  PORT_PAD_Y,
+  PORT_ROW,
+  portHandleId,
+} from './chassis'
+import { NetworkMapGlyph } from './NetworkMapGlyph'
 import type { NetworkMapGroupKind, NetworkMapStencil } from './types'
 import { NetworkMapResizer } from './NetworkMapResizer'
-
-const JACK_SHIFT: Record<'top' | 'right' | 'bottom' | 'left', CSSProperties> = {
-  top: { top: -8 },
-  right: { right: -8 },
-  bottom: { bottom: -8 },
-  left: { left: -8 },
-}
 
 function InlineLabel({
   title,
@@ -102,7 +93,7 @@ function InlineLabel({
       }
     },
     className:
-      'network-map-inline-rename nodrag nopan w-full rounded-md border border-[var(--color-primary)] bg-[var(--color-surface)] px-1 py-0.5 text-center text-[11px] font-semibold text-[var(--color-fg)] outline-none',
+      'network-map-inline-rename nodrag nopan w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-0.5 text-center text-[11px] font-semibold text-[var(--color-fg)] outline-none',
   }
 
   if (multiline) {
@@ -111,75 +102,43 @@ function InlineLabel({
   return <input ref={(el) => { ref.current = el }} {...shared} />
 }
 
-function CableJacks() {
-  const { t } = useLocale()
-  const title = t('networkMap.connectCable')
-  const sides: Array<{ side: 'top' | 'right' | 'bottom' | 'left'; position: Position }> = [
-    { side: 'top', position: Position.Top },
-    { side: 'right', position: Position.Right },
-    { side: 'bottom', position: Position.Bottom },
-    { side: 'left', position: Position.Left },
-  ]
-  return (
-    <>
-      {sides.map(({ side, position }) => (
-        <Fragment key={side}>
-          <Handle
-            type="source"
-            position={position}
-            id={side === 'right' || side === 'bottom' ? side : `${side}-src`}
-            className="network-map-jack nodrag nopan"
-            style={JACK_SHIFT[side]}
-            title={title}
-            isConnectable
-          />
-          <Handle
-            type="target"
-            position={position}
-            id={side === 'right' || side === 'bottom' ? `${side}-tgt` : side}
-            className="network-map-jack nodrag nopan"
-            style={JACK_SHIFT[side]}
-            title={title}
-            isConnectable
-          />
-        </Fragment>
-      ))}
-    </>
-  )
-}
-
 function PortStrip({
   ports,
   width,
+  hotPorts,
 }: {
   ports: Array<{ id: string; name: string; up?: boolean | null }>
   width: number
+  hotPorts?: string[]
 }) {
   const { t } = useLocale()
   const { cols } = chassisPortLayout(ports.length)
   if (!ports.length || cols <= 0) return null
-  const inner = Math.max(48, width - 16)
+  const inner = Math.max(PORT_CELL, width - PORT_PAD_X * 2)
   const cell = inner / cols
+  const jackW = Math.max(8, Math.min(11, cell - 3))
+  const hot = new Set((hotPorts || []).map((name) => name.toLowerCase()))
   return (
     <>
       {ports.map((port, index) => {
         const col = index % cols
         const row = Math.floor(index / cols)
-        const left = 8 + col * cell + cell / 2
-        const top = 44 + row * 16
+        const left = PORT_PAD_X + col * cell + cell / 2
+        const top = GEAR_HEAD + PORT_PAD_Y + row * PORT_ROW + 7
         const hid = portHandleId(port.name) || port.id
+        const lit = port.up === true || hot.has(port.name.toLowerCase())
         return (
           <Fragment key={port.id}>
             <span
-              className={`network-map-rj45 ${port.up === true ? 'is-up' : port.up === false ? 'is-down' : ''}`}
+              className={`network-map-rj45 ${lit ? 'is-up' : port.up === false ? 'is-down' : ''}`}
               title={port.name}
-              style={{ left, top, width: Math.max(6, cell - 3) }}
+              style={{ left, top, width: jackW }}
             />
             <Handle
               type="source"
               position={Position.Bottom}
               id={hid}
-              className="network-map-jack is-chassis nodrag nopan"
+              className="network-map-jack is-port nodrag nopan"
               style={{ left, top, transform: 'translate(-50%, -50%)' }}
               title={port.name || t('networkMap.connectCable')}
               isConnectable
@@ -188,7 +147,7 @@ function PortStrip({
               type="target"
               position={Position.Top}
               id={`${hid}-tgt`}
-              className="network-map-jack is-chassis nodrag nopan"
+              className="network-map-jack is-port nodrag nopan"
               style={{ left, top, transform: 'translate(-50%, -50%)' }}
               title={port.name || t('networkMap.connectCable')}
               isConnectable
@@ -232,42 +191,6 @@ export type GroupNodeData = {
   onRename?: (next: string) => void
 }
 
-function stencilIcon(stencil: NetworkMapStencil): ReactNode {
-  const cls = 'h-5 w-5'
-  switch (stencil) {
-    case 'corax':
-      return <IconNetworkMap className={cls} />
-    case 'router':
-      return <IconRouter className={cls} />
-    case 'switch':
-      return <IconSwitch className={cls} />
-    case 'ap':
-      return <IconAccessPoint className={cls} />
-    case 'firewall':
-      return <IconFirewall className={cls} />
-    case 'server':
-      return <IconServer className={cls} />
-    case 'nas':
-      return <IconWarehouse className={cls} />
-    case 'printer':
-      return <IconPrinter className={cls} />
-    case 'cloud':
-      return <IconCloud className={cls} />
-    case 'pc':
-      return <IconPcs className={cls} />
-    case 'vm':
-      return <IconVm className={cls} />
-    default:
-      return <IconPcs className={cls} />
-  }
-}
-
-function statusClass(status: string | null | undefined): string {
-  if (status === 'ok' || status === 'online') return 'text-emerald-700 dark:text-emerald-400'
-  if (status === 'error' || status === 'offline') return 'text-red-600 dark:text-red-400'
-  return 'text-[var(--color-fg-subtle)]'
-}
-
 export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
   data,
   selected,
@@ -275,12 +198,9 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
   const picked = Boolean(selected || data.selected)
   if (data.stencil === 'note') {
     return (
-      <div
-        className={`h-full min-w-[4.5rem] px-1 py-0.5 ${
-          picked ? 'rounded-md ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg)]' : ''
-        }`}
-      >
-        <div className="whitespace-pre-wrap text-[18px] font-semibold leading-snug tracking-tight text-[var(--color-fg)] [text-shadow:0_1px_0_color-mix(in_srgb,var(--color-surface)_80%,transparent)]">
+      <div className={`h-full min-w-[4.5rem] px-1 py-0.5 ${picked ? 'is-selected' : ''}`}>
+        {picked ? <span className="network-map-selection-box" aria-hidden /> : null}
+        <div className="whitespace-pre-wrap text-[18px] font-semibold leading-snug tracking-tight text-[var(--color-fg)]">
           <InlineLabel
             title={data.title || ''}
             className="whitespace-pre-wrap"
@@ -297,62 +217,48 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
     const w = data.width || 220
     const h = data.height || 140
     return (
-      <div
-        className={`relative h-full w-full overflow-visible rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] ${
-          picked ? 'ring-2 ring-[var(--color-primary)] ring-offset-1 ring-offset-[var(--color-bg)]' : ''
-        }`}
-        style={{ width: w, height: h }}
-      >
-        <div className="h-full w-full overflow-hidden rounded-xl">
-        {data.imageSrc ? (
-          <img src={data.imageSrc} alt={data.title || ''} className="h-full w-full object-contain" draggable={false} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-[var(--color-fg-subtle)]">{data.title}</div>
-        )}
+      <div className={`relative h-full w-full overflow-visible ${picked ? 'is-selected' : ''}`} style={{ width: w, height: h }}>
+        {picked ? <span className="network-map-selection-box" aria-hidden /> : null}
+        <div className="h-full w-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg-muted)]">
+          {data.imageSrc ? (
+            <img src={data.imageSrc} alt={data.title || ''} className="h-full w-full object-contain" draggable={false} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-xs text-[var(--color-fg-muted)]">{data.title}</div>
+          )}
         </div>
         <NetworkMapResizer visible={picked} minWidth={80} minHeight={48} maxWidth={1600} maxHeight={1200} />
       </div>
     )
   }
-  const ports = data.ports || []
-  const chassis = ports.length > 0
-  const nodeWidth = data.width || 112
+  const down = data.status === 'error' || data.status === 'offline'
+  const ports = (data.ports && data.ports.length > 0)
+    ? data.ports
+    : chassisPorts(null, data.portCount ?? defaultStencilPortCount(data.stencil) ?? 1)
+  const nodeWidth = data.width || 108
   return (
-    <div className={`network-map-gear relative h-full w-full ${picked ? 'is-selected' : ''} ${chassis ? 'is-chassis' : ''}`}>
+    <div className={`network-map-gear relative h-full w-full ${picked ? 'is-selected' : ''}`}>
       {picked ? <span className="network-map-selection-box" aria-hidden /> : null}
-      <CableJacks />
-      {chassis ? <PortStrip ports={ports} width={nodeWidth} /> : null}
+      <PortStrip ports={ports} width={nodeWidth} hotPorts={data.hotPorts} />
       <div
-        className={`flex h-full w-full flex-col items-center ${chassis ? 'justify-start pt-1' : 'justify-center'} gap-1 px-1 ${
-          data.missing ? 'opacity-70' : ''
+        className={`flex w-full flex-col items-center justify-center gap-0 px-1 ${
+          data.missing || down ? 'opacity-55' : ''
         } ${data.neighbor ? 'is-neighbor-node' : ''}`}
+        style={{ height: GEAR_HEAD }}
       >
-        <span
-          className={`flex items-center justify-center rounded-lg border bg-[var(--color-surface)] text-[var(--color-fg)] ${
-            chassis ? 'h-7 w-[calc(100%-8px)]' : 'h-9 w-9'
-          } ${
-            picked
-              ? 'border-[var(--color-primary)]'
-              : data.neighbor
-                ? 'border-[var(--color-primary)]/55'
-                : 'border-[var(--color-border)]'
-          }`}
-        >
-          {stencilIcon(data.stencil)}
-        </span>
-        <div className="min-w-0 max-w-full text-center">
+        <NetworkMapGlyph kind={data.stencil} size="md" active={picked} neighbor={data.neighbor} />
+        <div className="network-map-caption min-w-0 max-w-full text-center">
           <InlineLabel
             title={data.title}
-            className={`truncate text-[11px] font-semibold leading-tight ${statusClass(data.status)}`}
+            className="truncate text-[11px] font-semibold leading-tight"
             canRename={data.canRename}
             onRename={data.onRename}
           />
           {data.subtitle ? (
-            <div className="truncate font-mono text-[9px] leading-tight text-[var(--color-fg-muted)]">{data.subtitle}</div>
+            <div className="truncate font-mono text-[10px] leading-tight opacity-80">{data.subtitle}</div>
           ) : null}
         </div>
       </div>
-      <NetworkMapResizer visible={picked} minWidth={chassis ? 140 : 88} minHeight={72} maxWidth={760} maxHeight={280} />
+      <NetworkMapResizer visible={picked} minWidth={108} minHeight={72} maxWidth={760} maxHeight={280} />
     </div>
   )
 })
@@ -364,12 +270,8 @@ export const NetworkMapGroupNode = memo(function NetworkMapGroupNode({
   const collapsed = Boolean(data.collapsed)
   return (
     <div className="relative h-full w-full overflow-visible">
-      <div
-        className={`absolute inset-0 rounded-lg border border-dashed border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-fg)_3%,transparent)] ${
-          selected ? 'border-solid border-[var(--color-primary)]' : ''
-        }`}
-      />
-      <div className="network-map-group-chrome absolute left-1.5 top-1.5 max-w-[calc(100%-12px)] rounded-md bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-fg-muted)]">
+      <div className={`network-map-room-fill is-${data.kind} ${selected ? 'is-selected' : ''} absolute inset-0`} />
+      <div className="network-map-group-chrome absolute left-2 top-1.5 max-w-[calc(100%-16px)] px-0.5 text-[11px] font-medium text-[var(--color-fg)]">
         <InlineLabel
           title={data.title}
           className="truncate"

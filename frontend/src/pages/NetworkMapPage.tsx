@@ -1076,7 +1076,7 @@ function NetworkMapEditor() {
             id: newId('scene-edge'),
             type: 'cable',
             data: { persisted: false, linkType: 'manual', linkDbId: null, lane: 0 },
-            style: { stroke: 'var(--color-fg)', strokeWidth: 2 },
+            style: { stroke: '#2f7d32', strokeWidth: 2.35 },
           },
           eds,
         ),
@@ -1885,7 +1885,7 @@ function NetworkMapEditor() {
               }}
             >
             {loading ? (
-              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-bg)] text-sm text-[var(--color-fg-subtle)]">
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--color-bg-muted)]/90 text-sm text-[var(--color-fg-muted)]">
                 {t('common.loading')}
               </div>
             ) : null}
@@ -1895,12 +1895,12 @@ function NetworkMapEditor() {
               </div>
             ) : null}
             {selectedIds.length > 1 ? (
-              <div className="pointer-events-none absolute left-2 top-2 z-20 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[11px] font-semibold text-[var(--color-fg)] shadow-sm">
+              <div className="pointer-events-none absolute left-2 top-2 z-20 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-[11px] font-semibold text-[var(--color-fg)]">
                 {t('networkMap.selectedCount', { n: selectedIds.length })}
               </div>
             ) : null}
             {linkArmed || linkFrom || portMenu ? (
-              <div className="network-map-link-hint rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-fg)] shadow-sm">
+              <div className="network-map-link-hint px-3 py-1.5 text-[12px] font-medium">
                 {portMenu
                   ? t('networkMap.cablePickPort', { name: portMenu.label })
                   : linkFrom
@@ -1916,7 +1916,7 @@ function NetworkMapEditor() {
                   y1={linkFrom.y ?? cursor.y}
                   x2={cursor.x}
                   y2={cursor.y}
-                  stroke="var(--color-primary)"
+                  stroke="#2f7d32"
                   strokeWidth="2"
                   strokeDasharray="6 6"
                 />
@@ -1930,7 +1930,7 @@ function NetworkMapEditor() {
               edgeTypes={EDGE_TYPES}
               defaultEdgeOptions={{ type: 'cable' }}
               connectionLineType={ConnectionLineType.SmoothStep}
-              connectionLineStyle={{ stroke: 'var(--color-primary)', strokeWidth: 2.2 }}
+              connectionLineStyle={{ stroke: '#2f7d32', strokeWidth: 2.2 }}
               connectionMode={ConnectionMode.Loose}
               connectionRadius={36}
               onNodesChange={onNodesChangePack}
@@ -2033,12 +2033,7 @@ function NetworkMapEditor() {
               fitViewOptions={{ padding: 0.18 }}
               proOptions={RF_PRO}
             >
-              <Background
-                variant={BackgroundVariant.Lines}
-                gap={20}
-                size={1}
-                color="color-mix(in srgb, var(--color-fg) 7%, transparent)"
-              />
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1.4} color="#94a3b8" />
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>

@@ -74,6 +74,12 @@ export function clampPortCount(value: unknown): number | null {
   return Math.max(1, Math.min(MAX_CHASSIS_PORTS, Math.round(n)))
 }
 
+export const GEAR_HEAD = 58
+export const PORT_CELL = 14
+export const PORT_ROW = 18
+export const PORT_PAD_X = 10
+export const PORT_PAD_Y = 8
+
 export function equipmentWidth(
   stencil: string,
   label = '',
@@ -87,32 +93,30 @@ export function equipmentWidth(
   }
   if (stencil === 'image') return width && width > 0 ? Math.max(80, Math.min(1600, width)) : 220
   const n = Number(portCount || 0)
-  if (n > 0) {
-    const { cols } = chassisPortLayout(n)
-    const computed = Math.max(148, Math.min(760, 32 + cols * 16))
-    if (width && width > 0) return Math.max(width, computed)
-    return computed
-  }
-  if (width && width > 0) return Math.max(80, Math.min(1600, width))
-  return 112
+  const count = n > 0 ? n : (defaultStencilPortCount(stencil) ?? 0)
+  const { cols } = chassisPortLayout(count)
+  const computed = count > 0 ? Math.max(108, Math.min(760, PORT_PAD_X * 2 + cols * PORT_CELL)) : 108
+  if (width && width > computed) return Math.max(80, Math.min(1600, width))
+  return computed
 }
 
-export function equipmentHeight(stencil: string, label = '', height?: number | null, portCount?: number | null): number {
+export function equipmentHeight(
+  stencil: string,
+  label = '',
+  height?: number | null,
+  portCount?: number | null,
+): number {
   if (stencil === 'note') {
     if (height && height > 0) return Math.max(48, Math.min(1200, height))
     return Math.max(36, Math.min(240, label.split('\n').length * 28 + 8))
   }
   if (stencil === 'image') return height && height > 0 ? Math.max(48, Math.min(1200, height)) : 140
   const n = Number(portCount || 0)
-  if (n > 0) {
-    const { rows } = chassisPortLayout(n)
-    const computed = 78 + rows * 18
-    if (height && height > 0) return Math.max(height, computed)
-    return computed
-  }
-  if (height && height > 0) return Math.max(48, Math.min(1200, height))
-  if (stencil === 'switch' && label.length > 18) return 96
-  return 90
+  const count = n > 0 ? n : (defaultStencilPortCount(stencil) ?? 0)
+  const rows = count > 0 ? chassisPortLayout(count).rows : 0
+  const computed = GEAR_HEAD + (rows > 0 ? PORT_PAD_Y + rows * PORT_ROW : 6)
+  if (height && height > computed) return Math.max(48, Math.min(1200, height))
+  return computed
 }
 
 type Box = { x: number; y: number; width: number; height: number }

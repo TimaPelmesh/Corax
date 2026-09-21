@@ -1,6 +1,6 @@
 import { useRef, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, useReactFlow, type EdgeProps } from 'reactflow'
-import { cableBendPath, sanitizeCablePoints, type CablePoint } from './cables'
+import { cableBendPath, cableStrokeColor, sanitizeCablePoints, type CablePoint } from './cables'
 
 type CableData = {
   linkType?: string
@@ -58,8 +58,8 @@ export function NetworkMapCableEdge({
   const path = routed?.d || autoPath
   const labelX = routed?.labelX ?? autoLabelX
   const labelY = routed?.labelY ?? autoLabelY
-  const stroke = String(style?.stroke || 'var(--color-primary)')
-  const width = Number(style?.strokeWidth || 1.6)
+  const stroke = cableStrokeColor(data?.linkType, style?.stroke)
+  const width = Number(style?.strokeWidth || 2.2)
   const dash = style?.strokeDasharray ? String(style.strokeDasharray) : undefined
   const caption = typeof label === 'string' ? label.trim() : ''
   const signal = Boolean(data?.signal) && !dim
@@ -119,6 +119,17 @@ export function NetworkMapCableEdge({
 
   return (
     <>
+      <path
+        d={path}
+        fill="none"
+        className="network-map-cable-halo"
+        stroke="var(--color-surface)"
+        strokeWidth={related ? Math.max(width + 2.2, 4) : width + 1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={dim ? 0.08 : 0.22}
+        pointerEvents="none"
+      />
       <BaseEdge
         id={id}
         path={path}
@@ -127,9 +138,9 @@ export function NetworkMapCableEdge({
           ...style,
           fill: 'none',
           stroke,
-          strokeWidth: related ? Math.max(width, 2.6) : width,
+          strokeWidth: related ? Math.max(width, 2.8) : width,
           strokeDasharray: dash,
-          opacity: dim ? 0.16 : 1,
+          opacity: dim ? 0.55 : 1,
           strokeLinecap: 'round',
           strokeLinejoin: 'round',
         }}

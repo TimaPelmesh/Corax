@@ -36,7 +36,7 @@ export function NetworkMapContextMenu({ x, y, actions, onPick, onClose }: Props)
   const top = Math.max(8, Math.min(y, window.innerHeight - 12 - actions.length * 32))
   return createPortal(
     <div
-      className="network-map-ctx fixed z-[140] min-w-[11.5rem] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-1 shadow-[0_18px_40px_-24px_rgba(0,0,0,0.55)]"
+      className="network-map-ctx fixed z-[140] min-w-[11.5rem] overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] py-1"
       style={{ left, top }}
       onMouseDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
