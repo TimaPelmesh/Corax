@@ -168,6 +168,61 @@ export function occupiedBoxes(scene: NetworkMapScene): Box[] {
   return boxes
 }
 
+const MAGNET_REACH = 36
+
+/** Pull gear onto a shared column in a rack, or against a neighbour in a room. */
+export function magnetInFrame(
+  pos: { x: number; y: number },
+  size: { width: number; height: number },
+  frame: { x: number; y: number; width: number; height: number; kind: 'room' | 'rack' },
+  siblings: Array<{ x: number; y: number; width: number; height: number }>,
+): { x: number; y: number } {
+  const pad = frame.kind === 'rack' ? 28 : 40
+  let x = pos.x
+  let y = pos.y
+  if (frame.kind === 'rack') {
+    x = frame.x + pad
+    const gap = 12
+    let best: { y: number; d: number } | null = null
+    for (const sibling of siblings) {
+      for (const candidate of [sibling.y, sibling.y + sibling.height + gap, sibling.y - size.height - gap]) {
+        const distance = Math.abs(pos.y - candidate)
+        if (distance <= 56 && (!best || distance < best.d)) best = { y: candidate, d: distance }
+      }
+    }
+    if (best) y = best.y
+  } else {
+    let bestX: { x: number; d: number } | null = null
+    let bestY: { y: number; d: number } | null = null
+    for (const sibling of siblings) {
+      const nearRow = Math.abs(pos.y + size.height / 2 - (sibling.y + sibling.height / 2)) < size.height + MAGNET_REACH
+      const nearCol = Math.abs(pos.x + size.width / 2 - (sibling.x + sibling.width / 2)) < size.width + MAGNET_REACH
+      if (nearRow) {
+        for (const candidate of [sibling.x, sibling.x + sibling.width + 16, sibling.x - size.width - 16]) {
+          const distance = Math.abs(pos.x - candidate)
+          if (distance <= MAGNET_REACH && (!bestX || distance < bestX.d)) bestX = { x: candidate, d: distance }
+        }
+      }
+      if (nearCol) {
+        for (const candidate of [sibling.y, sibling.y + sibling.height + 16, sibling.y - size.height - 16]) {
+          const distance = Math.abs(pos.y - candidate)
+          if (distance <= MAGNET_REACH && (!bestY || distance < bestY.d)) bestY = { y: candidate, d: distance }
+        }
+      }
+    }
+    if (bestX) x = bestX.x
+    if (bestY) y = bestY.y
+  }
+  const minX = frame.x + 8
+  const minY = frame.y + 28
+  const maxX = Math.max(minX, frame.x + frame.width - size.width - 8)
+  const maxY = Math.max(minY, frame.y + frame.height - size.height - 8)
+  return {
+    x: Math.round(Math.min(maxX, Math.max(minX, x))),
+    y: Math.round(Math.min(maxY, Math.max(minY, y))),
+  }
+}
+
 /** Free cell inside a room/rack so gear does not sit on top of each other. */
 export function nextSlotInGroup(
   scene: NetworkMapScene,

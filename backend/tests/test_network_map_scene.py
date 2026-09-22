@@ -144,6 +144,33 @@ def test_normalize_scene_keeps_subnet_group():
     assert scene["groups"][0]["collapsed"] is True
 
 
+def test_normalize_scene_keeps_lock():
+    scene = normalize_scene(
+        {
+            "version": 1,
+            "groups": [
+                {
+                    "id": "room-1",
+                    "title": "Серверная",
+                    "kind": "room",
+                    "x": 0,
+                    "y": 0,
+                    "width": 400,
+                    "height": 280,
+                    "locked": True,
+                }
+            ],
+            "nodes": [
+                {"id": "sw", "stencil": "switch", "x": 10, "y": 20, "label": "core", "locked": True},
+                {"id": "pc", "stencil": "pc", "x": 40, "y": 40, "label": "pc", "locked": "yes"},
+            ],
+        }
+    )
+    assert scene["groups"][0]["locked"] is True
+    assert scene["nodes"][0]["locked"] is True
+    assert "locked" not in scene["nodes"][1]
+
+
 def test_normalize_scene_rejects_bad_version():
     with pytest.raises(HTTPException) as ei:
         normalize_scene({"version": 9, "groups": [], "nodes": [], "edges": [], "hiddenNodeIds": []})

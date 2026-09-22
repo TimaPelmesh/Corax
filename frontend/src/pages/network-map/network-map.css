@@ -83,6 +83,79 @@
   background: #0d0d0d;
 }
 
+.network-map-lock {
+  pointer-events: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 7;
+  display: flex;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 2px;
+  padding: 1px;
+}
+
+.network-map-canvas .react-flow__node.is-locked {
+  cursor: default;
+}
+
+.network-map-gear {
+  box-sizing: border-box;
+  border: 2px solid #4c6a92;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.94);
+}
+
+[data-theme='dark'] .network-map-gear {
+  border-color: #9ec1ff;
+  background: rgb(22 22 22 / 0.94);
+}
+
+.network-map-gear.is-bound {
+  border-color: #3f3f46;
+  box-shadow: inset 3px 0 0 #3f3f46;
+}
+
+[data-theme='dark'] .network-map-gear.is-bound {
+  border-color: #d4d4d8;
+  box-shadow: inset 3px 0 0 #d4d4d8;
+}
+
+.network-map-bound {
+  pointer-events: none;
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 6;
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: #3f3f46;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9);
+}
+
+[data-theme='dark'] .network-map-bound {
+  background: #d4d4d8;
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.55);
+}
+
+.network-map-bind-pill {
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 650;
+  color: #27272a;
+  background: #ececee;
+}
+
+[data-theme='dark'] .network-map-bind-pill {
+  color: #f4f4f5;
+  background: #2a2a2e;
+}
+
 .network-map-selection-box {
   pointer-events: none;
   position: absolute;
@@ -103,14 +176,14 @@
 }
 
 .network-map-room-fill {
-  border: 1.5px dashed color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary) 42%, #8b95a5);
   background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
   border-radius: 6px;
 }
 
 .network-map-room-fill.is-room,
 .network-map-room-fill.is-rack {
-  border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+  border-color: color-mix(in srgb, var(--color-primary) 42%, #8b95a5);
   background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
 }
 
@@ -121,7 +194,7 @@
 
 [data-theme='dark'] .network-map-room-fill {
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary) 32%, var(--color-border));
+  border-color: color-mix(in srgb, var(--color-primary) 48%, #94a3b8);
 }
 
 .network-map-caption {
@@ -139,7 +212,7 @@
 }
 
 .network-map-canvas .react-flow__edge.is-related .react-flow__edge-path {
-  stroke: #2f7d32;
+  stroke: #3b82f6;
   stroke-width: 2.6;
 }
 
@@ -149,7 +222,7 @@
 }
 
 .network-map-canvas .react-flow__edge.is-related .react-flow__edge-text {
-  fill: #166534;
+  fill: #1d4ed8;
   font-weight: 650;
 }
 
@@ -177,7 +250,7 @@
 
 .network-map-canvas .react-flow__edge-path {
   fill: none !important;
-  stroke: #2f7d32;
+  stroke: #3b82f6;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -218,7 +291,7 @@
 
 .network-map-canvas .react-flow__edge.is-cable-selected .react-flow__edge-path,
 .network-map-canvas .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #2f7d32;
+  stroke: #3b82f6;
   stroke-width: 2.8;
 }
 
@@ -389,6 +462,24 @@
   background: var(--color-surface);
   border-radius: 12px;
   box-shadow: var(--shadow-card-hover);
+}
+
+.network-map-inspector-overlay .network-map-inspector {
+  border-radius: 18px;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 18px 42px rgb(15 23 42 / 0.18);
+}
+
+[data-theme='dark'] .network-map-inspector-overlay .network-map-inspector {
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.55);
+}
+
+.network-map-inspector-overlay .network-map-inspector button,
+.network-map-inspector-overlay .network-map-inspector input,
+.network-map-inspector-overlay .network-map-inspector select,
+.network-map-inspector-overlay .network-map-inspector textarea {
+  border-radius: 10px;
 }
 
 .network-map-inspector button,

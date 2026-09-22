@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cableJunctions,
   collectScene,
   decorateSelection,
   equipmentHeight,
   equipmentWidth,
   followPackLeader,
   isMultiSelectEvent,
+  magnetEquipmentPosition,
   nextCanvasPackIds,
   addToCanvasPack,
   portsForPicker,
@@ -121,6 +123,98 @@ describe('free group membership', () => {
       nodes: [{ id: 'sw', stencil: 'switch' as const, x: 900, y: 40, label: 'sw' }],
     }
     expect(applySceneFrameMembership(outside, 'sw').nodes[0].parentGroupId).toBeNull()
+  })
+
+  it('pins a room and a node so they cannot be dragged', () => {
+    const groups = [
+      { id: 'room-1', title: 'Серверная', kind: 'room' as const, x: 80, y: 220, width: 400, height: 280, locked: true },
+    ]
+    const rf = toFlowNodes(groups, [
+      {
+        id: 'sw',
+        stencil: 'switch',
+        x: 120,
+        y: 260,
+        parentGroupId: 'room-1',
+        label: 'sw',
+        kind: 'network_device',
+        missing: false,
+        locked: true,
+      },
+    ])
+    const room = rf.find((n) => n.id === 'room-1')
+    const sw = rf.find((n) => n.id === 'sw')
+    expect(room?.draggable).toBe(false)
+    expect(sw?.draggable).toBe(false)
+    expect(room?.className).toContain('is-locked')
+    expect((sw?.data as { locked?: boolean }).locked).toBe(true)
+    const scene = {
+      ...emptyNetworkMapScene(),
+      groups,
+      nodes: [{ id: 'sw', stencil: 'switch' as const, x: 120, y: 260, parentGroupId: 'room-1', label: 'sw', locked: true }],
+    }
+    const collected = collectScene(rf, [], scene, { x: 0, y: 0, zoom: 1 })
+    expect(collected.groups[0].locked).toBe(true)
+    expect(collected.nodes[0].locked).toBe(true)
+    const unlocked = toFlowNodes(
+      [{ ...groups[0], locked: false }],
+      [
+        {
+          id: 'sw',
+          stencil: 'switch',
+          x: 120,
+          y: 260,
+          label: 'sw',
+          kind: 'network_device',
+          missing: false,
+          locked: false,
+        },
+      ],
+    )
+    const free = collectScene(unlocked, [], { ...scene, groups: [{ ...groups[0], locked: false }], nodes: scene.nodes.map((n) => ({ ...n, locked: false })) }, { x: 0, y: 0, zoom: 1 })
+    expect(free.groups[0].locked).toBeUndefined()
+    expect(free.nodes[0].locked).toBeUndefined()
+    expect(unlocked.find((n) => n.id === 'room-1')?.draggable).toBe(true)
+  })
+})
+
+describe('rack magnet and shared cable point', () => {
+  const rack = { id: 'rack-1', title: 'Стойка', kind: 'rack' as const, x: 40, y: 80, width: 320, height: 520 }
+
+  it('stacks a server onto the rack column next to its neighbour', () => {
+    const scene = {
+      ...emptyNetworkMapScene(),
+      groups: [rack],
+      nodes: [
+        { id: 'sw', stencil: 'switch' as const, x: 68, y: 140, label: 'sw' },
+        { id: 'srv', stencil: 'server' as const, x: 90, y: 230, label: 'srv' },
+      ],
+    }
+    const snapped = magnetEquipmentPosition(scene, scene.nodes[1])
+    expect(snapped).toEqual({ x: 68, y: 236 })
+  })
+
+  it('sends every cable of one rack through the same point', () => {
+    const meet = cableJunctions('rack-1', 'rack-1', [rack])
+    expect(meet).toEqual([{ x: 342, y: 340 }])
+    const edges = toFlowEdges(
+      [
+        { id: 'e1', source: 'sw', target: 'srv', linkType: 'manual', persisted: false },
+        { id: 'e2', source: 'srv', target: 'nas', linkType: 'manual', persisted: false },
+      ],
+      [rack],
+      [
+        { id: 'sw', stencil: 'switch', x: 68, y: 140, parentGroupId: 'rack-1', label: 'sw', kind: 'network_device', missing: false },
+        { id: 'srv', stencil: 'server', x: 68, y: 236, parentGroupId: 'rack-1', label: 'srv', kind: 'network_device', missing: false },
+        { id: 'nas', stencil: 'nas', x: 68, y: 332, parentGroupId: 'rack-1', label: 'nas', kind: 'network_device', missing: false },
+      ],
+    )
+    expect(edges[0].data).toMatchObject({ junctions: meet })
+    expect(edges[1].data).toMatchObject({ junctions: meet })
+  })
+
+  it('keeps a free cable off the rack point', () => {
+    expect(cableJunctions(null, null, [rack])).toEqual([])
   })
 })
 

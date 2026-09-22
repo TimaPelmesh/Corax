@@ -1,5 +1,5 @@
 import { type Edge, type Node } from 'reactflow'
-import { cableStrokeColor, laneForEdges, sanitizeCablePoints } from './cables'
+import { CABLE_STROKE, cableStrokeColor, laneForEdges, sanitizeCablePoints } from './cables'
 import {
   chassisPortLayout,
   chassisPorts,
@@ -7,6 +7,7 @@ import {
   defaultStencilPortCount,
   equipmentHeight,
   equipmentWidth,
+  magnetInFrame,
   MAX_CHASSIS_PORTS,
   nextDiagramSlot,
   nextSlotInGroup,
@@ -26,6 +27,7 @@ export {
   defaultStencilPortCount,
   equipmentHeight,
   equipmentWidth,
+  magnetInFrame,
   MAX_CHASSIS_PORTS,
   nextDiagramSlot,
   nextSlotInGroup,
@@ -37,6 +39,13 @@ export {
 
 export const RF_SNAP = [16, 16] as const
 export const COLLAPSED_GROUP_SIZE = { width: 248, height: 88 }
+
+export function lockedSceneIds(scene: NetworkMapScene): Set<string> {
+  const ids = new Set<string>()
+  for (const group of scene.groups) if (group.locked) ids.add(group.id)
+  for (const node of scene.nodes) if (node.locked) ids.add(node.id)
+  return ids
+}
 
 export function groupDisplaySize(group: NetworkMapGroup): { width: number; height: number } {
   if (group.collapsed) return { ...COLLAPSED_GROUP_SIZE }
@@ -157,6 +166,7 @@ export function toFlowNodes(
         collapsed: Boolean(g.collapsed),
         cidr: g.cidr || null,
         count: counts.get(g.id) || 0,
+        locked: Boolean(g.locked),
       },
       style: {
         width: size.width,
@@ -167,8 +177,9 @@ export function toFlowNodes(
         overflow: 'visible',
       },
       zIndex: 0,
-      draggable: true,
+      draggable: !g.locked,
       selectable: true,
+      className: g.locked ? 'is-locked' : undefined,
     }
   })
   const collapsed = new Set(groups.filter((g) => g.collapsed).map((g) => g.id))
@@ -194,6 +205,7 @@ export function toFlowNodes(
         ports: n.ports,
         portCount: n.portCount ?? n.ports?.length,
         parentGroupId: parent || null,
+        locked: Boolean(n.locked),
       },
       style: {
         width: equipmentWidth(n.stencil, n.label, n.width, n.portCount ?? n.ports?.length),
@@ -204,10 +216,78 @@ export function toFlowNodes(
         boxShadow: 'none',
       },
       zIndex: n.stencil === 'image' ? 0 : n.stencil === 'note' ? 2 : 1,
+      draggable: !n.locked,
+      className: n.locked ? 'is-locked' : undefined,
       connectable: n.stencil !== 'note' && n.stencil !== 'image',
     })
   }
   return out
+}
+
+export function cableJunctions(
+  sourceParent: string | null | undefined,
+  targetParent: string | null | undefined,
+  groups: NetworkMapGroup[],
+): { x: number; y: number }[] {
+  const frame = (id: string | null | undefined) => {
+    if (!id) return null
+    const group = groups.find((item) => item.id === id)
+    if (!group || group.collapsed || (group.kind !== 'room' && group.kind !== 'rack')) return null
+    return group
+  }
+  const point = (group: NetworkMapGroup) => {
+    const size = groupDisplaySize(group)
+    return { x: Math.round(group.x + size.width - 18), y: Math.round(group.y + size.height / 2) }
+  }
+  const source = frame(sourceParent)
+  const target = frame(targetParent)
+  if (source && target && source.id === target.id) return [point(source)]
+  const out: { x: number; y: number }[] = []
+  if (source) out.push(point(source))
+  if (target) out.push(point(target))
+  return out
+}
+
+export function magnetEquipmentPosition(
+  scene: NetworkMapScene,
+  node: {
+    id: string
+    stencil: string
+    x: number
+    y: number
+    width?: number | null
+    height?: number | null
+    label?: string | null
+    portCount?: number | null
+  },
+): { x: number; y: number } | null {
+  if (node.stencil === 'note' || node.stencil === 'image') return null
+  const width = equipmentWidth(node.stencil, node.label || '', node.width, node.portCount)
+  const height = equipmentHeight(node.stencil, node.label || '', node.height, node.portCount)
+  const frame = scene.groups.find(
+    (group) =>
+      (group.kind === 'room' || group.kind === 'rack') &&
+      !group.collapsed &&
+      groupContainsNode(group, { ...node, width, height }),
+  )
+  if (!frame || (frame.kind !== 'room' && frame.kind !== 'rack')) return null
+  const siblings = scene.nodes
+    .filter((other) => other.id !== node.id && other.stencil !== 'note' && other.stencil !== 'image')
+    .filter((other) => groupContainsNode(frame, other))
+    .map((other) => ({
+      x: other.x,
+      y: other.y,
+      width: equipmentWidth(other.stencil, other.label || '', other.width, other.portCount),
+      height: equipmentHeight(other.stencil, other.label || '', other.height, other.portCount),
+    }))
+  const next = magnetInFrame(
+    { x: node.x, y: node.y },
+    { width, height },
+    { x: frame.x, y: frame.y, width: frame.width, height: frame.height, kind: frame.kind },
+    siblings,
+  )
+  if (next.x === node.x && next.y === node.y) return null
+  return next
 }
 
 function isLinkDown(status: string | undefined): boolean {
@@ -247,6 +327,10 @@ export function toFlowEdges(
       e.linkType === 'hndp'
     const fdb = e.linkType === 'fdb'
     const caption = [e.localPort, e.remotePort].filter(Boolean).join(' → ')
+    const junctions =
+      e.points?.length || source !== e.source || target !== e.target
+        ? []
+        : cableJunctions(parentOf.get(e.source), parentOf.get(e.target), groups)
     const srcDown = isLinkDown(statusById.get(e.source))
     const tgtDown = isLinkDown(statusById.get(e.target))
     const signal = !lan && !subnet && !srcDown && !tgtDown && (lldp || fdb || traced || manual)
@@ -265,6 +349,7 @@ export function toFlowEdges(
           lane: lanes.get(e.id) || 0,
           signal,
           points: e.points || [],
+          junctions,
         },
         label: caption || undefined,
         selectable: true,
@@ -375,14 +460,15 @@ export function decorateSelection(
   const nodes = rfNodes.map((n) => {
     const isSelected = selectedSet.has(n.id) || groupIds.has(n.id)
     const data = n.data as EquipmentNodeData | undefined
+    const locked = Boolean((n.data as { locked?: boolean } | undefined)?.locked)
     if (n.type !== 'equipment') {
-      const className = isSelected ? 'is-pack-selected' : undefined
+      const className = [isSelected ? 'is-pack-selected' : '', locked ? 'is-locked' : ''].filter(Boolean).join(' ') || undefined
       if (n.selected === isSelected && n.className === className) return n
       return { ...n, selected: isSelected, className }
     }
     const neighbor = related.has(n.id) && !isSelected
     const hotPorts = [...(hotByNode.get(n.id) ?? [])]
-    const className = [isSelected ? 'is-pack-selected' : '', neighbor ? 'is-neighbor' : ''].filter(Boolean).join(' ') || undefined
+    const className = [isSelected ? 'is-pack-selected' : '', neighbor ? 'is-neighbor' : '', locked ? 'is-locked' : ''].filter(Boolean).join(' ') || undefined
     const same =
       n.selected === isSelected &&
       n.className === className &&
@@ -423,7 +509,7 @@ export function decorateSelection(
         zIndex: on ? 8 : 1,
         style: {
           ...e.style,
-          stroke: on ? '#2f7d32' : cableStrokeColor((e.data as { linkType?: string } | undefined)?.linkType, e.style?.stroke),
+          stroke: on ? CABLE_STROKE : cableStrokeColor((e.data as { linkType?: string } | undefined)?.linkType, e.style?.stroke),
           strokeWidth: on ? 2.8 : Number(e.style?.strokeWidth || 2.1),
           opacity: on ? 1 : 0.42,
         },
@@ -493,6 +579,7 @@ export function collectScene(
       height: collapsed && prev ? prev.height : Number(n.height || n.style?.height || 280),
       collapsed: collapsed || undefined,
       cidr: data.cidr ?? prev?.cidr ?? null,
+      locked: (data.locked != null ? Boolean(data.locked) : Boolean(prev?.locked)) || undefined,
     })
   }
   const groupIds = new Set(groups.map((g) => g.id))
@@ -513,6 +600,7 @@ export function collectScene(
       width: data.width ?? (typeof n.width === 'number' ? n.width : null),
       height: data.height ?? (typeof n.height === 'number' ? n.height : null),
       portCount: typeof data.portCount === 'number' && data.portCount > 0 ? data.portCount : prevNode.get(n.id)?.portCount ?? null,
+      locked: (data.locked != null ? Boolean(data.locked) : Boolean(prevNode.get(n.id)?.locked)) || undefined,
     })
   }
   for (const node of previous.nodes) {

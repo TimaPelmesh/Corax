@@ -44,6 +44,7 @@ export type NetworkMapSceneNode = {
   width?: number | null
   height?: number | null
   portCount?: number | null
+  locked?: boolean
 }
 
 export type NetworkMapGroup = {
@@ -56,6 +57,7 @@ export type NetworkMapGroup = {
   height: number
   collapsed?: boolean
   cidr?: string | null
+  locked?: boolean
 }
 
 export type NetworkMapSceneEdge = {
@@ -101,6 +103,7 @@ export type MergedCanvasNode = {
   height?: number | null
   ports?: Array<{ id: string; name: string; up?: boolean | null }>
   portCount?: number | null
+  locked?: boolean
 }
 
 export type MergedCanvasEdge = {

@@ -3,7 +3,9 @@ export type CablePoint = { x: number; y: number }
 const INVISIBLE_STROKE =
   /^(white|#fff|#ffffff|#f4f4f5|#fafafa|#f8fafc|currentColor|var\(--color-fg\)|var\(--color-surface\))$/i
 
-/** Packet Tracer-like copper: always a real hex, never theme-white. */
+export const CABLE_STROKE = '#3b82f6'
+
+/** Always a real hex, never theme-white. */
 export function cableStrokeColor(linkType?: string | null, explicit?: unknown): string {
   const raw = String(explicit || '').trim()
   if (
@@ -17,7 +19,7 @@ export function cableStrokeColor(linkType?: string | null, explicit?: unknown): 
   }
   const kind = String(linkType || '').toLowerCase()
   if (kind === 'lan' || kind === 'subnet') return '#6b6b6b'
-  return '#2f7d32'
+  return CABLE_STROKE
 }
 
 export function sanitizeCablePoints(raw: unknown, limit = 8): CablePoint[] {

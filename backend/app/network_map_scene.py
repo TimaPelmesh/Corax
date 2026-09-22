@@ -173,6 +173,8 @@ def normalize_scene(raw: object) -> dict[str, Any]:
             group["cidr"] = cidr
         if item.get("collapsed"):
             group["collapsed"] = True
+        if item.get("locked") is True:
+            group["locked"] = True
         groups.append(group)
 
     nodes: list[dict[str, Any]] = []
@@ -229,6 +231,8 @@ def normalize_scene(raw: object) -> dict[str, Any]:
             node["width"] = width
         if height:
             node["height"] = height
+        if item.get("locked") is True:
+            node["locked"] = True
         nodes.append(node)
 
     edges: list[dict[str, Any]] = []

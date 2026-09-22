@@ -102,6 +102,23 @@ function InlineLabel({
   return <input ref={(el) => { ref.current = el }} {...shared} />
 }
 
+function BoundMark() {
+  const { t } = useLocale()
+  return <span className="network-map-bound" title={t('networkMap.boundMark')} />
+}
+
+function LockMark() {
+  const { t } = useLocale()
+  return (
+    <span className="network-map-lock" title={t('networkMap.lockedMark')}>
+      <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden>
+        <rect x="3.2" y="7" width="9.6" height="6.6" rx="1.2" fill="currentColor" />
+        <path d="M5.2 7V5.3a2.8 2.8 0 0 1 5.6 0V7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    </span>
+  )
+}
+
 function PortStrip({
   ports,
   width,
@@ -115,15 +132,16 @@ function PortStrip({
   const { cols } = chassisPortLayout(ports.length)
   if (!ports.length || cols <= 0) return null
   const inner = Math.max(PORT_CELL, width - PORT_PAD_X * 2)
-  const cell = inner / cols
-  const jackW = Math.max(8, Math.min(11, cell - 3))
+  const packed = cols * PORT_CELL
+  const pitch = packed <= inner ? PORT_CELL : inner / cols
+  const jackW = Math.max(8, Math.min(11, pitch - 3))
   const hot = new Set((hotPorts || []).map((name) => name.toLowerCase()))
   return (
     <>
       {ports.map((port, index) => {
         const col = index % cols
         const row = Math.floor(index / cols)
-        const left = PORT_PAD_X + col * cell + cell / 2
+        const left = PORT_PAD_X + col * pitch + pitch / 2
         const top = GEAR_HEAD + PORT_PAD_Y + row * PORT_ROW + 7
         const hid = portHandleId(port.name) || port.id
         const lit = port.up === true || hot.has(port.name.toLowerCase())
@@ -175,6 +193,7 @@ export type EquipmentNodeData = {
   portCount?: number
   hotPorts?: string[]
   neighbor?: boolean
+  locked?: boolean
   parentGroupId?: string | null
   canRename?: boolean
   onRename?: (next: string) => void
@@ -187,6 +206,7 @@ export type GroupNodeData = {
   cidr?: string | null
   count?: number
   gatewayLabel?: string | null
+  locked?: boolean
   canRename?: boolean
   onRename?: (next: string) => void
 }
@@ -198,8 +218,9 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
   const picked = Boolean(selected || data.selected)
   if (data.stencil === 'note') {
     return (
-      <div className={`h-full min-w-[4.5rem] px-1 py-0.5 ${picked ? 'is-selected' : ''}`}>
+      <div className={`relative h-full min-w-[4.5rem] px-1 py-0.5 ${picked ? 'is-selected' : ''}`}>
         {picked ? <span className="network-map-selection-box" aria-hidden /> : null}
+        {data.locked ? <LockMark /> : null}
         <div className="whitespace-pre-wrap text-[18px] font-semibold leading-snug tracking-tight text-[var(--color-fg)]">
           <InlineLabel
             title={data.title || ''}
@@ -209,7 +230,7 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
             multiline
           />
         </div>
-        <NetworkMapResizer visible={picked} minWidth={96} minHeight={36} maxWidth={640} maxHeight={320} />
+        <NetworkMapResizer visible={picked && !data.locked} minWidth={96} minHeight={36} maxWidth={640} maxHeight={320} />
       </div>
     )
   }
@@ -219,6 +240,7 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
     return (
       <div className={`relative h-full w-full overflow-visible ${picked ? 'is-selected' : ''}`} style={{ width: w, height: h }}>
         {picked ? <span className="network-map-selection-box" aria-hidden /> : null}
+        {data.locked ? <LockMark /> : null}
         <div className="h-full w-full overflow-hidden border border-[var(--color-border)] bg-[var(--color-bg-muted)]">
           {data.imageSrc ? (
             <img src={data.imageSrc} alt={data.title || ''} className="h-full w-full object-contain" draggable={false} />
@@ -226,23 +248,22 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
             <div className="flex h-full items-center justify-center text-xs text-[var(--color-fg-muted)]">{data.title}</div>
           )}
         </div>
-        <NetworkMapResizer visible={picked} minWidth={80} minHeight={48} maxWidth={1600} maxHeight={1200} />
+        <NetworkMapResizer visible={picked && !data.locked} minWidth={80} minHeight={48} maxWidth={1600} maxHeight={1200} />
       </div>
     )
   }
-  const down = data.status === 'error' || data.status === 'offline'
   const ports = (data.ports && data.ports.length > 0)
     ? data.ports
     : chassisPorts(null, data.portCount ?? defaultStencilPortCount(data.stencil) ?? 1)
   const nodeWidth = data.width || 108
   return (
-    <div className={`network-map-gear relative h-full w-full ${picked ? 'is-selected' : ''}`}>
+    <div className={`network-map-gear relative h-full w-full ${picked ? 'is-selected' : ''} ${data.bind ? 'is-bound' : ''}`}>
       {picked ? <span className="network-map-selection-box" aria-hidden /> : null}
+      {data.bind ? <BoundMark /> : null}
+      {data.locked ? <LockMark /> : null}
       <PortStrip ports={ports} width={nodeWidth} hotPorts={data.hotPorts} />
       <div
-        className={`flex w-full flex-col items-center justify-center gap-0 px-1 ${
-          data.missing || down ? 'opacity-55' : ''
-        } ${data.neighbor ? 'is-neighbor-node' : ''}`}
+        className={`flex w-full flex-col items-center justify-center gap-0 px-1 ${data.neighbor ? 'is-neighbor-node' : ''}`}
         style={{ height: GEAR_HEAD }}
       >
         <NetworkMapGlyph kind={data.stencil} size="md" active={picked} neighbor={data.neighbor} />
@@ -258,7 +279,7 @@ export const NetworkMapEquipmentNode = memo(function NetworkMapEquipmentNode({
           ) : null}
         </div>
       </div>
-      <NetworkMapResizer visible={picked} minWidth={108} minHeight={72} maxWidth={760} maxHeight={280} />
+      <NetworkMapResizer visible={picked && !data.locked} minWidth={108} minHeight={72} maxWidth={760} maxHeight={280} />
     </div>
   )
 })
@@ -271,6 +292,7 @@ export const NetworkMapGroupNode = memo(function NetworkMapGroupNode({
   return (
     <div className="relative h-full w-full overflow-visible">
       <div className={`network-map-room-fill is-${data.kind} ${selected ? 'is-selected' : ''} absolute inset-0`} />
+      {data.locked ? <LockMark /> : null}
       <div className="network-map-group-chrome absolute left-2 top-1.5 max-w-[calc(100%-16px)] px-0.5 text-[11px] font-medium text-[var(--color-fg)]">
         <InlineLabel
           title={data.title}
@@ -279,7 +301,7 @@ export const NetworkMapGroupNode = memo(function NetworkMapGroupNode({
           onRename={data.onRename}
         />
       </div>
-      <NetworkMapResizer visible={Boolean(selected) && !collapsed} minWidth={160} minHeight={88} maxWidth={2400} maxHeight={1800} />
+      <NetworkMapResizer visible={Boolean(selected) && !collapsed && !data.locked} minWidth={160} minHeight={88} maxWidth={2400} maxHeight={1800} />
     </div>
   )
 })

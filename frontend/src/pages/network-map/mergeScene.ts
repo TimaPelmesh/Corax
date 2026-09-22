@@ -80,6 +80,7 @@ export function hydrateScene(scene: NetworkMapScene | null | undefined, live: Ma
       height: sn.height ?? null,
       ports: chassisPorts(liveHit?.ports, sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length),
       portCount: sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length ?? null,
+      locked: Boolean(sn.locked) || undefined,
     }
   })
   const placed = new Set(nodes.map((n) => n.id))
@@ -120,6 +121,7 @@ export function sceneFromHydrate(result: HydratedMap, previous?: NetworkMapScene
       width: n.width ?? null,
       height: n.height ?? null,
       portCount: n.portCount ?? null,
+      locked: n.locked || undefined,
     })),
     edges: result.edges.map((e) => ({
       id: e.id,

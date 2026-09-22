@@ -53,6 +53,8 @@ import {
   equipmentWidth,
   followPackLeader,
   isMultiSelectEvent,
+  magnetEquipmentPosition,
+  lockedSceneIds,
   MAX_CHASSIS_PORTS,
   nextCanvasPackIds,
   nextDiagramSlot,
@@ -67,7 +69,7 @@ import {
   toWorldScene,
   viewportFlowCenter,
 } from './network-map/flow'
-import { usedPortsForNode } from './network-map/cables'
+import { CABLE_STROKE, usedPortsForNode } from './network-map/cables'
 import { compressMapImage } from './network-map/image'
 import { bindsFromScene, deviceTypeForStencil, hydrateScene, overlayLiveOnMerged } from './network-map/mergeScene'
 import { applyNeighborCluster, offersFromTopology } from './network-map/neighborsAround'
@@ -253,7 +255,13 @@ function NetworkMapEditor() {
   tRef.current = t
   const loadedOnce = useRef(false)
   const loadingRef = useRef(true)
-  const groupDrag = useRef<{ id: string; x: number; y: number; members: Array<{ id: string; x: number; y: number }> } | null>(
+  const groupDrag = useRef<{
+    id: string
+    x: number
+    y: number
+    members: Array<{ id: string; x: number; y: number }>
+    junctions: Array<{ id: string; points: Array<{ x: number; y: number }> }>
+  } | null>(
     null,
   )
   const nodeDragOrigin = useRef<{ id: string; x: number; y: number } | null>(null)
@@ -627,6 +635,11 @@ function NetworkMapEditor() {
   }, [getNodes, linkArmed, linkFrom, selectCanvasNode])
 
   const onNodeDragStart = useCallback((event: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }, node: Node) => {
+    if (lockedSceneIds(sceneRef.current).has(node.id)) {
+      packDrag.current = null
+      groupDrag.current = null
+      return
+    }
     skipNodeClickRef.current = true
     nodeDragOrigin.current = { id: node.id, x: node.position.x, y: node.position.y }
     if (node.type === 'groupFrame') {
@@ -639,6 +652,10 @@ function NetworkMapEditor() {
         members: sceneRef.current.nodes
           .filter((n) => n.parentGroupId === node.id)
           .map((n) => ({ id: n.id, x: n.x, y: n.y })),
+        junctions: getEdges().flatMap((edge) => {
+          const points = (edge.data as { junctions?: Array<{ x: number; y: number }> } | undefined)?.junctions
+          return points?.length ? [{ id: edge.id, points }] : []
+        }),
       }
       return
     }
@@ -650,7 +667,7 @@ function NetworkMapEditor() {
         selectCanvasNode(node, 'replace')
       }
     }
-    const pack = selectedIdsRef.current
+    const pack = selectedIdsRef.current.filter((id) => !lockedSceneIds(sceneRef.current).has(id))
     const byId = new Map(getNodes().map((n) => [n.id, n]))
     packDrag.current = {
       leader: node.id,
@@ -662,15 +679,17 @@ function NetworkMapEditor() {
         })
         .filter((row): row is { id: string; x: number; y: number } => Boolean(row)),
     }
-  }, [getNodes, selectCanvasNode])
+  }, [getEdges, getNodes, selectCanvasNode])
 
   const onNodesChangePack = useCallback(
     (changes: NodeChange[]) => {
+      const locked = lockedSceneIds(sceneRef.current)
+      const open = locked.size ? changes.filter((c) => !(c.type === 'position' && locked.has(c.id))) : changes
       const pack = packDrag.current
       const packIds = pack && pack.members.length > 1 ? new Set(pack.members.map((m) => m.id)) : null
       const kept = packIds
-        ? changes.map((c) => (c.type === 'select' && packIds.has(c.id) ? { ...c, selected: true } : c))
-        : changes
+        ? open.map((c) => (c.type === 'select' && packIds.has(c.id) ? { ...c, selected: true } : c))
+        : open
       if (!pack || pack.members.length < 2) {
         onNodesChange(kept)
         return
@@ -702,6 +721,7 @@ function NetworkMapEditor() {
 
   const onNodeDrag = useCallback(
     (_: unknown, node: Node) => {
+      if (lockedSceneIds(sceneRef.current).has(node.id)) return
       const group = groupDrag.current
       if (group && node.id === group.id) {
         const dx = node.position.x - group.x
@@ -714,10 +734,26 @@ function NetworkMapEditor() {
             return { ...n, position: { x: mem.x + dx, y: mem.y + dy } }
           }),
         )
+        if (group.junctions.length) {
+          const origins = new Map(group.junctions.map((row) => [row.id, row.points]))
+          setEdges((eds) =>
+            eds.map((edge) => {
+              const points = origins.get(edge.id)
+              if (!points) return edge
+              return {
+                ...edge,
+                data: {
+                  ...(edge.data as object),
+                  junctions: points.map((point) => ({ x: point.x + dx, y: point.y + dy })),
+                },
+              }
+            }),
+          )
+        }
         return
       }
       const pack = packDrag.current
-      if (!pack || pack.leader !== node.id || pack.members.length < 2) return
+      if (pack && pack.leader === node.id && pack.members.length >= 2) {
       const followed = followPackLeader(pack.members, pack.origin, {
         id: pack.leader,
         x: node.position.x,
@@ -731,8 +767,30 @@ function NetworkMapEditor() {
           return { ...n, position: { x: mem.x, y: mem.y }, selected: true }
         }),
       )
+      return
+    }
+    if (node.type !== 'equipment') return
+    const data = node.data as EquipmentNodeData
+    const live = sceneRef.current.nodes.map((item) =>
+      item.id === node.id ? { ...item, x: node.position.x, y: node.position.y } : item,
+    )
+    const snapped = magnetEquipmentPosition(
+      { ...sceneRef.current, nodes: live },
+      {
+        id: node.id,
+        stencil: data.stencil,
+        x: node.position.x,
+        y: node.position.y,
+        width: data.width ?? null,
+        height: data.height ?? null,
+        label: data.title,
+        portCount: data.portCount ?? null,
+      },
+    )
+    if (!snapped) return
+    setNodes((nds) => nds.map((item) => (item.id === node.id ? { ...item, position: snapped } : item)))
     },
-    [setNodes],
+    [setEdges, setNodes],
   )
 
   const onNodeDragStop = useCallback(
@@ -777,6 +835,16 @@ function NetworkMapEditor() {
         let nested = current
         const members = pack && pack.members.length > 1 ? pack.members.map((m) => m.id) : [node.id]
         for (const id of members) nested = applyFrameMembership(nested, id, rf)
+        for (const id of members) {
+          const item = nested.nodes.find((n) => n.id === id)
+          if (!item) continue
+          const snapped = magnetEquipmentPosition(nested, item)
+          if (!snapped) continue
+          nested = {
+            ...nested,
+            nodes: nested.nodes.map((n) => (n.id === id ? { ...n, x: snapped.x, y: snapped.y } : n)),
+          }
+        }
         persist(nested)
         return
       }
@@ -1076,7 +1144,7 @@ function NetworkMapEditor() {
             id: newId('scene-edge'),
             type: 'cable',
             data: { persisted: false, linkType: 'manual', linkDbId: null, lane: 0 },
-            style: { stroke: '#2f7d32', strokeWidth: 2.35 },
+            style: { stroke: CABLE_STROKE, strokeWidth: 2.35 },
           },
           eds,
         ),
@@ -1360,6 +1428,21 @@ function NetworkMapEditor() {
     persist(current)
   }
 
+  const toggleLock = (nodeIds: string[], groupIds: string[]) => {
+    const current = sceneFromCanvas()
+    const nodeSet = new Set(nodeIds)
+    const groupSet = new Set(groupIds)
+    const flags = [
+      ...nodeIds.map((id) => Boolean(current.nodes.find((n) => n.id === id)?.locked)),
+      ...groupIds.map((id) => Boolean(current.groups.find((g) => g.id === id)?.locked)),
+    ]
+    if (!flags.length) return
+    const next = flags.some((locked) => !locked)
+    current.nodes = current.nodes.map((n) => (nodeSet.has(n.id) ? { ...n, locked: next || undefined } : n))
+    current.groups = current.groups.map((g) => (groupSet.has(g.id) ? { ...g, locked: next || undefined } : g))
+    persist(current)
+  }
+
   const onGroupSize = (width: number, height: number) => {
     if (!selectedGroup) return
     const current = sceneFromCanvas()
@@ -1382,6 +1465,7 @@ function NetworkMapEditor() {
       y: slot.y,
       bind: null,
       label: node.label ? `${node.label} 2` : node.id,
+      locked: undefined,
     })
     persist(applySceneFrameMembership(current, copyId))
     setSelectedIds([copyId])
@@ -1484,7 +1568,9 @@ function NetworkMapEditor() {
       ]
     }
     if (ctxMenu.kind === 'group') {
+      const group = scene.groups.find((g) => g.id === ctxMenu.id)
       return [
+        { id: 'lock', label: group?.locked ? t('networkMap.unlock') : t('networkMap.lock') },
         { id: 'select-inside', label: t('networkMap.ctxSelectInside') },
         { id: 'delete-group', label: t('networkMap.remove'), danger: true },
       ]
@@ -1492,6 +1578,7 @@ function NetworkMapEditor() {
     const node = mergedNodes.find((n) => n.id === ctxMenu.id)
     const connectable = node && node.stencil !== 'note' && node.stencil !== 'image'
     return [
+      { id: 'lock', label: node?.locked ? t('networkMap.unlock') : t('networkMap.lock') },
       ...(connectable ? [{ id: 'connect', label: t('networkMap.ctxConnect') }] : []),
       { id: 'duplicate', label: t('networkMap.ctxDuplicate') },
       ...(node?.bind && node.bind.type !== 'corax' && node.bind.type !== 'zabbix'
@@ -1499,7 +1586,7 @@ function NetworkMapEditor() {
         : []),
       { id: 'delete', label: t('networkMap.remove'), danger: true },
     ]
-  }, [canEdit, ctxMenu, mergedNodes, t])
+  }, [canEdit, ctxMenu, mergedNodes, scene.groups, t])
 
   const runContext = (action: string) => {
     const menu = ctxMenu
@@ -1571,6 +1658,11 @@ function NetworkMapEditor() {
       current.edges = current.edges.filter((e) => e.id !== menu.id)
       setSelectedEdgeId(null)
       persist(current)
+      return
+    }
+    if (action === 'lock' && menu.id) {
+      if (menu.kind === 'group') toggleLock([], [menu.id])
+      else toggleLock([menu.id], [])
       return
     }
     if (action === 'select-inside' && menu.id) {
@@ -1916,7 +2008,7 @@ function NetworkMapEditor() {
                   y1={linkFrom.y ?? cursor.y}
                   x2={cursor.x}
                   y2={cursor.y}
-                  stroke="#2f7d32"
+                  stroke={CABLE_STROKE}
                   strokeWidth="2"
                   strokeDasharray="6 6"
                 />
@@ -1930,7 +2022,7 @@ function NetworkMapEditor() {
               edgeTypes={EDGE_TYPES}
               defaultEdgeOptions={{ type: 'cable' }}
               connectionLineType={ConnectionLineType.SmoothStep}
-              connectionLineStyle={{ stroke: '#2f7d32', strokeWidth: 2.2 }}
+              connectionLineStyle={{ stroke: CABLE_STROKE, strokeWidth: 2.2 }}
               connectionMode={ConnectionMode.Loose}
               connectionRadius={36}
               onNodesChange={onNodesChangePack}
@@ -2071,6 +2163,16 @@ function NetworkMapEditor() {
                     onPortCount={onPortCount}
                     onGroupSize={onGroupSize}
                     onResetCableBend={onResetCableBend}
+                    onToggleLock={() => {
+                      if (selectedIds.length > 1) toggleLock(selectedIds, selectedGroupId ? [selectedGroupId] : [])
+                      else if (selected) toggleLock([selected.id], [])
+                      else if (selectedGroup) toggleLock([], [selectedGroup.id])
+                    }}
+                    selectionAllLocked={
+                      selectedIds.length > 1
+                        ? selectedIds.every((id) => scene.nodes.find((n) => n.id === id)?.locked)
+                        : Boolean(selected?.locked || selectedGroup?.locked)
+                    }
                   />
                 </div>
               </div>

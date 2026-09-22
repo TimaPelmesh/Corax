@@ -10,6 +10,7 @@ type CableData = {
   highlight?: 'related' | 'dim'
   signal?: boolean
   points?: CablePoint[]
+  junctions?: CablePoint[]
   canEdit?: boolean
   persistRef?: MutableRefObject<() => void>
 }
@@ -41,7 +42,9 @@ export function NetworkMapCableEdge({
   const dim = data?.highlight === 'dim' && !selected
   const lane = Number(data?.lane || 0)
   const points = sanitizeCablePoints(data?.points)
+  const junctions = sanitizeCablePoints(data?.junctions)
   const bent = points.length > 0
+  const bundled = !bent && junctions.length > 0
   const [autoPath, autoLabelX, autoLabelY] = getSmoothStepPath({
     sourceX,
     sourceY,
@@ -54,7 +57,9 @@ export function NetworkMapCableEdge({
   })
   const routed = bent
     ? cableBendPath([{ x: sourceX, y: sourceY }, ...points, { x: targetX, y: targetY }])
-    : null
+    : bundled
+      ? cableBendPath([{ x: sourceX, y: sourceY }, ...junctions, { x: targetX, y: targetY }])
+      : null
   const path = routed?.d || autoPath
   const labelX = routed?.labelX ?? autoLabelX
   const labelY = routed?.labelY ?? autoLabelY

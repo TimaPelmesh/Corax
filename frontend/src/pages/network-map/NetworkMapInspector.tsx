@@ -61,6 +61,8 @@ type Props = {
   onPortCount?: (count: number | null) => void
   onGroupSize?: (width: number, height: number) => void
   onResetCableBend?: () => void
+  onToggleLock?: () => void
+  selectionAllLocked?: boolean
 }
 
 function statusLabel(status: string | null | undefined, t: (key: MessageKey) => string): string {
@@ -97,6 +99,8 @@ export function NetworkMapInspector({
   onPortCount,
   onGroupSize,
   onResetCableBend,
+  onToggleLock,
+  selectionAllLocked = false,
 }: Props) {
   const t = useT()
   const [tab, setTab] = useState<Tab>('network')
@@ -233,6 +237,15 @@ export function NetworkMapInspector({
       <aside className={shell}>
         <div className="text-sm font-semibold leading-5">{t('networkMap.selectedCount', { n: selectionCount })}</div>
         <p className="text-[11px] leading-5 text-[var(--color-fg-subtle)]">{t('networkMap.shiftSelectHint')}</p>
+        {canEdit && onToggleLock ? (
+          <button
+            type="button"
+            onClick={onToggleLock}
+            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+          >
+            {selectionAllLocked ? t('networkMap.unlockSelection') : t('networkMap.lockSelection')}
+          </button>
+        ) : null}
         {canEdit ? (
           <button
             type="button"
@@ -352,6 +365,18 @@ export function NetworkMapInspector({
           </div>
         ) : null}
         <p className="text-[11px] leading-5 text-[var(--color-fg-subtle)]">{t('networkMap.roomHint')}</p>
+        {canEdit && onToggleLock ? (
+          <>
+            <button
+              type="button"
+              onClick={onToggleLock}
+              className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+            >
+              {group.locked ? t('networkMap.unlock') : t('networkMap.lock')}
+            </button>
+            <p className="text-[11px] leading-5 text-[var(--color-fg-subtle)]">{t('networkMap.lockHint')}</p>
+          </>
+        ) : null}
         {canEdit ? (
           <button
             type="button"
@@ -413,6 +438,7 @@ export function NetworkMapInspector({
             {t(`networkMap.stencil.${node.stencil}` as MessageKey)}
             {node.missing ? ` · ${t('networkMap.missing')}` : ''}
             {!decor ? ` · ${statusLabel(node.status, t)}` : ''}
+            {node.locked ? ` · ${t('networkMap.lockedMark')}` : ''}
           </div>
         </div>
       </div>
@@ -553,7 +579,7 @@ export function NetworkMapInspector({
           ) : null}
           <div>
             <div className="text-xs text-[var(--color-fg-subtle)]">{t('networkMap.bind')}</div>
-            <div className="mt-1 text-sm">
+            <div className={`mt-1 text-sm ${node.bind ? 'network-map-bind-pill' : ''}`}>
               {node.bind ? `${node.label}${node.ip ? ` · ${node.ip}` : ''}` : t('networkMap.bindNone')}
             </div>
             {node.bind ? (
@@ -670,6 +696,18 @@ export function NetworkMapInspector({
             }}
           />
         </label>
+      ) : null}
+      {canEdit && onToggleLock ? (
+        <>
+          <button
+            type="button"
+            onClick={onToggleLock}
+            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg-muted)]"
+          >
+            {node.locked ? t('networkMap.unlock') : t('networkMap.lock')}
+          </button>
+          <p className="text-[11px] leading-5 text-[var(--color-fg-subtle)]">{t('networkMap.lockHint')}</p>
+        </>
       ) : null}
       {canEdit ? (
         <button
