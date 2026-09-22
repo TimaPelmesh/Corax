@@ -35,7 +35,26 @@ def _host_keys(row: NetworkDevice) -> set[str]:
     return out
 
 
-async def merge_zabbix_into_network_devices(db: AsyncSession, *, limit: int = 500) -> dict[str, int]:
+def match_zabbix_device(
+    ip: str,
+    host: str,
+    name: str,
+    by_ip: dict[str, NetworkDevice],
+    by_name: dict[str, NetworkDevice],
+) -> NetworkDevice | None:
+    """Совпадение по IP. Чужое имя с другим адресом не прячет новый хост."""
+    if ip:
+        return by_ip.get(ip)
+    keys = {host.lower(), name.lower(), host.lower().split(".", 1)[0], name.lower().split(".", 1)[0]}
+    keys.discard("")
+    for key in keys:
+        row = by_name.get(key)
+        if row is not None:
+            return row
+    return None
+
+
+async def merge_zabbix_into_network_devices(db: AsyncSession, *, limit: int = 5000) -> dict[str, int]:
     """
     Pull Zabbix hosts into the Network tab: enrich matching devices, create stubs
     for hosts that SNMP has not seen yet. Never overwrites SNMP identity.
@@ -80,14 +99,7 @@ async def merge_zabbix_into_network_devices(db: AsyncSession, *, limit: int = 50
             "status": item.get("status"),
             "ip": ip or None,
         }
-        row = by_ip.get(ip) if ip else None
-        if row is None:
-            keys = {host.lower(), name.lower(), host.lower().split(".", 1)[0], name.lower().split(".", 1)[0]}
-            keys.discard("")
-            for key in keys:
-                row = by_name.get(key)
-                if row is not None:
-                    break
+        row = match_zabbix_device(ip, host, name, by_ip, by_name)
         if row is not None:
             _merge_extras(row, {"zabbix": zb})
             if not row.hostname and name:
@@ -109,18 +121,20 @@ async def merge_zabbix_into_network_devices(db: AsyncSession, *, limit: int = 50
             _merge_extras(existing, {"zabbix": zb})
             stats["matched"] += 1
             continue
-        db.add(
-            NetworkDevice(
-                dedupe_key=dedupe,
-                ip_address=ip,
-                hostname=(name or host or f"zabbix {ip}")[:255],
-                device_type="unknown",
-                snmp_status="n/a",
-                source="zabbix",
-                last_seen_at=now,
-                extras_json=json.dumps({"zabbix": zb}, ensure_ascii=False),
-            )
+        created = NetworkDevice(
+            dedupe_key=dedupe,
+            ip_address=ip,
+            hostname=(name or host or f"zabbix {ip}")[:255],
+            device_type="unknown",
+            snmp_status="n/a",
+            source="zabbix",
+            last_seen_at=now,
+            extras_json=json.dumps({"zabbix": zb}, ensure_ascii=False),
         )
+        db.add(created)
+        by_ip[ip] = created
+        for key in _host_keys(created):
+            by_name.setdefault(key, created)
         stats["created"] += 1
 
     await db.commit()

@@ -505,7 +505,7 @@ async def list_devices(
     q: str | None = Query(default=None),
     device_type: str | None = Query(default=None),
     role: str | None = Query(default=None),
-    limit: int = Query(default=500, ge=1, le=2000),
+    limit: int = Query(default=500, ge=1, le=5000),
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

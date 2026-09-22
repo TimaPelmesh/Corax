@@ -22,8 +22,8 @@ from app.text_sanitize import deep_strip_nul, pg_text
 from app.network_classify import NETWORK_DEVICE_TYPES, network_dedupe_key_for_ip
 from app.network_link_builder import build_host_index, rebuild_all_links, rebuild_links_for_device
 from app.network_poll_config import get_effective_network_poll_config, get_network_poll_config_row
-from app.network_snmp import NetworkSnmpSnapshot, fetch_network_snmp, probe_network_snmp
-from app.network_snmp_discover import discover_network_devices, sync_printer_from_network_snap, upsert_discovered_device
+from app.network_snmp import NetworkSnmpSnapshot, fetch_network_snmp
+from app.network_snmp_discover import discover_network_devices, sync_printer_from_network_snap
 from app.printer_poll_config import get_effective_printer_poll_config
 
 _WIN32 = platform.system().lower() == "windows"
@@ -206,7 +206,8 @@ async def seed_devices_from_neighbors(
     community: str,
     timeout: float = 1.2,
 ) -> int:
-    """Create/update network_devices from LLDP/CDP neighbor IPs and device IP lists."""
+    """Соседей с адресом сразу кладём во вкладку «Сеть», без опроса. Тип потом правит пользователь."""
+    del community, timeout
     devices = (await db.execute(select(NetworkDevice))).scalars().all()
     known_ips = {d.ip_address.strip() for d in devices if d.ip_address}
     candidates: dict[str, str] = {}  # ip -> hint name
@@ -241,55 +242,31 @@ async def seed_devices_from_neighbors(
     if not candidates:
         return 0
 
-    probed: list[tuple[str, NetworkSnmpSnapshot | None]] = []
-
-    async def probe_one(ip: str) -> None:
-        snap = await probe_network_snmp(ip, community=community, timeout=timeout)
-        if snap.device_type == "printer":
-            probed.append((ip, snap))
-            return
-        if snap.sys_descr or snap.sys_name or snap.sys_object_id:
-            probed.append((ip, snap))
-        else:
-            # Keep as topology stub even without SNMP
-            probed.append((ip, None))
-
-    await run_async_pool(
-        list(candidates.keys()),
-        probe_one,
-        concurrency=min(16 if _WIN32 else 24, max(1, len(candidates))),
-    )
-
     seeded = 0
     now = datetime.now(timezone.utc)
-    for ip, snap in probed:
-        if snap is None:
-            hint = candidates.get(ip) or f"neighbor {ip}"
-            dedupe = network_dedupe_key_for_ip(ip)
-            existing = (
-                await db.execute(
-                    select(NetworkDevice).where(
-                        (NetworkDevice.ip_address == ip) | (NetworkDevice.dedupe_key == dedupe)
-                    ).limit(1)
-                )
-            ).scalar_one_or_none()
-            if existing is None:
-                db.add(
-                    NetworkDevice(
-                        dedupe_key=dedupe,
-                        ip_address=ip,
-                        hostname=hint[:255],
-                        device_type="unknown",
-                        snmp_status="unknown",
-                        source="neighbor",
-                        last_seen_at=now,
-                    )
-                )
-                seeded += 1
+    for ip, hint in candidates.items():
+        dedupe = network_dedupe_key_for_ip(ip)
+        existing = (
+            await db.execute(
+                select(NetworkDevice).where(
+                    (NetworkDevice.ip_address == ip) | (NetworkDevice.dedupe_key == dedupe)
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
             continue
-        action = await upsert_discovered_device(db, ip, snap, now=now, source="neighbor")
-        if action == "created":
-            seeded += 1
+        db.add(
+            NetworkDevice(
+                dedupe_key=dedupe,
+                ip_address=ip,
+                hostname=(hint or f"neighbor {ip}")[:255],
+                device_type="unknown",
+                snmp_status="unknown",
+                source="neighbor",
+                last_seen_at=now,
+            )
+        )
+        seeded += 1
 
     await db.commit()
     return seeded

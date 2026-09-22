@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 from dataclasses import dataclass, field
@@ -532,8 +533,40 @@ def fetch_problem_rows(session: ZabbixSession, *, limit: int = 50, hostids: list
     return out
 
 
+def usable_ipv4(raw: object) -> str | None:
+    """Адрес, по которому устройство можно положить во вкладку «Сеть». Петля и link-local не считаются."""
+    text = str(raw or "").strip().split("/")[0].split("%")[0]
+    if not text:
+        return None
+    try:
+        addr = ipaddress.ip_address(text)
+    except ValueError:
+        return None
+    if not isinstance(addr, ipaddress.IPv4Address):
+        return None
+    if addr.is_loopback or addr.is_link_local or addr.is_multicast or addr.is_unspecified or addr.is_reserved:
+        return None
+    return str(addr)
+
+
+def _host_ipv4(ifaces: object) -> str:
+    ranked: list[tuple[int, str]] = []
+    if not isinstance(ifaces, list):
+        return ""
+    for iface in ifaces:
+        if not isinstance(iface, dict):
+            continue
+        ip = usable_ipv4(iface.get("ip")) or usable_ipv4(iface.get("dns"))
+        if not ip:
+            continue
+        main = 0 if str(iface.get("main") or "") == "1" else 1
+        ranked.append((main, ip))
+    ranked.sort()
+    return ranked[0][1] if ranked else ""
+
+
 def fetch_host_rows(session: ZabbixSession, *, limit: int = 100) -> list[dict[str, Any]]:
-    lim = max(1, min(int(limit), 500))
+    lim = max(1, min(int(limit), 5000))
     rows = session.call(
         "host.get",
         {
@@ -550,19 +583,7 @@ def fetch_host_rows(session: ZabbixSession, *, limit: int = 100) -> list[dict[st
     for row in rows:
         if not isinstance(row, dict):
             continue
-        ip = ""
-        ifaces = row.get("interfaces") if isinstance(row.get("interfaces"), list) else []
-        for iface in ifaces:
-            if not isinstance(iface, dict):
-                continue
-            if str(iface.get("main") or "") == "1" and (iface.get("ip") or "").strip():
-                ip = str(iface.get("ip")).strip()
-                break
-        if not ip:
-            for iface in ifaces:
-                if isinstance(iface, dict) and (iface.get("ip") or "").strip():
-                    ip = str(iface.get("ip")).strip()
-                    break
+        ip = _host_ipv4(row.get("interfaces"))
         status = _as_int(row.get("status"))
         out.append(
             {

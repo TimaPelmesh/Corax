@@ -178,7 +178,7 @@ async def get_hosts_payload(db: AsyncSession, *, limit: int = 100) -> dict[str, 
     if not ok or row is None:
         return {"enabled": False, "available": False, "message": msg, "items": [], "total": None}
 
-    lim = max(1, min(int(limit), 500))
+    lim = max(1, min(int(limit), 5000))
     cache_key = f"hosts:{lim}"
     cached = _cache_get(cache_key)
     if cached is not None:

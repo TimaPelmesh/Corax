@@ -129,7 +129,7 @@ export function NetworkPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
 
   const reload = useCallback(async () => {
-    const devices = await api.networkDevices({ q: search.trim() || undefined, limit: 1000 })
+    const devices = await api.networkDevices({ q: search.trim() || undefined, limit: 5000 })
     setRows(devices)
     return devices
   }, [search])
