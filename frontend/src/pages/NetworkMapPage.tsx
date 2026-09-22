@@ -12,6 +12,7 @@ import ReactFlow, {
   useReactFlow,
   type Connection,
   type Edge,
+  type EdgeChange,
   type EdgeTypes,
   type Node,
   type NodeChange,
@@ -104,8 +105,17 @@ function newId(prefix: string): string {
   return `${prefix}:${randomId()}`
 }
 
-function overlayLiveOnFlow(nodes: Node[], live: MapLiveItem[]): Node[] {
+function overlayLiveOnFlow(
+  nodes: Node[],
+  live: MapLiveItem[],
+  edges: Array<{ source: string; target: string; local_port?: string | null; remote_port?: string | null }> = [],
+): Node[] {
   const byKey = new Map(live.map((item) => [bindKey({ type: item.type, id: item.id }), item]))
+  const pins = new Map<string, string[]>()
+  for (const edge of edges) {
+    if (edge.local_port) pins.set(edge.source, [...(pins.get(edge.source) || []), edge.local_port])
+    if (edge.remote_port) pins.set(edge.target, [...(pins.get(edge.target) || []), edge.remote_port])
+  }
   return nodes.map((n) => {
     if (n.type !== 'equipment') return n
     const data = n.data as EquipmentNodeData
@@ -121,7 +131,7 @@ function overlayLiveOnFlow(nodes: Node[], live: MapLiveItem[]): Node[] {
         subtitle: hit.ip || data.subtitle,
         status: hit.status,
         missing: hit.missing,
-        ports: chassisPorts(hit.ports ?? data.ports, portCount),
+        ports: chassisPorts(hit.ports ?? data.ports, portCount, pins.get(n.id)),
         portCount,
       },
     }
@@ -446,8 +456,8 @@ function NetworkMapEditor() {
       const live = await api.networkMapLive(binds)
       const items = toLive(live.items)
       liveRef.current = items
-      setMergedNodes((ns) => overlayLiveOnMerged(ns, items))
-      setNodes((ns) => overlayLiveOnFlow(ns, items))
+      setMergedNodes((ns) => overlayLiveOnMerged(ns, items, next.edges))
+      setNodes((ns) => overlayLiveOnFlow(ns, items, next.edges))
     } catch {
       /* scene already visible */
     }
@@ -1488,12 +1498,23 @@ function NetworkMapEditor() {
     [canEdit, getNodes],
   )
 
+  const onEdgesChangeKeep = useCallback(
+    (changes: EdgeChange[]) => {
+      onEdgesChange(changes.filter((change) => change.type !== 'remove'))
+    },
+    [onEdgesChange],
+  )
+
   const onEdgesDelete: OnEdgesDelete = useCallback(
     (removed: Edge[]) => {
       if (!canEdit) return
       const gone = new Set(removed.map((e) => e.id))
       setSelectedEdgeId((id) => (id && gone.has(id) ? null : id))
-      window.setTimeout(() => persist(sceneFromCanvas()), 0)
+      window.setTimeout(() => {
+        const current = sceneFromCanvas()
+        current.edges = current.edges.filter((edge) => !gone.has(edge.id))
+        persist(current)
+      }, 0)
     },
     [canEdit, persist, sceneFromCanvas],
   )
@@ -1569,7 +1590,12 @@ function NetworkMapEditor() {
     const keptH = equipmentHeight(selected.stencil, selected.label, selected.height, selected.portCount)
     const w = keptW
     const h = equipmentHeight(selected.stencil, selected.label, keptH, portCount)
-    const ports = chassisPorts(selected.ports, portCount)
+    const pinned = sceneRef.current.edges.flatMap((edge) => {
+      if (edge.source === selected.id && edge.local_port) return [edge.local_port]
+      if (edge.target === selected.id && edge.remote_port) return [edge.remote_port]
+      return []
+    })
+    const ports = chassisPorts(selected.ports, portCount, pinned)
     setNodes((ns) =>
       ns.map((n) =>
         n.id === selected.id
@@ -2187,7 +2213,7 @@ function NetworkMapEditor() {
               connectionMode={ConnectionMode.Loose}
               connectionRadius={36}
               onNodesChange={onNodesChangePack}
-              onEdgesChange={onEdgesChange}
+              onEdgesChange={onEdgesChangeKeep}
               onNodeDragStart={onNodeDragStart}
               onNodeDrag={onNodeDrag}
               onNodeDragStop={onNodeDragStop}

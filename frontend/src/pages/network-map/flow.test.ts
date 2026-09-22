@@ -10,6 +10,7 @@ import {
   magnetEquipmentPosition,
   nextCanvasPackIds,
   addToCanvasPack,
+  chassisPorts,
   portsForPicker,
   releaseNodeFromGroup,
   applySceneFrameMembership,
@@ -21,6 +22,20 @@ import {
 } from './flow'
 import { absoluteExportBoxes, contentBounds } from './cables'
 import { emptyNetworkMapScene } from './types'
+
+describe('chassis ports', () => {
+  it('keeps a jack a cable is already plugged into when live names replace the strip', () => {
+    const ports = chassisPorts(
+      [
+        { id: 'a', name: 'Gi1/0/1' },
+        { id: 'b', name: 'Gi1/0/2' },
+      ],
+      2,
+      ['1'],
+    )
+    expect(ports.map((port) => port.name)).toContain('1')
+  })
+})
 
 describe('viewportFlowCenter', () => {
   it('maps the pane center into flow coordinates', () => {

@@ -56,9 +56,26 @@ function liveMap(items: MapLiveItem[]): Map<string, MapLiveItem> {
   return out
 }
 
+function cablePortPins(edges: Array<{ source: string; target: string; local_port?: string | null; remote_port?: string | null }>): Map<string, string[]> {
+  const pins = new Map<string, string[]>()
+  const add = (id: string, port?: string | null) => {
+    const name = (port || '').trim()
+    if (!id || !name) return
+    const list = pins.get(id) || []
+    list.push(name)
+    pins.set(id, list)
+  }
+  for (const edge of edges) {
+    add(edge.source, edge.local_port)
+    add(edge.target, edge.remote_port)
+  }
+  return pins
+}
+
 export function hydrateScene(scene: NetworkMapScene | null | undefined, live: MapLiveItem[] = []): HydratedMap {
   const base = scene ?? emptyNetworkMapScene()
   const liveByKey = liveMap(live)
+  const pins = cablePortPins(base.edges)
   const nodes: MergedCanvasNode[] = base.nodes.map((sn) => {
     const bind = sn.bind ?? null
     const liveHit = bind ? liveByKey.get(bindKey(bind)) : undefined
@@ -78,7 +95,7 @@ export function hydrateScene(scene: NetworkMapScene | null | undefined, live: Ma
       imageSrc: sn.imageSrc ?? null,
       width: sn.width ?? null,
       height: sn.height ?? null,
-      ports: chassisPorts(liveHit?.ports, sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length),
+      ports: chassisPorts(liveHit?.ports, sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length, pins.get(sn.id)),
       portCount: sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length ?? null,
       locked: Boolean(sn.locked) || undefined,
     }
@@ -137,8 +154,13 @@ export function sceneFromHydrate(result: HydratedMap, previous?: NetworkMapScene
   }
 }
 
-export function overlayLiveOnMerged(nodes: MergedCanvasNode[], live: MapLiveItem[]): MergedCanvasNode[] {
+export function overlayLiveOnMerged(
+  nodes: MergedCanvasNode[],
+  live: MapLiveItem[],
+  edges: Array<{ source: string; target: string; local_port?: string | null; remote_port?: string | null }> = [],
+): MergedCanvasNode[] {
   const liveByKey = liveMap(live)
+  const pins = cablePortPins(edges)
   return nodes.map((n) => {
     const hit = n.bind ? liveByKey.get(bindKey(n.bind)) : undefined
     if (!hit) return n
@@ -149,7 +171,7 @@ export function overlayLiveOnMerged(nodes: MergedCanvasNode[], live: MapLiveItem
       vendor: hit.vendor ?? n.vendor,
       status: hit.status ?? n.status,
       missing: hit.missing,
-      ports: chassisPorts(hit.ports ?? n.ports, n.portCount ?? hit.portCount),
+      ports: chassisPorts(hit.ports ?? n.ports, n.portCount ?? hit.portCount, pins.get(n.id)),
       portCount: n.portCount ?? hit.portCount ?? null,
     }
   })

@@ -29,9 +29,19 @@ export function chassisPortLayout(count: number): { cols: number; rows: number }
 export function chassisPorts(
   live: Array<{ id: string; name: string; up?: boolean | null }> | null | undefined,
   count?: number | null,
+  pinned?: Array<string | null | undefined> | null,
 ): Array<{ id: string; name: string; up?: boolean | null }> {
   const named: Array<{ id: string; name: string; up?: boolean | null }> = []
   const seen = new Set<string>()
+  const pinnedRows: Array<{ id: string; name: string }> = []
+  for (const raw of pinned || []) {
+    const name = (raw || '').trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    pinnedRows.push({ id: `pin:${name}`, name })
+  }
   for (const port of live || []) {
     const name = (port.name || '').trim()
     if (!name) continue
@@ -39,12 +49,14 @@ export function chassisPorts(
     if (seen.has(key)) continue
     seen.add(key)
     named.push({ id: port.id || name, name, up: port.up })
-    if (named.length >= MAX_CHASSIS_PORTS) break
+    if (named.length + pinnedRows.length >= MAX_CHASSIS_PORTS) break
   }
-  const n = count != null && count > 0 ? Math.min(MAX_CHASSIS_PORTS, Math.floor(count)) : named.length
+  const merged = [...pinnedRows, ...named]
+  const requested = count != null && count > 0 ? Math.min(MAX_CHASSIS_PORTS, Math.floor(count)) : merged.length
+  const n = Math.min(MAX_CHASSIS_PORTS, Math.max(requested, pinnedRows.length))
   if (n <= 0) return []
-  const out = named.slice(0, n)
-  for (let i = out.length + 1; i <= n; i += 1) {
+  const out = merged.slice(0, n)
+  for (let i = out.length + 1; i <= requested; i += 1) {
     out.push({ id: `slot:${i}`, name: String(i) })
   }
   return out
