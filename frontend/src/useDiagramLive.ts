@@ -41,9 +41,18 @@ export function useDiagramLive(params: {
   lastLocalCommitAtRef: MutableRefObject<number>
   refetchLayout: () => Promise<void>
   onRemoteIconDragRef?: MutableRefObject<((p: DiagramLiveIconDrag) => void) | null>
+  socketUrl?: (id: number) => string
 }) {
-  const { diagramId, enabled, saveState, autosaveInFlightRef, lastLocalCommitAtRef, refetchLayout, onRemoteIconDragRef } =
-    params
+  const {
+    diagramId,
+    enabled,
+    saveState,
+    autosaveInFlightRef,
+    lastLocalCommitAtRef,
+    refetchLayout,
+    onRemoteIconDragRef,
+    socketUrl = diagramLiveWebSocketUrl,
+  } = params
 
   const [liveConnected, setLiveConnected] = useState(false)
   const [peers, setPeers] = useState<DiagramLivePeer[]>([])
@@ -60,7 +69,7 @@ export function useDiagramLive(params: {
 
   const connect = useCallback(() => {
     if (!diagramId || !enabled) return
-    const url = diagramLiveWebSocketUrl(diagramId)
+    const url = socketUrl(diagramId)
     const ws = new WebSocket(url)
     wsRef.current = ws
     ws.onopen = () => {
@@ -121,7 +130,7 @@ export function useDiagramLive(params: {
         return
       }
     }
-  }, [autosaveInFlightRef, diagramId, enabled, lastLocalCommitAtRef, onRemoteIconDragRef, refetchLayout])
+  }, [autosaveInFlightRef, diagramId, enabled, lastLocalCommitAtRef, onRemoteIconDragRef, refetchLayout, socketUrl])
 
   const sendIconDrag = useCallback((icons: Array<{ id: string; x: number; y: number }>) => {
     const ws = wsRef.current

@@ -21,7 +21,8 @@ import ReactFlow, {
   type OnNodesDelete,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { api, type NetworkDevice, type NetworkMapLiveItem, type NetworkMapSceneDto, type NetworkPrinter, type NetworkTopology } from '../api'
+import { api, networkMapLiveWebSocketUrl, type NetworkDevice, type NetworkMapLiveItem, type NetworkMapSceneDto, type NetworkPrinter, type NetworkTopology } from '../api'
+import { useDiagramLive, type DiagramLiveIconDrag } from '../useDiagramLive'
 import { useAuth } from '../AuthContext'
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { NetworkDeviceDetailModal } from '../components/NetworkDeviceDetailModal'
@@ -61,6 +62,7 @@ import {
   nextSlotInGroup,
   occupiedBoxes,
   portHandleId,
+  targetPortHandleId,
   portsForPicker,
   RACK_SIZE,
   ROOM_SIZE,
@@ -273,6 +275,11 @@ function NetworkMapEditor() {
     origin: { x: number; y: number }
     members: Array<{ id: string; x: number; y: number }>
   } | null>(null)
+  const collabBusyRef = useRef(false)
+  const lastLocalCommitAtRef = useRef(0)
+  const saveGenRef = useRef(0)
+  const onRemoteIconDragRef = useRef<((p: DiagramLiveIconDrag) => void) | null>(null)
+  const liveDragSent = useRef(0)
   const renameNodeRef = useRef<(id: string, label: string) => void>(() => undefined)
   const renameGroupRef = useRef<(id: string, title: string) => void>(() => undefined)
   const persistRef = useRef<() => void>(() => undefined)
@@ -380,16 +387,26 @@ function NetworkMapEditor() {
       setUndoEpoch((n) => n + 1)
       if (saveTimer.current) window.clearTimeout(saveTimer.current)
       const run = () => {
+        saveTimer.current = null
+        const gen = ++saveGenRef.current
+        collabBusyRef.current = true
+        lastLocalCommitAtRef.current = Date.now()
         setSaving(true)
         void api
           .saveNetworkMapScene({ scene: next, title: sceneTitleRef.current }, sceneIdRef.current)
           .catch((e) => toastRef.current.error(e instanceof Error ? e.message : tRef.current('networkMap.saveFailed')))
-          .finally(() => setSaving(false))
+          .finally(() => {
+            if (saveGenRef.current !== gen) return
+            setSaving(false)
+            collabBusyRef.current = false
+            lastLocalCommitAtRef.current = Date.now()
+          })
       }
       if (immediate) {
         run()
         return
       }
+      collabBusyRef.current = true
       saveTimer.current = window.setTimeout(run, 280)
     },
     [canEdit, paint],
@@ -400,12 +417,22 @@ function NetworkMapEditor() {
     const next = { ...sceneRef.current, viewport: getViewport() }
     sceneRef.current = next
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
+    collabBusyRef.current = true
     saveTimer.current = window.setTimeout(() => {
+      saveTimer.current = null
+      const gen = ++saveGenRef.current
+      collabBusyRef.current = true
+      lastLocalCommitAtRef.current = Date.now()
       setSaving(true)
       void api
         .saveNetworkMapScene({ scene: next, title: sceneTitleRef.current }, sceneIdRef.current)
         .catch((e) => toastRef.current.error(e instanceof Error ? e.message : tRef.current('networkMap.saveFailed')))
-        .finally(() => setSaving(false))
+        .finally(() => {
+          if (saveGenRef.current !== gen) return
+          setSaving(false)
+          collabBusyRef.current = false
+          lastLocalCommitAtRef.current = Date.now()
+        })
     }, 1400)
   }, [canEdit, getViewport])
 
@@ -425,6 +452,85 @@ function NetworkMapEditor() {
       /* scene already visible */
     }
   }, [setNodes])
+
+  const refetchRemoteScene = useCallback(async () => {
+    const id = sceneIdRef.current
+    if (!id || collabBusyRef.current || nodeDragOrigin.current || loadingRef.current) return
+    try {
+      const dto = await api.networkMapScene(id)
+      if (collabBusyRef.current || nodeDragOrigin.current || sceneIdRef.current !== id) return
+      const loaded = (dto.scene as NetworkMapScene) ?? emptyNetworkMapScene()
+      paint({ ...emptyNetworkMapScene(), ...loaded, version: 1 as const, viewport: getViewport() })
+    } catch {
+      /* keep the canvas already on screen */
+    }
+  }, [getViewport, paint])
+
+  useEffect(() => {
+    onRemoteIconDragRef.current = (msg) => {
+      if (user?.id != null && msg.user_id === user.id) return
+      const skip = new Set<string>()
+      if (nodeDragOrigin.current) skip.add(nodeDragOrigin.current.id)
+      const group = groupDrag.current
+      if (group) {
+        skip.add(group.id)
+        for (const member of group.members) skip.add(member.id)
+      }
+      const pack = packDrag.current
+      if (pack) for (const member of pack.members) skip.add(member.id)
+      const moves = msg.icons.filter((icon) => !skip.has(icon.id))
+      if (!moves.length) return
+      const byId = new Map(moves.map((icon) => [icon.id, icon]))
+      const frame = sceneRef.current.groups.find((group) => byId.has(group.id))
+      const frameHit = frame ? byId.get(frame.id) : undefined
+      const frameDx = frame && frameHit ? frameHit.x - frame.x : 0
+      const frameDy = frame && frameHit ? frameHit.y - frame.y : 0
+      setNodes((nds) =>
+        nds.map((n) => {
+          const hit = byId.get(n.id)
+          return hit ? { ...n, position: { x: hit.x, y: hit.y } } : n
+        }),
+      )
+      if (frameDx || frameDy) {
+        setEdges((eds) =>
+          eds.map((edge) => {
+            const points = (edge.data as { junctions?: Array<{ x: number; y: number }> } | undefined)?.junctions
+            if (!points?.length) return edge
+            return {
+              ...edge,
+              data: {
+                ...(edge.data as object),
+                junctions: points.map((point) => ({ x: point.x + frameDx, y: point.y + frameDy })),
+              },
+            }
+          }),
+        )
+      }
+      const current = sceneRef.current
+      sceneRef.current = {
+        ...current,
+        nodes: current.nodes.map((n) => {
+          const hit = byId.get(n.id)
+          return hit ? { ...n, x: hit.x, y: hit.y } : n
+        }),
+        groups: current.groups.map((g) => {
+          const hit = byId.get(g.id)
+          return hit ? { ...g, x: hit.x, y: hit.y } : g
+        }),
+      }
+    }
+  }, [setEdges, setNodes, user?.id])
+
+  const { liveConnected, peers, sendIconDrag } = useDiagramLive({
+    diagramId: sceneId > 0 ? sceneId : null,
+    enabled: Boolean(user),
+    saveState: saving ? 'saving' : 'idle',
+    autosaveInFlightRef: collabBusyRef,
+    lastLocalCommitAtRef,
+    refetchLayout: refetchRemoteScene,
+    onRemoteIconDragRef,
+    socketUrl: networkMapLiveWebSocketUrl,
+  })
 
   const sceneFromCanvas = useCallback(() => {
     const fromRf = collectScene(getNodes(), getEdges(), sceneRef.current, getViewport())
@@ -456,7 +562,18 @@ function NetworkMapEditor() {
           keepalive = false
         }
       }
-      void api.saveNetworkMapScene(body, sceneIdRef.current, keepalive ? { keepalive: true } : undefined)
+      const gen = ++saveGenRef.current
+      collabBusyRef.current = true
+      lastLocalCommitAtRef.current = Date.now()
+      setSaving(true)
+      void api
+        .saveNetworkMapScene(body, sceneIdRef.current, keepalive ? { keepalive: true } : undefined)
+        .finally(() => {
+          if (saveGenRef.current !== gen) return
+          setSaving(false)
+          collabBusyRef.current = false
+          lastLocalCommitAtRef.current = Date.now()
+        })
     },
     [canEdit, getViewport, sceneFromCanvas],
   )
@@ -719,6 +836,17 @@ function NetworkMapEditor() {
     [onNodesChange],
   )
 
+  const publishLiveDrag = useCallback(
+    (icons: Array<{ id: string; x: number; y: number }>, force = false) => {
+      if (!icons.length) return
+      const now = performance.now()
+      if (!force && now - liveDragSent.current < 30) return
+      liveDragSent.current = now
+      sendIconDrag(icons)
+    },
+    [sendIconDrag],
+  )
+
   const onNodeDrag = useCallback(
     (_: unknown, node: Node) => {
       if (lockedSceneIds(sceneRef.current).has(node.id)) return
@@ -750,47 +878,54 @@ function NetworkMapEditor() {
             }),
           )
         }
+        publishLiveDrag([
+          { id: node.id, x: node.position.x, y: node.position.y },
+          ...group.members.map((member) => ({ id: member.id, x: member.x + dx, y: member.y + dy })),
+        ])
         return
       }
       const pack = packDrag.current
       if (pack && pack.leader === node.id && pack.members.length >= 2) {
-      const followed = followPackLeader(pack.members, pack.origin, {
-        id: pack.leader,
-        x: node.position.x,
-        y: node.position.y,
-      })
-      const byId = new Map(followed.map((m) => [m.id, m]))
-      setNodes((nds) =>
-        nds.map((n) => {
-          const mem = byId.get(n.id)
-          if (!mem || n.id === pack.leader) return n
-          return { ...n, position: { x: mem.x, y: mem.y }, selected: true }
-        }),
+        const followed = followPackLeader(pack.members, pack.origin, {
+          id: pack.leader,
+          x: node.position.x,
+          y: node.position.y,
+        })
+        const byId = new Map(followed.map((m) => [m.id, m]))
+        setNodes((nds) =>
+          nds.map((n) => {
+            const mem = byId.get(n.id)
+            if (!mem || n.id === pack.leader) return n
+            return { ...n, position: { x: mem.x, y: mem.y }, selected: true }
+          }),
+        )
+        publishLiveDrag(followed)
+        return
+      }
+      if (node.type !== 'equipment') return
+      const data = node.data as EquipmentNodeData
+      const live = sceneRef.current.nodes.map((item) =>
+        item.id === node.id ? { ...item, x: node.position.x, y: node.position.y } : item,
       )
-      return
-    }
-    if (node.type !== 'equipment') return
-    const data = node.data as EquipmentNodeData
-    const live = sceneRef.current.nodes.map((item) =>
-      item.id === node.id ? { ...item, x: node.position.x, y: node.position.y } : item,
-    )
-    const snapped = magnetEquipmentPosition(
-      { ...sceneRef.current, nodes: live },
-      {
-        id: node.id,
-        stencil: data.stencil,
-        x: node.position.x,
-        y: node.position.y,
-        width: data.width ?? null,
-        height: data.height ?? null,
-        label: data.title,
-        portCount: data.portCount ?? null,
-      },
-    )
-    if (!snapped) return
-    setNodes((nds) => nds.map((item) => (item.id === node.id ? { ...item, position: snapped } : item)))
+      const snapped = magnetEquipmentPosition(
+        { ...sceneRef.current, nodes: live },
+        {
+          id: node.id,
+          stencil: data.stencil,
+          x: node.position.x,
+          y: node.position.y,
+          width: data.width ?? null,
+          height: data.height ?? null,
+          label: data.title,
+          portCount: data.portCount ?? null,
+        },
+      )
+      const pos = snapped ?? node.position
+      publishLiveDrag([{ id: node.id, x: pos.x, y: pos.y }])
+      if (!snapped) return
+      setNodes((nds) => nds.map((item) => (item.id === node.id ? { ...item, position: snapped } : item)))
     },
-    [setEdges, setNodes],
+    [publishLiveDrag, setEdges, setNodes],
   )
 
   const onNodeDragStop = useCallback(
@@ -805,6 +940,28 @@ function NetworkMapEditor() {
       )
       const start = groupDrag.current
       const pack = packDrag.current
+      if (start && node.id === start.id) {
+        const dx = node.position.x - start.x
+        const dy = node.position.y - start.y
+        publishLiveDrag(
+          [
+            { id: node.id, x: node.position.x, y: node.position.y },
+            ...start.members.map((member) => ({ id: member.id, x: member.x + dx, y: member.y + dy })),
+          ],
+          true,
+        )
+      } else if (pack && pack.leader === node.id && pack.members.length >= 2) {
+        publishLiveDrag(
+          followPackLeader(pack.members, pack.origin, {
+            id: pack.leader,
+            x: node.position.x,
+            y: node.position.y,
+          }),
+          true,
+        )
+      } else if (origin && origin.id === node.id) {
+        publishLiveDrag([{ id: node.id, x: node.position.x, y: node.position.y }], true)
+      }
       groupDrag.current = null
       packDrag.current = null
       if (moved) skipNodeClickRef.current = true
@@ -850,7 +1007,7 @@ function NetworkMapEditor() {
       }
       persist(sceneFromCanvas(), false, true)
     },
-    [canEdit, getNodes, persist, sceneFromCanvas],
+    [canEdit, getNodes, persist, publishLiveDrag, sceneFromCanvas],
   )
 
   const onMoveEnd = useCallback(() => {
@@ -1140,7 +1297,7 @@ function NetworkMapEditor() {
           {
             ...connection,
             sourceHandle: localPort ? portHandleId(localPort) || connection.sourceHandle : connection.sourceHandle,
-            targetHandle: remotePort ? portHandleId(remotePort) || connection.targetHandle : connection.targetHandle,
+            targetHandle: remotePort ? targetPortHandleId(remotePort) || connection.targetHandle : connection.targetHandle,
             id: newId('scene-edge'),
             type: 'cable',
             data: { persisted: false, linkType: 'manual', linkDbId: null, lane: 0 },
@@ -1200,7 +1357,7 @@ function NetworkMapEditor() {
           source: sourceId,
           target: targetId,
           sourceHandle: localPort ? portHandleId(localPort) ?? null : null,
-          targetHandle: remotePort ? portHandleId(remotePort) ?? null : null,
+          targetHandle: remotePort ? targetPortHandleId(remotePort) ?? null : null,
         },
         localPort,
         remotePort,
@@ -1408,8 +1565,10 @@ function NetworkMapEditor() {
   const onPortCount = (count: number | null) => {
     if (!selected) return
     const portCount = clampPortCount(count)
-    const w = equipmentWidth(selected.stencil, selected.label, null, portCount)
-    const h = equipmentHeight(selected.stencil, selected.label, null, portCount)
+    const keptW = equipmentWidth(selected.stencil, selected.label, selected.width, selected.portCount)
+    const keptH = equipmentHeight(selected.stencil, selected.label, selected.height, selected.portCount)
+    const w = keptW
+    const h = equipmentHeight(selected.stencil, selected.label, keptH, portCount)
     const ports = chassisPorts(selected.ports, portCount)
     setNodes((ns) =>
       ns.map((n) =>
@@ -1941,6 +2100,8 @@ function NetworkMapEditor() {
         onRedo={() => applyUndo('redo')}
         canUndo={undoEpoch >= 0 && undoRef.current.canUndo}
         canRedo={undoRef.current.canRedo}
+        liveConnected={liveConnected}
+        peers={user ? peers : undefined}
       />
       <div className="flex min-h-0 flex-1 overflow-hidden border-t border-[var(--color-border)] bg-[var(--color-surface)]">
         <NetworkMapTray

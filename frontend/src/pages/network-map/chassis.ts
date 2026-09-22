@@ -13,6 +13,12 @@ export function portHandleId(name: string | null | undefined): string | undefine
   return slug ? `p:${slug}` : undefined
 }
 
+/** Target jack id. Source and target handles cannot share one id, or the cable leaves the socket after a redraw. */
+export function targetPortHandleId(name: string | null | undefined): string | undefined {
+  const id = portHandleId(name)
+  return id ? `${id}-tgt` : undefined
+}
+
 export function chassisPortLayout(count: number): { cols: number; rows: number } {
   const n = Math.max(0, Math.min(MAX_CHASSIS_PORTS, Math.floor(count)))
   if (n <= 0) return { cols: 0, rows: 0 }

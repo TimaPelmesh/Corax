@@ -30,6 +30,8 @@ type Props = {
   onRedo?: () => void
   canUndo?: boolean
   canRedo?: boolean
+  liveConnected?: boolean
+  peers?: Array<{ user_id: number; username: string; full_name: string | null }>
 }
 
 export function NetworkMapScenesBar({
@@ -59,6 +61,8 @@ export function NetworkMapScenesBar({
   onRedo,
   canUndo,
   canRedo,
+  liveConnected,
+  peers,
 }: Props) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -400,6 +404,31 @@ export function NetworkMapScenesBar({
             </div>
           ) : null}
         </div>
+        {peers ? (
+          <div
+            className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-fg-muted)]"
+            title={t('networkMap.peersTitle')}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${liveConnected ? 'bg-emerald-500' : 'bg-[var(--color-border-strong)]'}`}
+              title={liveConnected ? t('networkMap.liveConnected') : t('networkMap.liveDisconnected')}
+            />
+            <span className="font-medium text-[var(--color-fg)]">{t('networkMap.online')}</span>
+            {peers.length ? (
+              peers.map((peer) => (
+                <span
+                  key={peer.user_id}
+                  className="inline-flex max-w-[9rem] truncate rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-fg)]"
+                  title={(peer.full_name || '').trim() || peer.username}
+                >
+                  {peer.username}
+                </span>
+              ))
+            ) : (
+              <span className="text-[11px] text-[var(--color-fg-subtle)]">—</span>
+            )}
+          </div>
+        ) : null}
       </div>
     </header>
   )

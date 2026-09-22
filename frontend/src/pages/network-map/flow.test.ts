@@ -41,6 +41,13 @@ describe('equipment size', () => {
     expect(equipmentWidth('switch', 'sw', 96, 24)).toBe(356)
     expect(equipmentHeight('pc', 'pc-1', null, 1)).toBe(84)
   })
+
+  it('does not shrink a chassis when the port count drops', () => {
+    const wide = equipmentWidth('switch', 'sw', null, 24)
+    const tall = equipmentHeight('switch', 'sw', null, 24)
+    expect(equipmentWidth('switch', 'sw', wide, 2)).toBe(wide)
+    expect(equipmentHeight('switch', 'sw', tall, 2)).toBe(tall)
+  })
 })
 
 describe('free group membership', () => {

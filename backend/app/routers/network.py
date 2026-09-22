@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, field_serializer
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_editor_or_superuser, get_current_user
-from app.database import get_db
+from app.auth import _normalized_role, get_current_editor_or_superuser, get_current_user
+from app.diagram_live import DiagramRoomClient, network_map_live_hub, user_from_access_token
+from app.database import AsyncSessionLocal, get_db
 from app.secret_mask import can_read_integration_secrets, mask_secret
 from app.local_ip import advertise_lan_ipv4
 from app.models import Computer, NetworkDevice, NetworkLink, NetworkMapScene, Printer, User
@@ -964,6 +966,7 @@ async def put_map_scene(
         row.updated_by = user.id
     await db.commit()
     await db.refresh(row)
+    await _notify_map_scene_saved(row.id, user)
     return _scene_out(row)
 
 
@@ -1033,6 +1036,7 @@ async def put_map_scene_by_id(
     row.updated_by = user.id
     await db.commit()
     await db.refresh(row)
+    await _notify_map_scene_saved(row.id, user)
     return _scene_out(row)
 
 
@@ -1058,6 +1062,7 @@ async def layout_map_scene(
         row.title = "Схема по топологии"
     await db.commit()
     await db.refresh(row)
+    await _notify_map_scene_saved(row.id, user)
     return _scene_out(row)
 
 
@@ -1151,7 +1156,70 @@ async def trace_map_scene(
     row.updated_by = user.id
     await db.commit()
     await db.refresh(row)
+    await _notify_map_scene_saved(row.id, user)
     return _scene_out(row)
+
+
+async def _notify_map_scene_saved(scene_id: int, user: User) -> None:
+    display = (user.full_name or "").strip() or user.username
+    await network_map_live_hub.broadcast_layout_changed(scene_id, user.username, display)
+
+
+@router.websocket("/map-scenes/{scene_id}/live")
+async def network_map_live_websocket(websocket: WebSocket, scene_id: int):
+    await websocket.accept()
+    user = await user_from_access_token(websocket.cookies.get("access_token"))
+    if user is None:
+        await websocket.close(code=4401)
+        return
+    async with AsyncSessionLocal() as db:
+        row = await db.get(NetworkMapScene, scene_id)
+    if row is None:
+        await websocket.close(code=4404)
+        return
+    display = (user.full_name or "").strip() or user.username
+    client = DiagramRoomClient(ws=websocket, user_id=user.id, username=user.username, display_name=display)
+    await network_map_live_hub.register(scene_id, client)
+    try:
+        while True:
+            try:
+                raw = await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(msg, dict):
+                continue
+            kind = msg.get("type")
+            if kind == "ping":
+                await websocket.send_text(json.dumps({"type": "pong"}, ensure_ascii=False))
+            elif kind == "icon_drag":
+                if not user.is_superuser and _normalized_role(user) != "editor":
+                    continue
+                icons_raw = msg.get("icons")
+                if not isinstance(icons_raw, list):
+                    continue
+                safe: list[dict] = []
+                for item in icons_raw[:120]:
+                    if not isinstance(item, dict):
+                        continue
+                    node_id = item.get("id")
+                    if not isinstance(node_id, str) or not node_id.strip():
+                        continue
+                    try:
+                        x = float(item.get("x"))
+                        y = float(item.get("y"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not (math.isfinite(x) and math.isfinite(y)):
+                        continue
+                    safe.append({"id": node_id.strip()[:256], "x": x, "y": y})
+                if safe:
+                    await network_map_live_hub.relay_icon_drag(scene_id, client, safe)
+    finally:
+        await network_map_live_hub.unregister(scene_id, client)
 
 
 @router.delete("/map-scenes/{scene_id}", status_code=204)

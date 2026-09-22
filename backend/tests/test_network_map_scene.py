@@ -144,6 +144,33 @@ def test_normalize_scene_keeps_subnet_group():
     assert scene["groups"][0]["collapsed"] is True
 
 
+def test_normalize_scene_keeps_port_count_and_cable_points():
+    scene = normalize_scene(
+        {
+            "version": 1,
+            "nodes": [
+                {"id": "sw", "stencil": "switch", "x": 10, "y": 20, "label": "core", "portCount": 2, "width": 356},
+                {"id": "note", "stencil": "note", "x": 0, "y": 0, "label": "x", "portCount": 8},
+            ],
+            "edges": [
+                {
+                    "id": "e1",
+                    "source": "sw",
+                    "target": "note",
+                    "local_port": "1",
+                    "remote_port": "2",
+                    "points": [{"x": 40, "y": 80}, {"x": "no"}],
+                }
+            ],
+        }
+    )
+    assert scene["nodes"][0]["portCount"] == 2
+    assert scene["nodes"][0]["width"] == 356
+    assert "portCount" not in scene["nodes"][1]
+    assert scene["edges"][0]["local_port"] == "1"
+    assert scene["edges"][0]["points"] == [{"x": 40.0, "y": 80.0}]
+
+
 def test_normalize_scene_keeps_lock():
     scene = normalize_scene(
         {

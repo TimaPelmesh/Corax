@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import math
 import re
 from typing import Any
 
@@ -82,6 +83,26 @@ def _str(value: object, *, max_len: int, default: str = "") -> str:
 def _opt_str(value: object, *, max_len: int) -> str | None:
     s = _str(value, max_len=max_len)
     return s or None
+
+
+def _cable_points(value: object) -> list[dict[str, float]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, float]] = []
+    for raw in value[:8]:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            x = float(raw.get("x"))
+            y = float(raw.get("y"))
+        except (TypeError, ValueError):
+            continue
+        if not (math.isfinite(x) and math.isfinite(y)):
+            continue
+        if abs(x) > 200_000 or abs(y) > 200_000:
+            continue
+        out.append({"x": x, "y": y})
+    return out
 
 
 def _sanitize_image_src(value: object) -> str | None:
@@ -233,6 +254,16 @@ def normalize_scene(raw: object) -> dict[str, Any]:
             node["height"] = height
         if item.get("locked") is True:
             node["locked"] = True
+        if stencil not in DECOR_STENCILS:
+            raw_ports = item.get("portCount")
+            if raw_ports is None:
+                raw_ports = item.get("port_count")
+            try:
+                port_count = int(raw_ports)
+            except (TypeError, ValueError):
+                port_count = 0
+            if 1 <= port_count <= 96:
+                node["portCount"] = port_count
         nodes.append(node)
 
     edges: list[dict[str, Any]] = []
@@ -249,16 +280,18 @@ def normalize_scene(raw: object) -> dict[str, Any]:
         link_type = _str(item.get("link_type") or item.get("linkType"), max_len=16).lower()
         if link_type not in SCENE_LINK_TYPES:
             link_type = "manual"
-        edges.append(
-            {
-                "id": eid,
-                "source": source,
-                "target": target,
-                "local_port": _opt_str(item.get("local_port") or item.get("localPort"), max_len=128),
-                "remote_port": _opt_str(item.get("remote_port") or item.get("remotePort"), max_len=128),
-                "link_type": link_type,
-            }
-        )
+        edge = {
+            "id": eid,
+            "source": source,
+            "target": target,
+            "local_port": _opt_str(item.get("local_port") or item.get("localPort"), max_len=128),
+            "remote_port": _opt_str(item.get("remote_port") or item.get("remotePort"), max_len=128),
+            "link_type": link_type,
+        }
+        points = _cable_points(item.get("points"))
+        if points:
+            edge["points"] = points
+        edges.append(edge)
 
     hidden: list[str] = []
     seen_hidden: set[str] = set()

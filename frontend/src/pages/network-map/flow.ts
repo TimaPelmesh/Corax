@@ -13,6 +13,7 @@ import {
   nextSlotInGroup,
   occupiedBoxes,
   portHandleId,
+  targetPortHandleId,
   RACK_SIZE,
   ROOM_SIZE,
 } from './chassis'
@@ -33,6 +34,7 @@ export {
   nextSlotInGroup,
   occupiedBoxes,
   portHandleId,
+  targetPortHandleId,
   RACK_SIZE,
   ROOM_SIZE,
 }
@@ -340,7 +342,7 @@ export function toFlowEdges(
         source,
         target,
         sourceHandle: portHandleId(e.localPort) || undefined,
-        targetHandle: portHandleId(e.remotePort) || undefined,
+        targetHandle: targetPortHandleId(e.remotePort),
         type: 'cable',
         data: {
           linkDbId: e.linkDbId,

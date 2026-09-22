@@ -9,9 +9,7 @@ import {
   requestTimeoutMessage,
 } from './api/client'
 
-/** WebSocket для онлайн-присутствия и уведомлений об изменениях карты этажа. */
-export function diagramLiveWebSocketUrl(diagramId: number): string {
-  const path = `${API_PREFIX}/diagrams/${diagramId}/live`
+function liveWebSocketUrl(path: string): string {
   if (API_BASE) {
     const base = API_BASE.startsWith('http') ? API_BASE : `http://${API_BASE}`
     const u = new URL(base)
@@ -24,6 +22,16 @@ export function diagramLiveWebSocketUrl(diagramId: number): string {
   }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${window.location.host}${path}`
+}
+
+/** WebSocket для онлайн-присутствия и уведомлений об изменениях карты этажа. */
+export function diagramLiveWebSocketUrl(diagramId: number): string {
+  return liveWebSocketUrl(`${API_PREFIX}/diagrams/${diagramId}/live`)
+}
+
+/** WebSocket совместного редактирования карты сети. Отдельный канал, не этажи здания. */
+export function networkMapLiveWebSocketUrl(sceneId: number): string {
+  return liveWebSocketUrl(`${API_PREFIX}/network/map-scenes/${sceneId}/live`)
 }
 
 export async function streamWikiRagChat(

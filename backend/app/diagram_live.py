@@ -168,3 +168,4 @@ class DiagramLiveHub:
 
 
 diagram_live_hub = DiagramLiveHub()
+network_map_live_hub = DiagramLiveHub()
