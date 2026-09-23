@@ -733,6 +733,49 @@ def network_dedupe_key_for_ip(ip: str) -> str:
     return f"snmp:{ip.strip()}"
 
 
+_JUNK_LOCATIONS = {
+    "unknown",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "undefined",
+    "default",
+    "not set",
+    "not specified",
+    "unspecified",
+    "edit /etc/snmp/snmpd.conf",
+}
+
+
+def usable_sys_location(raw: str | None) -> str | None:
+    """SNMP sysLocation worth storing. Placeholders and decode garbage are not a place."""
+    s = (raw or "").replace("\x00", "").strip()
+    if not s:
+        return None
+    if "SENTINEL_UNINITIALISED" in s or "x690.types" in s:
+        return None
+    visible = [c for c in s if not c.isspace()]
+    if not visible:
+        return None
+    broken = sum(1 for c in visible if c in "?�\ufffd")
+    if broken / len(visible) > 0.35:
+        return None
+    if s.lower() in _JUNK_LOCATIONS:
+        return None
+    return s[:255]
+
+
+def location_is_manual(extras_json: str | None) -> bool:
+    if not extras_json:
+        return False
+    try:
+        data = json.loads(extras_json)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return isinstance(data, dict) and bool(data.get("location_manual"))
+
+
 def network_type_is_manual(extras_json: str | None) -> bool:
     if not extras_json:
         return False

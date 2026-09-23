@@ -129,6 +129,10 @@ class NetworkJobRunner:
         from app.network_zabbix_merge import merge_zabbix_into_network_devices
 
         zb = await merge_zabbix_into_network_devices(db)
+        from app.network_snmp_discover import sync_fleet_into_network_devices
+
+        await sync_fleet_into_network_devices(db, include_zabbix=False)
+        await db.commit()
         zb_note = ""
         if zb.get("matched") or zb.get("created"):
             zb_note = f" Zabbix: совпало {zb.get('matched', 0)}, новых {zb.get('created', 0)}."

@@ -24,16 +24,16 @@ import { absoluteExportBoxes, contentBounds } from './cables'
 import { emptyNetworkMapScene } from './types'
 
 describe('chassis ports', () => {
-  it('keeps a jack a cable is already plugged into when live names replace the strip', () => {
+  it('keeps the drawn sockets when a scan returns other port names', () => {
     const ports = chassisPorts(
       [
-        { id: 'a', name: 'Gi1/0/1' },
+        { id: 'a', name: 'Gi1/0/1', up: true },
         { id: 'b', name: 'Gi1/0/2' },
       ],
       2,
-      ['1'],
+      ['1', 'Gi1/0/5'],
     )
-    expect(ports.map((port) => port.name)).toContain('1')
+    expect(ports.map((port) => port.name)).toEqual(['1', '2', 'Gi1/0/5'])
   })
 })
 

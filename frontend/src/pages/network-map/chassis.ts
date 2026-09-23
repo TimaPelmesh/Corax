@@ -31,33 +31,32 @@ export function chassisPorts(
   count?: number | null,
   pinned?: Array<string | null | undefined> | null,
 ): Array<{ id: string; name: string; up?: boolean | null }> {
-  const named: Array<{ id: string; name: string; up?: boolean | null }> = []
-  const seen = new Set<string>()
-  const pinnedRows: Array<{ id: string; name: string }> = []
-  for (const raw of pinned || []) {
-    const name = (raw || '').trim()
-    if (!name) continue
-    const key = name.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    pinnedRows.push({ id: `pin:${name}`, name })
-  }
+  const liveByName = new Map<string, { id: string; name: string; up?: boolean | null }>()
   for (const port of live || []) {
     const name = (port.name || '').trim()
     if (!name) continue
     const key = name.toLowerCase()
+    if (liveByName.has(key)) continue
+    liveByName.set(key, { id: port.id || name, name, up: port.up })
+  }
+  const requested = count != null && count > 0 ? Math.min(MAX_CHASSIS_PORTS, Math.floor(count)) : 0
+  const out: Array<{ id: string; name: string; up?: boolean | null }> = []
+  const seen = new Set<string>()
+  for (let i = 1; i <= requested; i += 1) {
+    const name = String(i)
+    const key = name.toLowerCase()
+    seen.add(key)
+    const hit = liveByName.get(key)
+    out.push({ id: hit?.id || `slot:${i}`, name, up: hit?.up })
+  }
+  for (const raw of pinned || []) {
+    const name = (raw || '').trim()
+    if (!name || out.length >= MAX_CHASSIS_PORTS) continue
+    const key = name.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    named.push({ id: port.id || name, name, up: port.up })
-    if (named.length + pinnedRows.length >= MAX_CHASSIS_PORTS) break
-  }
-  const merged = [...pinnedRows, ...named]
-  const requested = count != null && count > 0 ? Math.min(MAX_CHASSIS_PORTS, Math.floor(count)) : merged.length
-  const n = Math.min(MAX_CHASSIS_PORTS, Math.max(requested, pinnedRows.length))
-  if (n <= 0) return []
-  const out = merged.slice(0, n)
-  for (let i = out.length + 1; i <= requested; i += 1) {
-    out.push({ id: `slot:${i}`, name: String(i) })
+    const hit = liveByName.get(key)
+    out.push({ id: hit?.id || `pin:${name}`, name, up: hit?.up })
   }
   return out
 }

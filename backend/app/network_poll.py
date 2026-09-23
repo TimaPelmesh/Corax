@@ -19,11 +19,11 @@ ProgressCb = Callable[[str, int, str], Awaitable[None] | None]  # noqa: UP007
 from app.async_pool import run_async_pool
 from app.models import NetworkDevice, NetworkPollConfig
 from app.text_sanitize import deep_strip_nul, pg_text
-from app.network_classify import NETWORK_DEVICE_TYPES, network_dedupe_key_for_ip
+from app.network_classify import NETWORK_DEVICE_TYPES, network_dedupe_key_for_ip, usable_sys_location
 from app.network_link_builder import build_host_index, rebuild_all_links, rebuild_links_for_device
 from app.network_poll_config import get_effective_network_poll_config, get_network_poll_config_row
 from app.network_snmp import NetworkSnmpSnapshot, fetch_network_snmp
-from app.network_snmp_discover import discover_network_devices, sync_printer_from_network_snap
+from app.network_snmp_discover import discover_network_devices, sync_fleet_into_network_devices, sync_printer_from_network_snap
 from app.printer_poll_config import get_effective_printer_poll_config
 
 _WIN32 = platform.system().lower() == "windows"
@@ -64,8 +64,6 @@ async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
         row.sys_descr = pg_text(snap.sys_descr)
     if snap.sys_object_id:
         row.sys_object_id = _clip_str(snap.sys_object_id, 255)
-    if snap.sys_location:
-        row.location = _clip_str(snap.sys_location, 255)
     extras: dict[str, Any] = {}
     prev: dict[str, Any] = {}
     if getattr(row, "extras_json", None):
@@ -75,6 +73,10 @@ async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
                 prev = loaded
         except json.JSONDecodeError:
             prev = {}
+    if snap.sys_location and not bool(prev.get("location_manual")):
+        loc = usable_sys_location(snap.sys_location)
+        if loc:
+            row.location = _clip_str(loc, 255)
     if snap.device_type and not bool(prev.get("type_manual")):
         row.device_type = snap.device_type if snap.device_type in NETWORK_DEVICE_TYPES else "unknown"
     if snap.vendor:
@@ -82,7 +84,7 @@ async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
     row.interfaces_json = json.dumps(deep_strip_nul([i.to_dict() for i in snap.interfaces]), ensure_ascii=False, default=str)
     row.neighbors_json = json.dumps(deep_strip_nul([n.to_dict() for n in snap.neighbors]), ensure_ascii=False, default=str)
     row.fdb_json = json.dumps(deep_strip_nul([f.to_dict() for f in snap.fdb]), ensure_ascii=False, default=str)
-    for key in ("zabbix", "trace_route", "trace_routes", "type_manual"):
+    for key in ("zabbix", "trace_route", "trace_routes", "type_manual", "location_manual"):
         if key in prev:
             extras[key] = prev[key]
     if getattr(snap, "sys_uptime_ticks", None) is not None:
@@ -345,6 +347,8 @@ async def run_network_poll_cycle(
     from app.network_zabbix_merge import merge_zabbix_into_network_devices
 
     zb = await merge_zabbix_into_network_devices(db)
+    await sync_fleet_into_network_devices(db, include_zabbix=False)
+    await db.commit()
 
     if with_discovery:
         await _emit(progress_cb, "discover", 8, "Авто-зона CORAX (интерфейсы, шлюз, маршруты, ARP)…")

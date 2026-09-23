@@ -122,7 +122,6 @@ function overlayLiveOnFlow(
     if (!data.bind) return n
     const hit = byKey.get(bindKey(data.bind))
     if (!hit) return n
-    const portCount = data.portCount ?? hit.portCount ?? hit.ports?.length ?? null
     return {
       ...n,
       data: {
@@ -131,8 +130,8 @@ function overlayLiveOnFlow(
         subtitle: hit.ip || data.subtitle,
         status: hit.status,
         missing: hit.missing,
-        ports: chassisPorts(hit.ports ?? data.ports, portCount, pins.get(n.id)),
-        portCount,
+        ports: chassisPorts(hit.ports, data.portCount ?? defaultStencilPortCount(data.stencil), pins.get(n.id)),
+        portCount: data.portCount,
       },
     }
   })

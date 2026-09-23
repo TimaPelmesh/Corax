@@ -159,9 +159,17 @@ async def poll_single_printer(
             row.snmp_sys_name = snap.sys_name
         if getattr(snap, "printer_kind", None):
             row.printer_kind = snap.printer_kind
-        # SNMP location — только если у пользователя ещё нет своей локации.
-        if getattr(snap, "sys_location", None) and not (row.location or "").strip():
-            row.location = snap.sys_location[:255]
+        # Пустую локацию, которую пользователь стёр, опрос не заполняет заново.
+        if (
+            getattr(snap, "sys_location", None)
+            and not getattr(row, "location_manual", False)
+            and not (row.location or "").strip()
+        ):
+            from app.network_classify import usable_sys_location
+
+            loc = usable_sys_location(snap.sys_location)
+            if loc:
+                row.location = loc[:255]
         row.supplies_json = json.dumps([s.to_dict() for s in snap.supplies], ensure_ascii=False)
         return
 

@@ -525,6 +525,7 @@ async def patch_printer(
     if "location" in patch:
         loc = patch["location"]
         row.location = (loc or "").strip()[:255] or None
+        row.location_manual = True
     if "notes" in patch:
         notes = patch["notes"]
         row.notes = (notes or "").strip() or None

@@ -67,6 +67,53 @@ def test_apply_snapshot_sets_printer_type():
     assert row.vendor == "HP"
 
 
+def test_apply_snapshot_keeps_cleared_location():
+    row = SimpleNamespace(
+        extras_json='{"location_manual": true}',
+        sys_name=None,
+        hostname=None,
+        sys_descr=None,
+        sys_object_id=None,
+        location=None,
+        device_type="switch",
+        vendor=None,
+        interfaces_json=None,
+        neighbors_json=None,
+        fdb_json=None,
+        last_snmp_at=None,
+        snmp_status=None,
+        snmp_error=None,
+        last_seen_at=None,
+    )
+    snap = NetworkSnmpSnapshot(sys_location="rack-1", device_type="switch")
+    asyncio.run(_apply_snapshot(row, snap, datetime.now(timezone.utc)))
+    assert row.location is None
+    assert json.loads(row.extras_json)["location_manual"] is True
+
+
+def test_apply_snapshot_drops_junk_location():
+    row = SimpleNamespace(
+        extras_json=None,
+        sys_name=None,
+        hostname=None,
+        sys_descr=None,
+        sys_object_id=None,
+        location=None,
+        device_type="switch",
+        vendor=None,
+        interfaces_json=None,
+        neighbors_json=None,
+        fdb_json=None,
+        last_snmp_at=None,
+        snmp_status=None,
+        snmp_error=None,
+        last_seen_at=None,
+    )
+    snap = NetworkSnmpSnapshot(sys_location="???? SENTINEL_UNINITIALISED", device_type="switch")
+    asyncio.run(_apply_snapshot(row, snap, datetime.now(timezone.utc)))
+    assert row.location is None
+
+
 def test_apply_snapshot_keeps_manual_type():
     row = SimpleNamespace(
         extras_json='{"type_manual": true, "zabbix": {"hostid": "1"}}',

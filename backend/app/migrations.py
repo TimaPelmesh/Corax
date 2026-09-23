@@ -784,6 +784,17 @@ def _migrate_service_request_categories(sync_conn) -> None:
             )
 
 
+def _migrate_printer_location_manual(sync_conn) -> None:
+    if "printers" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "printers")
+    if "location_manual" in cols:
+        return
+    sync_conn.execute(
+        text("ALTER TABLE printers ADD COLUMN location_manual BOOLEAN NOT NULL DEFAULT FALSE")
+    )
+
+
 def _migrate_printer_kind_serial(sync_conn) -> None:
     cols = _column_names(sync_conn, "printers")
     patches = {
@@ -1540,6 +1551,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-05-21_printer_poll_config", _migrate_printer_poll_config),
     ("2026-05-21_printer_poll_interval_30", _migrate_printer_poll_interval_30),
     ("2026-08-06_printer_kind_serial", _migrate_printer_kind_serial),
+    ("2026-09-23_printer_location_manual", _migrate_printer_location_manual),
     ("2026-05-26_service_request_categories", _migrate_service_request_categories),
     ("2026-05-26_service_request_categories_tree", _migrate_service_request_categories_tree),
     ("2026-05-27_service_request_ticket_no", _migrate_service_request_ticket_no),

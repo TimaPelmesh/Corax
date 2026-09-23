@@ -10,7 +10,7 @@ import type {
 } from './types'
 import { bindKey, emptyNetworkMapScene } from './types'
 import { sanitizeCablePoints } from './cables'
-import { chassisPorts } from './chassis'
+import { chassisPorts, defaultStencilPortCount } from './chassis'
 
 export function stencilForDeviceType(deviceType?: string | null): NetworkMapStencil {
   const dtype = (deviceType || '').toLowerCase()
@@ -95,8 +95,8 @@ export function hydrateScene(scene: NetworkMapScene | null | undefined, live: Ma
       imageSrc: sn.imageSrc ?? null,
       width: sn.width ?? null,
       height: sn.height ?? null,
-      ports: chassisPorts(liveHit?.ports, sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length, pins.get(sn.id)),
-      portCount: sn.portCount ?? liveHit?.portCount ?? liveHit?.ports?.length ?? null,
+      ports: chassisPorts(liveHit?.ports, sn.portCount ?? defaultStencilPortCount(sn.stencil), pins.get(sn.id)),
+      portCount: sn.portCount ?? null,
       locked: Boolean(sn.locked) || undefined,
     }
   })
@@ -171,8 +171,8 @@ export function overlayLiveOnMerged(
       vendor: hit.vendor ?? n.vendor,
       status: hit.status ?? n.status,
       missing: hit.missing,
-      ports: chassisPorts(hit.ports ?? n.ports, n.portCount ?? hit.portCount, pins.get(n.id)),
-      portCount: n.portCount ?? hit.portCount ?? null,
+      ports: chassisPorts(hit.ports, n.portCount ?? defaultStencilPortCount(n.stencil), pins.get(n.id)),
+      portCount: n.portCount ?? null,
     }
   })
 }

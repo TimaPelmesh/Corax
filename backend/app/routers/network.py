@@ -509,6 +509,13 @@ async def list_devices(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.network_snmp_discover import sync_fleet_into_network_devices
+
+    try:
+        await sync_fleet_into_network_devices(db)
+        await db.commit()
+    except Exception:
+        await db.rollback()
     stmt = select(NetworkDevice).order_by(NetworkDevice.hostname.asc().nulls_last(), NetworkDevice.ip_address.asc())
     if device_type and device_type.strip() and device_type.strip() != "all":
         stmt = stmt.where(NetworkDevice.device_type == device_type.strip())
@@ -660,6 +667,16 @@ async def patch_device(
     if "location" in patch:
         loc = patch["location"]
         row.location = (loc or "").strip()[:255] or None
+        extras: dict[str, Any] = {}
+        if getattr(row, "extras_json", None):
+            try:
+                loaded = json.loads(row.extras_json)
+                if isinstance(loaded, dict):
+                    extras = loaded
+            except (TypeError, json.JSONDecodeError):
+                extras = {}
+        extras["location_manual"] = True
+        row.extras_json = json.dumps(extras, ensure_ascii=False)
     if "notes" in patch:
         notes = patch["notes"]
         row.notes = (notes or "").strip() or None

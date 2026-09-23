@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import json
+import logging
 import platform
 import random
 import time
@@ -22,10 +23,18 @@ from app.local_ip import (
 )
 from app.computer_ip import primary_ipv4_from_raw_payload
 from app.models import Computer, NetworkDevice, Printer
-from app.network_classify import NETWORK_DEVICE_TYPES, network_dedupe_key_for_ip, network_type_is_manual
+from app.network_classify import (
+    NETWORK_DEVICE_TYPES,
+    location_is_manual,
+    network_dedupe_key_for_ip,
+    network_type_is_manual,
+    usable_sys_location,
+)
 from app.network_snmp import NetworkSnmpSnapshot, probe_has_signal, probe_network_snmp
 from app.printer_cleanup import printer_dedupe_key_for_ip, snmp_tab_clause
 from app.printer_poll import ping_ip
+
+log = logging.getLogger(__name__)
 
 # Full /24 = 254 hosts. Windows select() ~512 → keep concurrency under ~48.
 _MAX_HOSTS_PER_NETWORK = 1022
@@ -251,7 +260,7 @@ async def upsert_discovered_device(
                 sys_object_id=snap.sys_object_id,
                 device_type=dtype,
                 vendor=snap.vendor,
-                location=snap.sys_location,
+                location=usable_sys_location(snap.sys_location),
                 snmp_status="ok",
                 snmp_error=None,
                 last_snmp_at=now,
@@ -271,8 +280,10 @@ async def upsert_discovered_device(
         if snap.device_type and not network_type_is_manual(getattr(existing, "extras_json", None)):
             existing.device_type = dtype
         existing.vendor = snap.vendor or existing.vendor
-        if snap.sys_location:
-            existing.location = snap.sys_location
+        if snap.sys_location and not location_is_manual(getattr(existing, "extras_json", None)):
+            loc = usable_sys_location(snap.sys_location)
+            if loc:
+                existing.location = loc
         existing.snmp_status = "ok"
         existing.snmp_error = None
         existing.last_snmp_at = now
@@ -325,7 +336,7 @@ async def sync_printer_from_network_snap(
                 snmp_error=None if snmp_status == "ok" else (snap.error or None),
                 snmp_model=model,
                 snmp_sys_name=snap.sys_name,
-                location=snap.sys_location,
+                location=usable_sys_location(snap.sys_location),
                 last_seen_at=now,
                 last_poll_at=now,
                 last_snmp_at=now,
@@ -347,8 +358,14 @@ async def sync_printer_from_network_snap(
         existing.snmp_model = model
     if snap.sys_name:
         existing.snmp_sys_name = snap.sys_name
-    if snap.sys_location and not (existing.location or "").strip():
-        existing.location = snap.sys_location[:255]
+    if (
+        snap.sys_location
+        and not getattr(existing, "location_manual", False)
+        and not (existing.location or "").strip()
+    ):
+        loc = usable_sys_location(snap.sys_location)
+        if loc:
+            existing.location = loc[:255]
     existing.last_seen_at = now
     existing.last_poll_at = now
     existing.last_snmp_at = now
@@ -828,6 +845,22 @@ async def _seed_inventory_printers(
         found_ips.add(ip)
         created += 1
     return created, updated
+
+
+async def sync_fleet_into_network_devices(db: AsyncSession, *, include_zabbix: bool = True) -> None:
+    """PCs, printers, and Zabbix hosts on the Network tab. Does not ping, SNMP-poll, or trace."""
+    now = datetime.now(timezone.utc)
+    pcs = await _inventory_pc_entries(db, networks=None)
+    await _seed_inventory_hosts(db, pcs=pcs, found_ips=set(), now=now)
+    await _seed_inventory_printers(db, found_ips=set(), now=now)
+    if not include_zabbix:
+        return
+    try:
+        from app.network_zabbix_merge import merge_zabbix_into_network_devices
+
+        await merge_zabbix_into_network_devices(db)
+    except Exception:
+        log.warning("zabbix roster sync failed", exc_info=True)
 
 
 async def _known_host_labels(db: AsyncSession) -> dict[str, tuple[str, str]]:

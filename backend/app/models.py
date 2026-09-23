@@ -136,6 +136,8 @@ class Printer(Base):
     poll_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     computer_id: Mapped[int | None] = mapped_column(ForeignKey("computers.id", ondelete="SET NULL"), nullable=True, index=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Пользователь сам задал или стёр локацию — SNMP её больше не пишет.
+    location_manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="agent")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
