@@ -1104,12 +1104,30 @@ export type AgentTokenCreated = AgentTokenRow & { token: string }
 
 export type AgentBundleProfile = 'full' | 'custom'
 
+export type AgentCollectPolicy = {
+  mode: 'on_demand' | 'daily' | 'weekly'
+  time_hhmm: string
+  weekday: number
+  timezone: string
+  generation: number
+  last_reason: string
+  poll_minutes: number
+}
+
+export type AgentCollectPolicyUpdate = {
+  mode: AgentCollectPolicy['mode']
+  time_hhmm: string
+  weekday: number
+  timezone: string
+  poll_minutes: number
+}
+
 export type AgentBundleLanIp = {
   ip: string | null
   candidates: string[]
 }
 
-export type AgentBundleTarget = 'win10' | 'win7' | 'cpp' | 'linux' | 'desktop'
+export type AgentBundleTarget = 'windows' | 'linux'
 
 export type AgentBundleCreateBody = {
   server_url: string
@@ -1946,6 +1964,18 @@ export const api = {
 
   revokeAgentToken: (id: number) =>
     request<void>(`${API_PREFIX}/agent-tokens/${id}`, { method: 'DELETE' }),
+
+  agentCollectPolicy: () =>
+    request<AgentCollectPolicy>(`${API_PREFIX}/settings/agent-policy`),
+
+  saveAgentCollectPolicy: (body: AgentCollectPolicyUpdate) =>
+    request<AgentCollectPolicy>(`${API_PREFIX}/settings/agent-policy`, { method: 'PUT', json: body }),
+
+  collectAgentsNow: (hostname?: string) =>
+    request<AgentCollectPolicy>(`${API_PREFIX}/settings/agent-policy/collect-now`, {
+      method: 'POST',
+      json: { hostname: hostname ?? null },
+    }),
 
   agentBundleLanIp: async (): Promise<AgentBundleLanIp> => {
     try {

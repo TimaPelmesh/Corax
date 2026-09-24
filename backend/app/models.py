@@ -308,6 +308,32 @@ class AgentToken(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AgentCollectPolicy(Base):
+    """Fleet collection: on demand, or at a clock time stored on the server."""
+
+    __tablename__ = "agent_collect_policy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    mode: Mapped[str] = mapped_column(String(16), default="on_demand")
+    time_hhmm: Mapped[str] = mapped_column(String(8), default="09:00")
+    weekday: Mapped[int] = mapped_column(Integer, default=0)  # Monday=0
+    timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
+    generation: Mapped[int] = mapped_column(Integer, default=0)
+    last_slot: Mapped[str] = mapped_column(String(64), default="")
+    last_reason: Mapped[str] = mapped_column(String(32), default="idle")
+    poll_minutes: Mapped[int] = mapped_column(Integer, default=5)
+
+
+class AgentCollectRequest(Base):
+    """One-shot collect for a single hostname. Cleared when that PC reports."""
+
+    __tablename__ = "agent_collect_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    hostname: Mapped[str] = mapped_column(String(255), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Tag(Base):
     __tablename__ = "tags"
 

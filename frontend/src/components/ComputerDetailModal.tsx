@@ -272,9 +272,18 @@ export function ComputerDetailModal({
     [detail, user?.is_superuser, t, toast],
   )
 
-  function toggleTag(id: number) {
+  function addTag(id: number) {
     setSelectedTagIds((prev) => {
-      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      if (prev.includes(id)) return prev
+      const next = [...prev, id]
+      void persistMeta({ tag_ids: next })
+      return next
+    })
+  }
+
+  function removeTag(id: number) {
+    setSelectedTagIds((prev) => {
+      const next = prev.filter((x) => x !== id)
       void persistMeta({ tag_ids: next })
       return next
     })
@@ -419,13 +428,13 @@ export function ComputerDetailModal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 ${overlayZClass} flex items-stretch justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4`}
+      className={`fixed inset-0 ${overlayZClass} flex items-stretch justify-center bg-slate-900/40 p-0 sm:items-center sm:p-3`}
       role="dialog"
       aria-modal
       onClick={onClose}
     >
       <div
-        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-y-auto overscroll-contain rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-none ring-0 sm:max-h-[min(96vh,calc(100vh-0.5rem))] sm:max-w-[min(1600px,calc(100vw-1rem))] sm:rounded-2xl sm:border sm:border-[var(--color-border)] sm:p-6 sm:pt-6 sm:shadow-2xl sm:shadow-slate-900/15 sm:ring-1 sm:ring-white/40 lg:p-8 lg:pt-8"
+        className="pc-card-shell app-card flex w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] shadow-none sm:rounded-xl sm:border sm:border-[var(--color-border)] sm:p-4"
         onClick={(e) => e.stopPropagation()}
       >
         {loading && !detail ? (
@@ -439,10 +448,61 @@ export function ComputerDetailModal({
           </div>
         ) : detail ? (
           <>
-            <div className="sticky top-0 z-20 -mx-4 flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)]/95 px-4 pb-3 pt-1 backdrop-blur-md sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 sm:backdrop-blur-none">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-border)] pb-2">
               <div className="min-w-0 pr-2">
-                <h2 className="text-xl font-semibold text-[var(--color-fg)]">{detail.hostname}</h2>
-                <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <h2 className="text-base font-semibold text-[var(--color-fg)]">{detail.hostname}</h2>
+                  {(user?.is_superuser ? allTags.filter((tg) => selectedTagIds.includes(tg.id)) : (detail.tags ?? [])).map(
+                    (tg) => {
+                      const pill = tagPillProps(tg)
+                      return (
+                        <span key={tg.id} className={`inline-flex items-center gap-1 ${pill.className}`} style={pill.style}>
+                          {tg.name}
+                          {user?.is_superuser ? (
+                            <button
+                              type="button"
+                              className="leading-none text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                              aria-label={tg.name}
+                              onClick={() => removeTag(tg.id)}
+                            >
+                              ×
+                            </button>
+                          ) : null}
+                        </span>
+                      )
+                    },
+                  )}
+                  {user?.is_superuser ? (
+                    allTags.length === 0 ? (
+                      <span className="text-xs text-[var(--color-fg-muted)]">
+                        {t('computerDetail.tagsDirectoryEmpty')}{' '}
+                        <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2">
+                          {t('computerDetail.tagsPage')}
+                        </Link>
+                      </span>
+                    ) : (
+                      <select
+                        className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-fg)]"
+                        value=""
+                        aria-label={t('computerDetail.addTag')}
+                        onChange={(e) => {
+                          const id = Number(e.target.value)
+                          if (id) addTag(id)
+                        }}
+                      >
+                        <option value="">{t('computerDetail.addTag')}</option>
+                        {allTags
+                          .filter((tg) => !selectedTagIds.includes(tg.id))
+                          .map((tg) => (
+                            <option key={tg.id} value={tg.id}>
+                              {tg.name}
+                            </option>
+                          ))}
+                      </select>
+                    )
+                  ) : null}
+                </div>
+                <p className="mt-0.5 truncate text-xs text-[var(--color-fg-muted)]">
                   {detail.manufacturer} {detail.model} · {detail.serial_number ?? t('computerDetail.noSerial')}
                   {detail.location ? ` · ${detail.location}` : ''}
                 </p>
@@ -450,20 +510,20 @@ export function ComputerDetailModal({
               </div>
               <button
                 type="button"
-                className="group shrink-0 rounded-xl border-2 border-slate-300 bg-[var(--color-surface)] p-2.5 text-[var(--color-fg-muted)] shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+                className="shrink-0 rounded-lg border border-[var(--color-border)] p-1.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
                 onClick={onClose}
                 aria-label={t('computerDetail.close')}
               >
-                <IconClose className="h-6 w-6" />
+                <IconClose className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-8">
+            <div className="mt-2 shrink-0 space-y-2">
               <section className="flex min-w-0 flex-col">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.systemAndHardware')}
                 </h3>
-                <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
+                <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs lg:grid-cols-4">
                   <div className="min-w-0 sm:col-span-2">
                     <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.os')}</dt>
                     <dd className="break-words text-[var(--color-fg)]">
@@ -509,96 +569,6 @@ export function ComputerDetailModal({
                   <div className="min-w-0 sm:col-span-2">
                     <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.mac')}</dt>
                     <dd className="font-mono text-[var(--color-fg)]">{detail.mac_primary ?? '—'}</dd>
-                  </div>
-                  <div className="min-w-0 sm:col-span-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
-                          {t('computerDetail.pingTitle')}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-                          {pingBusy ? (
-                            <span className="text-[var(--color-fg-muted)]">{t('computerDetail.pingChecking')}</span>
-                          ) : liveOnline ? (
-                            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
-                              <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-                              {t('computerDetail.pingOnline')}
-                            </span>
-                          ) : liveOffline ? (
-                            <span className="inline-flex items-center gap-1.5 font-medium text-rose-700">
-                              <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden />
-                              {t('computerDetail.pingOffline')}
-                            </span>
-                          ) : cachedOnline ? (
-                            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
-                              <span className="h-2 w-2 rounded-full bg-emerald-400/70" aria-hidden />
-                              {t('computerDetail.pingCachedOnline')}
-                            </span>
-                          ) : cachedOffline ? (
-                            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
-                              <span className="h-2 w-2 rounded-full bg-rose-400/70" aria-hidden />
-                              {t('computerDetail.pingCachedOffline')}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
-                              <span className="h-2 w-2 rounded-full bg-slate-300" aria-hidden />
-                              {detail.ip_address
-                                ? t('computerDetail.pingIp', { ip: detail.ip_address })
-                                : t('computerDetail.pingUnknown')}
-                            </span>
-                          )}
-                          {pingResult?.ip_address ? (
-                            <span className="font-mono text-xs text-[var(--color-fg-muted)]">{pingResult.ip_address}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="app-btn app-btn-secondary shrink-0 text-sm"
-                        disabled={pingBusy}
-                        onClick={() => void checkPing()}
-                      >
-                        {pingBusy ? t('computerDetail.pingChecking') : t('computerDetail.pingCheck')}
-                      </button>
-                    </div>
-
-                    {wolStatus?.user_may_wake && (wolStatus.force_disabled || !isOnline) ? (
-                      <div className="mt-3 border-t border-[var(--color-border)] pt-2.5">
-                        {wolStatus.force_disabled ? (
-                          <p className="text-xs text-amber-800">{t('computerDetail.wolForceOff')}</p>
-                        ) : canShowWake ? (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              className="app-btn app-btn-primary text-sm"
-                              disabled={wolBusy}
-                              onClick={() => void wakePc()}
-                            >
-                              {wolBusy ? t('computerDetail.wolBusy') : t('computerDetail.wolWake')}
-                            </button>
-                            {wolStatus.cooldown_remaining_seconds != null ? (
-                              <span className="text-xs text-[var(--color-fg-muted)]">
-                                {t('computerDetail.wolCooldown', {
-                                  n: wolStatus.cooldown_remaining_seconds,
-                                })}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : !wolStatus.has_mac ? (
-                          <p className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.wolNoMac')}</p>
-                        ) : wolStatus.cooldown_remaining_seconds != null ? (
-                          <p className="text-xs text-[var(--color-fg-muted)]">
-                            {t('computerDetail.wolCooldown', {
-                              n: wolStatus.cooldown_remaining_seconds,
-                            })}
-                          </p>
-                        ) : pingBusy ? (
-                          <p className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.pingChecking')}</p>
-                        ) : (
-                          <p className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.wolNeedOffline')}</p>
-                        )}
-                      </div>
-                    ) : null}
                   </div>
                   {agentExtras?.primaryUser ? (
                     <div className="min-w-0 sm:col-span-2">
@@ -693,28 +663,52 @@ export function ComputerDetailModal({
                     </div>
                   ) : null}
                 </dl>
-                {agentExtras && agentExtras.patchIds.length > 0 ? (
-                  <div className="mt-4 border-t border-[var(--color-border)] pt-3">
-                    <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <div className="mt-3 grid grid-cols-1 gap-3 border-t border-[var(--color-border)] pt-3 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                       {t('computerDetail.windowsPatches')}
-                      {agentExtras.patchTotal > agentExtras.patchIds.length
+                      {agentExtras && agentExtras.patchTotal > agentExtras.patchIds.length
                         ? ` · ${agentExtras.patchTotal}`
                         : ''}
-                    </dt>
-                    <dd className="mt-2 flex flex-wrap gap-1.5">
-                      {agentExtras.patchIds.map((kb) => (
-                        <span
-                          key={kb}
-                          className="rounded-md bg-[var(--color-surface-muted)] px-2 py-0.5 font-mono text-xs text-[var(--color-fg)]"
-                        >
-                          {kb}
-                        </span>
-                      ))}
-                    </dd>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {agentExtras && agentExtras.patchIds.length > 0 ? (
+                        agentExtras.patchIds.map((kb) => (
+                          <span
+                            key={kb}
+                            className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-fg)]"
+                          >
+                            {kb}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.noData')}</span>
+                      )}
+                    </div>
                   </div>
-                ) : null}
+                  <div className="min-w-0 sm:text-right">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                      {t('computerDetail.officeVersions')}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1 sm:justify-end">
+                      {agentExtras && agentExtras.office.length > 0 ? (
+                        agentExtras.office.map((o, i) => (
+                          <span
+                            key={i}
+                            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[11px] text-[var(--color-fg)]"
+                            title={o.path ?? undefined}
+                          >
+                            {o.label}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.noData')}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 {user?.is_superuser ? (
-                  <div className="mt-4 border-t border-[var(--color-border)] pt-3">
+                  <div className="mt-2">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,9rem)_1fr] sm:items-start">
                       <div className="min-w-0">
                         <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
@@ -743,7 +737,7 @@ export function ComputerDetailModal({
                 ) : null}
               </section>
 
-              <section className="flex min-w-0 flex-col border-t border-[var(--color-border)] pt-4 lg:border-l lg:border-t-0 lg:border-[var(--color-border)] lg:pl-8 lg:pt-0">
+              <section className="flex min-w-0 flex-col">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('computerDetail.disks')}</h3>
                 {(detail.disks?.length ?? 0) > 0 ? (
                   <div className="mt-2 flex flex-wrap content-start gap-2">
@@ -792,30 +786,28 @@ export function ComputerDetailModal({
                   </p>
                 )}
                 {agentExtras && agentExtras.physicalDisks.length > 0 ? (
-                  <div className="mt-4 space-y-2 border-t border-[var(--color-border)] pt-3">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                  <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] leading-tight text-[var(--color-fg-muted)]">
+                    <span className="font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                       {t('computerDetail.media')}
-                    </div>
-                    {agentExtras.physicalDisks.map((pd, i) => (
-                      <div
-                        key={i}
-                        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm"
-                      >
-                        <div className="font-medium text-[var(--color-fg)]">{pd.name}</div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-[var(--color-fg-muted)]">
-                          {pd.media ? (
-                            <span className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 ring-1 ring-slate-200">{pd.media}</span>
-                          ) : null}
-                          {pd.health ? <span>{pd.health}</span> : null}
-                          {pd.sizeGb != null ? <span>{t('computerDetail.gb', { n: pd.sizeGb })}</span> : null}
-                          {pd.temperatureC != null ? <span>{pd.temperatureC}°C</span> : null}
-                          {pd.wearPercent != null ? <span>{t('computerDetail.diskWear', { n: pd.wearPercent })}</span> : null}
-                          {pd.powerOnHours != null ? <span>{t('computerDetail.diskPowerOnHours', { n: pd.powerOnHours })}</span> : null}
-                        </div>
-                      </div>
-                    ))}
+                    </span>
+                    {agentExtras.physicalDisks.map((pd, i) => {
+                      const bits = [
+                        pd.name,
+                        pd.media,
+                        pd.sizeGb != null ? t('computerDetail.gb', { n: pd.sizeGb }) : '',
+                        pd.health ?? '',
+                        pd.temperatureC != null ? `${pd.temperatureC}°C` : '',
+                        pd.wearPercent != null ? t('computerDetail.diskWear', { n: pd.wearPercent }) : '',
+                        pd.powerOnHours != null ? t('computerDetail.diskPowerOnHours', { n: pd.powerOnHours }) : '',
+                      ].filter(Boolean)
+                      return (
+                        <span key={i} className="text-[var(--color-fg)]">
+                          {bits.join(' · ')}
+                        </span>
+                      )
+                    })}
                     {agentExtras.batteryPercent != null ? (
-                      <div className="text-xs text-[var(--color-fg-muted)]">{t('computerDetail.battery', { n: agentExtras.batteryPercent })}</div>
+                      <span>{t('computerDetail.battery', { n: agentExtras.batteryPercent })}</span>
                     ) : null}
                   </div>
                 ) : null}
@@ -897,82 +889,12 @@ export function ComputerDetailModal({
                   </div>
                 ) : null}
 
-                <div className="mt-4 border-t border-[var(--color-border)] pt-3">
-                  <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('computerDetail.tags')}</h3>
-                  {user?.is_superuser ? (
-                    <div className="mt-2">
-                      {allTags.length === 0 ? (
-                        <p className="text-sm text-[var(--color-fg-muted)]">
-                          {t('computerDetail.tagsDirectoryEmpty')}{' '}
-                          <Link to="/settings/tags" className="font-medium text-blue-700 underline underline-offset-2 hover:text-[var(--color-fg)]">
-                            {t('computerDetail.tagsPage')}
-                          </Link>
-                          .
-                        </p>
-                      ) : (
-                        <div className="max-h-56 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
-                          {allTags.map((tg) => (
-                            <label
-                              key={tg.id}
-                              className={`mb-2 flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition last:mb-0 ${
-                                selectedTagIds.includes(tg.id)
-                                  ? 'border-zinc-400 bg-zinc-50 text-[var(--color-fg)]'
-                                  : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:border-slate-300'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                                checked={selectedTagIds.includes(tg.id)}
-                                onChange={() => toggleTag(tg.id)}
-                              />
-                              <span className="min-w-0 flex-1 break-words">{tg.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {(detail.tags ?? []).length === 0 ? (
-                        <span className="text-sm text-[var(--color-fg-muted)]">—</span>
-                      ) : (
-                        (detail.tags ?? []).map((tg) => {
-                          const pill = tagPillProps(tg)
-                          return (
-                            <span key={tg.id} className={`${pill.className} px-2.5 py-1`} style={pill.style}>
-                              {tg.name}
-                            </span>
-                          )
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
               </section>
             </div>
 
-            <div className="mt-4 grid shrink-0 grid-cols-1 gap-4 lg:mt-6 lg:grid-cols-2 lg:items-start lg:gap-8">
-              <section className="flex min-w-0 flex-col border-t border-[var(--color-border)] pt-4 lg:border-t-0 lg:pt-0">
+            <div className="mt-2 grid h-0 min-h-0 flex-1 basis-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2 lg:gap-4">
+              <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-[var(--color-border)] pt-2 lg:border-t-0 lg:pt-0">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
-                  {t('computerDetail.officeVersions')}
-                </h3>
-                {agentExtras && agentExtras.office.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {agentExtras.office.map((o, i) => (
-                      <span
-                        key={i}
-                        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-fg)]"
-                        title={o.path ?? undefined}
-                      >
-                        {o.label}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-[var(--color-fg-muted)]">{t('computerDetail.noData')}</p>
-                )}
-                <h3 className="mt-5 shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.installedSoftware')}
                 </h3>
                 <input
@@ -990,7 +912,7 @@ export function ComputerDetailModal({
                         total: softwareTotal,
                       })}
                 </p>
-                <ul className="mt-2 max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-sm ring-1 ring-slate-100/80 sm:min-h-[min(45vh,20rem)]">
+                <ul className="mt-1 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-sm">
                   {softwareLoading && softwareSafe.length === 0 ? (
                     <li className="px-3 py-4 text-[var(--color-fg-muted)]">{t('computerDetail.loading')}</li>
                   ) : softwareSafe.length === 0 ? (
@@ -1001,9 +923,9 @@ export function ComputerDetailModal({
                     filteredSoftware.map((s, i) => (
                       <li
                         key={`${s.name}-${i}`}
-                        className="border-b border-[var(--color-border)] px-3 py-2.5 last:border-0"
+                        className="border-b border-[var(--color-border)] px-2.5 py-1.5 last:border-0"
                       >
-                        <span className="text-[var(--color-fg)]">{s.name}</span>
+                        <span className="break-words text-[var(--color-fg)]">{s.name}</span>
                         {s.version && (
                           <span className="ml-2 font-mono text-[13px] text-[var(--color-fg-muted)]">{s.version}</span>
                         )}
@@ -1013,13 +935,13 @@ export function ComputerDetailModal({
                 </ul>
               </section>
 
-              <section className="flex min-w-0 flex-col border-t border-[var(--color-border)] pt-4 lg:border-t-0 lg:border-l lg:border-[var(--color-border)] lg:pl-8 lg:pt-0">
+              <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-[var(--color-border)] pt-2 lg:border-t-0 lg:border-l lg:border-[var(--color-border)] lg:pl-4 lg:pt-0">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.peripherals')}
                 </h3>
-                <ul className="mt-2 grid max-h-[min(70vh,36rem)] min-h-[min(28vh,12rem)] grid-cols-2 gap-1.5 overflow-y-auto overscroll-contain rounded-xl border border-zinc-200/70 bg-zinc-50/40 p-2 text-sm sm:min-h-[min(45vh,20rem)]">
+                <ul className="mt-1 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-1.5 text-sm">
                   {!peripheralGroups.length ? (
-                    <li className="col-span-2 px-2 py-4 text-[var(--color-fg-muted)]">
+                    <li className="px-2 py-4 text-[var(--color-fg-muted)]">
                       {t('computerDetail.noPeripheralData')}
                     </li>
                   ) : (
@@ -1027,13 +949,12 @@ export function ComputerDetailModal({
                       g.items.map((p, i) => (
                         <li
                           key={`${p.kind}-${p.name}-${i}`}
-                          className="flex min-w-0 items-center gap-1 rounded-lg border border-zinc-100/90 bg-[var(--color-surface)] px-2 py-1.5"
-                          title={p.name}
+                          className="rounded-lg border border-zinc-100/90 bg-[var(--color-surface)] px-2 py-1.5"
                         >
-                          <span className="w-1/2 shrink-0 truncate text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
                             {t(`computerDetail.kinds.${g.kind as 'keyboard' | 'mouse' | 'monitor' | 'camera' | 'audio' | 'printer' | 'biometric' | 'bluetooth' | 'touchpad' | 'net'}`)}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-xs text-[var(--color-fg)]">{p.name}</span>
+                          </div>
+                          <div className="break-words text-xs text-[var(--color-fg)]">{p.name}</div>
                         </li>
                       )),
                     )
@@ -1042,18 +963,89 @@ export function ComputerDetailModal({
               </section>
             </div>
 
-            {user?.is_superuser && (
-              <div className="mt-8 shrink-0 border-t border-[var(--color-border)] pt-6">
+            <div className="mt-2 flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                {pingBusy ? (
+                  <span className="text-[var(--color-fg-muted)]">{t('computerDetail.pingChecking')}</span>
+                ) : liveOnline ? (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+                    {t('computerDetail.pingOnline')}
+                  </span>
+                ) : liveOffline ? (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-rose-700">
+                    <span className="h-2 w-2 rounded-full bg-rose-500" aria-hidden />
+                    {t('computerDetail.pingOffline')}
+                  </span>
+                ) : cachedOnline ? (
+                  <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400/70" aria-hidden />
+                    {t('computerDetail.pingCachedOnline')}
+                  </span>
+                ) : cachedOffline ? (
+                  <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
+                    <span className="h-2 w-2 rounded-full bg-rose-400/70" aria-hidden />
+                    {t('computerDetail.pingCachedOffline')}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-[var(--color-fg-muted)]">
+                    <span className="h-2 w-2 rounded-full bg-slate-300" aria-hidden />
+                    {detail.ip_address
+                      ? t('computerDetail.pingIp', { ip: detail.ip_address })
+                      : t('computerDetail.pingUnknown')}
+                  </span>
+                )}
+                {pingResult?.ip_address ? (
+                  <span className="font-mono text-xs text-[var(--color-fg-muted)]">{pingResult.ip_address}</span>
+                ) : null}
+                {user?.is_superuser || user?.role === 'editor' ? (
+                  <button
+                    type="button"
+                    className="app-btn app-btn-secondary shrink-0 text-sm"
+                    onClick={() => {
+                      if (!detail) return
+                      void api
+                        .collectAgentsNow(detail.hostname)
+                        .then(() => toast.ok(t('agentBundle.fleetQueued')))
+                        .catch((ex) => toast.error(ex instanceof Error ? ex.message : String(ex)))
+                    }}
+                  >
+                    {t('computerDetail.collectAgent')}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="app-btn app-btn-secondary shrink-0 text-sm"
+                  disabled={pingBusy}
+                  onClick={() => void checkPing()}
+                >
+                  {pingBusy ? t('computerDetail.pingChecking') : t('computerDetail.pingCheck')}
+                </button>
+                {wolStatus?.user_may_wake && wolStatus.force_disabled ? (
+                  <span className="text-xs text-amber-800">{t('computerDetail.wolForceOff')}</span>
+                ) : null}
+                {wolStatus?.user_may_wake && !wolStatus.force_disabled && !isOnline && canShowWake ? (
+                  <button
+                    type="button"
+                    className="app-btn app-btn-primary text-sm"
+                    disabled={wolBusy}
+                    onClick={() => void wakePc()}
+                  >
+                    {wolBusy ? t('computerDetail.wolBusy') : t('computerDetail.wolWake')}
+                  </button>
+                ) : null}
+              </div>
+              {user?.is_superuser ? (
                 <button
                   type="button"
                   onClick={() => void deletePc()}
-                  className="app-btn app-btn-danger w-full sm:w-auto"
+                  className="app-btn app-btn-danger shrink-0"
+                  title={t('computerDetail.deletePcHint')}
                 >
                   {t('computerDetail.deletePc')}
                 </button>
-                <p className="mt-2 text-xs text-[var(--color-fg-muted)]">{t('computerDetail.deletePcHint')}</p>
-              </div>
-            )}
+              ) : null}
+            </div>
           </>
         ) : null}
       </div>

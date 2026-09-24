@@ -928,9 +928,10 @@ export function ServiceRequestsPage() {
         const d = new Date(`${iso.trim()}T00:00:00`)
         return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(loc, { day: 'numeric', month: 'long', year: 'numeric' })
       }
-      const fromPretty = fmtBound(statsFrom) || t('requests.stats.pdfAllPeriod')
-      const toPretty = fmtBound(statsTo) || t('requests.statsData.today')
-      const periodPretty = statsFrom.trim() || statsTo.trim() ? `${fromPretty} — ${toPretty}` : t('requests.stats.pdfAllPeriod')
+      const fromPretty = fmtBound(statsFrom)
+      const toPretty = fmtBound(statsTo)
+      const periodPretty =
+        fromPretty || toPretty ? `${fromPretty || '…'} — ${toPretty || '…'}` : t('requests.stats.pdfAllPeriod')
       const narrative = [
         t('requests.stats.narrativeTotal', { total: statsKpi.total, done: statsKpi.done, pct: statsKpi.completionRate }),
         t('requests.stats.narrativeCancelled', { count: statsKpi.cancelled }),
@@ -1062,7 +1063,6 @@ export function ServiceRequestsPage() {
         ? Math.max(1, Math.round((toMs - fromMs) / 86_400_000) + 1)
         : Math.max(1, statsSeries.items.length || 1)
       const perDay = (statsKpi.total / daySpan).toFixed(1)
-      const topCat = categoryTop.find((i) => i.count > 0)
       const topAsg = assigneeTop.find((i) => i.count > 0)
       const asgShare = topAsg && assigneeTotal > 0 ? Math.round((topAsg.count / assigneeTotal) * 100) : 0
 
@@ -1154,8 +1154,6 @@ export function ServiceRequestsPage() {
           <tr><td>${escapeHtml(t('requests.stats.pdfOpenCount'))}</td><td class="num">${openN}</td></tr>
           <tr><td>${escapeHtml(t('requests.stats.pdfInProgressCount'))}</td><td class="num">${progN}</td></tr>
           <tr><td>${escapeHtml(t('requests.stats.pdfHighPriority'))}</td><td class="num">${highN} · ${highRate}%</td></tr>
-          <tr><td>${escapeHtml(t('requests.stats.pdfTopCategory'))}</td><td class="num">${escapeHtml(topCat ? `${topCat.name} (${topCat.count})` : '—')}</td></tr>
-          <tr><td>${escapeHtml(t('requests.stats.pdfTopAssignee'))}</td><td class="num">${escapeHtml(topAsg ? topAsg.name : '—')}</td></tr>
           <tr><td>${escapeHtml(t('requests.stats.pdfConcentration'))}</td><td class="num">${asgShare}%</td></tr>
         </tbody>
       </table>
@@ -2392,9 +2390,11 @@ export function ServiceRequestsPage() {
           <div className="mx-auto flex w-full min-w-0 flex-col gap-5 lg:col-span-12">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between print:hidden">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">
-                  {statsPeriodLabel}
-                </p>
+                {statsFrom.trim() || statsTo.trim() ? (
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">
+                    {statsPeriodLabel}
+                  </p>
+                ) : null}
                 <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight text-[var(--color-fg)]">
                   {t('requests.stats.title')}
                 </h2>
@@ -2472,8 +2472,6 @@ export function ServiceRequestsPage() {
                   [t('requests.stats.progressNow'), String(statsKpi.progressN)],
                   [t('requests.stats.avgClose'), statsKpi.avgCloseHours != null ? t('requests.stats.pdfHours', { h: statsKpi.avgCloseHours }) : '—'],
                   [t('requests.stats.highShare'), `${statsKpi.highShare}%`],
-                  [t('requests.stats.topCategory'), statsExtra.topCat?.name || '—'],
-                  [t('requests.stats.topAssignee'), statsExtra.topAsg?.name || '—'],
                 ] as const
               ).map(([label, value]) => (
                 <div

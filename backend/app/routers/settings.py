@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 import secrets
 
-from app.auth import get_current_superuser
+from app.agent_policy import get_or_create_policy
+from app.auth import get_current_editor_or_superuser, get_current_superuser
 from app.database import get_db
 from app.ldap_config import get_effective_ldap_config
-from app.models import Bitrix24Config, LdapConfig, User, ZabbixConfig
+from app.models import AgentCollectRequest, Bitrix24Config, LdapConfig, User, ZabbixConfig
 from app.schemas import (
     Bitrix24ConfigOut,
     Bitrix24ConfigUpdate,
@@ -15,6 +16,9 @@ from app.schemas import (
     LdapConfigUpdate,
     LdapTestRequest,
     LdapTestResponse,
+    AgentCollectNowIn,
+    AgentCollectPolicyOut,
+    AgentCollectPolicyUpdate,
     ZabbixConfigOut,
     ZabbixConfigUpdate,
     ZabbixTestResponse,
@@ -24,6 +28,61 @@ from app.zabbix_service import invalidate_zabbix_cache
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+def _policy_out(row) -> AgentCollectPolicyOut:
+    return AgentCollectPolicyOut(
+        mode=(row.mode or "on_demand").strip().lower(),
+        time_hhmm=(row.time_hhmm or "09:00")[:5],
+        weekday=int(row.weekday or 0),
+        timezone=(row.timezone or "Europe/Moscow").strip() or "Europe/Moscow",
+        generation=int(row.generation or 0),
+        last_reason=(row.last_reason or "idle").strip() or "idle",
+        poll_minutes=int(row.poll_minutes or 5),
+    )
+
+
+@router.get("/agent-policy", response_model=AgentCollectPolicyOut)
+async def get_agent_policy(
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    return _policy_out(await get_or_create_policy(db))
+
+
+@router.put("/agent-policy", response_model=AgentCollectPolicyOut)
+async def put_agent_policy(
+    body: AgentCollectPolicyUpdate,
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await get_or_create_policy(db)
+    row.mode = body.mode
+    row.time_hhmm = body.time_hhmm.strip()[:5] or "09:00"
+    row.weekday = int(body.weekday)
+    row.timezone = body.timezone.strip() or "Europe/Moscow"
+    row.poll_minutes = int(body.poll_minutes)
+    await db.commit()
+    await db.refresh(row)
+    return _policy_out(row)
+
+
+@router.post("/agent-policy/collect-now", response_model=AgentCollectPolicyOut)
+async def collect_agents_now(
+    body: AgentCollectNowIn = Body(default_factory=AgentCollectNowIn),
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await get_or_create_policy(db)
+    host = ((body.hostname if body else None) or "").strip()
+    if host:
+        db.add(AgentCollectRequest(hostname=host))
+    else:
+        row.generation = int(row.generation or 0) + 1
+        row.last_reason = "now"
+    await db.commit()
+    await db.refresh(row)
+    return _policy_out(row)
 
 
 def _out(eff, row: LdapConfig | None) -> LdapConfigOut:

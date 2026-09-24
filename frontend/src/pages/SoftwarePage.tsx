@@ -157,7 +157,7 @@ export function SoftwarePage() {
   const activeKeys = useMemo(() => new Set(filters.map(filterKey)), [filters])
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col gap-3 overflow-hidden">
       <h1 className="sr-only">{t('titles.software')}</h1>
       <div className="flex flex-wrap gap-3 text-sm">
         <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
@@ -232,8 +232,8 @@ export function SoftwarePage() {
         </div>
       ) : null}
 
-      <div key={`sw-${kind}`} className="grid items-start gap-4 lg:grid-cols-5">
-        <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-3">
+      <div key={`sw-${kind}`} className="grid min-h-0 flex-1 items-stretch gap-4 overflow-hidden lg:grid-cols-5">
+        <div className="min-h-0 overflow-auto overscroll-contain rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-3">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
               <tr>
@@ -293,7 +293,7 @@ export function SoftwarePage() {
 
         <div
           ref={hostsPanelRef}
-          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 lg:col-span-2 lg:sticky lg:top-4 lg:z-10 lg:max-h-[calc(100dvh-5.5rem)] lg:overflow-y-auto lg:overscroll-contain"
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 lg:col-span-2"
         >
           <h2 className="text-[0.95rem] font-medium tracking-tight text-[var(--color-fg)]">
             {t('software.installedOnTitle')}
@@ -314,7 +314,7 @@ export function SoftwarePage() {
 
               <div
                 ref={hostsListRef}
-                className="mt-3 max-h-[min(60vh,28rem)] overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40"
+                className="mt-3 h-[30rem] max-h-[30rem] overflow-y-auto overscroll-contain rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40"
               >
                 <ul>
                   {sortedHosts.map((pc, idx) => {

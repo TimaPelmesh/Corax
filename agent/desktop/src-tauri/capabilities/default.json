@@ -1,6 +1,0 @@
-{
-  "identifier": "default",
-  "description": "Tray-only inventory agent",
-  "windows": [],
-  "permissions": ["core:default"]
-}

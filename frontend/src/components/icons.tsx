@@ -740,6 +740,57 @@ export function IconUndo({ className, title }: Props) {
   )
 }
 
+export function IconList({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" {...soft} />
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" {...s} />
+      <path d="M7 9h10M7 12h10M7 15h6" {...s} strokeWidth={sw * 0.9} />
+    </svg>
+  )
+}
+
+export function IconChart({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <path d="M4 19.5h16" {...s} />
+      <rect x="6" y="12" width="3" height="6" rx="0.6" {...soft} />
+      <rect x="10.5" y="8" width="3" height="10" rx="0.6" {...soft} />
+      <rect x="15" y="5" width="3" height="13" rx="0.6" {...soft} />
+      <rect x="6" y="12" width="3" height="6" rx="0.6" {...s} />
+      <rect x="10.5" y="8" width="3" height="10" rx="0.6" {...s} />
+      <rect x="15" y="5" width="3" height="13" rx="0.6" {...s} />
+    </svg>
+  )
+}
+
+export function IconTree({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <rect x="9" y="3.5" width="6" height="4" rx="1" {...soft} />
+      <rect x="3.5" y="16" width="6" height="4" rx="1" {...soft} />
+      <rect x="14.5" y="16" width="6" height="4" rx="1" {...soft} />
+      <rect x="9" y="3.5" width="6" height="4" rx="1" {...s} />
+      <rect x="3.5" y="16" width="6" height="4" rx="1" {...s} />
+      <rect x="14.5" y="16" width="6" height="4" rx="1" {...s} />
+      <path d="M12 7.5v3.2M12 10.7H6.5V16M12 10.7h5.5V16" {...s} />
+    </svg>
+  )
+}
+
+export function IconPower({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <path d="M12 3.5v7" {...s} />
+      <path d="M8.2 6.2a7 7 0 1 0 7.6 0" {...s} />
+    </svg>
+  )
+}
+
 export function IconRedo({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>

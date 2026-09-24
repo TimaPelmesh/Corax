@@ -72,13 +72,6 @@ function formatSchedulerShort(
     : t('printers.autoEvery', { mins })
 }
 
-function supplyBarColor(pct: number | null) {
-  if (pct == null) return 'bg-slate-300'
-  if (pct <= 10) return 'bg-blue-600'
-  if (pct <= 25) return 'bg-amber-500'
-  return 'bg-emerald-500'
-}
-
 /** Тонер/картридж — цветная метка; остальное из SNMP (печка, фильтр, developer…) — сервис, без «цвета тонера». */
 function isTonerSupply(name: string): boolean {
   const s = name.toLowerCase()
@@ -133,77 +126,49 @@ function supplyTone(name: string): { dot: string; text: string; track: string; f
   return { dot: 'bg-slate-400', text: 'text-[var(--color-fg-muted)]', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400' }
 }
 
-const SERVICE_TONE = {
-  dot: 'bg-slate-300',
-  text: 'text-[var(--color-fg-muted)]',
-  track: 'bg-[var(--color-surface-muted)]',
-  fill: 'bg-slate-400',
-} as const
-
 function hasLowToner(supplies: PrinterSupply[] | undefined) {
   return (supplies ?? []).some(
     (s) => isTonerSupply(s.name) && s.level_percent != null && s.level_percent <= 15,
   )
 }
 
-function SupplyChip({
-  s,
-  colored,
-}: {
-  s: PrinterSupply
-  colored: boolean
-}) {
-  const low = s.level_percent != null && s.level_percent <= 15
-  const tone = colored ? supplyTone(s.name) : SERVICE_TONE
-  return (
-    <div
-      key={s.name}
-      className={colored ? 'min-w-[5.5rem] max-w-[14rem]' : 'min-w-[5.5rem] max-w-[14rem]'}
-      title={s.name}
-    >
-      <div
-        className={`flex items-start gap-1 text-[10px] leading-snug ${low && colored ? 'font-semibold text-blue-700' : 'font-medium text-[var(--color-fg-muted)]'}`}
-      >
-        <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ring-1 ring-black/10 ${tone.dot}`} />
-        <span className={`min-w-0 break-words ${tone.text}`}>{s.name}</span>
-        <span className="shrink-0 font-mono tabular-nums">
-          {s.level_percent != null ? `${s.level_percent}%` : '?'}
-        </span>
-      </div>
-      <div className={`mt-0.5 h-1 w-full overflow-hidden rounded-full ${tone.track}`}>
-        <div
-          className={`h-full rounded-full ${low && colored ? supplyBarColor(s.level_percent) : tone.fill}`}
-          style={{ width: `${Math.max(4, s.level_percent ?? 0)}%` }}
-        />
-      </div>
-    </div>
-  )
+function tonerShort(name: string) {
+  const s = name.toLowerCase()
+  if (/black|черн/.test(s)) return 'K'
+  if (/cyan|голуб/.test(s)) return 'C'
+  if (/magenta|пурпур/.test(s)) return 'M'
+  if (/yellow|жёлт|желт/.test(s)) return 'Y'
+  return name.length > 10 ? `${name.slice(0, 9)}…` : name
 }
 
-function SuppliesCell({ supplies, serviceLabel }: { supplies: PrinterSupply[]; serviceLabel: string }) {
-  if (!supplies.length) {
+function SuppliesCell({ supplies }: { supplies: PrinterSupply[] }) {
+  const { toners } = partitionSupplies(supplies)
+  if (!toners.length) {
     return <span className="text-xs text-[var(--color-fg-subtle)]">—</span>
   }
-  const { toners, service } = partitionSupplies(supplies)
   return (
-    <div className="min-w-[10rem] space-y-1.5">
-      {toners.length > 0 ? (
-        <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-          {toners.map((s) => (
-            <SupplyChip key={s.name} s={s} colored />
-          ))}
-        </div>
-      ) : null}
-      {service.length > 0 ? (
-        <div className="border-t border-dashed border-[var(--color-border)] pt-1.5">
-          <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">{serviceLabel}</div>
-          <div className="flex flex-wrap gap-x-2 gap-y-1">
-            {service.map((s) => (
-              <SupplyChip key={s.name} s={s} colored={false} />
-            ))}
+    <div className="grid w-[16rem] grid-cols-2 gap-x-3 gap-y-1.5">
+      {toners.map((s) => {
+        const low = s.level_percent != null && s.level_percent <= 15
+        const tone = supplyTone(s.name)
+        const pct = s.level_percent
+        return (
+          <div key={s.name} className="min-w-0" title={s.name}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className={`text-[11px] font-semibold ${tone.text}`}>{tonerShort(s.name)}</span>
+              <span className={`font-mono text-sm font-semibold tabular-nums ${low ? 'text-blue-700' : 'text-[var(--color-fg)]'}`}>
+                {pct != null ? `${pct}%` : '—'}
+              </span>
+            </div>
+            <div className={`mt-0.5 h-1.5 overflow-hidden rounded-full ${tone.track}`}>
+              <div
+                className={`h-full rounded-full ${low ? 'bg-blue-600' : tone.fill}`}
+                style={{ width: `${Math.max(pct != null ? 4 : 0, pct ?? 0)}%` }}
+              />
+            </div>
           </div>
-        </div>
-      ) : null}
+        )
+      })}
     </div>
   )
 }
@@ -215,7 +180,7 @@ const FILTER_KEYS: Record<FilterChip, MessageKey> = {
   snmp_error: 'printers.filterSnmpErr',
 }
 
-type ColKey = 'model' | 'ip' | 'location' | 'status' | 'pages' | 'supplies' | 'lastPoll' | 'actions'
+type ColKey = 'model' | 'ip' | 'location' | 'status' | 'pages' | 'supplies' | 'lastPoll'
 
 const COL_KEYS: Record<ColKey, MessageKey> = {
   model: 'printers.colModel',
@@ -225,7 +190,6 @@ const COL_KEYS: Record<ColKey, MessageKey> = {
   pages: 'printers.colPages',
   supplies: 'printers.colSupplies',
   lastPoll: 'printers.colLastPoll',
-  actions: 'printers.colActions',
 }
 
 const DEFAULT_COLS: Record<ColKey, boolean> = {
@@ -233,13 +197,12 @@ const DEFAULT_COLS: Record<ColKey, boolean> = {
   ip: true,
   location: true,
   status: true,
-  pages: true,
+  pages: false,
   supplies: true,
-  lastPoll: true,
-  actions: true,
+  lastPoll: false,
 }
 
-const COLS_STORAGE_KEY = 'corax-printers-cols-v1'
+const COLS_STORAGE_KEY = 'corax-printers-cols-v2'
 
 function loadVisibleCols(): Record<ColKey, boolean> {
   try {
@@ -495,11 +458,10 @@ export function PrintersPage() {
   const filteredColKeys = useMemo(() => {
     const q = colsQuery.trim().toLowerCase()
     return (Object.keys(COL_KEYS) as ColKey[]).filter((key) => {
-      if (key === 'actions' && !canEdit) return false
       if (!q) return true
       return t(COL_KEYS[key]).toLowerCase().includes(q)
     })
-  }, [colsQuery, canEdit, t])
+  }, [colsQuery, t])
 
   useEffect(() => {
     void (async () => {
@@ -546,7 +508,6 @@ export function PrintersPage() {
     let n = 0
     if (canEdit) n += 1
     for (const k of Object.keys(visibleCols) as ColKey[]) {
-      if (k === 'actions' && !canEdit) continue
       if (visibleCols[k]) n += 1
     }
     return Math.max(n, 1)
@@ -599,17 +560,6 @@ export function PrintersPage() {
   }
 
   const pollBusyLabel = pollBusy || sched?.running_now ? t('printers.pollBusy') : t('printers.pollAll')
-
-  const pollOne = async (row: NetworkPrinter) => {
-    if (!canEdit || !row.ip_address) return
-    try {
-      await api.pollPrinter(row.id)
-      await reload(search)
-      toast.ok(t('printers.snmpUpdated', { name: displayTitle(row) }))
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('printers.pollFailed'))
-    }
-  }
 
   const startRename = (row: NetworkPrinter) => {
     if (!canEdit) return
@@ -938,9 +888,8 @@ export function PrintersPage() {
                 {visibleCols.location ? <th className="app-hide-xs min-w-[8rem] px-4 py-3">{t('printers.colLocation')}</th> : null}
                 {visibleCols.status ? <th className="px-4 py-3">{t('printers.colStatus')}</th> : null}
                 {visibleCols.pages ? <th className="app-hide-xs px-4 py-3">{t('printers.colPages')}</th> : null}
-                {visibleCols.supplies ? <th className="min-w-[14rem] px-4 py-3">{t('printers.colSupplies')}</th> : null}
+                {visibleCols.supplies ? <th className="min-w-[18rem] px-4 py-3">{t('printers.colSupplies')}</th> : null}
                 {visibleCols.lastPoll ? <th className="app-hide-xs px-4 py-3">{t('printers.colLastPoll')}</th> : null}
-                {canEdit && visibleCols.actions ? <th className="px-4 py-3 text-right">{t('printers.colActions')}</th> : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
@@ -975,7 +924,7 @@ export function PrintersPage() {
                     r.snmp_status === 'ok'
                       ? { text: 'SNMP OK', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-[var(--color-border)]' }
                       : r.snmp_status === 'error'
-                        ? { text: 'SNMP err', cls: 'bg-[var(--color-surface-muted)] text-rose-700 ring-[var(--color-border)] dark:text-rose-300' }
+                        ? { text: 'snmp err', cls: 'bg-[var(--color-surface-muted)] text-rose-700 ring-[var(--color-border)] dark:text-rose-300' }
                         : r.snmp_status === 'skipped'
                           ? { text: 'SNMP —', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-[var(--color-border)]' }
                           : { text: 'SNMP ?', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-[var(--color-border)]' }
@@ -1040,17 +989,9 @@ export function PrintersPage() {
                             <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ${pollBadge.cls}`}>
                               {pollBadge.text}
                             </span>
-                            <span
-                              className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ${snmpBadge.cls}`}
-                              title={r.snmp_error || undefined}
-                            >
+                            <span className={`inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ${snmpBadge.cls}`}>
                               {snmpBadge.text}
                             </span>
-                            {r.snmp_error ? (
-                              <span className="max-w-[11rem] whitespace-normal break-words text-[10px] leading-snug text-rose-700/90" title={r.snmp_error}>
-                                {r.snmp_error}
-                              </span>
-                            ) : null}
                             {low ? (
                               <span className="inline-flex w-fit rounded-md bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-[var(--color-border)] dark:text-amber-200">
                                 {t('printers.lowTonerBadge')}
@@ -1066,31 +1007,11 @@ export function PrintersPage() {
                       ) : null}
                       {visibleCols.supplies ? (
                         <td className="px-4 py-3 align-top">
-                          <SuppliesCell supplies={r.supplies ?? []} serviceLabel={t('printers.service')} />
+                          <SuppliesCell supplies={r.supplies ?? []} />
                         </td>
                       ) : null}
                       {visibleCols.lastPoll ? (
                         <td className="app-hide-xs px-4 py-3 align-top text-[var(--color-fg-muted)]">{fmtWhen(r.last_poll_at ?? r.last_snmp_at, locale)}</td>
-                      ) : null}
-                      {canEdit && visibleCols.actions ? (
-                        <td className="px-4 py-3 text-right align-top" onClick={(e) => e.stopPropagation()}>
-                          <div className="inline-flex flex-col items-end gap-0.5">
-                            <button
-                              type="button"
-                              className="rounded-lg px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
-                              onClick={() => void pollOne(r)}
-                            >
-                              SNMP
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-lg px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
-                              onClick={() => setDeleteTarget({ ids: [r.id], labels: [title] })}
-                            >
-                              {t('common.delete')}
-                            </button>
-                          </div>
-                        </td>
                       ) : null}
                     </tr>
                   )
@@ -1259,6 +1180,15 @@ export function PrintersPage() {
         onChanged={(updated) => {
           setDetailPrinter(updated)
           setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+        }}
+        onDeleted={(id) => {
+          setRows((prev) => prev.filter((r) => r.id !== id))
+          setSelected((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+          setDetailPrinter(null)
         }}
       />
     </div>

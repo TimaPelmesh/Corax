@@ -5,7 +5,7 @@ from pathlib import Path
 import hashlib
 import hmac
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,7 @@ from app.models import AgentToken, Computer, DiskVolume, InstalledSoftware, Peri
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
 from app.peripheral_display import is_noise_peripheral
 from app.schemas import AgentInventoryReport
+from app.agent_policy import ack_hostname, build_directive
 from app.search_index import sync_computer
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -324,6 +325,7 @@ async def submit_inventory(
 
     await db.flush()
     await sync_computer(db, pc)
+    await ack_hostname(db, hn)
     await db.commit()
     try:
         _save_inbox_json(hn, pc.id, raw, now)
@@ -331,3 +333,29 @@ async def submit_inventory(
         pass
 
     return {"ok": True, "computer_id": pc.id, "hostname": hn, "action": action}
+
+
+@router.get("/directive")
+@limiter.limit(settings.rate_limit_agent)
+async def agent_directive(
+    request: Request,
+    hostname: str = Query(default="", max_length=255),
+    seen_generation: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """Agent poll: collect now, or because the server schedule advanced the generation."""
+    _ = request
+    hn = (hostname or "").strip()
+    await verify_agent_token(db, authorization, hn or "directive")
+    directive = await build_directive(db, hn, seen_generation)
+    return {
+        "collect": directive.collect,
+        "reason": directive.reason,
+        "generation": directive.generation,
+        "mode": directive.mode,
+        "time": directive.time_hhmm,
+        "weekday": directive.weekday,
+        "timezone": directive.timezone,
+        "poll_minutes": directive.poll_minutes,
+    }

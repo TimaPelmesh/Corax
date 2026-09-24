@@ -64,12 +64,16 @@ export function AgentBundlePage() {
   const [lanCandidates, setLanCandidates] = useState<string[]>([])
   const [lanLoading, setLanLoading] = useState(true)
   const [serverPort, setServerPort] = useState(() => defaultAgentPort())
-  const [platform, setPlatform] = useState<AgentBundleTarget>('win10')
+  const [platform, setPlatform] = useState<AgentBundleTarget>('windows')
   const [level, setLevel] = useState<AgentBundleProfile>('full')
   const [tokenLabel, setTokenLabel] = useState('CORAX deploy')
   const [scheduleEnabled, setScheduleEnabled] = useState(false)
   const [scheduleMode, setScheduleMode] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('WEEKLY')
   const [scheduleTime, setScheduleTime] = useState('09:00')
+  const [fleetMode, setFleetMode] = useState<'on_demand' | 'daily' | 'weekly'>('on_demand')
+  const [fleetTime, setFleetTime] = useState('09:00')
+  const [fleetWeekday, setFleetWeekday] = useState(0)
+  const [fleetBusy, setFleetBusy] = useState(false)
   const [modules, setModules] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(MODULE_KEYS.map((k) => [k, true])),
   )
@@ -95,6 +99,22 @@ export function AgentBundlePage() {
       .catch(() => {
         /* keep browser protocol fallback */
       })
+    return () => {
+      cancelled = true
+    }
+  }, [authLoading, user?.is_superuser])
+
+  useEffect(() => {
+    if (authLoading || !user?.is_superuser) return
+    let cancelled = false
+    void api.agentCollectPolicy().then((policy) => {
+      if (cancelled) return
+      setFleetMode(policy.mode)
+      setFleetTime(policy.time_hhmm || '09:00')
+      setFleetWeekday(policy.weekday ?? 0)
+    }).catch(() => {
+      /* policy appears after the API migration; the form keeps defaults */
+    })
     return () => {
       cancelled = true
     }
@@ -137,8 +157,8 @@ export function AgentBundlePage() {
     }
   }, [authLoading, t, toast, user?.is_superuser])
 
-  const showModules = (platform === 'win10' || platform === 'linux') && level === 'custom'
-  const showExtended = platform === 'win10' || platform === 'linux'
+  const showModules = (platform === 'windows' || platform === 'linux') && level === 'custom'
+  const showExtended = platform === 'windows' || platform === 'linux'
   const moduleList = useMemo(() => [...MODULE_KEYS], [])
   const enabledModuleCount = useMemo(
     () => Object.values(modules).filter(Boolean).length,
@@ -171,11 +191,7 @@ export function AgentBundlePage() {
     try {
       const label =
         tokenLabel.trim() ||
-        (platform === 'linux'
-          ? t('agentBundle.defaultTokenLabelLinux')
-          : platform === 'desktop'
-            ? t('agentBundle.defaultTokenLabelDesktop')
-            : t('agentBundle.defaultTokenLabelWin10'))
+        (platform === 'linux' ? t('agentBundle.defaultTokenLabelLinux') : t('agentBundle.defaultTokenLabelWin10'))
       const server = buildAgentServerUrl(serverHost, serverPort, urlScheme)
       const filename = await api.downloadAgentBundle({
             server_url: server,
@@ -185,7 +201,7 @@ export function AgentBundlePage() {
             token_label: label,
             modules: showModules ? modules : undefined,
             schedule:
-              platform === 'win10' || platform === 'linux'
+              platform === 'windows' || platform === 'linux'
                 ? {
                     enabled: scheduleEnabled,
                     mode: scheduleMode,
@@ -217,8 +233,7 @@ export function AgentBundlePage() {
           <div className="inline-flex max-w-full flex-wrap rounded-lg border border-[var(--color-border)] p-0.5">
             {(
               [
-                ['win10', 'agentBundle.platformWin10'],
-                ['desktop', 'agentBundle.platformDesktop'],
+                ['windows', 'agentBundle.platformWin10'],
                 ['linux', 'agentBundle.platformLinux'],
               ] as const
             ).map(([id, key]) => (
@@ -317,13 +332,7 @@ export function AgentBundlePage() {
             </div>
           )}
 
-          {platform === 'desktop' ? (
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
-              {t('agentBundle.desktopNotice')}
-            </div>
-          ) : null}
-
-          {platform === 'win10' ? (
+          {platform === 'windows' ? (
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
               {t('agentBundle.windowsZipNotice')}
             </div>
@@ -418,18 +427,6 @@ export function AgentBundlePage() {
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/60 p-4">
             <div className="text-sm font-semibold text-[var(--color-fg)]">{t('agentBundle.tokenTitle')}</div>
             <div className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
-              {platform === 'desktop' ? (
-                <>
-                  <p>{t('agentBundle.tokenDesktopSeal')}</p>
-                  <p>
-                    {t('agentBundle.tokenDesktopRevokeBefore')}{' '}
-                    <Link to="/settings/agent-tokens" className="font-medium text-[var(--color-primary)] underline-offset-2 hover:underline">
-                      {t('agentBundle.tokenIntroLink')}
-                    </Link>
-                    {t('agentBundle.tokenDesktopRevokeAfter')}
-                  </p>
-                </>
-              ) : (
                 <>
               <p>
                 <strong>{t('agentBundle.tokenNewEachBuild')}</strong> {t('agentBundle.tokenIntroBefore')}{' '}
@@ -444,7 +441,6 @@ export function AgentBundlePage() {
               </p>
               <p>{t('agentBundle.tokenParagraph3')}</p>
                 </>
-              )}
             </div>
             <div className="mt-3">
               <label className="app-label">{t('agentBundle.tokenLabelAdmin')}</label>
@@ -452,7 +448,90 @@ export function AgentBundlePage() {
             </div>
           </div>
 
-          {platform === 'win10' || platform === 'linux' ? (
+          {platform === 'windows' ? (
+          <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-4">
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('agentBundle.fleetTitle')}</h2>
+            <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">{t('agentBundle.fleetHint')}</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="app-label">{t('agentBundle.fleetMode')}</label>
+                <select
+                  className="app-input"
+                  value={fleetMode}
+                  onChange={(e) => setFleetMode(e.target.value as typeof fleetMode)}
+                >
+                  <option value="on_demand">{t('agentBundle.fleetOnDemand')}</option>
+                  <option value="daily">{t('agentBundle.fleetDaily')}</option>
+                  <option value="weekly">{t('agentBundle.fleetWeekly')}</option>
+                </select>
+              </div>
+              {fleetMode !== 'on_demand' ? (
+                <div>
+                  <label className="app-label">{t('agentBundle.scheduleTimeLabel')}</label>
+                  <input className="app-input" type="time" value={fleetTime} onChange={(e) => setFleetTime(e.target.value)} />
+                </div>
+              ) : null}
+              {fleetMode === 'weekly' ? (
+                <div>
+                  <label className="app-label">{t('agentBundle.fleetWeekday')}</label>
+                  <select
+                    className="app-input"
+                    value={fleetWeekday}
+                    onChange={(e) => setFleetWeekday(Number(e.target.value))}
+                  >
+                    <option value={0}>{t('agentBundle.weekdayMon')}</option>
+                    <option value={1}>{t('agentBundle.weekdayTue')}</option>
+                    <option value={2}>{t('agentBundle.weekdayWed')}</option>
+                    <option value={3}>{t('agentBundle.weekdayThu')}</option>
+                    <option value={4}>{t('agentBundle.weekdayFri')}</option>
+                    <option value={5}>{t('agentBundle.weekdaySat')}</option>
+                    <option value={6}>{t('agentBundle.weekdaySun')}</option>
+                  </select>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="app-btn"
+                disabled={fleetBusy}
+                onClick={() => {
+                  setFleetBusy(true)
+                  void api
+                    .saveAgentCollectPolicy({
+                      mode: fleetMode,
+                      time_hhmm: fleetTime,
+                      weekday: fleetWeekday,
+                      timezone: 'Europe/Moscow',
+                      poll_minutes: 5,
+                    })
+                    .then(() => toast.ok(t('agentBundle.fleetSaved')))
+                    .catch((ex) => toast.error(ex instanceof Error ? ex.message : String(ex)))
+                    .finally(() => setFleetBusy(false))
+                }}
+              >
+                {t('agentBundle.fleetSave')}
+              </button>
+              <button
+                type="button"
+                className="app-btn app-btn-primary"
+                disabled={fleetBusy}
+                onClick={() => {
+                  setFleetBusy(true)
+                  void api
+                    .collectAgentsNow()
+                    .then(() => toast.ok(t('agentBundle.fleetQueued')))
+                    .catch((ex) => toast.error(ex instanceof Error ? ex.message : String(ex)))
+                    .finally(() => setFleetBusy(false))
+                }}
+              >
+                {t('agentBundle.fleetCollect')}
+              </button>
+            </div>
+          </div>
+          ) : null}
+
+          {platform === 'linux' ? (
           <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-4">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--color-fg)]">
               <input
@@ -509,11 +588,7 @@ export function AgentBundlePage() {
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryPlatform')}</dt>
                 <dd className="text-right font-medium text-[var(--color-fg)]">
-                  {platform === 'linux'
-                    ? t('agentBundle.platformLinux')
-                    : platform === 'desktop'
-                      ? t('agentBundle.platformDesktop')
-                      : t('agentBundle.platformWin10')}
+                  {platform === 'linux' ? t('agentBundle.platformLinux') : t('agentBundle.platformWin10')}
                 </dd>
               </div>
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
@@ -540,34 +615,32 @@ export function AgentBundlePage() {
                   <dd className="text-right text-[var(--color-fg)]">{enabledModuleCount}</dd>
                 </div>
               ) : null}
-              {platform === 'win10' || platform === 'linux' ? (
+              {platform === 'windows' || platform === 'linux' ? (
                 <div className="flex justify-between gap-3">
                   <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summarySchedule')}</dt>
                   <dd className="text-right text-[var(--color-fg)]">
-                    {scheduleEnabled
-                      ? platform === 'linux'
+                    {platform === 'windows'
+                      ? fleetMode === 'daily'
+                        ? t('agentBundle.fleetDaily')
+                        : fleetMode === 'weekly'
+                          ? t('agentBundle.fleetWeekly')
+                          : t('agentBundle.fleetOnDemand')
+                      : scheduleEnabled
                         ? 'cron / systemd'
-                        : t('agentBundle.summaryScheduleEnabled')
-                      : t('agentBundle.summaryScheduleDisabled')}
+                        : t('agentBundle.summaryScheduleDisabled')}
                   </dd>
                 </div>
               ) : null}
             </dl>
             <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">
-              {platform === 'linux' ? (
-                <>{t('agentBundle.summaryArchiveLinux')}</>
-              ) : platform === 'desktop' ? (
-                <>{t('agentBundle.summaryArchiveDesktop')}</>
-              ) : (
-                <>{t('agentBundle.summaryArchiveWin10')}</>
-              )}
+              {platform === 'linux' ? t('agentBundle.summaryArchiveLinux') : t('agentBundle.summaryArchiveWin10')}
             </p>
             <button
               type="submit"
               className="app-btn app-btn-primary w-full"
               disabled={busy || lanLoading || !serverHost.trim()}
             >
-              {busy ? t('agentBundle.building') : platform === 'desktop' ? t('agentBundle.downloadDesktop') : t('agentBundle.downloadZip')}
+              {busy ? t('agentBundle.building') : t('agentBundle.downloadZip')}
             </button>
           </div>
 
@@ -577,11 +650,7 @@ export function AgentBundlePage() {
             </p>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">
               <li>
-                {platform === 'linux'
-                  ? t('agentBundle.deployStep1Linux')
-                  : platform === 'desktop'
-                    ? t('agentBundle.deployStep1Desktop')
-                    : t('agentBundle.deployStep1')}
+                {platform === 'linux' ? t('agentBundle.deployStep1Linux') : t('agentBundle.deployStep1')}
               </li>
               <li>
                 {platform === 'linux' ? (
@@ -590,23 +659,14 @@ export function AgentBundlePage() {
                     <code className="text-xs">./run_console.sh</code>{' '}
                     {t('agentBundle.deployStep2LinuxAfter', { serverUrl })}
                   </>
-                ) : platform === 'desktop' ? (
-                  t('agentBundle.deployStep2Desktop')
                 ) : (
                   <>
                     {t('agentBundle.deployStep2Before')}{' '}
-                    <code className="text-xs">corax_send.bat</code>{' '}
-                    {t('agentBundle.deployStep2After', { serverUrl })}
+                    <code className="text-xs">CORAX-Agent.exe</code>
                   </>
                 )}
               </li>
-              {platform === 'linux' ? (
-                <li>{t('agentBundle.deployStep3Linux')}</li>
-              ) : platform === 'desktop' ? (
-                <li>{t('agentBundle.deployStep3Desktop')}</li>
-              ) : (
-                <li>{t('agentBundle.deployStep3Win10')}</li>
-              )}
+              <li>{platform === 'linux' ? t('agentBundle.deployStep3Linux') : t('agentBundle.deployStep3Win10')}</li>
               <li>{t('agentBundle.deployStep4')}</li>
             </ol>
           </div>

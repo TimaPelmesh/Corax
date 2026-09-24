@@ -113,7 +113,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Two packages on the panel',
-          body: 'Settings → Agent build.\n• ZIP PowerShell Windows — one archive for 7/10/11; run corax_send_silent.vbs (no window). After send, a “Оставить заявку” desktop shortcut opens /h#pc=HOSTNAME.\n• ZIP Linux (bash) — see the Linux section below.\nThe C++ EXE is not offered from the panel for now.',
+          body: 'Settings → Agent build.\n• Windows ZIP — CORAX-Agent.exe. It installs into %ProgramData%\\CORAX\\Agent, stays in the tray, and sends a report when the panel asks. After the first report a “Оставить заявку” desktop shortcut opens /h#pc=HOSTNAME.\n• ZIP Linux (bash) — see the Linux section below.',
         },
         {
           title: 'Before you build — LAN IP',
@@ -133,19 +133,19 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'ZIP Windows — contents',
-          body: 'corax_send.bat — manual run: waits until collection finishes and shows status.\ncorax_send_silent.vbs — no window (Task Scheduler).\ncorax-last-run.txt — OK/FAILED after a run.\nagent_env.bat — URL and token; do not overwrite on script updates.\nagent_config.json — collection modules.\nupdate_scripts.bat — safe update.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / old PowerShell.\nREADME_DEPLOY.txt — short cheat sheet inside the archive.',
+          body: 'CORAX-Agent.exe — installer and tray agent.\nagent.json — server address, no token.\nagent.provision.json — one-time token. After the first launch Windows seals it with DPAPI and deletes the file.\nTask “CORAX Agent” — poll once a minute, including when nobody is logged on.\nTray — poll every 15 seconds while a user is logged on.',
         },
         {
           title: 'ZIP Windows — first run',
-          body: 'Unpack to %ProgramData%\\CORAX\\agent (not the server tree).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send.bat\nThe window says Collecting inventory and closes when the report is sent (usually under a minute). Status OK/FAILED is shown and written to corax-last-run.txt.\nNo window: corax_send_silent.vbs.\nA “Оставить заявку” shortcut appears: http://LAN-IP:3000/h#pc=HOSTNAME.\nCheck: Computers — hostname and “last report”.',
+          body: 'Unpack the ZIP and run CORAX-Agent.exe as administrator. It copies itself to %ProgramData%\\CORAX\\Agent.\nThe install window closes and the tray icon stays. Later reports go out only on Collect now / Request report, or at the time set on the server.\nA “Оставить заявку” shortcut appears: http://LAN-IP:3000/h#pc=HOSTNAME.\nCheck: Computers — hostname and “last report”.',
         },
         {
           title: 'ZIP Windows — schedule',
-          body: 'If auto-start was enabled at build time, the ZIP includes install_schedule.bat — run once as Administrator. It registers the CORAX-Agent SYSTEM task (no window for users) and starts the first report immediately. Later runs are on the timer via corax_send_silent.vbs. Do not put a bare corax_send.bat into Task Scheduler.',
+          body: 'The EXE creates task “CORAX Agent” (every minute) and “CORAX Agent Tray” (at logon). The first report is sent during install. Later collection happens only when the panel asks or at the configured time, with no window for the user.',
         },
         {
           title: 'ZIP Windows — update without wiping the token',
-          body: 'Do not extract a new ZIP over a live folder (“replace” / unzip -o). That overwrites agent_env.bat — URL and token vanish, reports stop.\nDo this:\n1. Extract the new panel ZIP to a temp folder, e.g. C:\\temp\\corax-agent-new.\n2. From the live folder:\ncd /d %ProgramData%\\CORAX\\agent\nupdate_scripts.bat C:\\temp\\corax-agent-new\nagent_env.bat stays. Or copy only win10\\, win7\\, corax_send.bat, corax_send_silent.vbs — leave agent_env.bat alone.',
+          body: 'A new ZIP is a new token. Run the fresh CORAX-Agent.exe: it updates files in %ProgramData%\\CORAX\\Agent. Revoke the old token under Agent tokens after every PC has the new package.',
         },
         {
           title: 'What it sends and how to verify',
@@ -157,7 +157,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Typical Windows mistakes',
-          body: 'Running from the server git tree sends reports nowhere. Put the ZIP in %ProgramData%\\CORAX\\agent.\nURL 127.0.0.1 or Docker 172.x — build with the panel open on the LAN IP.\nExtracting a new ZIP over a live folder wipes the token. Use update_scripts.bat.\nA cmd window appears — run corax_send_silent.vbs or download a fresh ZIP (the bat hides itself). Debug: corax_send.bat visible.\nSwitched HTTP↔HTTPS — download a fresh bundle.',
+          body: 'URL 127.0.0.1 or Docker 172.x — a PC on the LAN cannot reach it. Build the package with the panel open on the LAN IP.\nSwitched HTTP↔HTTPS — download a fresh bundle.\nTray is not running — the report arrives on the next “CORAX Agent” task run (once a minute), if that task was created as administrator.',
         },
       ],
       links: [
@@ -214,7 +214,7 @@ export const GUIDE_EN: GuideCopy = {
       steps: [
         {
           title: 'How it differs',
-          body: 'The panel ZIP is quiet and meant for rollout/schedule. Full audit lives in the repo: agent/audit-win/corax_audit.bat + Corax-FullAudit.ps1. Double-click → UAC → one window, collect hw/health/ops/security, POST the same /api/v1/agent/inventory payload.',
+          body: 'The panel package is CORAX-Agent.exe. It collects inventory and POSTs /api/v1/agent/inventory when the panel asks for a report. There is no separate audit script.',
         },
         {
           title: 'Extra fields',

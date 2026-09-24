@@ -321,6 +321,23 @@ body {
   background-color: transparent;
 }
 
+.pc-card-shell {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+}
+
+@media (min-width: 640px) {
+  .pc-card-shell {
+    height: min(94vh, 980px);
+    height: min(94dvh, 980px);
+    max-height: min(94vh, 980px);
+    max-height: min(94dvh, 980px);
+    width: min(1180px, calc(100vw - 1.5rem));
+  }
+}
+
 @utility app-card {
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
@@ -1095,16 +1112,35 @@ body {
 @keyframes route-enter {
   from {
     opacity: 0;
-    transform: translateY(5px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
-.route-enter {
-  animation: route-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+.route-enter,
+.dashboard-enter,
+.dashboard-stagger > *,
+.app-fade-swap,
+.risk-card-enter,
+.popup-enter,
+.route-loader-bar {
+  animation: none !important;
+}
+
+@keyframes settings-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.settings-sheet-enter {
+  animation: settings-sheet-in 180ms ease both;
 }
 
 @keyframes route-loader-progress {

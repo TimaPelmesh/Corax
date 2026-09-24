@@ -336,7 +336,7 @@ export function UserPrefsPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="user-prefs-title"
-        className="app-card flex max-h-[min(52rem,calc(100dvh-2rem))] w-full max-w-5xl flex-col overflow-hidden shadow-2xl ring-1 ring-black/5"
+        className="settings-sheet-enter app-card flex max-h-[min(52rem,calc(100dvh-2rem))] w-full max-w-5xl flex-col overflow-hidden shadow-2xl ring-1 ring-black/5"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="border-b border-[var(--color-border)] px-5 py-3.5 sm:px-6">

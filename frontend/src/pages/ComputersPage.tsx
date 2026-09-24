@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api, type Computer, type TagBrief } from '../api'
+import { useAuth } from '../AuthContext'
 import { ComputerDetailModal, fmtDate, tagPillProps } from '../components/ComputerDetailModal'
 import { IconPcs } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
@@ -59,6 +60,9 @@ function useClickOutside(refs: Array<RefObject<HTMLElement | null>>, onClose: ()
 
 export function ComputersPage() {
   const t = useT()
+  const { user } = useAuth()
+  const canCollect = Boolean(user?.is_superuser || user?.role === 'editor')
+  const [collectBusy, setCollectBusy] = useState(false)
   const PAGE_SIZE = 100
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<Computer[]>([])
@@ -281,14 +285,14 @@ export function ComputersPage() {
   }, [searchParams, detailComputerId])
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader
         icon={<IconPcs className="h-6 w-6" />}
         title={t('titles.computers')}
         subtitle={t('pages.computersSubtitle')}
       />
 
-      <div className="chrome-glass-card mb-4 flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
+      <div className="chrome-glass-card mb-4 flex shrink-0 flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
         <div className="min-w-[min(100%,40rem)] flex-[1.5] basis-[min(100%,40rem)]">
           <label htmlFor="pc-host-search" className="app-label">
             {t('computers.hostLabel')}
@@ -303,6 +307,23 @@ export function ComputersPage() {
           />
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          {canCollect ? (
+            <button
+              type="button"
+              className="app-btn app-btn-primary"
+              disabled={collectBusy}
+              onClick={() => {
+                setCollectBusy(true)
+                void api
+                  .collectAgentsNow()
+                  .then(() => toast.ok(t('agentBundle.fleetQueued')))
+                  .catch((ex) => toast.error(ex instanceof Error ? ex.message : String(ex)))
+                  .finally(() => setCollectBusy(false))
+              }}
+            >
+              {collectBusy ? t('computers.collectBusy') : t('computers.collectAll')}
+            </button>
+          ) : null}
           <div className="shrink-0">
             <span className="app-label">{t('computers.pingFilterLabel')}</span>
             <div
@@ -474,9 +495,9 @@ export function ComputersPage() {
 
       <div
         key={`pcs-${pingFilter}-${debouncedHostSearch}-${filterTagIds.join(',')}-${sort.key}-${sort.dir}`}
-        className="app-card app-fade-swap overflow-hidden p-0"
+        className="app-card app-fade-swap flex min-h-0 flex-1 flex-col overflow-hidden p-0"
       >
-        <div className="-mx-0 overflow-x-auto overscroll-x-contain">
+        <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
         <table className="min-w-[720px] w-full max-sm:min-w-[28rem] text-left text-sm">
           <thead className="app-table-head">
             <tr>
@@ -641,7 +662,7 @@ export function ComputersPage() {
       </div>
 
       {!loading && total > PAGE_SIZE ? (
-        <div className="mt-3 flex flex-col gap-2 text-sm text-[var(--color-fg-muted)] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="mt-3 flex shrink-0 flex-col gap-2 text-sm text-[var(--color-fg-muted)] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <span>
             {t('computers.shownOf', { shown: pagedRows.length, total })}
           </span>

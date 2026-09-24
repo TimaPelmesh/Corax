@@ -10,3 +10,6 @@ struct HttpResult {
 
 HttpResult http_post_json(const std::string& base_url, const std::string& path,
                           const std::string& bearer_token, const std::string& json_body);
+
+HttpResult http_get(const std::string& base_url, const std::string& path,
+                    const std::string& bearer_token);

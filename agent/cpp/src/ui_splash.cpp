@@ -164,11 +164,17 @@ void draw_status_card(HDC hdc) {
   fill_circle(hdc, 55, 149, pulse, soft);
   fill_circle(hdc, 55, 149, 6, accent);
 
-  std::wstring heading = L"Проверяем этот компьютер";
+  std::wstring heading = L"Сбор инвентаризации";
+  std::wstring detail = g.status;
+  const std::wstring server_prefix = L"Сервер: ";
+  if (g.status.rfind(server_prefix, 0) == 0) {
+    heading = g.status.substr(server_prefix.size());
+    detail = L"Адрес уже в агенте";
+  }
   if (g.visual == VisualState::Success) heading = L"Готово — всё прошло успешно";
   if (g.visual == VisualState::Error) heading = L"Не удалось завершить проверку";
   draw_text(hdc, heading, RECT{82, 124, 465, 153}, g.fontStatus, kText);
-  draw_text(hdc, g.status, RECT{82, 154, 555, 181}, g.fontSubtitle, kMuted);
+  draw_text(hdc, detail, RECT{82, 154, 555, 181}, g.fontSubtitle, kMuted);
 
   const std::wstring percent = std::to_wstring(g.displayed_progress) + L"%";
   draw_text(hdc, percent, RECT{500, 125, 558, 158}, g.fontPercent, accent,

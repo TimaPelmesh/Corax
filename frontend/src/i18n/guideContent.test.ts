@@ -133,15 +133,15 @@ describe('guideCopy', () => {
       expect(text).not.toMatch(/\/r —/)
       expect(text).toMatch(/\/h/)
       expect(text).toMatch(/перенаправ|redirect/i)
-      expect(text).toMatch(/corax_send_silent\.vbs/)
+      expect(text).toMatch(/CORAX-Agent\.exe/)
     }
   })
 
   it('documents the full-audit agent path', () => {
     const ru = allGuideText('ru')
     const en = allGuideText('en')
-    expect(ru).toContain('agent/audit-win/corax_audit.bat')
-    expect(en).toContain('agent/audit-win/corax_audit.bat')
+    expect(ru).toContain('CORAX-Agent.exe')
+    expect(en).toContain('CORAX-Agent.exe')
   })
 })
 

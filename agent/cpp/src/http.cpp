@@ -7,8 +7,8 @@
 
 namespace {
 
-HttpResult http_post_json_impl(const std::string& base_url, const std::string& path,
-                               const std::string& bearer_token, const std::string& json_body);
+HttpResult http_request_impl(const std::string& method, const std::string& base_url, const std::string& path,
+                             const std::string& bearer_token, const std::string& json_body);
 
 bool parse_url(const std::string& url, bool& https, std::wstring& host, INTERNET_PORT& port,
                std::wstring& path) {
@@ -32,14 +32,14 @@ bool parse_url(const std::string& url, bool& https, std::wstring& host, INTERNET
 
 }  // namespace
 
-HttpResult http_post_json(const std::string& base_url, const std::string& path,
-                          const std::string& bearer_token, const std::string& json_body) {
+HttpResult http_exchange(const std::string& method, const std::string& base_url, const std::string& path,
+                         const std::string& bearer_token, const std::string& json_body) {
   // WinHTTP → schannel occasionally raises SEH on certain proxy chains and
   // captive-portal responses. `_set_se_translator` (installed in worker
   // threads) makes those surface as std::runtime_error; catch here so the
   // splash reports a readable "Отправка не удалась" instead of vanishing.
   try {
-    return http_post_json_impl(base_url, path, bearer_token, json_body);
+    return http_request_impl(method, base_url, path, bearer_token, json_body);
   } catch (const std::exception& e) {
     HttpResult r;
     r.ok = false;
@@ -53,9 +53,18 @@ HttpResult http_post_json(const std::string& base_url, const std::string& path,
   }
 }
 
+HttpResult http_post_json(const std::string& base_url, const std::string& path,
+                          const std::string& bearer_token, const std::string& json_body) {
+  return http_exchange("POST", base_url, path, bearer_token, json_body);
+}
+
+HttpResult http_get(const std::string& base_url, const std::string& path, const std::string& bearer_token) {
+  return http_exchange("GET", base_url, path, bearer_token, "");
+}
+
 namespace {
-HttpResult http_post_json_impl(const std::string& base_url, const std::string& path,
-                               const std::string& bearer_token, const std::string& json_body) {
+HttpResult http_request_impl(const std::string& method, const std::string& base_url, const std::string& path,
+                             const std::string& bearer_token, const std::string& json_body) {
   HttpResult r;
   bool https = false;
   std::wstring host, url_path;
@@ -97,8 +106,9 @@ HttpResult http_post_json_impl(const std::string& base_url, const std::string& p
   }
 
   DWORD flags = https ? WINHTTP_FLAG_SECURE : 0;
+  const std::wstring verb = util::widen(method);
   HINTERNET request =
-      WinHttpOpenRequest(connect, L"POST", full_path.c_str(), nullptr, WINHTTP_NO_REFERER,
+      WinHttpOpenRequest(connect, verb.c_str(), full_path.c_str(), nullptr, WINHTTP_NO_REFERER,
                          WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
   if (!request) {
     r.error = "WinHttpOpenRequest failed err=" + std::to_string(GetLastError());
@@ -106,6 +116,8 @@ HttpResult http_post_json_impl(const std::string& base_url, const std::string& p
     WinHttpCloseHandle(session);
     return r;
   }
+  DWORD redirect_off = WINHTTP_DISABLE_REDIRECTS;
+  WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &redirect_off, sizeof(redirect_off));
 
   std::wstring headers = L"Content-Type: application/json\r\n";
   if (!bearer_token.empty()) {
@@ -114,9 +126,10 @@ HttpResult http_post_json_impl(const std::string& base_url, const std::string& p
     headers += L"\r\n";
   }
 
-  BOOL ok = WinHttpSendRequest(request, headers.c_str(), (DWORD)headers.size(),
-                               (LPVOID)json_body.data(), (DWORD)json_body.size(),
-                               (DWORD)json_body.size(), 0);
+  void* body_ptr = json_body.empty() ? WINHTTP_NO_REQUEST_DATA : (void*)json_body.data();
+  DWORD body_len = json_body.empty() ? 0 : (DWORD)json_body.size();
+  BOOL ok = WinHttpSendRequest(request, headers.c_str(), (DWORD)headers.size(), body_ptr, body_len, body_len, 0);
+  if (!headers.empty()) SecureZeroMemory(headers.data(), headers.size() * sizeof(wchar_t));
   if (!ok) {
     r.error = "WinHttpSendRequest failed err=" + std::to_string(GetLastError());
     WinHttpCloseHandle(request);

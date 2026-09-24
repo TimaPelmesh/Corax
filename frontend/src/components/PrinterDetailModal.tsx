@@ -124,6 +124,7 @@ type Props = {
   printer: NetworkPrinter | null
   onClose: () => void
   onChanged?: (row: NetworkPrinter) => void
+  onDeleted?: (id: number) => void
   overlayZClass?: string
 }
 
@@ -131,6 +132,7 @@ export function PrinterDetailModal({
   printer: initial,
   onClose,
   onChanged,
+  onDeleted,
   overlayZClass = 'z-50',
 }: Props) {
   const t = useT()
@@ -144,6 +146,7 @@ export function PrinterDetailModal({
   const [notesDraft, setNotesDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [polling, setPolling] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [editingName, setEditingName] = useState(false)
 
   useEffect(() => {
@@ -536,6 +539,27 @@ export function PrinterDetailModal({
                     {polling ? t('printerDetail.polling') : t('printerDetail.pollNow')}
                   </button>
                 </div>
+                <button
+                  type="button"
+                  className="app-btn app-btn-danger"
+                  disabled={deleting}
+                  onClick={() => {
+                    if (!row || !window.confirm(t('printers.deleteOne'))) return
+                    setDeleting(true)
+                    void api
+                      .deletePrinter(row.id)
+                      .then(() => {
+                        onDeleted?.(row.id)
+                        onClose()
+                      })
+                      .catch((e: unknown) => {
+                        toast.error(e instanceof Error ? e.message : t('printers.deleteFailed'))
+                      })
+                      .finally(() => setDeleting(false))
+                  }}
+                >
+                  {deleting ? t('common.loading') : t('common.delete')}
+                </button>
               </div>
             ) : row.notes ? (
               <div className="mt-5 border-t border-[var(--color-border)] pt-4">

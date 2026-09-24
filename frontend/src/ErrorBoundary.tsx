@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { translateStatic } from './i18n/LocaleContext'
 
-type Props = { children: ReactNode }
+type Props = { children: ReactNode; inline?: boolean }
 
 type State = { error: Error | null }
 
@@ -23,7 +23,11 @@ export class ErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     if (this.state.error) {
       return (
-        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[var(--color-bg)] p-6 text-center">
+        <div
+          className={`flex flex-col items-center justify-center gap-4 bg-[var(--color-bg)] p-6 text-center ${
+            this.props.inline ? 'min-h-0 flex-1' : 'min-h-dvh'
+          }`}
+        >
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-primary)]">
             Corax
           </p>

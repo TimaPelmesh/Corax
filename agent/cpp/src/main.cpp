@@ -3,12 +3,15 @@
 #include "crash_handler.hpp"
 #include "desktop_shortcut.hpp"
 #include "http.hpp"
+#include "install.hpp"
+#include "tray.hpp"
 #include "osdetect.hpp"
 #include "secure_config.hpp"
 #include "ui_splash.hpp"
 #include "util.hpp"
 
 #include <windows.h>
+#include <objbase.h>
 
 #include <atomic>
 #include <cstdio>
@@ -27,6 +30,9 @@ struct RunOpts {
   bool console = false;
   bool provision_only = false;
   bool ui_demo = false;
+  bool poll = false;
+  bool install = false;
+  bool tray = false;
   std::string dump_path;
 };
 
@@ -80,6 +86,9 @@ RunOpts parse_args(int argc, char** argv) {
     else if (a == "--console") o.console = true;
     else if (a == "--provision-only") o.provision_only = true;
     else if (a == "--ui-demo") o.ui_demo = true;
+    else if (a == "--poll") o.poll = true;
+    else if (a == "--install") o.install = true;
+    else if (a == "--tray") o.tray = true;
     else if (a == "--dump" && i + 1 < argc) {
       o.dump_path = argv[++i] ? argv[i] : "corax-payload.json";
     }
@@ -132,6 +141,47 @@ auto run_with_ui(AgentSplash& splash, bool use_splash, int progress_floor, int p
   return result;
 }
 
+std::string query_escape(const std::string& raw) {
+  std::string out;
+  for (unsigned char c : raw) {
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+        c == '.') {
+      out.push_back(static_cast<char>(c));
+    } else {
+      char buf[8];
+      sprintf_s(buf, "%%%02X", c);
+      out += buf;
+    }
+  }
+  return out;
+}
+
+int json_int_field(const std::string& body, const std::string& key, int fallback) {
+  const std::string needle = "\"" + key + "\"";
+  size_t pos = body.find(needle);
+  if (pos == std::string::npos) return fallback;
+  pos = body.find(':', pos + needle.size());
+  if (pos == std::string::npos) return fallback;
+  ++pos;
+  while (pos < body.size() && (body[pos] == ' ' || body[pos] == '\t')) ++pos;
+  try {
+    return std::stoi(body.substr(pos));
+  } catch (...) {
+    return fallback;
+  }
+}
+
+bool json_bool_field(const std::string& body, const std::string& key, bool fallback) {
+  const std::string needle = "\"" + key + "\"";
+  size_t pos = body.find(needle);
+  if (pos == std::string::npos) return fallback;
+  pos = body.find(':', pos + needle.size());
+  if (pos == std::string::npos) return fallback;
+  if (body.find("true", pos) != std::string::npos && body.find("true", pos) < pos + 8) return true;
+  if (body.find("false", pos) != std::string::npos && body.find("false", pos) < pos + 10) return false;
+  return fallback;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -143,6 +193,12 @@ int main(int argc, char** argv) {
 
   RunOpts opt = parse_args(argc, argv);
   AgentConfig cfg = load_agent_config();
+
+  if (opt.tray) {
+    if (cfg.server_url.empty() || cfg.agent_token.empty()) return 2;
+    if (!cfg.agent_token.empty()) SecureZeroMemory(cfg.agent_token.data(), cfg.agent_token.size());
+    return run_tray();
+  }
 
   if (opt.provision_only) {
     append_log("credential=" + secure_config_status());
@@ -200,7 +256,7 @@ int main(int argc, char** argv) {
     const std::string msg =
         "Нет настроек сервера или токена.\n\n"
         "Скачайте пакет из панели CORAX:\n"
-        "Настройки → Сборка → EXE C++\n\n"
+        "Настройки → Сборка агента\n\n"
         "Лог: " +
         log_path();
     say("ERROR: missing server_url / agent_token", true);
@@ -220,6 +276,38 @@ int main(int argc, char** argv) {
 
   const std::string hostname = util::computer_hostname();
   if (!hostname.empty()) say("hostname=" + hostname, console_out);
+
+  const bool interactive_launch = !opt.poll && !opt.silent && !opt.ui_demo && !opt.tray;
+  std::string tray_dir;
+  if (opt.install || interactive_launch) {
+    InstallResult installed = run_with_ui(splash, use_splash, 10, 18, "Установка агента…", [] { return install_agent(); });
+    tray_dir = installed.install_dir;
+    say(installed.message, console_out);
+    if (!installed.ok) {
+      if (use_splash) splash.finish_error(installed.message);
+      else if (do_pause) wait_enter("\nНажмите Enter… ");
+      return 5;
+    }
+    if (use_splash) splash.set_status("Установлено. Первый отчёт…");
+  }
+
+  int ack_generation = -1;
+  if (opt.poll) {
+    const int seen = read_seen_generation(util::exe_dir());
+    const std::string path = "/api/v1/agent/directive?hostname=" + query_escape(hostname) +
+                             "&seen_generation=" + std::to_string(seen);
+    HttpResult directive = http_get(cfg.server_url, path, cfg.agent_token);
+    if (!directive.ok) {
+      say("poll: сервер недоступен: " + directive.error, console_out);
+      return 0;
+    }
+    if (!json_bool_field(directive.body, "collect", false)) {
+      say("poll: сервер не просил сбор", console_out);
+      return 0;
+    }
+    ack_generation = json_int_field(directive.body, "generation", seen);
+    say("poll: сбор, причина в ответе сервера", console_out);
+  }
 
   say("1/2 Сбор инвентаризации…", console_out);
 
@@ -270,6 +358,7 @@ int main(int argc, char** argv) {
   }
 
   say("OK HTTP " + std::to_string(res.status), console_out);
+  if (ack_generation >= 0) write_seen_generation(util::exe_dir(), ack_generation);
   say("=== CORAX-Agent done ===", console_out);
 
   if (cfg.helpdesk_shortcut) {
@@ -279,12 +368,12 @@ int main(int argc, char** argv) {
 
   if (use_splash) {
     splash.set_progress(100);
-    splash.finish_ok("Готово — отчёт отправлен.\n\nСервер:\n" + cfg.server_url + "\n\nОС: " +
-                     os.family + " / " + os.arch + "\nРазмер: " + std::to_string(payload.size()) +
-                     " байт\n\nОткройте в панели: Компьютеры");
+    splash.finish_ok("Готово — отчёт отправлен.\n\nДальше агент сидит в трее и молчит.\nСбор только по команде панели или в заданное время.\n\nСервер:\n" +
+                     cfg.server_url);
   } else if (do_pause) {
     wait_enter("\nГотово. Enter — закрыть… ");
   }
+  if (!tray_dir.empty()) launch_tray_process(tray_dir);
   return 0;
   } catch (const std::exception& ex) {
     say(std::string("ERROR: unhandled: ") + ex.what(), true);

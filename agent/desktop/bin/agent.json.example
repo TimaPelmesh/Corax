@@ -1,6 +1,0 @@
-{
-  "server_url": "http://192.168.1.10:3000",
-  "token": "public_id.secret",
-  "daily_at": "09:00",
-  "autostart": true
-}

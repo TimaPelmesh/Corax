@@ -17,7 +17,6 @@
 <p align="center">
   <a href="https://github.com/TimaPelmesh/Corax/actions/workflows/ci.yml"><img src="https://github.com/TimaPelmesh/Corax/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-1f6feb?style=flat-square" alt="License GPLv3" /></a>
-  <a href="https://github.com/TimaPelmesh/Corax/releases/tag/v1.3.0"><img src="https://img.shields.io/badge/release-v1.3.0-0e7c66?style=flat-square" alt="Release v1.3.0" /></a>
   <img src="https://img.shields.io/badge/target-trusted%20LAN-6e7781?style=flat-square" alt="Trusted LAN" />
 </p>
 
@@ -38,7 +37,7 @@ CORAX is a panel for a **trusted local network**. Agents report PCs. The UI trac
 
 | Layer | What it does |
 |------|----------------|
-| Collection | Windows ZIP (7 / 10 / 11) and Linux bash ZIP. Tokens are HMAC; Windows C++ agent stores secrets with DPAPI. |
+| Collection | Windows ZIP with CORAX-Agent.exe (tray, collect on panel request) and a Linux bash ZIP. Tokens are HMAC; the Windows agent seals the token with DPAPI. |
 | Panel | Dashboard, Risk Center, computers, software, SNMP printers, network map, floor plan, warehouse, tickets, WikiRAG |
 | Integrations | LDAP directory, Bitrix24, Zabbix, GLPI CSV, local LLM (Ollama / LM Studio) |
 
@@ -81,6 +80,6 @@ Details: [SECURITY.md](SECURITY.md) · [docs/config.md](docs/config.md).
 
 For LAN agents set `CORAX_ADVERTISE_HOST` and `CORS_ORIGINS` in `backend/.env`, then `npm run docker:restart`. Build the agent from the panel on the LAN IP, not `127.0.0.1`.
 
-Docs: [GETTING_STARTED.md](GETTING_STARTED.md) · [docs/docker.md](docs/docker.md) · [docs/agents.md](docs/agents.md) · [docs/config.md](docs/config.md) · [1.3.0 notes](docs/release-v1.3.0.md) · [CHANGELOG](CHANGELOG.md) · [CONTRIBUTING](CONTRIBUTING.md) · [SECURITY](SECURITY.md)
+Docs: [GETTING_STARTED.md](GETTING_STARTED.md) · [docs/docker.md](docs/docker.md) · [docs/agents.md](docs/agents.md) · [docs/config.md](docs/config.md) · [CHANGELOG](CHANGELOG.md) · [CONTRIBUTING](CONTRIBUTING.md) · [SECURITY](SECURITY.md)
 
 **Author:** Timur Ivanov · **License:** [GNU GPL v3](LICENSE) · © 2026

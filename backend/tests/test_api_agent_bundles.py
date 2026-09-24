@@ -34,11 +34,12 @@ def test_create_agent_bundle_zip(client: TestClient, auth_headers: dict[str, str
     assert r.status_code == 200
     assert "zip" in r.headers.get("content-type", "").lower()
     with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
-        names = zf.namelist()
-        assert "corax_send.bat" in names
-        assert "agent_env.bat" in names
-        assert "win10/corax_send.bat" in names
-        assert "win7/inventory_send_win7.bat" in names
+        names = set(zf.namelist())
+        assert "CORAX-Agent.exe" in names
+        assert "agent.json" in names
+        assert "agent.provision.json" in names
+        assert "corax_send.bat" not in names
+        assert "win7/inventory_send_win7.bat" not in names
 
 
 def test_create_native_agent_is_portable_zip_with_unmodified_exe(

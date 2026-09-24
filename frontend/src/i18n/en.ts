@@ -514,6 +514,8 @@ export const en: MessageTree = {
   computers: {
     hostLabel: 'Search',
     hostPlaceholder: 'Host, IP, serial, user, notes…',
+    collectAll: 'Collect from all',
+    collectBusy: 'Sending…',
     tagsAnySelected: 'Tags (any selected)',
     tagsFilter: 'Tags',
     tagsFilterOpen: 'Filter by tags',
@@ -2128,6 +2130,7 @@ export const en: MessageTree = {
     wolDenied: 'denied',
     pingTitle: 'Reachability',
     pingCheck: 'Check',
+    collectAgent: 'Request report',
     pingChecking: 'ICMP…',
     pingOnline: 'Online',
     pingOffline: 'Offline',
@@ -2174,6 +2177,7 @@ export const en: MessageTree = {
     battery: 'Battery: {n}%',
     tags: 'Tags',
     tagsDirectoryEmpty: 'The directory is empty. Add tags in the',
+    addTag: 'Add tag',
     tagsPage: 'PC Tags',
     officeVersions: 'Office versions',
     noData: 'No data',
@@ -2631,7 +2635,7 @@ export const en: MessageTree = {
     apiNotRespondingSuffix:
       '. The CORAX API is not responding on this URL/port — check that the server is running (prod :3000 or dev API :3001).',
     platformCpp: 'Native EXE (not 1:1 with PowerShell)',
-    platformWin10: 'ZIP PowerShell Windows (recommended)',
+    platformWin10: 'Windows EXE',
     platformDesktop: 'Windows 10/11 · EXE',
     platformWin7: 'ZIP Windows 7',
     platformLinux: 'ZIP Linux (bash)',
@@ -2671,7 +2675,7 @@ export const en: MessageTree = {
     win7Notice:
       'Base profile: WMI, software registry, PnP peripherals. Extended modules (patches, BitLocker, Docker, etc.) are available only in the Windows 10/11 build.',
     windowsZipNotice:
-      'The canonical Windows agent. Manual corax_send.bat waits until collection finishes and writes OK/FAILED to corax-last-run.txt. The scheduled SYSTEM task has no window; install_schedule.bat also starts the first report immediately. An “Оставить заявку” shortcut appears on the desktop. Console debug: corax_send.bat visible.',
+      'ZIP with CORAX-Agent.exe. Launch installs the agent, shows a setup window, and leaves a tray icon. Later reports go out only when the panel asks or at the time set here. No further windows for the user.',
     collectionLevel: 'Collection level',
     levelFull: 'Full',
     levelFullHint: 'All modules: network, patches, security, Office, Docker/WSL, and more.',
@@ -2683,7 +2687,7 @@ export const en: MessageTree = {
     tokenIntroBefore: 'On download the server generates a',
     tokenIntroMiddle: 'pair, stores its hash in the database (section',
     tokenIntroLink: 'Agent tokens',
-    tokenIntroAfter: '), and puts the full token only into agent_env.bat / agent_env.sh.',
+    tokenIntroAfter: '). The EXE does not contain the token. After the first launch Windows seals it with DPAPI and the bootstrap file is wiped.',
     tokenParagraph2:
       'A rebuild means a different token; the old one stays in the database until you revoke it. One ZIP can be rolled out to many PCs.',
     tokenParagraph3:
@@ -2701,6 +2705,25 @@ export const en: MessageTree = {
     scheduleWeekly: 'Weekly (Mon)',
     scheduleMonthly: 'Monthly',
     scheduleTimeLabel: 'Time',
+    fleetTitle: 'Server-driven collection',
+    fleetHint:
+      'The EXE installs itself into ProgramData and asks the server every 5 minutes. A report is sent only after Collect now, or at the time set here.',
+    fleetMode: 'When to collect',
+    fleetOnDemand: 'On demand only',
+    fleetDaily: 'Every day',
+    fleetWeekly: 'Once a week',
+    fleetWeekday: 'Weekday',
+    fleetSave: 'Save policy',
+    fleetCollect: 'Collect now',
+    fleetSaved: 'Collection policy saved',
+    fleetQueued: 'Command sent. Agents will report right away, with no window for the user.',
+    weekdayMon: 'Monday',
+    weekdayTue: 'Tuesday',
+    weekdayWed: 'Wednesday',
+    weekdayThu: 'Thursday',
+    weekdayFri: 'Friday',
+    weekdaySat: 'Saturday',
+    weekdaySun: 'Sunday',
     buildTitle: 'Build',
     summaryServer: 'Server',
     summaryPlatform: 'Platform',
@@ -2713,7 +2736,7 @@ export const en: MessageTree = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'No',
     summaryArchiveWin10:
-      'Inside the archive: corax_send_silent.vbs (no window), corax_send.bat, win10/, win7/, agent_env.bat, agent_config.json, update_scripts.bat. Desktop “Оставить заявку” shortcut: /h#pc=HOSTNAME.',
+      'Inside the archive: CORAX-Agent.exe with a setup window and a tray icon, agent.json, and a one-time token. After the first report a “Оставить заявку” shortcut opens /h#pc=HOSTNAME.',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
     summaryArchiveCpp:
@@ -2725,7 +2748,7 @@ export const en: MessageTree = {
     downloadCpp: 'Download portable ZIP',
     deploymentTitle: 'Deployment',
     deployStep1:
-      'Extract the ZIP to a separate folder (for example %ProgramData%\\CORAX\\agent or \\\\server\\corax\\agent), not the CORAX server tree.',
+      'Extract the ZIP and run CORAX-Agent.exe. The installer copies itself to %ProgramData%\\CORAX\\Agent.',
     deployStep1Linux: 'Copy the ZIP to the Linux host and extract it (e.g. /opt/corax-agent).',
     deployStep2Before: 'On the PC, run',
     deployStep2After: '— the report will be sent to {serverUrl}.',
@@ -2734,7 +2757,7 @@ export const en: MessageTree = {
     deployStep2LinuxBefore: 'On the host, run',
     deployStep2LinuxAfter: '— the report will be sent to {serverUrl}.',
     deployStep3Win10:
-      'Scheduling: run install_schedule.bat as administrator (registers a hidden SYSTEM job and starts the first report immediately). The “Оставить заявку” shortcut appears on the desktop. Status: corax-last-run.txt. Updates: update_scripts.bat (keeps agent_env.bat).',
+      'After that the agent stays quiet in the tray. Collection is controlled on this page: Collect now, or a set time. The “Оставить заявку” shortcut appears after the first report.',
     deployStep3Win7:
       'Scheduling: create a Windows Task Scheduler task to run the bat manually or through GPO.',
     deployStep3Cpp:

@@ -1532,6 +1532,42 @@ def _migrate_risk_rule_acks(sync_conn) -> None:
     )
 
 
+def _migrate_agent_collect_policy(sync_conn) -> None:
+    if "agent_collect_policy" not in _table_names(sync_conn):
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE agent_collect_policy (
+                  id INTEGER PRIMARY KEY,
+                  mode VARCHAR(16) DEFAULT 'on_demand',
+                  time_hhmm VARCHAR(8) DEFAULT '09:00',
+                  weekday INTEGER DEFAULT 0,
+                  timezone VARCHAR(64) DEFAULT 'Europe/Moscow',
+                  generation INTEGER DEFAULT 0,
+                  last_slot VARCHAR(64) DEFAULT '',
+                  last_reason VARCHAR(32) DEFAULT 'idle',
+                  poll_minutes INTEGER DEFAULT 5
+                )
+                """
+            )
+        )
+    if "agent_collect_requests" not in _table_names(sync_conn):
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE agent_collect_requests (
+                  id INTEGER PRIMARY KEY,
+                  hostname VARCHAR(255) NOT NULL,
+                  created_at TIMESTAMP
+                )
+                """
+            )
+        )
+        sync_conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_agent_collect_requests_hostname ON agent_collect_requests (hostname)")
+        )
+
+
 _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-04-16_schema_migrations", lambda c: None),
     ("2026-04-16_tags_color", _migrate_tags_color_column),
@@ -1584,6 +1620,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-07_perf_indexes_1_3", _migrate_perf_indexes_1_3),
     ("2026-09-07_ticket_handler_enable", _migrate_ticket_handler_enable_by_default),
     ("2026-09-16_users_token_version", _migrate_users_token_version),
+    ("2026-09-24_agent_collect_policy", _migrate_agent_collect_policy),
 ]
 
 

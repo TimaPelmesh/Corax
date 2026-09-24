@@ -511,6 +511,8 @@ export const ru = {
   computers: {
     hostLabel: 'Поиск',
     hostPlaceholder: 'Хост, IP, серийник, пользователь, заметка…',
+    collectAll: 'Собрать со всех',
+    collectBusy: 'Отправка…',
     tagsAnySelected: 'Теги (любой из выбранных)',
     tagsFilter: 'Теги',
     tagsFilterOpen: 'Фильтр по тегам',
@@ -2125,6 +2127,7 @@ export const ru = {
     wolDenied: 'запрещён',
     pingTitle: 'Доступность',
     pingCheck: 'Проверить',
+    collectAgent: 'Запросить отчёт',
     pingChecking: 'ICMP…',
     pingOnline: 'В сети',
     pingOffline: 'Не в сети',
@@ -2171,6 +2174,7 @@ export const ru = {
     battery: 'Батарея: {n}%',
     tags: 'Теги',
     tagsDirectoryEmpty: 'Справочник пуст. Добавьте теги в разделе',
+    addTag: 'Добавить тег',
     tagsPage: 'Теги ПК',
     officeVersions: 'Версии Office',
     noData: 'Нет данных',
@@ -2626,7 +2630,7 @@ export const ru = {
     apiNotRespondingSuffix:
       '. API CORAX не отвечает на этом URL/порту — проверьте, что сервер запущен (prod :3000 или dev API :3001).',
     platformCpp: 'Нативный EXE (не 1:1 с PowerShell)',
-    platformWin10: 'ZIP PowerShell Windows (рекомендуется)',
+    platformWin10: 'Windows EXE',
     platformDesktop: 'Windows 10/11 · EXE',
     platformWin7: 'ZIP Windows 7',
     platformLinux: 'ZIP Linux (bash)',
@@ -2666,7 +2670,7 @@ export const ru = {
     win7Notice:
       'Базовый профиль: WMI, реестр ПО, PnP-периферия. Расширенные модули (патчи, BitLocker, Docker и т.д.) доступны только в сборке для Windows 10/11.',
     windowsZipNotice:
-      'Канонический агент для Windows. Ручной запуск corax_send.bat: окно ждёт конца сбора и показывает status (OK/FAILED) в corax-last-run.txt. По расписанию — задача SYSTEM без окна; install_schedule.bat сразу запускает первый отчёт. На рабочем столе появляется ярлык «Оставить заявку». Отладка консоли: corax_send.bat visible.',
+      'ZIP с CORAX-Agent.exe. Запуск ставит агента, показывает окно установки и оставляет иконку в трее. Дальше сбор только по команде панели или в заданное время. Пользователю окна больше не показываются.',
     collectionLevel: 'Уровень сбора',
     levelFull: 'Полный',
     levelFullHint: 'Все модули: сеть, патчи, безопасность, Office, Docker/WSL и т.д.',
@@ -2678,7 +2682,7 @@ export const ru = {
     tokenIntroBefore: 'При скачивании сервер генерирует пару',
     tokenIntroMiddle: ', сохраняет хеш в базе (раздел',
     tokenIntroLink: 'Токены агентов',
-    tokenIntroAfter: ') и кладёт полный токен только в agent_env.bat / agent_env.sh.',
+    tokenIntroAfter: '). В EXE токена нет. После первого запуска Windows прячет его через DPAPI, файл выдачи стирается.',
     tokenParagraph2:
       'Повторная сборка - другой токен; старый остаётся в базе, пока не отзовёте. Один ZIP можно раскатать на много ПК.',
     tokenParagraph3:
@@ -2696,6 +2700,25 @@ export const ru = {
     scheduleWeekly: 'Еженедельно (пн)',
     scheduleMonthly: 'Ежемесячно',
     scheduleTimeLabel: 'Время',
+    fleetTitle: 'Сбор с сервера',
+    fleetHint:
+      'Скачанный EXE ставит себя и остаётся в трее. Отчёт уходит только на сервер CORAX: по кнопке «Собрать сейчас» или в указанное здесь время. Токен в панели больше не показывается.',
+    fleetMode: 'Когда собирать',
+    fleetOnDemand: 'Только по запросу',
+    fleetDaily: 'Каждый день',
+    fleetWeekly: 'Раз в неделю',
+    fleetWeekday: 'День недели',
+    fleetSave: 'Сохранить политику',
+    fleetCollect: 'Собрать сейчас',
+    fleetSaved: 'Политика сбора сохранена',
+    fleetQueued: 'Команда ушла. Агенты отправят отчёт сразу, без окна у пользователя.',
+    weekdayMon: 'Понедельник',
+    weekdayTue: 'Вторник',
+    weekdayWed: 'Среда',
+    weekdayThu: 'Четверг',
+    weekdayFri: 'Пятница',
+    weekdaySat: 'Суббота',
+    weekdaySun: 'Воскресенье',
     buildTitle: 'Сборка',
     summaryServer: 'Сервер',
     summaryPlatform: 'Платформа',
@@ -2708,7 +2731,7 @@ export const ru = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'Нет',
     summaryArchiveWin10:
-      'В архиве: corax_send.bat (ждёт конца сбора), corax_send_silent.vbs, corax-last-run.txt после запуска, win10/, win7/, agent_env.bat. Ярлык «Оставить заявку»: /h#pc=ИМЯ-ПК.',
+      'В архиве: CORAX-Agent.exe с окном установки и иконкой в трее, agent.json и одноразовая выдача токена. После первого запуска ярлык «Оставить заявку» открывает /h#pc=ИМЯ-ПК.',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
     summaryArchiveCpp:
@@ -2720,7 +2743,7 @@ export const ru = {
     downloadCpp: 'Скачать portable ZIP',
     deploymentTitle: 'Развёртывание',
     deployStep1:
-      'Распакуйте ZIP в отдельную папку (например %ProgramData%\\CORAX\\agent или \\\\server\\corax\\agent), не в каталог сервера CORAX.',
+      'Распакуйте ZIP и запустите CORAX-Agent.exe. Установщик сам положит агента в %ProgramData%\\CORAX\\Agent.',
     deployStep1Linux: 'Скопируйте ZIP на Linux-хост и распакуйте (например /opt/corax-agent).',
     deployStep2Before: 'На ПК запустите',
     deployStep2After: '— отчёт уйдёт на {serverUrl}.',
@@ -2729,7 +2752,7 @@ export const ru = {
     deployStep2LinuxBefore: 'На хосте выполните',
     deployStep2LinuxAfter: '— отчёт уйдёт на {serverUrl}.',
     deployStep3Win10:
-      'Расписание: от администратора — install_schedule.bat (регистрирует задачу SYSTEM без окна и сразу шлёт первый отчёт). Ярлык «Оставить заявку» появится на столе. Статус: corax-last-run.txt. Обновление: update_scripts.bat (не затирает agent_env.bat).',
+      'Дальше агент молчит в трее. Сбор задаётся на этой странице: «Собрать сейчас» или время. Ярлык «Оставить заявку» появляется после первого отчёта.',
     deployStep3Win7:
       'Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.',
     deployStep3Cpp:

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Prep for the next tagged release (likely **1.3.0**). Same Docker-first LAN install. Same bootstrap rule: `admin` / `admin123` must be changed on first login.
+Current product: Docker-first LAN panel. Windows agent is `CORAX-Agent.exe` (tray, collect when the panel asks). Linux agent is the bash ZIP. Bootstrap rule is unchanged: `admin` / `admin123` must be changed on first login.
 
 ### Network map
 

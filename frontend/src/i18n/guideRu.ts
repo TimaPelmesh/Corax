@@ -113,7 +113,7 @@ export const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'Два пакета на панели',
-          body: 'Настройки → Сборка агента.\n• ZIP PowerShell Windows — один архив на 7/10/11; запускайте corax_send_silent.vbs (без окна). После отправки на рабочем столе появляется ярлык «Оставить заявку» на /h#pc=ИМЯ-ПК.\n• ZIP Linux (bash) — отдельный раздел ниже.\nC++ EXE с панели пока не собирается.',
+          body: 'Настройки → Сборка агента.\n• Windows ZIP — CORAX-Agent.exe. Запуск ставит агента в %ProgramData%\\CORAX\\Agent, оставляет иконку в трее и шлёт отчёт, когда панель просит. После первого отчёта на рабочем столе появляется ярлык «Оставить заявку» на /h#pc=ИМЯ-ПК.\n• ZIP Linux (bash) — отдельный раздел ниже.',
         },
         {
           title: 'Перед сборкой — LAN-IP',
@@ -133,19 +133,19 @@ export const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'ZIP Windows — что внутри',
-          body: 'corax_send.bat — ручной запуск: ждёт конца сбора и показывает status.\ncorax_send_silent.vbs — без окна (Планировщик).\ncorax-last-run.txt — status OK/FAILED после запуска.\nagent_env.bat — URL и токен; при обновлении скриптов не затирать.\nagent_config.json — модули сбора.\nupdate_scripts.bat — безопасное обновление.\nwin10\\ — PowerShell 5+ (Windows 10/11).\nwin7\\ — Windows 7 / старый PowerShell.\nREADME_DEPLOY.txt — краткая шпаргалка в архиве.',
+          body: 'CORAX-Agent.exe — установщик и агент в трее.\nagent.json — адрес сервера, без токена.\nagent.provision.json — одноразовая выдача токена; после первого запуска Windows прячет его через DPAPI и файл стирается.\nЗадача «CORAX Agent» — опрос раз в минуту, в том числе без входа пользователя.\nТрей — опрос каждые 15 секунд, пока кто-то вошёл в систему.',
         },
         {
           title: 'ZIP Windows — первый запуск',
-          body: 'Распакуйте архив в %ProgramData%\\CORAX\\agent (не в каталог сервера).\ncd /d %ProgramData%\\CORAX\\agent\ncorax_send.bat\nОкно пишет Collecting inventory и само закроется, когда отчёт уйдёт (обычно до минуты). В конце — status OK/FAILED, тот же текст в corax-last-run.txt.\nБез окна: corax_send_silent.vbs.\nНа рабочем столе — ярлык «Оставить заявку» на http://LAN-IP:3000/h#pc=ИМЯ-ПК.\nПроверка: «Компьютеры» — hostname и «последний отчёт».',
+          body: 'Распакуйте ZIP и запустите CORAX-Agent.exe от администратора. Агент сам ляжет в %ProgramData%\\CORAX\\Agent.\nОкно установки закроется, иконка останется в трее. Дальше отчёт уходит только по кнопке «Собрать сейчас» / «Запросить отчёт» или в заданное на сервере время.\nНа рабочем столе — ярлык «Оставить заявку» на http://LAN-IP:3000/h#pc=ИМЯ-ПК.\nПроверка: «Компьютеры» — hostname и «последний отчёт».',
         },
         {
           title: 'ZIP Windows — расписание',
-          body: 'Если при сборке включили автозапуск, в ZIP будет install_schedule.bat — один раз от администратора. Он ставит задачу CORAX-Agent (SYSTEM, без окна у пользователя) и сразу запускает первый отчёт. Дальше только по таймеру, через corax_send_silent.vbs. Не ставьте в планировщик голый corax_send.bat.',
+          body: 'EXE сам создаёт задачу «CORAX Agent» (раз в минуту) и «CORAX Agent Tray» (при входе в систему). Первый отчёт уходит сразу при установке. Дальше сбор только по команде панели или в заданное время, без окна у пользователя.',
         },
         {
           title: 'ZIP Windows — обновление без потери токена',
-          body: 'Нельзя распаковать новый ZIP поверх живой папки («с заменой» / unzip -o). Затрётся agent_env.bat — URL и токен пропадут, агент перестанет слать отчёты.\nПравильно:\n1. Новый ZIP с панели распаковать во временную папку, например C:\\temp\\corax-agent-new.\n2. Из живой папки:\ncd /d %ProgramData%\\CORAX\\agent\nupdate_scripts.bat C:\\temp\\corax-agent-new\nagent_env.bat останется. Можно копировать вручную только win10\\, win7\\, corax_send.bat, corax_send_silent.vbs — agent_env.bat не трогать.',
+          body: 'Новый ZIP — это новый токен. Запустите свежий CORAX-Agent.exe: он обновит файлы в %ProgramData%\\CORAX\\Agent. Старый токен отзовите в «Токены агентов», когда все ПК перешли на новый пакет.',
         },
         {
           title: 'Что присылает и как проверить',
@@ -157,7 +157,7 @@ export const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'Типичные ошибки (Windows)',
-          body: 'Запуск из git сервера → отчёт никуда не уходит. Кладите ZIP в %ProgramData%\\CORAX\\agent.\nURL 127.0.0.1 или Docker 172.x → собирайте, открыв панель по LAN-IP.\nРаспаковка нового ZIP поверх живой папки → пропал токен. Только update_scripts.bat.\nВидно окно cmd — запускайте corax_send_silent.vbs или скачайте свежий ZIP (bat сам прячется). Отладка: corax_send.bat visible.\nСменили HTTP↔HTTPS — скачайте пакет заново.',
+          body: 'URL 127.0.0.1 или Docker 172.x — агент с ПК в сети не достучится. Собирайте, открыв панель по LAN-IP.\nСменили HTTP↔HTTPS — скачайте пакет заново.\nТрей не запущен — отчёт придёт на следующем запуске задачи «CORAX Agent» (раз в минуту), если она создана от администратора.',
         },
       ],
       links: [
@@ -214,7 +214,7 @@ export const GUIDE_RU: GuideCopy = {
       steps: [
         {
           title: 'Чем отличается от штатного агента',
-          body: 'Штатный ZIP с панели — тихий, для раскатки и расписания. Полный аудит лежит в репозитории: agent/audit-win/corax_audit.bat + Corax-FullAudit.ps1. Двойной клик → UAC → одно окно, сбор hw/health/ops/security, отправка того же POST /api/v1/agent/inventory.',
+          body: 'Штатный пакет — CORAX-Agent.exe. Он собирает инвентаризацию и шлёт POST /api/v1/agent/inventory, когда панель просит отчёт. Отдельного аудиторского скрипта нет.',
         },
         {
           title: 'Что ещё собирает',

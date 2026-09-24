@@ -74,9 +74,10 @@ export function useRequestStats(
   const statsStatusItems = useMemo(() => countByStatus(statsRows), [statsRows])
   const statsKpi = useMemo(() => computeStatsKpi(statsRows), [statsRows])
   const statsPeriodLabel = useMemo(() => {
-    const from = opts.from.trim() || t('requests.statsData.noDataStart')
-    const to = opts.to.trim() || t('requests.statsData.today')
-    return `${from} - ${to}`
+    const from = opts.from.trim()
+    const to = opts.to.trim()
+    if (!from && !to) return ''
+    return `${from || '…'} - ${to || '…'}`
   }, [opts.from, opts.to, t])
   const statsExtra = useMemo(
     () =>

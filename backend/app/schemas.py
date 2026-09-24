@@ -637,6 +637,28 @@ class AgentBundleModules(BaseModel):
     docker_wsl: bool = True
 
 
+class AgentCollectPolicyOut(BaseModel):
+    mode: str
+    time_hhmm: str
+    weekday: int
+    timezone: str
+    generation: int
+    last_reason: str
+    poll_minutes: int
+
+
+class AgentCollectPolicyUpdate(BaseModel):
+    mode: str = Field(default="on_demand", pattern="^(on_demand|daily|weekly)$")
+    time_hhmm: str = Field(default="09:00", max_length=8)
+    weekday: int = Field(default=0, ge=0, le=6)
+    timezone: str = Field(default="Europe/Moscow", max_length=64)
+    poll_minutes: int = Field(default=5, ge=1, le=60)
+
+
+class AgentCollectNowIn(BaseModel):
+    hostname: str | None = Field(default=None, max_length=255)
+
+
 class AgentBundleSchedule(BaseModel):
     enabled: bool = False
     mode: str = Field(default="WEEKLY", pattern="^(DAILY|WEEKLY|MONTHLY)$")
@@ -652,7 +674,7 @@ class AgentBundleLanIpOut(BaseModel):
 
 class AgentBundleCreate(BaseModel):
     server_url: str = Field(default="", max_length=512)
-    target: str = Field(default="win10", pattern="^(win10|win7|cpp|linux|desktop)$")
+    target: str = Field(default="windows", pattern="^(windows|linux|cpp|win10)$")
     profile: str = Field(default="full", pattern="^(full|custom|basic|standard)$")
     modules: AgentBundleModules | None = None
     create_token: bool = True

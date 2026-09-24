@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
+import { ErrorBoundary } from '../ErrorBoundary'
 import { CoraxLogo } from '../components/CoraxLogo'
 import { AppTopBar } from '../components/AppTopBar'
 import { IconClose, IconMenu } from '../components/icons'
@@ -11,9 +12,6 @@ import { WikiRagIndexWatcher } from '../components/wikirag/WikiRagIndexWatcher'
 import { useNavCounts } from '../hooks/useNavCounts'
 import { useWelcomeToast } from '../hooks/useWelcomeToast'
 import { useLocale } from '../i18n/LocaleContext'
-
-const IS_GECKO =
-  typeof document !== 'undefined' && document.documentElement.classList.contains('is-gecko')
 
 function RouteLoader() {
   return (
@@ -33,7 +31,10 @@ export function Layout() {
   const { t, isNavHidden } = useLocale()
   const location = useLocation()
   const lockPageScroll =
-    location.pathname.startsWith('/knowledge-base/wikirag') || location.pathname.startsWith('/network-map')
+    location.pathname.startsWith('/knowledge-base/wikirag') ||
+    location.pathname.startsWith('/network-map') ||
+    location.pathname.startsWith('/software') ||
+    location.pathname.startsWith('/computers')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileNavPath, setMobileNavPath] = useState(location.pathname)
   const [desktopNavHidden, setDesktopNavHidden] = useState(false)
@@ -231,7 +232,7 @@ export function Layout() {
         ) : null}
         <button
           type="button"
-          className={`sidebar-edge-toggle hidden lg:flex fixed top-24 z-[15] items-center rounded-r-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-2.5 text-[11px] font-semibold text-[var(--color-fg-muted)] transition-all duration-300 hover:bg-[var(--color-surface-muted)] ${
+          className={`sidebar-edge-toggle hidden lg:flex fixed top-3 z-[15] items-center rounded-r-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-1.5 text-[11px] font-semibold text-[var(--color-fg-muted)] transition-all duration-300 hover:bg-[var(--color-surface-muted)] ${
             desktopNavHidden ? 'left-0' : settingsFlyoutOpen ? 'left-[31.9rem]' : 'left-[15.9rem]'
           }`}
           onClick={() => setDesktopNavHidden((v) => !v)}
@@ -258,12 +259,13 @@ export function Layout() {
             }
           >
             <Suspense fallback={<RouteLoader />}>
-              <div
-                key={location.pathname}
-                className={`${IS_GECKO ? '' : 'route-enter '}${lockPageScroll ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}`}
-              >
-                <Outlet />
-              </div>
+              <ErrorBoundary key={location.pathname} inline>
+                <div
+                  className={lockPageScroll ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}
+                >
+                  <Outlet />
+                </div>
+              </ErrorBoundary>
             </Suspense>
           </div>
         </div>
