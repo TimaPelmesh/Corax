@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { api, type NetworkPrinter, type PrinterSupply } from '../api'
 import { useAuth } from '../AuthContext'
+import { useConfirmDialog } from './ConfirmDialog'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 import { IconClose, IconPencil, IconPrinter } from './icons'
@@ -137,6 +138,7 @@ export function PrinterDetailModal({
 }: Props) {
   const t = useT()
   const toast = useToast()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const { locale } = useLocale()
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
@@ -544,18 +546,26 @@ export function PrinterDetailModal({
                   className="app-btn app-btn-danger"
                   disabled={deleting}
                   onClick={() => {
-                    if (!row || !window.confirm(t('printers.deleteOne'))) return
-                    setDeleting(true)
-                    void api
-                      .deletePrinter(row.id)
-                      .then(() => {
+                    if (!row) return
+                    void (async () => {
+                      const ok = await ask({
+                        title: t('common.delete'),
+                        body: t('printers.deleteOne'),
+                        confirmLabel: t('common.delete'),
+                        tone: 'danger',
+                      })
+                      if (!ok) return
+                      setDeleting(true)
+                      try {
+                        await api.deletePrinter(row.id)
                         onDeleted?.(row.id)
                         onClose()
-                      })
-                      .catch((e: unknown) => {
+                      } catch (e: unknown) {
                         toast.error(e instanceof Error ? e.message : t('printers.deleteFailed'))
-                      })
-                      .finally(() => setDeleting(false))
+                      } finally {
+                        setDeleting(false)
+                      }
+                    })()
                   }}
                 >
                   {deleting ? t('common.loading') : t('common.delete')}
@@ -619,6 +629,7 @@ export function PrinterDetailModal({
         </div>
 
       </div>
+      {confirmDialog}
     </div>,
     document.body,
   )

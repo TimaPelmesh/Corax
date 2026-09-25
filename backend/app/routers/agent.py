@@ -181,10 +181,15 @@ async def verify_agent_token(db: AsyncSession, authorization: str | None, hostna
                 ok = hmac.compare_digest(expected, secret)
         if not ok:
             raise HTTPException(status_code=403, detail="Неверный токен агента")
+        host = hostname.strip()
         allow = (row.allowed_hostname or "").strip()
-        if allow:
-            if hostname.strip().lower() != allow.strip().lower():
-                raise HTTPException(status_code=403, detail="Токен агента не разрешён для этого хоста")
+        if host and host.lower() != "directive":
+            if allow:
+                if host.lower() != allow.lower():
+                    raise HTTPException(status_code=403, detail="Токен агента не разрешён для этого хоста")
+            else:
+                # First inventory from this install claims the token. A shared fleet token never reaches here.
+                row.allowed_hostname = host[:255]
         row.last_used_at = datetime.now(timezone.utc)
 
 

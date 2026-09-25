@@ -10,6 +10,7 @@ import {
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconClose, IconInfo, IconTrash } from '../components/icons'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -138,6 +139,7 @@ function stockCondition(condition: string): 'new' | 'used' {
 
 export function WarehousePage() {
   const t = useT()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const toast = useToast()
   const { locale } = useLocale()
   const { user } = useAuth()
@@ -387,8 +389,18 @@ export function WarehousePage() {
     const qty = activeRoom.item_count ?? 0
     const ok =
       qty > 0
-        ? window.confirm(t('warehouse.roomDeleteWithItemsConfirm', { title: activeRoom.title, n: qty }))
-        : window.confirm(t('warehouse.roomDeleteConfirm', { title: activeRoom.title }))
+        ? await ask({
+            title: t('common.delete'),
+            body: t('warehouse.roomDeleteWithItemsConfirm', { title: activeRoom.title, n: qty }),
+            confirmLabel: t('common.delete'),
+            tone: 'danger',
+          })
+        : await ask({
+            title: t('common.delete'),
+            body: t('warehouse.roomDeleteConfirm', { title: activeRoom.title }),
+            confirmLabel: t('common.delete'),
+            tone: 'danger',
+          })
     if (!ok) return
     try {
       await api.deleteWarehouseRoom(activeRoom.id, { purge: qty > 0 })
@@ -553,7 +565,15 @@ export function WarehousePage() {
 
   const deleteItem = async (item: WarehouseStockItem) => {
     if (!canEdit) return
-    if (!window.confirm(t('warehouse.deleteConfirm', { name: item.name }))) return
+    if (
+      !(await ask({
+        title: t('common.delete'),
+        body: t('warehouse.deleteConfirm', { name: item.name }),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     try {
       await api.deleteWarehouseItem(item.id)
       if (activeRoomId) await reloadItems(activeRoomId, search)
@@ -566,7 +586,15 @@ export function WarehousePage() {
 
   const deleteHistoryRow = async (m: WarehouseMovement) => {
     if (!isAdmin) return
-    if (!window.confirm(t('warehouse.historyDeleteConfirm'))) return
+    if (
+      !(await ask({
+        title: t('common.delete'),
+        body: t('warehouse.historyDeleteConfirm'),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     try {
       await api.deleteWarehouseMovement(m.id)
       await reloadHistory(activeRoomId)
@@ -579,7 +607,15 @@ export function WarehousePage() {
   const clearHistory = async () => {
     if (!isAdmin) return
     const msg = activeRoomId ? t('warehouse.historyClearConfirm') : t('warehouse.historyClearAllConfirm')
-    if (!window.confirm(msg)) return
+    if (
+      !(await ask({
+        title: t('common.confirm'),
+        body: msg,
+        confirmLabel: t('common.confirm'),
+        tone: 'danger',
+      }))
+    )
+      return
     try {
       const r = await api.clearWarehouseMovements(activeRoomId)
       await reloadHistory(activeRoomId)
@@ -1398,6 +1434,7 @@ export function WarehousePage() {
             document.body,
           )
         : null}
+      {confirmDialog}
     </div>
   )
 }

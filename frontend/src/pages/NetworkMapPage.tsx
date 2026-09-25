@@ -230,7 +230,7 @@ function NetworkMapEditor() {
   >(null)
   const [saving, setSaving] = useState(false)
   const [sceneId, setSceneId] = useState(0)
-  const [sceneTitle, setSceneTitle] = useState('Карта сети')
+  const [sceneTitle, setSceneTitle] = useState(() => t('networkMap.title'))
   const [scenes, setScenes] = useState<Array<{ id: number; title: string; updated_at: string | null; node_count: number; edge_count: number }>>([])
   const [topology, setTopology] = useState<NetworkTopology | null>(null)
   const [neighborsBusy, setNeighborsBusy] = useState(false)

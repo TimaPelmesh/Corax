@@ -74,3 +74,33 @@ def test_agent_rejects_hostname_mac_takeover(client: TestClient, agent_headers: 
     body["serial_number"] = "OTHER-SN"
     hijack = client.post("/api/v1/agent/inventory", json=body, headers=agent_headers)
     assert hijack.status_code == 403
+
+
+def test_machine_token_locks_to_first_hostname(
+    client: TestClient, auth_headers: dict[str, str], agent_headers: dict[str, str]
+):
+    created = client.post(
+        "/api/v1/agent-tokens",
+        headers=auth_headers,
+        json={"label": unique_hostname("machine-token")},
+    )
+    assert created.status_code == 200, created.text
+    headers = {"Authorization": f"Bearer {created.json()['token']}"}
+    first = unique_hostname("owner")
+    second = unique_hostname("other")
+    ok = client.post("/api/v1/agent/inventory", json=sample_inventory(first), headers=headers)
+    assert ok.status_code == 200, ok.text
+    denied = client.post("/api/v1/agent/inventory", json=sample_inventory(second), headers=headers)
+    assert denied.status_code == 403, denied.text
+    fleet = client.post(
+        "/api/v1/agent/inventory",
+        json=sample_inventory(unique_hostname("fleet-a")),
+        headers=agent_headers,
+    )
+    assert fleet.status_code == 200, fleet.text
+    fleet_other = client.post(
+        "/api/v1/agent/inventory",
+        json=sample_inventory(unique_hostname("fleet-b")),
+        headers=agent_headers,
+    )
+    assert fleet_other.status_code == 200, fleet_other.text

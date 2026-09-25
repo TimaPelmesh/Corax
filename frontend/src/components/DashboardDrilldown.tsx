@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { api, type DashboardSegmentKind } from '../api'
 import { ComputerDetailModal } from './ComputerDetailModal'
 import { IconClose } from './icons'
+import { useT } from '../i18n/LocaleContext'
 
 export type DashboardDrilldownSelection = {
   kind: DashboardSegmentKind
@@ -21,6 +22,7 @@ function deviceSubtitle(row: { os_summary?: string | null; location?: string | n
 }
 
 export function DashboardDrilldownPanel({ selection, onClose }: Props) {
+  const t = useT()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<Awaited<ReturnType<typeof api.dashboardSegmentComputers>> | null>(null)
@@ -110,20 +112,20 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
                 </h3>
                 <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
                   {loading
-                    ? 'Загрузка…'
+                    ? t('common.loading')
                     : error
                       ? error
                       : total
-                        ? `${total} ПК`
-                        : 'Нет подходящих ПК'}
-                  {!loading && !error && total > shown ? ` · показано ${shown}` : null}
+                        ? t('dashboard.drilldownPcs', { count: total })
+                        : t('dashboard.drilldownNoMatch')}
+                  {!loading && !error && total > shown ? ` · ${t('dashboard.drilldownShown', { count: shown })}` : null}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
                 className="app-btn app-btn-secondary !min-h-0 shrink-0 !px-3 !py-2 !text-xs"
-                aria-label="Закрыть"
+                aria-label={t('common.close')}
               >
                 <IconClose className="h-4 w-4" />
               </button>
@@ -144,7 +146,7 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
               ) : error ? (
                 <p className="app-empty-state mx-1 my-6">{error}</p>
               ) : !data?.items.length ? (
-                <p className="app-empty-state mx-1 my-6">{'Нет ПК для выбранного сегмента.'}</p>
+                <p className="app-empty-state mx-1 my-6">{t('dashboard.drilldownEmpty')}</p>
               ) : (
                 <ul>
                   {data.items.map((row, idx) => {

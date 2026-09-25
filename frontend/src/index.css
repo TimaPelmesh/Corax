@@ -35,6 +35,7 @@
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
   --color-primary-muted: #eff6ff;
+  --color-on-primary: #ffffff;
   --color-success-bg: #ecfdf3;
   --color-success-border: #a7f3d0;
   --color-success-fg: #065f46;
@@ -67,6 +68,7 @@
   --color-primary: #60a5fa;
   --color-primary-hover: #93c5fd;
   --color-primary-muted: rgb(96 165 250 / 0.2);
+  --color-on-primary: #0a0a0a;
   --color-success-bg: rgb(6 78 59 / 0.28);
   --color-success-border: rgb(52 211 153 / 0.4);
   --color-success-fg: #6ee7b7;
@@ -519,7 +521,7 @@ body {
   .app-btn-primary {
     border-color: var(--color-primary);
     background: var(--color-primary);
-    color: #fff;
+    color: var(--color-on-primary);
   }
 
   .app-btn-primary:hover {
@@ -539,14 +541,14 @@ body {
   }
 
   .app-btn-danger {
-    border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
-    background: var(--color-primary-muted);
-    color: var(--color-primary);
+    border-color: var(--color-error-border);
+    background: var(--color-error-bg);
+    color: var(--color-error-fg);
   }
 
   .app-btn-danger:hover {
-    border-color: var(--color-primary);
-    background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+    border-color: var(--color-error-fg);
+    background: color-mix(in srgb, var(--color-error-fg) 12%, var(--color-error-bg));
   }
 
   .app-table-head {

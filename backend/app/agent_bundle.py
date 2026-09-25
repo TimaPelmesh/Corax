@@ -95,10 +95,10 @@ def _hmac_secret(secret: str) -> str:
 async def _resolve_agent_token(db: AsyncSession, body: AgentBundleCreate) -> tuple[str, bool]:
     """Return (token, created_new)."""
     if not body.create_token:
-        token = (body.existing_token or settings.agent_token or "").strip()
-        if not token:
-            raise ValueError("Укажите existing_token или включите create_token")
-        return token, False
+        token = (body.existing_token or "").strip()
+        if token:
+            return token, False
+        # A new package must not carry the fleet-wide AGENT_TOKEN. Mint a machine token instead.
 
     if (body.existing_token or "").strip():
         return body.existing_token.strip(), False  # type: ignore[union-attr]

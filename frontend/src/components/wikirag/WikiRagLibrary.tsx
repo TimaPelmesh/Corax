@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, 
 import { createPortal } from 'react-dom'
 import { api, type WikiRagDocumentRow } from '../../api'
 import { IconFolder, IconTrash } from '../icons'
+import { useConfirmDialog } from '../../components/ConfirmDialog'
 import { useLocale, useT } from '../../i18n/LocaleContext'
 import { startWikiRagIndexJob } from '../../lib/wikiragIndexJob'
 import { useToast } from '../../ToastContext'
@@ -210,6 +211,7 @@ export function WikiRagLibrary({
 }: Props) {
   const t = useT()
   const toast = useToast()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const { locale } = useLocale()
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -291,7 +293,15 @@ export function WikiRagLibrary({
       n > 0 || nested > 1
         ? t('wikirag.library.deleteFolderRecursiveConfirm', { path, n: Math.max(n, nested) })
         : t('wikirag.library.deleteFolderConfirm', { path })
-    if (!window.confirm(msg)) return
+    if (
+      !(await ask({
+        title: t('common.delete'),
+        body: msg,
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     setBusy(true)
     setMenuFor(null)
     try {
@@ -969,6 +979,7 @@ export function WikiRagLibrary({
           </form>
         </div>
       ) : null}
+      {confirmDialog}
     </section>
   )
 }

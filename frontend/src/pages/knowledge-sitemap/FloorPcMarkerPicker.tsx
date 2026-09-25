@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Computer, FloorIconMarker } from '../../api'
+import { useT } from '../../i18n/LocaleContext'
 import { floorPcMarkerCaption, floorPcMarkerSearchText } from './floorTools'
 
 export function FloorPcMarkerPicker({
@@ -15,6 +16,7 @@ export function FloorPcMarkerPicker({
   pcDirectory: Computer[]
   disabled?: boolean
 }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const boxRef = useRef<HTMLDivElement>(null)
@@ -52,7 +54,7 @@ export function FloorPcMarkerPicker({
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
-          placeholder="Поиск: название, IP, hostname…"
+          placeholder={t('sitemap.markerSearchPlaceholder')}
           value={displayValue}
           disabled={disabled}
           onChange={(e) => {

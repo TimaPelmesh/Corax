@@ -64,6 +64,7 @@ import {
   DirectoryAssigneesPicker,
 } from './service-requests/shared'
 import { CloseTicketDialog } from './service-requests/CloseTicketDialog'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { RequestsTemplatesPanel } from './service-requests/RequestsTemplatesPanel'
 import { useRequestStats } from './service-requests/useRequestStats'
 
@@ -78,6 +79,7 @@ type EditRequestNavState = {
 export function ServiceRequestsPage() {
   const t = useT()
   const toast = useToast()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const { locale } = useLocale()
   const location = useLocation()
   const navigate = useNavigate()
@@ -873,7 +875,12 @@ export function ServiceRequestsPage() {
       toast.info(t('requests.database.alignDatesNone'))
       return
     }
-    if (!window.confirm(t('requests.database.alignDatesConfirm', { count: targets.length }))) return
+    const ok = await ask({
+      title: t('common.confirm'),
+      body: t('requests.database.alignDatesConfirm', { count: targets.length }),
+      confirmLabel: t('common.confirm'),
+    })
+    if (!ok) return
     setAlignDatesBusy(true)
     try {
       const chunk = 6
@@ -1325,12 +1332,18 @@ export function ServiceRequestsPage() {
   }
 
   async function deleteTemplate(id: number, title: string) {
-    if (!window.confirm(`Удалить шаблон «${title}»?`)) return
+    const ok = await ask({
+      title: t('common.delete'),
+      body: t('requests.templates.deleteConfirm', { title }),
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
+    })
+    if (!ok) return
     setTplBusy(true)
     try {
       await api.deleteServiceRequestTemplate(id)
       if (tplEditingId === id) resetTemplateForm()
-      toast.ok('Шаблон удалён')
+      toast.ok(t('requests.templates.deleted'))
       await loadTemplates()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
@@ -2983,6 +2996,7 @@ export function ServiceRequestsPage() {
         onConfirm={() => void confirmCloseDialog()}
       />
     ) : null}
+    {confirmDialog}
   </>
   )
 }

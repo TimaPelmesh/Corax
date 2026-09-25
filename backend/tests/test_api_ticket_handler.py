@@ -33,6 +33,11 @@ def test_ticket_handler_public_context_and_intake(client: TestClient, agent_head
     assert created_row["assignees"] == []
 
 
-def test_ticket_handler_intake_rejects_short_title(client: TestClient):
+def test_ticket_handler_lan_without_hostname_is_rejected(client: TestClient):
+    response = client.post(
+        "/api/v1/ticket-handler/intake",
+        json={"title": "Заявка без известного компьютера"},
+    )
+    assert response.status_code == 403, response.text
     response = client.post("/api/v1/ticket-handler/intake", json={"title": "ab"})
     assert response.status_code == 422

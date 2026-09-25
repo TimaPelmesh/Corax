@@ -25,7 +25,7 @@ from app.schemas import (
     TicketHandlerStatsPoint,
 )
 from app.rate_limit import limiter
-from app.ticket_client_identity import client_ip, is_private_ip, sso_login
+from app.ticket_client_identity import client_ip, sso_login
 from app.ticket_handler_runtime import (
     DEFAULT_SYSTEM_PROMPT,
     IntakeInput,
@@ -416,14 +416,16 @@ async def ticket_handler_stats(
     )
 
 
-def _client_host(request: Request) -> str:
-    return client_ip(request)
+_TICKET_SEEN_DAYS = 45
 
 
-def _is_private_client(request: Request) -> bool:
-    if settings.environment == "test":
-        return True
-    return is_private_ip(_client_host(request))
+def _reported_recently(pc) -> bool:
+    seen = getattr(pc, "last_report_at", None)
+    if seen is None:
+        return False
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - seen <= timedelta(days=_TICKET_SEEN_DAYS)
 
 
 def _secret_ok(cfg: TicketHandlerConfig, provided: str | None, request: Request) -> bool:
@@ -457,19 +459,15 @@ async def _require_intake_access(
     hint = (hostname_hint or "").strip()
     if hint:
         pc = await resolve_computer(db, hint)
-        if pc is None:
+        if pc is None or not _reported_recently(pc):
             raise HTTPException(
                 status_code=403,
-                detail="Нужен секрет клиента или известный ПК из инвентаря",
+                detail="Нужен секрет клиента или ПК, который недавно присылал инвентарь",
             )
-        return
-    if settings.environment == "test":
-        return
-    if is_private_ip(_client_host(request)):
         return
     raise HTTPException(
         status_code=403,
-        detail="Нужен секрет клиента или доступ из локальной сети",
+        detail="Нужен секрет клиента или ПК, который недавно присылал инвентарь",
     )
 
 

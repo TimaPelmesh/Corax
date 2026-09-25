@@ -1,3 +1,5 @@
+import { useT } from '../i18n/LocaleContext'
+
 type SkeletonProps = {
   className?: string
 }
@@ -13,9 +15,10 @@ type TableSkeletonProps = {
 }
 
 export function TableSkeleton({ rows = 8, cols = 5 }: TableSkeletonProps) {
+  const t = useT()
   return (
     <div className="space-y-2 p-3" role="status" aria-busy="true">
-      <span className="sr-only">Loading</span>
+      <span className="sr-only">{t('common.loading')}</span>
       {Array.from({ length: rows }, (_, r) => (
         <div key={r} className="flex gap-3">
           {Array.from({ length: cols }, (_, c) => (

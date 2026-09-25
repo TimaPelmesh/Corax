@@ -6,6 +6,7 @@ import { WikiRagChat } from '../components/wikirag/WikiRagChat'
 import { WikiRagDocViewer } from '../components/wikirag/WikiRagDocViewer'
 import { WikiRagLibrary } from '../components/wikirag/WikiRagLibrary'
 import { IconClose, IconFolder } from '../components/icons'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useT } from '../i18n/LocaleContext'
 import {
   getWikiRagIndexJob,
@@ -179,6 +180,7 @@ function formatBytes(n: number, t: ReturnType<typeof useT>) {
 
 export function WikiRagPage() {
   const t = useT()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const toast = useToast()
   const { user } = useAuth()
   const [rows, setRows] = useState<WikiRagDocumentRow[]>([])
@@ -505,9 +507,11 @@ export function WikiRagPage() {
 
   async function onReindexAll() {
     if (
-      !window.confirm(
-        `${t('wikirag.documents.reindexAll')}\n\n${t('wikirag.documents.reindexAllHint')}`,
-      )
+      !(await ask({
+        title: t('wikirag.documents.reindexAll'),
+        body: t('wikirag.documents.reindexAllHint'),
+        confirmLabel: t('common.confirm'),
+      }))
     ) {
       return
     }
@@ -1036,6 +1040,7 @@ export function WikiRagPage() {
             document.body,
           )
         : null}
+      {confirmDialog}
     </div>
   )
 }

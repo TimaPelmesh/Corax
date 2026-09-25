@@ -4,6 +4,7 @@ import { api, type NoteColor, type NoteListItem, type NoteMark, type NoteRow, ty
 import { useAuth } from '../AuthContext'
 import { DashboardCalendar } from '../components/dashboard/DashboardCalendar'
 import { IconBook, IconClose, IconPencil, IconTrash } from '../components/icons'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 import { readNoteEditorHtml, sanitizeNoteHtml } from '../lib/notesHtml'
@@ -86,6 +87,7 @@ const NoteBodyEditor = memo(function NoteBodyEditor({
 
 export function NotesPage() {
   const t = useT()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const toast = useToast()
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -301,7 +303,15 @@ export function NotesPage() {
 
   const removeNote = async () => {
     if (!note || !isOwner) return
-    if (!window.confirm(t('notes.deleteConfirm'))) return
+    if (
+      !(await ask({
+        title: t('common.delete'),
+        body: t('notes.deleteConfirm'),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     try {
       await api.deleteNote(note.id)
       setNote(null)
@@ -750,6 +760,7 @@ export function NotesPage() {
           )}
         </section>
       </div>
+      {confirmDialog}
     </div>
   )
 }

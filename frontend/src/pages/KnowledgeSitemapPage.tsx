@@ -31,6 +31,7 @@ import {
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { PrinterDetailModal } from '../components/PrinterDetailModal'
 import { useComputerPingLive } from '../hooks/useComputerPingLive'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -74,6 +75,7 @@ import {
 export function KnowledgeSitemapPage() {
   const t = useT()
   const toast = useToast()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const { locale } = useLocale()
   const { user } = useAuth()
   const canEdit = !!user && (user.is_superuser || user.role === 'editor')
@@ -958,7 +960,15 @@ export function KnowledgeSitemapPage() {
       toast.error('Нельзя удалить единственный этаж')
       return
     }
-    if (!window.confirm(`Удалить этаж "${activeDiagram.title}"?`)) return
+    if (
+      !(await ask({
+        title: t('common.delete'),
+        body: t('sitemap.deleteFloorConfirm', { title: activeDiagram.title }),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     try {
       await api.deleteDiagram(activeDiagram.id)
       const rows = await api.diagrams()
@@ -989,9 +999,11 @@ export function KnowledgeSitemapPage() {
       (layout.walls?.length ?? 0) > 0 ||
       (layout.computers?.length ?? 0) > 0
     if (hasObjects) {
-      const ok = window.confirm(
-        'На текущем этаже уже есть объекты.\n\nФон будет заменен для этого этажа, а объекты останутся на своих координатах. Если размер нового фона отличается, элементы могут визуально сместиться.\n\nПродолжить импорт?',
-      )
+      const ok = await ask({
+        title: t('sitemap.importPng'),
+        body: t('sitemap.replaceBackgroundConfirm'),
+        confirmLabel: t('common.confirm'),
+      })
       if (!ok) {
         if (fileInputRef.current) fileInputRef.current.value = ''
         return
@@ -2445,7 +2457,7 @@ export function KnowledgeSitemapPage() {
                         type="button"
                         className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-[var(--color-surface)] text-[10px] font-bold leading-none text-[var(--color-fg-muted)] outline-none transition hover:border-slate-400 hover:bg-[var(--color-surface-muted)] focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1"
                         aria-describedby={placePhotosHelpTipId}
-                        aria-label="Справка: фото с места установки"
+                        aria-label={t('sitemap.photoHelpAria')}
                       >
                         i
                       </button>
@@ -2724,6 +2736,7 @@ export function KnowledgeSitemapPage() {
         }}
         overlayZClass="z-[60]"
       />
+      {confirmDialog}
     </div>
   )
 }
