@@ -82,6 +82,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list \
  && apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
     libcairo2 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \

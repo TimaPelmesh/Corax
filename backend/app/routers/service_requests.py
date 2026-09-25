@@ -512,12 +512,33 @@ async def export_glpi_csv(
             + ";"
         )
 
-    data = BytesIO(("\r\n".join(out_lines) + "\r\n").encode("utf-8"))
+    data = BytesIO(("\r\n".join(out_lines) + "\r\n").encode("utf-8-sig"))
     return StreamingResponse(
         data,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=glpi.csv"},
     )
+
+
+def _load_pdf_font(pdf: FPDF) -> bool:
+    """Embed a Unicode face so Cyrillic is real text, not Latin-1 garbage."""
+    candidates = [
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("C:/Windows/Fonts/arial.ttf"),
+        Path("C:/Windows/Fonts/tahoma.ttf"),
+        Path("C:/Windows/Fonts/calibri.ttf"),
+    ]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            pdf.add_font("UI", "", str(path))
+            pdf.add_font("UI", "B", str(path))
+            pdf.set_font("UI", style="B", size=14)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 @router.get("/export-pdf")
@@ -547,23 +568,7 @@ async def export_pdf(
     pdf.set_auto_page_break(auto=True, margin=10)
     pdf.add_page()
 
-    # Use Unicode font on Windows to support Cyrillic.
-    font_loaded = False
-    for p in [
-        Path("C:/Windows/Fonts/arial.ttf"),
-        Path("C:/Windows/Fonts/tahoma.ttf"),
-        Path("C:/Windows/Fonts/calibri.ttf"),
-    ]:
-        if p.is_file():
-            try:
-                pdf.add_font("UI", "", str(p), uni=True)
-                pdf.add_font("UI", "B", str(p), uni=True)
-                pdf.set_font("UI", style="B", size=14)
-                font_loaded = True
-                break
-            except Exception:
-                font_loaded = False
-
+    font_loaded = _load_pdf_font(pdf)
     if not font_loaded:
         pdf.set_font("Helvetica", style="B", size=14)
     pdf.cell(0, 9, "Service requests report", ln=1)
