@@ -2610,6 +2610,11 @@ export const en: MessageTree = {
     revokedOn: 'revoked {date}',
     revokeAction: 'Revoke',
     emptyState: 'No tokens yet',
+    pendingTitle: 'Waiting to connect',
+    pendingHint: 'Run the installer on the PC. It finds the server on the LAN and shows up here. The token is sent only after this button.',
+    pendingEmpty: 'Nobody is waiting',
+    connect: 'Connect',
+    connected: 'Connected. The installer will receive the token and close.',
   },
   agentBundle: {
     modules: {

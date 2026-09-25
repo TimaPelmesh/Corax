@@ -1,6 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { api, type AgentTokenCreated, type AgentTokenRow } from '../api'
+import { api, type AgentPairingRow, type AgentTokenCreated, type AgentTokenRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
@@ -17,6 +17,7 @@ export function AgentTokensPage() {
   const [label, setLabel] = useState('')
   const [allowedHostname, setAllowedHostname] = useState('')
   const [createdOnce, setCreatedOnce] = useState<AgentTokenCreated | null>(null)
+  const [pending, setPending] = useState<AgentPairingRow[]>([])
 
   const load = useCallback(async () => {
     try {
@@ -32,6 +33,24 @@ export function AgentTokensPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    let stop = false
+    const tick = async () => {
+      try {
+        const rows = await api.agentPairings()
+        if (!stop) setPending(rows)
+      } catch {
+        /* the token list already reports auth errors */
+      }
+    }
+    void tick()
+    const timer = window.setInterval(() => void tick(), 4000)
+    return () => {
+      stop = true
+      window.clearInterval(timer)
+    }
+  }, [])
 
   if (!user?.is_superuser) {
     return <Navigate to="/" replace />
@@ -59,6 +78,17 @@ export function AgentTokensPage() {
     try {
       await api.revokeAgentToken(id)
       setCreatedOnce((prev) => (prev && prev.id === id ? null : prev))
+      void load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    }
+  }
+
+  async function onConnect(id: number) {
+    try {
+      await api.approveAgentPairing(id)
+      toast.ok(t('agentTokens.connected'))
+      setPending((rows) => rows.filter((row) => row.id !== id))
       void load()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
@@ -95,6 +125,30 @@ export function AgentTokensPage() {
           </button>
         </div>
       ) : null}
+
+      <section className="app-card mb-10 max-w-xl p-6 sm:p-7">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+          {t('agentTokens.pendingTitle')}
+        </h2>
+        <p className="mt-3 text-sm text-[var(--color-fg-muted)]">{t('agentTokens.pendingHint')}</p>
+        {pending.length === 0 ? (
+          <p className="mt-4 text-sm text-[var(--color-fg-subtle)]">{t('agentTokens.pendingEmpty')}</p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {pending.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2"
+              >
+                <span className="font-medium">{row.hostname}</span>
+                <button type="button" className="app-btn app-btn-primary" onClick={() => void onConnect(row.id)}>
+                  {t('agentTokens.connect')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <form onSubmit={onCreate} className="app-card mb-10 max-w-xl space-y-4 p-6 sm:p-7">
         <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">

@@ -692,6 +692,22 @@ class RiskSnapshot(Base):
     findings_open: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class AgentPairing(Base):
+    """A PC installer waiting for an admin to connect it inside the LAN."""
+
+    __tablename__ = "agent_pairings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    hostname: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    token_once: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class RiskFindingAck(Base):
     """Operator acknowledgement or ignore for a deterministic finding id."""
 

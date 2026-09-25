@@ -35,6 +35,7 @@ add_executable(CORAX-Agent
   src/crash_handler.cpp
   src/desktop_shortcut.cpp
   src/install.cpp
+  src/pair_lan.cpp
   src/poll.cpp
   src/tray.cpp
   resources/CORAX-Agent.rc

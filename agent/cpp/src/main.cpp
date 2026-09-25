@@ -4,6 +4,7 @@
 #include "desktop_shortcut.hpp"
 #include "http.hpp"
 #include "install.hpp"
+#include "pair_lan.hpp"
 #include "tray.hpp"
 #include "osdetect.hpp"
 #include "secure_config.hpp"
@@ -252,11 +253,21 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  if ((cfg.server_url.empty() || cfg.agent_token.empty()) && !silent_mode) {
+    auto status = [&](const std::string& text) {
+      if (use_splash) {
+        splash.set_status(text);
+        splash.pump();
+      }
+      say(text, console_out);
+    };
+    if (enroll_on_lan(status)) cfg = load_agent_config();
+  }
+
   if (cfg.server_url.empty() || cfg.agent_token.empty()) {
     const std::string msg =
-        "Нет настроек сервера или токена.\n\n"
-        "Скачайте пакет из панели CORAX:\n"
-        "Настройки → Сборка агента\n\n"
+        "Сервер CORAX в локальной сети не подтвердил этот компьютер.\n\n"
+        "Откройте панель → Токены агентов и нажмите «Подключить».\n\n"
         "Лог: " +
         log_path();
     say("ERROR: missing server_url / agent_token", true);

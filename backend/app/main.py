@@ -29,6 +29,7 @@ from app.warehouse_models import StockItem, StockMovement, WarehouseRoom  # noqa
 from app.models import ServiceRequestTemplate, Tag, User
 from app.routers import (
     agent,
+    agent_pair,
     agent_tokens,
     agent_bundles,
     auth,
@@ -466,6 +467,8 @@ for base in ("/api/v1", "/api"):
     app.include_router(search.router, prefix=base)
     app.include_router(self_service.router, prefix=base)
     app.include_router(agent.router, prefix=base)
+    app.include_router(agent_pair.router, prefix=base)
+    app.include_router(agent_pair.admin_router, prefix=base)
     app.include_router(service_requests.router, prefix=base)
     app.include_router(ticket_handler.router, prefix=base)
     app.include_router(agent_tokens.router, prefix=base)

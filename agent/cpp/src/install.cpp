@@ -157,20 +157,27 @@ InstallResult install_agent() {
   copy_if_present(src_dir, dir, L"agent.cred");
 
   const bool elevated = util::is_elevated();
-  bool tray_ok = register_task(
-      L"CORAX Agent Tray", L"corax-tray-task.xml",
-      task_xml(dest_exe, L"--tray", true, false));
   bool poll_ok = register_task(
       L"CORAX Agent", L"corax-poll-task.xml",
       task_xml(dest_exe, L"--poll --silent", false, elevated));
-  (void)tray_ok;
   if (!poll_ok) {
     out.message = "EXE скопирован, но задача планировщика не создана. Запустите от администратора.";
     out.install_dir = util::narrow(dir);
     return out;
   }
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  si.dwFlags = STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
+  PROCESS_INFORMATION pi{};
+  wchar_t cmd[] = L"schtasks /Delete /TN \"CORAX Agent Tray\" /F";
+  if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+    WaitForSingleObject(pi.hProcess, 5000);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+  }
   out.ok = true;
   out.install_dir = util::narrow(dir);
-  out.message = "Установлено. Опрос сервера каждую минуту и из трея: сбор по команде или в заданное на сервере время.";
+  out.message = "Установлено. Агент молчит в фоне и раз в минуту спрашивает сервер, нужен ли сбор.";
   return out;
 }

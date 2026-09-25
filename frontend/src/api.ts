@@ -1102,6 +1102,13 @@ export type AgentTokenRow = {
 
 export type AgentTokenCreated = AgentTokenRow & { token: string }
 
+export type AgentPairingRow = {
+  id: number
+  hostname: string
+  status: string
+  created_at: string
+}
+
 export type AgentBundleProfile = 'full' | 'custom'
 
 export type AgentCollectPolicy = {
@@ -1964,6 +1971,11 @@ export const api = {
 
   revokeAgentToken: (id: number) =>
     request<void>(`${API_PREFIX}/agent-tokens/${id}`, { method: 'DELETE' }),
+
+  agentPairings: () => request<AgentPairingRow[]>(`${API_PREFIX}/agent-tokens/pair/pending`),
+
+  approveAgentPairing: (id: number) =>
+    request<AgentPairingRow>(`${API_PREFIX}/agent-tokens/pair/${id}/approve`, { method: 'POST' }),
 
   agentCollectPolicy: () =>
     request<AgentCollectPolicy>(`${API_PREFIX}/settings/agent-policy`),
