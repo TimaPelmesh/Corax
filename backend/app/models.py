@@ -113,6 +113,7 @@ class Monitor(Base):
     inventory_number: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     organization: Mapped[str | None] = mapped_column(String(255), nullable=True)
     glpi_contact_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    glpi_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     glpi_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
@@ -146,6 +147,11 @@ class Printer(Base):
     # laser | inkjet | label | mfp | unknown — классификация по SNMP
     printer_kind: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     serial_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    inventory_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    manufacturer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    glpi_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    glpi_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    glpi_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     snmp_sys_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     supplies_json: Mapped[str | None] = mapped_column(Text, nullable=True)

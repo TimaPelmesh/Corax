@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type GlpiConfig, type GlpiTestResult, type GlpiTicketSyncResult } from '../api'
+import { GlpiDeviceSync } from './GlpiDeviceSync'
 import { IconKey, IconTicket } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -411,6 +412,8 @@ export function GlpiApiPanel() {
           </button>
         </div>
       </div>
+
+      <GlpiDeviceSync limit={limit} enabled={enabled} />
     </section>
   )
 }

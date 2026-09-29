@@ -10,6 +10,7 @@ from app.agent_policy import get_or_create_policy
 from app.auth import get_current_editor_or_superuser, get_current_superuser
 from app.database import get_db
 from app.glpi_assets import export_glpi_assets, import_glpi_assets
+from app.glpi_devices import export_glpi_devices, import_glpi_devices, list_local_devices, list_remote_devices
 from app.glpi_client import GlpiClientError, probe_glpi
 from app.glpi_sync import creds_from_row, export_glpi_tickets, import_glpi_tickets
 from app.ldap_config import get_effective_ldap_config
@@ -20,6 +21,8 @@ from app.schemas import (
     GlpiConfigOut,
     GlpiConfigUpdate,
     GlpiTestResponse,
+    GlpiDeviceRowOut,
+    GlpiDeviceSyncIn,
     GlpiTicketSyncIn,
     GlpiTicketSyncOut,
     LdapConfigOut,
@@ -659,3 +662,82 @@ async def export_glpi_assets_api(
         message=result.message,
         errors=result.errors,
     )
+
+
+def _device_sync_out(result) -> GlpiTicketSyncOut:
+    return GlpiTicketSyncOut(
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        failed=result.failed,
+        message=result.message,
+        errors=result.errors,
+    )
+
+
+@router.get("/glpi/devices", response_model=list[GlpiDeviceRowOut])
+async def list_glpi_devices_local(
+    kind: str,
+    limit: int = 200,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    if kind not in ("monitor", "printer"):
+        raise HTTPException(status_code=400, detail="Можно передать только мониторы или принтеры")
+    return await list_local_devices(db, kind, limit=limit)
+
+
+@router.post("/glpi/remote-devices", response_model=list[GlpiDeviceRowOut])
+async def list_glpi_devices_remote(
+    body: GlpiDeviceSyncIn,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    try:
+        return await list_remote_devices(creds_from_row(row), body.kind, limit=body.limit)
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/glpi/import-devices", response_model=GlpiTicketSyncOut)
+async def import_glpi_devices_api(
+    body: GlpiDeviceSyncIn,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    try:
+        result = await import_glpi_devices(
+            db,
+            creds_from_row(row),
+            kind=body.kind,
+            limit=body.limit,
+            glpi_ids=body.ids,
+        )
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _device_sync_out(result)
+
+
+@router.post("/glpi/export-devices", response_model=GlpiTicketSyncOut)
+async def export_glpi_devices_api(
+    body: GlpiDeviceSyncIn,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    try:
+        result = await export_glpi_devices(
+            db,
+            creds_from_row(row),
+            kind=body.kind,
+            limit=body.limit,
+            ids=body.ids,
+        )
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _device_sync_out(result)

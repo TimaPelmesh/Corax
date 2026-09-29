@@ -873,6 +873,17 @@ export type GlpiTicketSyncResult = {
   errors: string[]
 }
 
+export type GlpiDeviceKind = 'monitor' | 'printer'
+
+export type GlpiDeviceRow = {
+  id: number
+  glpi_id: number | null
+  name: string
+  serial_number: string | null
+  inventory_number: string | null
+  updated_at: string | null
+}
+
 export type ZabbixProblem = {
   eventid: string
   name: string
@@ -1864,6 +1875,30 @@ export const api = {
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-assets`, {
       method: 'POST',
       json: { limit },
+      timeout_ms: 300_000,
+    }),
+
+  glpiLocalDevices: (kind: GlpiDeviceKind, limit: number) =>
+    request<GlpiDeviceRow[]>(`${API_PREFIX}/settings/glpi/devices?kind=${kind}&limit=${limit}`),
+
+  glpiRemoteDevices: (kind: GlpiDeviceKind, limit: number) =>
+    request<GlpiDeviceRow[]>(`${API_PREFIX}/settings/glpi/remote-devices`, {
+      method: 'POST',
+      json: { kind, limit },
+      timeout_ms: 180_000,
+    }),
+
+  glpiImportDevices: (kind: GlpiDeviceKind, limit: number, ids: number[] | null) =>
+    request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/import-devices`, {
+      method: 'POST',
+      json: { kind, limit, ids },
+      timeout_ms: 300_000,
+    }),
+
+  glpiExportDevices: (kind: GlpiDeviceKind, limit: number, ids: number[] | null) =>
+    request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-devices`, {
+      method: 'POST',
+      json: { kind, limit, ids },
       timeout_ms: 300_000,
     }),
 

@@ -822,6 +822,21 @@ class GlpiTicketSyncOut(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class GlpiDeviceSyncIn(BaseModel):
+    kind: Literal["monitor", "printer"]
+    limit: int = Field(default=200, ge=1, le=2000)
+    ids: list[int] | None = Field(default=None, max_length=2000)
+
+
+class GlpiDeviceRowOut(BaseModel):
+    id: int
+    glpi_id: int | None = None
+    name: str
+    serial_number: str | None = None
+    inventory_number: str | None = None
+    updated_at: datetime | None = None
+
+
 class Bitrix24IncomingRequest(BaseModel):
     """Нормализованный payload для вебхука (можно слать из Битрикс-бота)."""
 

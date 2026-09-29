@@ -155,6 +155,46 @@ class GlpiAssetPushResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class GlpiDevice:
+    glpi_id: int
+    name: str
+    serial: str | None = None
+    inventory: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    location: str | None = None
+    contact: str | None = None
+    comment: str | None = None
+    organization: str | None = None
+    updated_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class GlpiDeviceOutbound:
+    corax_id: int
+    kind: str
+    name: str
+    glpi_id: int | None = None
+    serial: str | None = None
+    inventory: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    location: str | None = None
+    contact: str | None = None
+    comment: str | None = None
+
+
+@dataclass(frozen=True)
+class GlpiDevicePushResult:
+    corax_id: int
+    glpi_id: int | None
+    action: str
+    updated_at: datetime | None = None
+    error: str | None = None
+
+
 def canonical_software(name: str | None, version: str | None) -> tuple[str, str | None] | None:
     title = re.sub(r"\s+", " ", name or "").strip()
     if not title:
@@ -268,6 +308,103 @@ def glpi_status_label(status: str | None) -> str:
 
 def glpi_priority_label(priority: str | None) -> str:
     return _PRIORITY_LABELS[glpi_priority_id(priority)]
+
+
+def device_is_stale(incoming: datetime | None, stored: datetime | None) -> bool:
+    """True when the incoming GLPI stamp is strictly older than the stored one.
+
+    Seconds are the GLPI precision. A newer or equal stamp may update the row.
+    """
+    if incoming is None or stored is None:
+        return False
+    return _floor_utc(incoming) < _floor_utc(stored)
+
+
+def _floor_utc(value: datetime) -> datetime:
+    current = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return current.replace(microsecond=0)
+
+
+def _device_itemtype(kind: str) -> str:
+    if kind == "monitor":
+        return "Monitor"
+    if kind == "printer":
+        return "Printer"
+    raise GlpiClientError("Можно передать только мониторы или принтеры")
+
+
+def parse_device(raw: object) -> GlpiDevice | None:
+    if not isinstance(raw, dict):
+        return None
+    glpi_id = _as_int(raw.get("id"))
+    name = _clip(raw.get("name"), 255)
+    if glpi_id is None or not name:
+        return None
+    if _as_int(raw.get("is_deleted")) == 1 or _as_int(raw.get("is_template")) == 1:
+        return None
+    model = raw.get("model") or raw.get("monitormodels_id") or raw.get("printermodels_id")
+    return GlpiDevice(
+        glpi_id=glpi_id,
+        name=name,
+        serial=_clip(raw.get("serial"), 255),
+        inventory=_clip(raw.get("otherserial"), 128),
+        manufacturer=_clip(raw.get("manufacturer") or raw.get("manufacturers_id"), 255),
+        model=_clip(model, 255),
+        location=_clip(raw.get("location") or raw.get("locations_id"), 255),
+        contact=_clip(raw.get("contact"), 255),
+        comment=_clip(raw.get("comment"), 8000),
+        organization=_clip(raw.get("entities_id") or raw.get("entity"), 255),
+        updated_at=parse_glpi_datetime(raw.get("date_mod") or raw.get("date_creation")),
+        created_at=parse_glpi_datetime(raw.get("date_creation") or raw.get("date")),
+    )
+
+
+def fetch_devices(
+    creds: GlpiCredentials,
+    kind: str,
+    limit: int = 200,
+    *,
+    glpi_ids: list[int] | None = None,
+    transport: httpx.BaseTransport | None = None,
+) -> list[GlpiDevice]:
+    bounded = max(1, min(int(limit), 2000))
+    only: set[int] | None = None
+    if glpi_ids is not None:
+        only = set()
+        for item in glpi_ids:
+            only.add(int(item))
+            if len(only) >= 2000:
+                break
+        if not only:
+            return []
+        bounded = len(only)
+    with _Session(creds, transport) as session:
+        return session.list_devices(kind, bounded, only)
+
+
+def push_devices(
+    creds: GlpiCredentials,
+    items: list[GlpiDeviceOutbound],
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> list[GlpiDevicePushResult]:
+    if not items:
+        return []
+    results: list[GlpiDevicePushResult] = []
+    with _Session(creds, transport) as session:
+        for item in items:
+            try:
+                results.append(session.upsert_device(item))
+            except GlpiClientError as exc:
+                results.append(
+                    GlpiDevicePushResult(
+                        corax_id=item.corax_id,
+                        glpi_id=None,
+                        action="failed",
+                        error=str(exc),
+                    )
+                )
+    return results
 
 
 def parse_glpi_datetime(value: object | None) -> datetime | None:
@@ -615,6 +752,57 @@ class _Session:
             start += len(raw_items)
         return collected
 
+    def list_devices(self, kind: str, limit: int, only_ids: set[int] | None = None) -> list[GlpiDevice]:
+        itemtype = _device_itemtype(kind)
+        if only_ids is not None:
+            found: list[GlpiDevice] = []
+            for glpi_id in list(only_ids)[:limit]:
+                device = parse_device(self._read_asset(itemtype, glpi_id))
+                if device is not None:
+                    found.append(device)
+            return found
+        collected: list[GlpiDevice] = []
+        seen: set[int] = set()
+        start = 0
+        while len(collected) < limit:
+            page_size = min(_PAGE, limit - len(collected))
+            raw_items = self._device_page(itemtype, start, page_size)
+            if not raw_items:
+                break
+            fresh = 0
+            for raw in raw_items:
+                device = parse_device(raw)
+                if device is None or device.glpi_id in seen:
+                    continue
+                seen.add(device.glpi_id)
+                collected.append(device)
+                fresh += 1
+                if len(collected) >= limit:
+                    break
+            if fresh == 0 or len(raw_items) < page_size:
+                break
+            start += len(raw_items)
+        return collected
+
+    def upsert_device(self, item: GlpiDeviceOutbound) -> GlpiDevicePushResult:
+        itemtype = _device_itemtype(item.kind)
+        name = (item.name or "").strip()
+        if not name:
+            raise GlpiClientError("У записи нет имени")
+        existing: GlpiDevice | None = None
+        if item.glpi_id is not None:
+            existing = parse_device(self._read_asset(itemtype, item.glpi_id))
+        if existing is None:
+            existing = self._find_device(itemtype, name, item.serial, item.inventory)
+        glpi_id = self._write_device(None if existing is None else existing.glpi_id, item)
+        fresh = parse_device(self._read_asset(itemtype, glpi_id))
+        return GlpiDevicePushResult(
+            corax_id=item.corax_id,
+            glpi_id=glpi_id,
+            action="created" if existing is None else "updated",
+            updated_at=None if fresh is None else fresh.updated_at,
+        )
+
     def upsert_computer(self, item: GlpiComputerOutbound) -> GlpiAssetPushResult:
         hostname = (item.hostname or "").strip()
         if not hostname:
@@ -630,6 +818,158 @@ class _Session:
         self._replace_software(glpi_id, item.software)
         self._write_os(glpi_id, item.os_name, item.os_version)
         return GlpiAssetPushResult(corax_id=item.corax_id, glpi_id=glpi_id, action=action)
+
+    def _device_page(self, itemtype: str, start: int, page_size: int) -> list[object]:
+        end = start + page_size - 1
+        if self.mode == "legacy":
+            payload = self._read(
+                f"{self.base}/apirest.php/{itemtype}",
+                params={"range": f"{start}-{end}", "expand_dropdowns": "true", "get_hateoas": "false"},
+                headers={**self._asset_headers(), "Range": f"items={start}-{end}"},
+            )
+        else:
+            payload = self._read(
+                f"{self.base}/api.php/Assets/{itemtype}",
+                params={"start": start, "limit": page_size},
+                headers={**self._v2_headers(), "Range": f"items={start}-{end}"},
+            )
+        if payload is None:
+            return []
+        return _as_list(payload)
+
+    def _read_asset(self, itemtype: str, item_id: int) -> dict[str, Any] | None:
+        if self.mode == "legacy":
+            payload = self._read(
+                f"{self.base}/apirest.php/{itemtype}/{item_id}",
+                params={"expand_dropdowns": "true", "get_hateoas": "false"},
+                headers=self._asset_headers(),
+            )
+        else:
+            payload = self._read(
+                f"{self.base}/api.php/Assets/{itemtype}/{item_id}",
+                headers=self._v2_headers(),
+            )
+        return payload if isinstance(payload, dict) else None
+
+    def _search_devices(self, itemtype: str, field: str, value: str) -> list[GlpiDevice]:
+        if self.mode == "legacy":
+            payload = self._read(
+                f"{self.base}/apirest.php/{itemtype}",
+                params={
+                    f"searchText[{field}]": value,
+                    "expand_dropdowns": "true",
+                    "range": "0-49",
+                    "get_hateoas": "false",
+                },
+                headers={**self._asset_headers(), "Range": "items=0-49"},
+            )
+        else:
+            payload = self._read(
+                f"{self.base}/api.php/Assets/{itemtype}",
+                params={"filter": f"{field}=={value}", "start": 0, "limit": 50},
+                headers=self._v2_headers(),
+            )
+        if payload is None:
+            return []
+        found: list[GlpiDevice] = []
+        for raw in _as_list(payload):
+            device = parse_device(raw)
+            if device is not None:
+                found.append(device)
+        return found
+
+    def _find_device(self, itemtype: str, name: str, serial: str | None, inventory: str | None) -> GlpiDevice | None:
+        probes = (("serial", serial), ("otherserial", inventory), ("name", name))
+        for field, raw in probes:
+            text = (raw or "").strip()
+            if not text:
+                continue
+            matches = [
+                device
+                for device in self._search_devices(itemtype, field, text)
+                if (self._device_field(device, field) or "").casefold() == text.casefold()
+            ]
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                raise GlpiClientError(f"В GLPI несколько {itemtype} с {field}={text}")
+        return None
+
+    @staticmethod
+    def _device_field(device: GlpiDevice, field: str) -> str | None:
+        if field == "serial":
+            return device.serial
+        if field == "otherserial":
+            return device.inventory
+        return device.name
+
+    def _write_device(self, glpi_id: int | None, item: GlpiDeviceOutbound) -> int:
+        itemtype = _device_itemtype(item.kind)
+        legacy_body: dict[str, Any] = {"name": item.name.strip()[:255]}
+        v2_body: dict[str, Any] = {"name": item.name.strip()[:255]}
+        for field, raw, limit in (
+            ("serial", item.serial, 255),
+            ("otherserial", item.inventory, 255),
+            ("contact", item.contact, 255),
+            ("comment", item.comment, 8000),
+        ):
+            text = (raw or "").strip()
+            if not text:
+                continue
+            legacy_body[field] = text[:limit]
+            v2_body[field] = text[:limit]
+        model_field, model_type = (
+            ("monitormodels_id", "MonitorModel") if itemtype == "Monitor" else ("printermodels_id", "PrinterModel")
+        )
+        for label, legacy_field, v2_field, dropdown in (
+            (item.manufacturer, "manufacturers_id", "manufacturer", "Manufacturer"),
+            (item.model, model_field, "model", model_type),
+            (item.location, "locations_id", "location", "Location"),
+        ):
+            text = (label or "").strip()
+            if not text:
+                continue
+            ref = self._dropdown_id(dropdown, text)
+            if ref is not None:
+                legacy_body[legacy_field] = ref
+                v2_body[v2_field] = {"id": ref}
+            elif self.mode != "legacy":
+                v2_body[v2_field] = {"name": text[:255]}
+        if self.mode == "legacy":
+            if glpi_id is None:
+                data = self._request(
+                    "POST",
+                    f"{self.base}/apirest.php/{itemtype}",
+                    headers=self._asset_headers(),
+                    json={"input": legacy_body},
+                )
+            else:
+                self._request(
+                    "PUT",
+                    f"{self.base}/apirest.php/{itemtype}/{glpi_id}",
+                    headers=self._asset_headers(),
+                    json={"input": legacy_body},
+                )
+                return glpi_id
+        elif glpi_id is None:
+            data = self._request(
+                "POST",
+                f"{self.base}/api.php/Assets/{itemtype}",
+                headers=self._v2_headers(),
+                json=v2_body,
+            )
+        else:
+            self._request(
+                "PATCH",
+                f"{self.base}/api.php/Assets/{itemtype}/{glpi_id}",
+                headers=self._v2_headers(),
+                json=v2_body,
+            )
+            return glpi_id
+        created = _id_from_payload(data)
+        if created is None:
+            raise GlpiClientError("GLPI не вернул id созданной записи")
+        return created
 
     def _computer_page(self, start: int, page_size: int) -> list[object]:
         end = start + page_size - 1

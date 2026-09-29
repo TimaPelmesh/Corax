@@ -1664,6 +1664,28 @@ def _migrate_agent_collect_policy(sync_conn) -> None:
         )
 
 
+def _migrate_glpi_device_ids(sync_conn) -> None:
+    if "monitors" in _table_names(sync_conn):
+        cols = _column_names(sync_conn, "monitors")
+        if "glpi_id" not in cols:
+            sync_conn.execute(text("ALTER TABLE monitors ADD COLUMN glpi_id INTEGER"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_monitors_glpi_id ON monitors (glpi_id)"))
+    if "printers" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "printers")
+    adds = {
+        "glpi_id": "ALTER TABLE printers ADD COLUMN glpi_id INTEGER",
+        "glpi_updated_at": "ALTER TABLE printers ADD COLUMN glpi_updated_at TIMESTAMP",
+        "inventory_number": "ALTER TABLE printers ADD COLUMN inventory_number VARCHAR(128)",
+        "manufacturer": "ALTER TABLE printers ADD COLUMN manufacturer VARCHAR(255)",
+        "glpi_model": "ALTER TABLE printers ADD COLUMN glpi_model VARCHAR(255)",
+    }
+    for name, sql in adds.items():
+        if name not in cols:
+            sync_conn.execute(text(sql))
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_printers_glpi_id ON printers (glpi_id)"))
+
+
 _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-04-16_schema_migrations", lambda c: None),
     ("2026-04-16_tags_color", _migrate_tags_color_column),
@@ -1719,6 +1741,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-24_agent_collect_policy", _migrate_agent_collect_policy),
     ("2026-09-29_agent_pairings", _migrate_agent_pairings),
     ("2026-09-29_glpi_config", _migrate_glpi_config),
+    ("2026-09-29_glpi_device_ids", _migrate_glpi_device_ids),
 ]
 
 
