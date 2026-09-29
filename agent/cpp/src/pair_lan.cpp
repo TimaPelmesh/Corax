@@ -1,6 +1,7 @@
 #include "pair_lan.hpp"
 #include "util.hpp"
 
+#include <winsock2.h>
 #include <windows.h>
 #include <winhttp.h>
 #include <iphlpapi.h>
@@ -12,6 +13,7 @@
 
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "iphlpapi.lib")
+#pragma comment(lib, "ws2_32.lib")
 
 namespace {
 
@@ -132,12 +134,21 @@ std::string find_server(const std::function<void(const std::string&)>& status) {
   return "";
 }
 
+std::string trim_server(std::string server) {
+  while (!server.empty() && (server.back() == '/' || server.back() == '\\')) server.pop_back();
+  return server;
+}
+
 bool write_pair_files(const std::string& server, const std::string& token) {
   std::string dir = util::exe_dir();
-  std::string agent_json = "{\n  \"server_url\": \"" + json_escape(server) + "\"\n}\n";
+  std::string existing = util::read_file_utf8(dir + "\\agent.json");
+  bool wrote_config = true;
+  if (existing.find("\"server_url\"") == std::string::npos) {
+    std::string agent_json = "{\n  \"server_url\": \"" + json_escape(server) + "\"\n}\n";
+    wrote_config = util::write_file_utf8(dir + "\\agent.json", agent_json);
+  }
   std::string provision = "{\n  \"agent_token\": \"" + json_escape(token) + "\"\n}\n";
-  return util::write_file_utf8(dir + "\\agent.json", agent_json) &&
-         util::write_file_utf8(dir + "\\agent.provision.json", provision);
+  return wrote_config && util::write_file_utf8(dir + "\\agent.provision.json", provision);
 }
 
 std::string extract_token(const std::string& body) {
@@ -153,8 +164,13 @@ std::string extract_token(const std::string& body) {
 
 }  // namespace
 
-bool enroll_on_lan(const std::function<void(const std::string&)>& status) {
-  std::string server = find_server(status);
+bool enroll_on_lan(const std::function<void(const std::string&)>& status, const std::string& known_server) {
+  std::string server = trim_server(known_server);
+  if (!server.empty()) {
+    status("Сервер инвентаризации: " + server);
+  } else {
+    server = find_server(status);
+  }
   if (server.empty()) {
     status("Сервер CORAX в этой сети не найден.");
     return false;

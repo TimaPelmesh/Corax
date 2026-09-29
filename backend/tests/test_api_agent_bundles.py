@@ -37,7 +37,11 @@ def test_create_agent_bundle_zip(client: TestClient, auth_headers: dict[str, str
         names = set(zf.namelist())
         assert "CORAX-Agent.exe" in names
         assert "agent.json" in names
-        assert "agent.provision.json" in names
+        assert "agent.provision.json" not in names
+        public_config = zf.read("agent.json")
+        assert b"http://192.168.1.10:3001" in public_config
+        assert b"agent_token" not in public_config
+        assert b"test-token-for-api-bundle" not in r.content
         assert "corax_send.bat" not in names
         assert "win7/inventory_send_win7.bat" not in names
 
@@ -64,7 +68,6 @@ def test_create_native_agent_is_portable_zip_with_unmodified_exe(
         assert {
             "CORAX-Agent.exe",
             "agent.json",
-            "agent.provision.json",
             "package.json",
             "SHA256SUMS.txt",
             "Run CORAX Agent.cmd",
@@ -72,9 +75,10 @@ def test_create_native_agent_is_portable_zip_with_unmodified_exe(
             "Install-HelpdeskShortcut.ps1",
             "Install-CORAXScheduledTask.ps1",
         }.issubset(names)
+        assert "agent.provision.json" not in names
         exe = zf.read("CORAX-Agent.exe")
         public_config = zf.read("agent.json")
-        provision = zf.read("agent.provision.json")
+        assert b"https://corax.lan:3000" in public_config
         assert token.encode() not in exe
         assert token.encode() not in public_config
-        assert token.encode() in provision
+        assert token.encode() not in r.content

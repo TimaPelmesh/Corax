@@ -2655,7 +2655,7 @@ export const en: MessageTree = {
     revokeAction: 'Revoke',
     emptyState: 'No tokens yet',
     pendingTitle: 'Waiting to connect',
-    pendingHint: 'Run the installer on the PC. It finds the server on the LAN and shows up here. The token is sent only after this button.',
+    pendingHint: 'Run the same installer on the PC. The server address is already inside. The token is sent only after this button.',
     pendingEmpty: 'Nobody is waiting',
     connect: 'Connect',
     connected: 'Connected. The installer will receive the token and close.',
@@ -2731,7 +2731,7 @@ export const en: MessageTree = {
     win7Notice:
       'Base profile: WMI, software registry, PnP peripherals. Extended modules (patches, BitLocker, Docker, etc.) are available only in the Windows 10/11 build.',
     windowsZipNotice:
-      'ZIP with CORAX-Agent.exe. Launch installs the agent, shows a setup window, and leaves a tray icon. Later reports go out only when the panel asks or at the time set here. No further windows for the user.',
+      'One ZIP for every computer. It contains the inventory server address and no token. On each PC the installer asks the server for a token — confirm that PC under Agent tokens.',
     collectionLevel: 'Collection level',
     levelFull: 'Full',
     levelFullHint: 'All modules: network, patches, security, Office, Docker/WSL, and more.',
@@ -2787,12 +2787,13 @@ export const en: MessageTree = {
     summaryLevel: 'Level',
     summaryToken: 'Token',
     summaryTokenValue: 'New on each build',
+    summaryTokenFromServer: 'Issued by the server at install',
     summaryModules: 'Modules',
     summarySchedule: 'Schedule',
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'No',
     summaryArchiveWin10:
-      'Inside the archive: CORAX-Agent.exe with a setup window and a tray icon, agent.json, and a one-time token. After the first report a “Оставить заявку” shortcut opens /h#pc=HOSTNAME.',
+      'The archive is the installer plus agent.json with the server address. No token is sealed in: the inventory server issues one when you click Connect. The same ZIP installs on the next computer.',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
     summaryArchiveCpp:
@@ -2804,7 +2805,7 @@ export const en: MessageTree = {
     downloadCpp: 'Download portable ZIP',
     deploymentTitle: 'Deployment',
     deployStep1:
-      'Extract the ZIP and run CORAX-Agent.exe. The installer copies itself to %ProgramData%\\CORAX\\Agent.',
+      'Run the same ZIP on any PC. The installer copies itself to %ProgramData%\\CORAX\\Agent and calls the server address from agent.json.',
     deployStep1Linux: 'Copy the ZIP to the Linux host and extract it (e.g. /opt/corax-agent).',
     deployStep2Before: 'On the PC, run',
     deployStep2After: '— the report will be sent to {serverUrl}.',
@@ -2813,7 +2814,7 @@ export const en: MessageTree = {
     deployStep2LinuxBefore: 'On the host, run',
     deployStep2LinuxAfter: '— the report will be sent to {serverUrl}.',
     deployStep3Win10:
-      'After that the agent stays quiet in the tray. Collection is controlled on this page: Collect now, or a set time. The “Оставить заявку” shortcut appears after the first report.',
+      'While the installer waits, open Agent tokens and click Connect. The server issues a token for that computer. After that the agent stays quiet in the tray.',
     deployStep3Win7:
       'Scheduling: create a Windows Task Scheduler task to run the bat manually or through GPO.',
     deployStep3Cpp:

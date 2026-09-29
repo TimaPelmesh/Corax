@@ -253,7 +253,7 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  if ((cfg.server_url.empty() || cfg.agent_token.empty()) && !silent_mode) {
+  if (cfg.agent_token.empty() && !silent_mode) {
     auto status = [&](const std::string& text) {
       if (use_splash) {
         splash.set_status(text);
@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
       }
       say(text, console_out);
     };
-    if (enroll_on_lan(status)) cfg = load_agent_config();
+    if (enroll_on_lan(status, cfg.server_url)) cfg = load_agent_config();
   }
 
   if (cfg.server_url.empty() || cfg.agent_token.empty()) {

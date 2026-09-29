@@ -197,7 +197,7 @@ export function AgentBundlePage() {
             server_url: server,
             target: platform,
             profile: showExtended ? level : 'full',
-            create_token: true,
+            create_token: platform === 'linux',
             token_label: label,
             modules: showModules ? modules : undefined,
             schedule:
@@ -426,26 +426,33 @@ export function AgentBundlePage() {
 
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/60 p-4">
             <div className="text-sm font-semibold text-[var(--color-fg)]">{t('agentBundle.tokenTitle')}</div>
-            <div className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
-                <>
-              <p>
-                <strong>{t('agentBundle.tokenNewEachBuild')}</strong> {t('agentBundle.tokenIntroBefore')}{' '}
-                <code className="text-[11px]">public_id.secret</code> {t('agentBundle.tokenIntroMiddle')}{' '}
+            {platform === 'linux' ? (
+              <>
+                <div className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                  <p>
+                    <strong>{t('agentBundle.tokenNewEachBuild')}</strong> {t('agentBundle.tokenIntroBefore')}{' '}
+                    <code className="text-[11px]">public_id.secret</code> {t('agentBundle.tokenIntroMiddle')}{' '}
+                    <Link to="/settings/agent-tokens" className="font-medium text-[var(--color-primary)] underline-offset-2 hover:underline">
+                      {t('agentBundle.tokenIntroLink')}
+                    </Link>
+                    ) {t('agentBundle.tokenIntroAfter')}
+                  </p>
+                  <p>{t('agentBundle.tokenParagraph2')}</p>
+                  <p>{t('agentBundle.tokenParagraph3')}</p>
+                </div>
+                <div className="mt-3">
+                  <label className="app-label">{t('agentBundle.tokenLabelAdmin')}</label>
+                  <input className="app-input" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} />
+                </div>
+              </>
+            ) : (
+              <p className="mt-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                {t('agentBundle.windowsZipNotice')}{' '}
                 <Link to="/settings/agent-tokens" className="font-medium text-[var(--color-primary)] underline-offset-2 hover:underline">
                   {t('agentBundle.tokenIntroLink')}
                 </Link>
-                ) {t('agentBundle.tokenIntroAfter')}
               </p>
-              <p>
-                {t('agentBundle.tokenParagraph2')}
-              </p>
-              <p>{t('agentBundle.tokenParagraph3')}</p>
-                </>
-            </div>
-            <div className="mt-3">
-              <label className="app-label">{t('agentBundle.tokenLabelAdmin')}</label>
-              <input className="app-input" value={tokenLabel} onChange={(e) => setTokenLabel(e.target.value)} />
-            </div>
+            )}
           </div>
 
           {platform === 'windows' ? (
@@ -607,7 +614,9 @@ export function AgentBundlePage() {
               ) : null}
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryToken')}</dt>
-                <dd className="text-right text-[var(--color-fg)]">{t('agentBundle.summaryTokenValue')}</dd>
+                <dd className="text-right text-[var(--color-fg)]">
+                  {platform === 'linux' ? t('agentBundle.summaryTokenValue') : t('agentBundle.summaryTokenFromServer')}
+                </dd>
               </div>
               {showModules ? (
                 <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">

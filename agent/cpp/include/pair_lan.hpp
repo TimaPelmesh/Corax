@@ -2,6 +2,6 @@
 #include <functional>
 #include <string>
 
-// Finds a CORAX panel on the local /24, waits until an admin connects this PC,
-// then writes agent.json and agent.provision.json next to the EXE.
-bool enroll_on_lan(const std::function<void(const std::string&)>& status);
+// Asks the inventory server (baked into the installer, or found on the LAN) for a token.
+// Writes agent.provision.json next to the EXE. Does not replace an existing agent.json.
+bool enroll_on_lan(const std::function<void(const std::string&)>& status, const std::string& known_server = "");

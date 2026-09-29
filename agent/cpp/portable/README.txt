@@ -9,15 +9,11 @@ CORAX AGENT — PORTABLE WINDOWS PACKAGE
 SECURITY
 --------
 - CORAX-Agent.exe is identical in every package and can be Authenticode-signed.
-- agent.json contains only public settings such as the server URL.
-- agent.provision.json is a one-time token bootstrap. On first launch it is
-  encrypted with Windows DPAPI (LocalMachine), saved as hidden agent.cred,
-  overwritten where possible, and deleted.
-- Keep the original ZIP private: it necessarily contains the bootstrap token.
-- Prefer HTTPS. With HTTP, the Bearer token and inventory are not encrypted in
-  transit. Application-level token obfuscation is not a substitute for TLS.
-- The server stores only an HMAC hash of the token secret. Revoke a package's
-  token in Settings -> Agent tokens if the ZIP is exposed.
+- agent.json contains the inventory server address. The same ZIP installs on every PC.
+- There is no token in the ZIP. On first launch the installer asks the server
+  for one. An admin confirms the PC under Settings -> Agent tokens.
+- The issued token is then encrypted with Windows DPAPI (LocalMachine).
+- Prefer HTTPS. With HTTP, the token and inventory are not encrypted in transit.
 
 ANTIVIRUS / SMARTSCREEN
 -----------------------
@@ -29,9 +25,8 @@ No build script can guarantee zero detections. For production distribution:
 - submit false positives to the antivirus vendor instead of adding exclusions.
 
 - CORAX-Agent.exe                 Native Win7/10/11 x64 agent
-- agent.json                     Public configuration
-- agent.provision.json           One-time sensitive bootstrap (deleted on first run)
-- agent.cred                     DPAPI credential (created on first run)
+- agent.json                     Server address and public settings
+- agent.cred                     DPAPI credential (created after the server issues a token)
 - SHA256SUMS.txt                 Integrity hash for the immutable EXE
 
 After a successful inventory POST the agent writes a desktop shortcut "Заявка CORAX"

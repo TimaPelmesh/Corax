@@ -14,7 +14,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_bundle import _resolve_agent_token, _resolve_modules
+from app.agent_bundle import _resolve_modules
 from app.schemas import AgentBundleCreate
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -327,12 +327,11 @@ def _cpp_public_config(body: AgentBundleCreate, server: str) -> dict:
     }
 
 
-async def build_cpp_agent_bundle(db: AsyncSession, body: AgentBundleCreate) -> tuple[bytes, str]:
+async def build_cpp_agent_bundle(_db: AsyncSession, body: AgentBundleCreate) -> tuple[bytes, str]:
     server = body.server_url.strip().rstrip("/")
     if not server.lower().startswith(("http://", "https://")):
         raise ValueError("server_url должен начинаться с http:// или https://")
 
-    token, _ = await _resolve_agent_token(db, body)
     embed = _cpp_public_config(body, server)
 
     template = ensure_cpp_template_exe()
@@ -343,17 +342,13 @@ async def build_cpp_agent_bundle(db: AsyncSession, body: AgentBundleCreate) -> t
     profile_key = "custom" if body.profile == "custom" else body.profile
     filename = f"CORAX-Agent-portable-{profile_key}-{stamp}.zip"
 
-    provision = {
-        "schema_version": 1,
-        "agent_token": token,
-    }
     package_meta = {
         "format": "corax-agent-portable",
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "agent_version": "5.0.0",
         "executable_sha256": exe_sha256,
-        "credential_storage": "Windows DPAPI LocalMachine after first launch",
+        "credential_storage": "token is issued by the inventory server at install time",
         "transport": "TLS" if server.lower().startswith("https://") else "plaintext HTTP",
     }
 
@@ -363,10 +358,6 @@ async def build_cpp_agent_bundle(db: AsyncSession, body: AgentBundleCreate) -> t
         zf.writestr(
             "agent.json",
             json.dumps(embed, ensure_ascii=False, indent=2) + "\n",
-        )
-        zf.writestr(
-            "agent.provision.json",
-            json.dumps(provision, ensure_ascii=False, separators=(",", ":")) + "\n",
         )
         zf.writestr("package.json", json.dumps(package_meta, ensure_ascii=False, indent=2) + "\n")
         zf.writestr("SHA256SUMS.txt", f"{exe_sha256}  CORAX-Agent.exe\n")
