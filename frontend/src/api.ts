@@ -1853,6 +1853,20 @@ export const api = {
       timeout_ms: 180_000,
     }),
 
+  glpiImportAssets: (limit: number) =>
+    request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/import-assets`, {
+      method: 'POST',
+      json: { limit },
+      timeout_ms: 300_000,
+    }),
+
+  glpiExportAssets: (limit: number) =>
+    request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-assets`, {
+      method: 'POST',
+      json: { limit },
+      timeout_ms: 300_000,
+    }),
+
   zabbixOverview: () => request<ZabbixOverview>(`${API_PREFIX}/zabbix/overview`),
 
   zabbixProblems: (limit = 50) =>

@@ -25,7 +25,7 @@ export function GlpiApiPanel() {
   const [limit, setLimit] = useState(200)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [syncing, setSyncing] = useState<'import' | 'export' | null>(null)
+  const [syncing, setSyncing] = useState<'import' | 'export' | 'import-assets' | 'export-assets' | null>(null)
   const [lastTest, setLastTest] = useState<GlpiTestResult | null>(null)
 
   const apply = useCallback((next: GlpiConfig) => {
@@ -109,7 +109,7 @@ export function GlpiApiPanel() {
     }
   }
 
-  function reportSync(kind: 'import' | 'export', result: GlpiTicketSyncResult) {
+  function reportSync(kind: 'import' | 'export' | 'import-assets' | 'export-assets', result: GlpiTicketSyncResult) {
     const text =
       kind === 'import'
         ? t('settingsGlpi.importApiDone', {
@@ -118,11 +118,24 @@ export function GlpiApiPanel() {
             skipped: result.skipped,
             failed: result.failed,
           })
-        : t('settingsGlpi.exportApiDone', {
-            created: result.created,
-            updated: result.updated,
-            failed: result.failed,
-          })
+        : kind === 'export'
+          ? t('settingsGlpi.exportApiDone', {
+              created: result.created,
+              updated: result.updated,
+              failed: result.failed,
+            })
+          : kind === 'import-assets'
+            ? t('settingsGlpi.importAssetsDone', {
+                created: result.created,
+                updated: result.updated,
+                skipped: result.skipped,
+                failed: result.failed,
+              })
+            : t('settingsGlpi.exportAssetsDone', {
+                created: result.created,
+                updated: result.updated,
+                failed: result.failed,
+              })
     const detail = result.errors?.[0]
     if (result.failed > 0 && result.created + result.updated === 0) {
       toast.error(detail ? `${text}. ${detail}` : text)
@@ -132,14 +145,20 @@ export function GlpiApiPanel() {
     else toast.ok(text)
   }
 
-  async function runSync(kind: 'import' | 'export') {
+  async function runSync(kind: 'import' | 'export' | 'import-assets' | 'export-assets') {
     setSyncing(kind)
     try {
       const saved = await save(true)
       if (!saved) return
       const bounded = Math.min(2000, Math.max(1, Math.round(limit) || 200))
       const result =
-        kind === 'import' ? await api.glpiImportTickets(bounded) : await api.glpiExportTickets(bounded)
+        kind === 'import'
+          ? await api.glpiImportTickets(bounded)
+          : kind === 'export'
+            ? await api.glpiExportTickets(bounded)
+            : kind === 'import-assets'
+              ? await api.glpiImportAssets(bounded)
+              : await api.glpiExportAssets(bounded)
       reportSync(kind, result)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('settingsGlpi.syncFailed'))
@@ -367,6 +386,28 @@ export function GlpiApiPanel() {
             onClick={() => void runSync('export')}
           >
             {syncing === 'export' ? t('settingsGlpi.syncing') : t('settingsGlpi.exportApi')}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-4">
+        <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.assetsHint')}</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="app-btn app-btn-primary"
+            disabled={busy || !enabled}
+            onClick={() => void runSync('import-assets')}
+          >
+            {syncing === 'import-assets' ? t('settingsGlpi.syncing') : t('settingsGlpi.importAssets')}
+          </button>
+          <button
+            type="button"
+            className="app-btn app-btn-secondary"
+            disabled={busy || !enabled}
+            onClick={() => void runSync('export-assets')}
+          >
+            {syncing === 'export-assets' ? t('settingsGlpi.syncing') : t('settingsGlpi.exportAssets')}
           </button>
         </div>
       </div>

@@ -63,8 +63,9 @@ std::string http_exchange(const std::wstring& method, const std::string& url, co
     WinHttpCloseHandle(session);
     return "";
   }
+  const DWORD secure = uc.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
   HINTERNET request = WinHttpOpenRequest(connect, method.c_str(), path, nullptr, WINHTTP_NO_REFERER,
-                                         WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+                                         WINHTTP_DEFAULT_ACCEPT_TYPES, secure);
   if (!request) {
     WinHttpCloseHandle(connect);
     WinHttpCloseHandle(session);
@@ -162,9 +163,31 @@ std::string extract_token(const std::string& body) {
   return body.substr(pos + 1, end - pos - 1);
 }
 
+std::string pair_id_path() { return util::exe_dir() + "\\agent.pair.json"; }
+
+std::string load_or_create_public_id() {
+  std::string existing = util::read_file_utf8(pair_id_path());
+  const std::string key = "\"public_id\"";
+  size_t pos = existing.find(key);
+  if (pos != std::string::npos) {
+    pos = existing.find('"', pos + key.size());
+    size_t end = pos == std::string::npos ? std::string::npos : existing.find('"', pos + 1);
+    if (pos != std::string::npos && end != std::string::npos && end - pos - 1 >= 16) {
+      return existing.substr(pos + 1, end - pos - 1);
+    }
+  }
+  std::string created = hex_id();
+  if (created.empty()) return "";
+  util::write_file_utf8(pair_id_path(), "{\"public_id\":\"" + created + "\"}\n");
+  return created;
+}
+
 }  // namespace
 
-bool enroll_on_lan(const std::function<void(const std::string&)>& status, const std::string& known_server) {
+bool enroll_on_lan(
+    const std::function<void(const std::string&)>& status,
+    const std::string& known_server,
+    bool wait_for_approval) {
   std::string server = trim_server(known_server);
   if (!server.empty()) {
     status("Сервер инвентаризации: " + server);
@@ -175,20 +198,31 @@ bool enroll_on_lan(const std::function<void(const std::string&)>& status, const 
     status("Сервер CORAX в этой сети не найден.");
     return false;
   }
-  std::string public_id = hex_id();
+  std::string public_id = load_or_create_public_id();
   if (public_id.empty()) return false;
   std::string hostname = util::computer_hostname();
   std::string announce = "{\"public_id\":\"" + public_id + "\",\"hostname\":\"" + json_escape(hostname) + "\"}";
-  http_exchange(L"POST", server + "/api/v1/agent/pair/announce", announce, 4000);
-  status("Компьютер " + hostname + " ждёт подключения в панели CORAX.");
-  for (int i = 0; i < 300; ++i) {
-    status("Компьютер " + hostname + " ждёт подключения в панели CORAX.");
-    Sleep(2000);
-    std::string claim_body = "{\"public_id\":\"" + public_id + "\"}";
-    std::string response = http_exchange(L"POST", server + "/api/v1/agent/pair/claim", claim_body, 4000);
-    std::string token = extract_token(response);
-    if (!token.empty()) return write_pair_files(server, token);
+  status("Запрашиваем токен у сервера…");
+  std::string announced = http_exchange(L"POST", server + "/api/v1/agent/pair/announce", announce, 8000);
+  std::string token = extract_token(announced);
+  std::string claim_body = "{\"public_id\":\"" + public_id + "\"}";
+  if (token.empty() && wait_for_approval) {
+    status("Компьютер " + hostname + " ждёт подтверждения в панели CORAX.");
+    for (int i = 0; i < 30 && token.empty(); ++i) {
+      Sleep(2000);
+      token = extract_token(http_exchange(L"POST", server + "/api/v1/agent/pair/claim", claim_body, 4000));
+    }
   }
-  status("В панели не подтвердили подключение.");
-  return false;
+  if (token.empty()) {
+    if (announced.empty()) status("Сервер CORAX не ответил и токен не выдал.");
+    else status("Сервер CORAX не выдал токен.");
+    return false;
+  }
+  if (!write_pair_files(server, token)) {
+    status("Токен получен, но не удалось записать его рядом с агентом.");
+    return false;
+  }
+  http_exchange(L"POST", server + "/api/v1/agent/pair/claim", claim_body, 4000);
+  status("Сервер выдал токен и записал его у себя.");
+  return true;
 }

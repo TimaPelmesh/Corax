@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -108,6 +108,79 @@ class GlpiProbeResult:
     version: str | None
     api_mode: str
     tickets_visible: int
+
+
+@dataclass(frozen=True)
+class GlpiSoftware:
+    name: str
+    version: str | None = None
+    link_id: int | None = None
+    version_id: int | None = None
+
+
+@dataclass(frozen=True)
+class GlpiComputer:
+    glpi_id: int
+    name: str
+    serial: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    location: str | None = None
+    os_name: str | None = None
+    os_version: str | None = None
+    comment: str | None = None
+    # None — список ПО неизвестен (не затирать). Пустой кортеж — в GLPI программ нет.
+    software: tuple[GlpiSoftware, ...] | None = None
+
+
+@dataclass(frozen=True)
+class GlpiComputerOutbound:
+    corax_id: int
+    hostname: str
+    serial: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    location: str | None = None
+    os_name: str | None = None
+    os_version: str | None = None
+    comment: str | None = None
+    software: tuple[tuple[str, str | None], ...] = ()
+
+
+@dataclass(frozen=True)
+class GlpiAssetPushResult:
+    corax_id: int
+    glpi_id: int | None
+    action: str
+    error: str | None = None
+
+
+def canonical_software(name: str | None, version: str | None) -> tuple[str, str | None] | None:
+    title = re.sub(r"\s+", " ", name or "").strip()
+    if not title:
+        return None
+    ver = re.sub(r"\s+", " ", version or "").strip()
+    if ver == "-":
+        ver = ""
+    return title[:512], (ver[:255] or None)
+
+
+def software_key(name: str | None, version: str | None) -> tuple[str, str]:
+    canon = canonical_software(name, version)
+    if canon is None:
+        return "", ""
+    title, ver = canon
+    return title.casefold(), (ver or "").casefold()
+
+
+def same_software_set(
+    left: list[tuple[str, str | None]] | tuple[tuple[str, str | None], ...],
+    right: list[tuple[str, str | None]] | tuple[tuple[str, str | None], ...],
+) -> bool:
+    def keys(items: list[tuple[str, str | None]] | tuple[tuple[str, str | None], ...]) -> set[tuple[str, str]]:
+        return {software_key(name, version) for name, version in items if software_key(name, version) != ("", "")}
+
+    return keys(left) == keys(right)
 
 
 def normalize_base_url(raw: str) -> str:
@@ -311,6 +384,105 @@ def push_tickets(
     return results
 
 
+def fetch_computers(
+    creds: GlpiCredentials,
+    limit: int = 200,
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> list[GlpiComputer]:
+    bounded = max(1, min(int(limit), 2000))
+    with _Session(creds, transport) as session:
+        return session.list_computers(bounded)
+
+
+def push_computers(
+    creds: GlpiCredentials,
+    items: list[GlpiComputerOutbound],
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> list[GlpiAssetPushResult]:
+    if not items:
+        return []
+    results: list[GlpiAssetPushResult] = []
+    with _Session(creds, transport) as session:
+        for item in items:
+            try:
+                results.append(session.upsert_computer(item))
+            except GlpiClientError as exc:
+                results.append(
+                    GlpiAssetPushResult(
+                        corax_id=item.corax_id,
+                        glpi_id=None,
+                        action="failed",
+                        error=str(exc),
+                    )
+                )
+    return results
+
+
+def parse_computer(raw: object) -> GlpiComputer | None:
+    if not isinstance(raw, dict):
+        return None
+    glpi_id = _as_int(raw.get("id"))
+    name = _clip(raw.get("name"), 255)
+    if glpi_id is None or not name:
+        return None
+    software: tuple[GlpiSoftware, ...] | None = None
+    embedded = raw.get("_softwares")
+    if isinstance(embedded, list):
+        parsed = [item for item in (parse_software_install(row) for row in embedded) if item is not None and item.name]
+        software = tuple(parsed)
+    return GlpiComputer(
+        glpi_id=glpi_id,
+        name=name,
+        serial=_clip(raw.get("serial") or raw.get("serial_number"), 128),
+        manufacturer=_dropdown_label(raw.get("manufacturer") or raw.get("manufacturers_id")),
+        model=_dropdown_label(raw.get("model") or raw.get("computermodels_id")),
+        location=_dropdown_label(raw.get("location") or raw.get("locations_id")),
+        os_name=_dropdown_label(raw.get("os_name") or raw.get("operatingsystems_id")),
+        os_version=_dropdown_label(raw.get("os_version") or raw.get("operatingsystemversions_id"), 255),
+        comment=_clip(raw.get("comment") or raw.get("notes"), 8000),
+        software=software,
+    )
+
+
+def parse_software_install(raw: object) -> GlpiSoftware | None:
+    if not isinstance(raw, dict):
+        return None
+    version_value = raw.get("version")
+    if version_value is None:
+        version_value = raw.get("softwareversions_id")
+    version_name: str | None = None
+    version_id: int | None = None
+    software_from_version: str | None = None
+    if isinstance(version_value, dict):
+        version_name = _clip(version_value.get("name"), 255)
+        version_id = _as_int(version_value.get("id"))
+        nested = version_value.get("software") or version_value.get("softwares_id")
+        software_from_version = _clip(_field_name(nested), 512)
+        if version_id is None:
+            version_id = _as_int(nested) if not isinstance(nested, dict) else _as_int(nested.get("id") if isinstance(nested, dict) else None)
+    else:
+        version_id = _as_int(version_value)
+        if version_id is None:
+            version_name = _clip(version_value, 255)
+    name = (
+        _clip(_field_name(raw.get("software")), 512)
+        or _clip(_field_name(raw.get("softwares_id")), 512)
+        or software_from_version
+    )
+    if name is None:
+        plain = _clip(raw.get("name"), 512)
+        if plain and plain != version_name:
+            name = plain
+    link_id = _as_int(raw.get("id"))
+    if version_id is not None and link_id == version_id and raw.get("softwareversions_id") is not None:
+        link_id = _as_int(raw.get("link_id"))
+    if not name and version_id is None and not version_name:
+        return None
+    return GlpiSoftware(name=name or "", version=version_name, link_id=link_id, version_id=version_id)
+
+
 class _Session:
     def __init__(self, creds: GlpiCredentials, transport: httpx.BaseTransport | None) -> None:
         self.creds = creds
@@ -319,6 +491,7 @@ class _Session:
         self.version: str | None = None
         self._access = ""
         self._session_token = ""
+        self._name_ids: dict[tuple[object, ...], int] = {}
         self._http = httpx.Client(
             transport=transport,
             verify=bool(creds.verify_tls),
@@ -405,6 +578,441 @@ class _Session:
             headers=self._v2_headers(),
             json=payload,
         )
+
+    def list_computers(self, limit: int) -> list[GlpiComputer]:
+        collected: list[GlpiComputer] = []
+        seen: set[int] = set()
+        start = 0
+        while len(collected) < limit:
+            page_size = min(_PAGE, limit - len(collected))
+            raw_items = self._computer_page(start, page_size)
+            if not raw_items:
+                break
+            fresh = 0
+            for raw in raw_items:
+                if not isinstance(raw, dict):
+                    continue
+                if _as_int(raw.get("is_deleted")) == 1 or _as_int(raw.get("is_template")) == 1:
+                    continue
+                computer = parse_computer(raw)
+                if computer is None or computer.glpi_id in seen:
+                    continue
+                seen.add(computer.glpi_id)
+                software = self._software_for(computer.glpi_id)
+                os_name, os_version = self._os_for(computer.glpi_id)
+                computer = replace(
+                    computer,
+                    software=software,
+                    os_name=computer.os_name or os_name,
+                    os_version=computer.os_version or os_version,
+                )
+                collected.append(computer)
+                fresh += 1
+                if len(collected) >= limit:
+                    break
+            if fresh == 0 or len(raw_items) < page_size:
+                break
+            start += len(raw_items)
+        return collected
+
+    def upsert_computer(self, item: GlpiComputerOutbound) -> GlpiAssetPushResult:
+        hostname = (item.hostname or "").strip()
+        if not hostname:
+            raise GlpiClientError("У компьютера нет имени")
+        match = self._find_computer(hostname, item.serial)
+        if match is None:
+            glpi_id = self._write_computer(None, item)
+            action = "created"
+        else:
+            glpi_id = match.glpi_id
+            self._write_computer(glpi_id, item)
+            action = "updated"
+        self._replace_software(glpi_id, item.software)
+        self._write_os(glpi_id, item.os_name, item.os_version)
+        return GlpiAssetPushResult(corax_id=item.corax_id, glpi_id=glpi_id, action=action)
+
+    def _computer_page(self, start: int, page_size: int) -> list[object]:
+        end = start + page_size - 1
+        if self.mode == "legacy":
+            payload = self._read(
+                f"{self.base}/apirest.php/Computer",
+                params={"range": f"{start}-{end}", "expand_dropdowns": "true", "get_hateoas": "false"},
+                headers={**self._asset_headers(), "Range": f"items={start}-{end}"},
+            )
+        else:
+            payload = self._read(
+                f"{self.base}/api.php/Assets/Computer",
+                params={"start": start, "limit": page_size},
+                headers={**self._v2_headers(), "Range": f"items={start}-{end}"},
+            )
+        if payload is None:
+            return []
+        return _as_list(payload)
+
+    def _find_computer(self, hostname: str, serial: str | None) -> GlpiComputer | None:
+        for computer in self._search_computers("name", hostname):
+            if computer.name.casefold() == hostname.casefold():
+                return computer
+        serial_text = (serial or "").strip()
+        if not serial_text:
+            return None
+        matches = [
+            computer
+            for computer in self._search_computers("serial", serial_text)
+            if (computer.serial or "").casefold() == serial_text.casefold()
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    def _search_computers(self, field: str, value: str) -> list[GlpiComputer]:
+        if self.mode == "legacy":
+            payload = self._read(
+                f"{self.base}/apirest.php/Computer",
+                params={
+                    f"searchText[{field}]": value,
+                    "expand_dropdowns": "true",
+                    "range": "0-49",
+                    "get_hateoas": "false",
+                },
+                headers={**self._asset_headers(), "Range": "items=0-49"},
+            )
+        else:
+            payload = self._read(
+                f"{self.base}/api.php/Assets/Computer",
+                params={"filter": f"{field}=={value}", "start": 0, "limit": 50},
+                headers=self._v2_headers(),
+            )
+        if payload is None:
+            return []
+        found: list[GlpiComputer] = []
+        for raw in _as_list(payload):
+            if not isinstance(raw, dict):
+                continue
+            if _as_int(raw.get("is_deleted")) == 1 or _as_int(raw.get("is_template")) == 1:
+                continue
+            computer = parse_computer(raw)
+            if computer is not None:
+                found.append(computer)
+        return found
+
+    def _write_computer(self, glpi_id: int | None, item: GlpiComputerOutbound) -> int:
+        hostname = item.hostname.strip()[:255]
+        legacy_body: dict[str, Any] = {"name": hostname}
+        v2_body: dict[str, Any] = {"name": hostname}
+        if item.serial:
+            legacy_body["serial"] = item.serial.strip()[:255]
+            v2_body["serial"] = item.serial.strip()[:255]
+        if item.comment:
+            legacy_body["comment"] = item.comment.strip()[:8000]
+            v2_body["comment"] = item.comment.strip()[:8000]
+        for label, legacy_field, v2_field in (
+            (item.manufacturer, "manufacturers_id", "manufacturer"),
+            (item.model, "computermodels_id", "model"),
+            (item.location, "locations_id", "location"),
+        ):
+            if not label or not label.strip():
+                continue
+            itemtype = {"manufacturers_id": "Manufacturer", "computermodels_id": "ComputerModel", "locations_id": "Location"}[
+                legacy_field
+            ]
+            ref = self._dropdown_id(itemtype, label.strip())
+            if ref is not None:
+                legacy_body[legacy_field] = ref
+                v2_body[v2_field] = {"id": ref}
+            elif self.mode != "legacy":
+                v2_body[v2_field] = {"name": label.strip()[:255]}
+        if self.mode == "legacy":
+            if glpi_id is None:
+                data = self._request(
+                    "POST",
+                    f"{self.base}/apirest.php/Computer",
+                    headers=self._asset_headers(),
+                    json={"input": legacy_body},
+                )
+            else:
+                data = self._request(
+                    "PUT",
+                    f"{self.base}/apirest.php/Computer/{glpi_id}",
+                    headers=self._asset_headers(),
+                    json={"input": legacy_body},
+                )
+                return glpi_id
+        elif glpi_id is None:
+            data = self._request(
+                "POST",
+                f"{self.base}/api.php/Assets/Computer",
+                headers=self._v2_headers(),
+                json=v2_body,
+            )
+        else:
+            self._request(
+                "PATCH",
+                f"{self.base}/api.php/Assets/Computer/{glpi_id}",
+                headers=self._v2_headers(),
+                json=v2_body,
+            )
+            return glpi_id
+        created = _id_from_payload(data)
+        if created is None:
+            raise GlpiClientError("GLPI не вернул id компьютера")
+        return created
+
+    def _software_for(self, computer_id: int) -> tuple[GlpiSoftware, ...] | None:
+        rows = self._legacy_page(f"{self.base}/apirest.php/Computer/{computer_id}/Item_SoftwareVersion")
+        if rows is None:
+            return None
+        installed: list[GlpiSoftware] = []
+        for raw in rows:
+            if not isinstance(raw, dict) or _as_int(raw.get("is_deleted")) == 1:
+                continue
+            parsed = parse_software_install(raw)
+            if parsed is None:
+                continue
+            if parsed.name:
+                installed.append(parsed)
+                continue
+            if parsed.version_id is None:
+                continue
+            version_name, software_name = self._version_names(parsed.version_id)
+            if not software_name:
+                continue
+            installed.append(
+                GlpiSoftware(
+                    name=software_name,
+                    version=version_name,
+                    link_id=parsed.link_id,
+                    version_id=parsed.version_id,
+                )
+            )
+        return tuple(installed)
+
+    def _version_names(self, version_id: int) -> tuple[str | None, str | None]:
+        payload = self._read_item("SoftwareVersion", version_id)
+        if payload is None:
+            return None, None
+        version_name = _clip(payload.get("name"), 255)
+        software_id = _as_int(payload.get("softwares_id"))
+        software_name = _clip(_field_name(payload.get("softwares_id")), 512) if software_id is None else None
+        if software_id is not None:
+            software = self._read_item("Software", software_id)
+            if software is not None:
+                software_name = _clip(software.get("name"), 512)
+        return version_name, software_name
+
+    def _os_for(self, computer_id: int) -> tuple[str | None, str | None]:
+        rows = self._legacy_page(
+            f"{self.base}/apirest.php/Computer/{computer_id}/Item_OperatingSystem",
+            params={"expand_dropdowns": "true"},
+        )
+        if not rows:
+            return None, None
+        raw = rows[0]
+        if not isinstance(raw, dict):
+            return None, None
+        return (
+            _dropdown_label(raw.get("operatingsystems_id")),
+            _dropdown_label(raw.get("operatingsystemversions_id")),
+        )
+
+    def _replace_software(self, computer_id: int, software: tuple[tuple[str, str | None], ...]) -> None:
+        current = self._software_for(computer_id)
+        if current is None:
+            raise GlpiClientError("GLPI не отдал список установленного ПО")
+        desired: dict[tuple[str, str], tuple[str, str | None]] = {}
+        for name, version in software:
+            canon = canonical_software(name, version)
+            if canon is None:
+                continue
+            desired.setdefault(software_key(*canon), canon)
+        have: dict[tuple[str, str], list[GlpiSoftware]] = {}
+        for item in current:
+            canon = canonical_software(item.name, item.version)
+            if canon is None:
+                continue
+            have.setdefault(software_key(*canon), []).append(item)
+        for key, links in have.items():
+            if key in desired:
+                continue
+            for link in links:
+                if link.link_id is not None:
+                    self._delete_install(link.link_id)
+        for key, (name, version) in desired.items():
+            if key in have:
+                continue
+            version_id = self._ensure_software_version(name, version)
+            self._add_install(computer_id, version_id)
+
+    def _ensure_software_version(self, name: str, version: str | None) -> int:
+        software_id = self._ensure_item("Software", name)
+        version_name = (version or "-").strip() or "-"
+        for row in self._search_named("SoftwareVersion", version_name):
+            row_name = (_as_text(row.get("name")) or "").casefold()
+            if row_name != version_name.casefold():
+                continue
+            if _as_int(row.get("softwares_id")) != software_id:
+                continue
+            found = _as_int(row.get("id"))
+            if found is not None:
+                return found
+        return self._create_item(
+            "SoftwareVersion",
+            {"name": version_name[:255], "softwares_id": software_id},
+        )
+
+    def _write_os(self, computer_id: int, os_name: str | None, os_version: str | None) -> None:
+        if not (os_name or "").strip() and not (os_version or "").strip():
+            return
+        rows = self._legacy_page(f"{self.base}/apirest.php/Computer/{computer_id}/Item_OperatingSystem")
+        if rows is None:
+            return
+        payload: dict[str, Any] = {}
+        os_id = self._dropdown_id("OperatingSystem", os_name.strip()) if (os_name or "").strip() else None
+        if os_id is not None:
+            payload["operatingsystems_id"] = os_id
+        if (os_version or "").strip():
+            extra = {"operatingsystems_id": os_id} if os_id is not None else None
+            ver_id = self._dropdown_id("OperatingSystemVersion", os_version.strip(), extra)
+            if ver_id is not None:
+                payload["operatingsystemversions_id"] = ver_id
+        if not payload:
+            return
+        existing_id = _as_int(rows[0].get("id")) if rows and isinstance(rows[0], dict) else None
+        if existing_id is not None:
+            self._request(
+                "PUT",
+                f"{self.base}/apirest.php/Item_OperatingSystem/{existing_id}",
+                headers=self._asset_headers(),
+                json={"input": payload},
+            )
+            return
+        payload["itemtype"] = "Computer"
+        payload["items_id"] = computer_id
+        self._request(
+            "POST",
+            f"{self.base}/apirest.php/Item_OperatingSystem",
+            headers=self._asset_headers(),
+            json={"input": payload},
+        )
+
+    def _dropdown_id(self, itemtype: str, name: str, extra: dict[str, Any] | None = None) -> int | None:
+        try:
+            return self._ensure_item(itemtype, name, extra)
+        except GlpiClientError:
+            if self.mode == "legacy":
+                raise
+            return None
+
+    def _ensure_item(self, itemtype: str, name: str, extra: dict[str, Any] | None = None) -> int:
+        cleaned = name.strip()
+        if not cleaned:
+            raise GlpiClientError(f"Пустое имя для {itemtype}")
+        cache_key = (itemtype, cleaned.casefold(), tuple(sorted((extra or {}).items())))
+        cached = self._name_ids.get(cache_key)
+        if cached is not None:
+            return cached
+        for row in self._search_named(itemtype, cleaned):
+            row_name = (_as_text(row.get("name")) or "").casefold()
+            if row_name != cleaned.casefold():
+                continue
+            if extra and not _extra_match(row, extra):
+                continue
+            found = _as_int(row.get("id"))
+            if found is None:
+                continue
+            self._name_ids[cache_key] = found
+            return found
+        created = self._create_item(itemtype, {"name": cleaned[:255], **(extra or {})})
+        self._name_ids[cache_key] = created
+        return created
+
+    def _search_named(self, itemtype: str, name: str) -> list[dict[str, Any]]:
+        payload = self._read(
+            f"{self.base}/apirest.php/{itemtype}",
+            params={"searchText[name]": name, "range": "0-49"},
+            headers={**self._asset_headers(), "Range": "items=0-49"},
+        )
+        if payload is None:
+            return []
+        return [row for row in _as_list(payload) if isinstance(row, dict)]
+
+    def _create_item(self, itemtype: str, fields: dict[str, Any]) -> int:
+        data = self._request(
+            "POST",
+            f"{self.base}/apirest.php/{itemtype}",
+            headers=self._asset_headers(),
+            json={"input": fields},
+        )
+        created = _id_from_payload(data)
+        if created is None:
+            raise GlpiClientError(f"GLPI не вернул id для {itemtype}")
+        return created
+
+    def _add_install(self, computer_id: int, version_id: int) -> None:
+        self._request(
+            "POST",
+            f"{self.base}/apirest.php/Item_SoftwareVersion",
+            headers=self._asset_headers(),
+            json={
+                "input": {
+                    "itemtype": "Computer",
+                    "items_id": computer_id,
+                    "softwareversions_id": version_id,
+                }
+            },
+        )
+
+    def _delete_install(self, link_id: int) -> None:
+        response = self._http.request(
+            "DELETE",
+            f"{self.base}/apirest.php/Item_SoftwareVersion/{link_id}",
+            params={"force_purge": "true"},
+            headers=self._asset_headers(),
+        )
+        self._parse(response)
+
+    def _legacy_page(self, url: str, params: dict[str, Any] | None = None) -> list[object] | None:
+        query = {"range": "0-199"}
+        if params:
+            query.update(params)
+        payload = self._read(
+            url,
+            params=query,
+            headers={**self._asset_headers(), "Range": "items=0-199"},
+        )
+        if payload is None:
+            return None
+        return _as_list(payload)
+
+    def _read_item(self, itemtype: str, item_id: int) -> dict[str, Any] | None:
+        payload = self._read(f"{self.base}/apirest.php/{itemtype}/{item_id}", headers=self._asset_headers())
+        if isinstance(payload, dict):
+            return payload
+        return None
+
+    def _read(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> Any | None:
+        response = self._http.get(url, params=params, headers=headers or self._asset_headers())
+        if response.status_code == 404:
+            return None
+        return self._parse(response, empty_on=(404,))
+
+    def _asset_headers(self) -> dict[str, str]:
+        if self.mode == "legacy" or not self._access:
+            return self._legacy_headers()
+        headers = {
+            "Authorization": f"Bearer {self._access}",
+            "Accept": "application/json",
+        }
+        app_token = (self.creds.app_token or "").strip()
+        if app_token:
+            headers["App-Token"] = app_token
+        return headers
 
     def _authenticate(self) -> None:
         if self.mode == "legacy":
@@ -751,7 +1359,22 @@ def _as_text(value: object) -> str | None:
 
 
 def _clip(value: object, limit: int) -> str | None:
-    text = _as_text(value)
+    text = _as_text(value) if not isinstance(value, dict) else _field_name(value)
     if text is None:
         return None
     return text[:limit]
+
+
+def _dropdown_label(value: object, limit: int = 255) -> str | None:
+    return _clip(_field_name(value), limit)
+
+
+def _extra_match(row: dict[str, Any], extra: dict[str, Any]) -> bool:
+    for key, expected in extra.items():
+        actual = row.get(key)
+        if _as_int(actual) is not None and _as_int(actual) == _as_int(expected):
+            continue
+        if _as_text(actual) is not None and _as_text(actual) == _as_text(expected):
+            continue
+        return False
+    return True

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from dataclasses import replace
 from urllib.parse import parse_qs
 
 import httpx
@@ -10,15 +11,25 @@ from helpers import unique_hostname
 from starlette.testclient import TestClient
 
 from app.glpi_client import (
+    GlpiAssetPushResult,
     GlpiClientError,
+    GlpiComputer,
+    GlpiComputerOutbound,
     GlpiCredentials,
     GlpiOutbound,
+    GlpiSoftware,
     GlpiTicket,
+    canonical_software,
+    fetch_computers,
     fetch_tickets,
     normalize_base_url,
+    parse_computer,
     parse_ticket,
     probe_glpi,
+    push_computers,
     push_tickets,
+    same_software_set,
+    software_key,
 )
 def _v2_creds(**overrides: object) -> GlpiCredentials:
     data: dict[str, object] = {
@@ -427,3 +438,294 @@ def test_glpi_test_stores_failure_without_secret(
     assert body["ok"] is False
     assert "Client secret" in body["message"]
     assert "sekret-value" not in response.text
+
+
+def test_import_does_not_blank_filled_computer_fields():
+    from app.glpi_assets import _apply_fields
+    from app.models import Computer
+
+    row = Computer(hostname="pc-a", manufacturer="Dell", serial_number="KEEP", os_name="Windows 10")
+    asset = GlpiComputer(glpi_id=1, name="PC-A", serial=None, manufacturer=None, os_name="Windows 11", software=None)
+    assert _apply_fields(row, asset) is True
+    assert row.hostname == "PC-A"
+    assert row.manufacturer == "Dell"
+    assert row.serial_number == "KEEP"
+    assert row.os_name == "Windows 11"
+
+
+def test_software_identity_matches_case_and_blank_version():
+    assert software_key("Google Chrome", "120") == software_key("google chrome", "120")
+    assert canonical_software("  A   B  ", " 1 ") == ("A B", "1")
+    assert canonical_software("Chrome", "-") == ("Chrome", None)
+    assert same_software_set(
+        [("Google Chrome", "120"), ("OldApp", "1.0")],
+        [("google chrome", "120"), ("OldApp", "1.0")],
+    )
+    assert not same_software_set([("Google Chrome", "120")], [("Google Chrome", "121")])
+
+
+def test_parse_computer_reads_expanded_dropdowns_and_nested_software():
+    computer = parse_computer(
+        {
+            "id": 7,
+            "name": "pc-lab-01",
+            "serial": "SN1",
+            "manufacturers_id": "Dell",
+            "computermodels_id": {"id": 3, "name": "OptiPlex"},
+            "locations_id": "Каб. 1",
+            "comment": "стойка",
+            "_softwares": [
+                {
+                    "id": 15,
+                    "softwareversions_id": {"id": 9, "name": "120", "softwares_id": {"id": 4, "name": "Google Chrome"}},
+                }
+            ],
+        }
+    )
+    assert computer is not None
+    assert computer.manufacturer == "Dell"
+    assert computer.model == "OptiPlex"
+    assert computer.location == "Каб. 1"
+    assert computer.software is not None
+    assert [(item.name, item.version) for item in computer.software] == [("Google Chrome", "120")]
+
+
+def test_v2_fetch_computers_resolves_software_os_and_unknown_software():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assets/Computer") and request.method == "GET":
+            assert request.headers["authorization"] == "Bearer atk"
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 7,
+                        "name": "pc-a",
+                        "serial": "SN1",
+                        "manufacturer": {"id": 1, "name": "Dell"},
+                        "model": {"id": 2, "name": "OptiPlex"},
+                        "location": {"id": 3, "name": "Каб. 1"},
+                        "comment": "стойка",
+                    },
+                    {"id": 8, "name": "pc-b", "serial": "SN2"},
+                ],
+            )
+        if path.endswith("/Computer/7/Item_SoftwareVersion"):
+            assert request.headers["authorization"] == "Bearer atk"
+            return httpx.Response(200, json=[{"id": 15, "items_id": 7, "itemtype": "Computer", "softwareversions_id": 9}])
+        if path.endswith("/Computer/8/Item_SoftwareVersion"):
+            return httpx.Response(404, json={"message": "ERROR_ITEM_NOT_FOUND"})
+        if path.endswith("/SoftwareVersion/9"):
+            return httpx.Response(200, json={"id": 9, "name": "120.0", "softwares_id": 4})
+        if path.endswith("/Software/4"):
+            return httpx.Response(200, json={"id": 4, "name": "Google Chrome"})
+        if path.endswith("/Computer/7/Item_OperatingSystem"):
+            return httpx.Response(
+                200,
+                json=[{"id": 3, "operatingsystems_id": "Windows 11", "operatingsystemversions_id": "23H2"}],
+            )
+        if path.endswith("/Computer/8/Item_OperatingSystem"):
+            return httpx.Response(404, json={"message": "missing"})
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    computers = fetch_computers(_v2_creds(), 10, transport=httpx.MockTransport(handler))
+    assert [item.name for item in computers] == ["pc-a", "pc-b"]
+    first = computers[0]
+    assert first.manufacturer == "Dell"
+    assert first.model == "OptiPlex"
+    assert first.location == "Каб. 1"
+    assert first.os_name == "Windows 11"
+    assert first.os_version == "23H2"
+    assert first.software is not None
+    assert [(item.name, item.version, item.link_id) for item in first.software] == [("Google Chrome", "120.0", 15)]
+    assert computers[1].software is None
+    assert computers[1].os_name is None
+
+
+def test_v2_push_replaces_software_set_and_updates_computer():
+    deleted: list[str] = []
+    created_install: list[dict] = []
+    patched: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assets/Computer") and request.method == "GET":
+            assert request.url.params.get("filter") == "name==PC-01"
+            return httpx.Response(200, json=[{"id": 7, "name": "PC-01", "serial": "OLD"}])
+        if path.endswith("/Manufacturer"):
+            return httpx.Response(200, json=[{"id": 5, "name": "Dell"}])
+        if path.endswith("/Assets/Computer/7") and request.method == "PATCH":
+            patched.append(json.loads(request.content.decode()))
+            return httpx.Response(200, json={"id": 7})
+        if path.endswith("/Computer/7/Item_SoftwareVersion"):
+            return httpx.Response(200, json=[{"id": 3, "items_id": 7, "itemtype": "Computer", "softwareversions_id": 9}])
+        if path.endswith("/SoftwareVersion/9"):
+            return httpx.Response(200, json={"id": 9, "name": "1.0", "softwares_id": 4})
+        if path.endswith("/Software/4"):
+            return httpx.Response(200, json={"id": 4, "name": "OldApp"})
+        if path.endswith("/Item_SoftwareVersion/3") and request.method == "DELETE":
+            deleted.append(path)
+            return httpx.Response(200, json={})
+        if path.endswith("/Software") and request.method == "GET":
+            return httpx.Response(200, json=[{"id": 8, "name": "Google Chrome"}])
+        if path.endswith("/SoftwareVersion") and request.method == "GET":
+            return httpx.Response(200, json=[{"id": 11, "name": "120", "softwares_id": 8}])
+        if path.endswith("/Item_SoftwareVersion") and request.method == "POST":
+            created_install.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 40})
+        if path.endswith("/Computer/7/Item_OperatingSystem") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/OperatingSystem") and request.method == "GET":
+            return httpx.Response(200, json=[{"id": 2, "name": "Windows 11"}])
+        if path.endswith("/OperatingSystemVersion") and request.method == "GET":
+            return httpx.Response(200, json=[{"id": 6, "name": "23H2", "operatingsystems_id": 2}])
+        if path.endswith("/Item_OperatingSystem") and request.method == "POST":
+            return httpx.Response(201, json={"id": 12})
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_computers(
+        _v2_creds(),
+        [
+            GlpiComputerOutbound(
+                corax_id=4,
+                hostname="PC-01",
+                serial="SN1",
+                manufacturer="Dell",
+                os_name="Windows 11",
+                os_version="23H2",
+                software=(("Google Chrome", "120"),),
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "updated", results[0].error
+    assert results[0].glpi_id == 7
+    assert patched[0]["name"] == "PC-01"
+    assert patched[0]["serial"] == "SN1"
+    assert patched[0]["manufacturer"] == {"id": 5}
+    assert deleted == ["/glpi/apirest.php/Item_SoftwareVersion/3"]
+    assert created_install[0]["input"] == {
+        "itemtype": "Computer",
+        "items_id": 7,
+        "softwareversions_id": 11,
+    }
+
+
+def test_v2_push_creates_computer_when_hostname_is_unknown():
+    created: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assets/Computer") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Assets/Computer") and request.method == "POST":
+            created.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 20})
+        if path.endswith("/Computer/20/Item_SoftwareVersion"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_computers(
+        _v2_creds(),
+        [GlpiComputerOutbound(corax_id=1, hostname="new-pc", software=())],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created", results[0].error
+    assert results[0].glpi_id == 20
+    assert created[0]["name"] == "new-pc"
+    assert "manufacturer" not in created[0]
+
+
+def test_glpi_asset_import_and_export_keep_the_same_software_set(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    host = unique_hostname("glpi-pc")
+
+    def fake_fetch(creds, limit, transport=None):
+        return [
+            GlpiComputer(
+                glpi_id=77,
+                name=host,
+                serial="SN-GLPI-1",
+                manufacturer="Dell",
+                model="OptiPlex",
+                location="Каб. 2",
+                os_name="Windows 11",
+                os_version="23H2",
+                comment="из GLPI",
+                software=(
+                    GlpiSoftware(name="Google Chrome", version="120"),
+                    GlpiSoftware(name="7-Zip", version=None),
+                ),
+            )
+        ]
+
+    monkeypatch.setattr("app.glpi_assets.fetch_computers", fake_fetch)
+    saved = client.put(
+        "/api/v1/settings/glpi",
+        headers=auth_headers,
+        json={"enabled": True, "base_url": "http://glpi.local/glpi", "api_mode": "v2"},
+    )
+    assert saved.status_code == 200, saved.text
+
+    imported = client.post("/api/v1/settings/glpi/import-assets", headers=auth_headers, json={"limit": 10})
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["created"] == 1
+
+    listed = client.get("/api/v1/computers", headers=auth_headers, params={"q": host, "limit": 10})
+    assert listed.status_code == 200, listed.text
+    match = next(item for item in listed.json()["items"] if item["hostname"] == host)
+    assert match["manufacturer"] == "Dell"
+    assert match["model"] == "OptiPlex"
+    assert match["serial_number"] == "SN-GLPI-1"
+    assert match["os_name"] == "Windows 11"
+    pc_id = match["id"]
+    software = client.get(f"/api/v1/computers/{pc_id}/software", headers=auth_headers)
+    assert software.status_code == 200, software.text
+    assert same_software_set(
+        [(row["name"], row["version"]) for row in software.json()],
+        [("Google Chrome", "120"), ("7-Zip", None)],
+    )
+
+    def fetch_same_software(creds, limit, transport=None):
+        rows = fake_fetch(creds, limit, transport)
+        return [replace(rows[0], manufacturer="Lenovo", software=None)]
+
+    monkeypatch.setattr("app.glpi_assets.fetch_computers", fetch_same_software)
+    updated = client.post("/api/v1/settings/glpi/import-assets", headers=auth_headers, json={"limit": 10})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["updated"] == 1
+    software_after = client.get(f"/api/v1/computers/{pc_id}/software", headers=auth_headers)
+    assert same_software_set(
+        [(row["name"], row["version"]) for row in software_after.json()],
+        [("Google Chrome", "120"), ("7-Zip", None)],
+    )
+    detail = client.get(f"/api/v1/computers/{pc_id}", headers=auth_headers)
+    assert detail.json()["manufacturer"] == "Lenovo"
+
+    pushed: list[GlpiComputerOutbound] = []
+
+    def fake_push(creds, items, transport=None):
+        pushed.extend(items)
+        return [
+            GlpiAssetPushResult(corax_id=item.corax_id, glpi_id=77, action="updated")
+            for item in items
+        ]
+
+    monkeypatch.setattr("app.glpi_assets.push_computers", fake_push)
+    exported = client.post("/api/v1/settings/glpi/export-assets", headers=auth_headers, json={"limit": 2000})
+    assert exported.status_code == 200, exported.text
+    outbound = next(item for item in pushed if item.hostname == host)
+    assert outbound.manufacturer == "Lenovo"
+    assert outbound.serial == "SN-GLPI-1"
+    assert outbound.os_version == "23H2"
+    assert same_software_set(outbound.software, [("Google Chrome", "120"), ("7-Zip", None)])
+    client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)

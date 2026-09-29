@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, type Computer, type NetworkPrinter, type ServiceRequestRow } from '../api'
 import { useAuth } from '../AuthContext'
-import { useTheme } from '../ThemeContext'
 import { useLocale } from '../i18n/LocaleContext'
 import {
   readNotificationPrefs,
@@ -11,7 +10,7 @@ import {
   type NotificationPrefs,
 } from '../lib/notificationPrefs'
 import { useToast } from '../ToastContext'
-import { IconBell, IconLogout, IconMoon, IconPcs, IconPrinter, IconSearch, IconSettings, IconSun, IconTicket } from './icons'
+import { IconBell, IconLogout, IconPcs, IconPrinter, IconSearch, IconSettings, IconTicket } from './icons'
 import { UserPrefsPanel, type PrefsNavItem } from './UserPrefsPanel'
 import { UserAvatar } from './UserAvatar'
 
@@ -31,7 +30,6 @@ type AppTopBarProps = {
 export function AppTopBar({ navItems = [] }: AppTopBarProps) {
   const { t } = useLocale()
   const { user, logout } = useAuth()
-  const { theme, setTheme } = useTheme()
   const toast = useToast()
   const navigate = useNavigate()
   const searchWrapRef = useRef<HTMLDivElement>(null)
@@ -412,50 +410,7 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
                     </div>
                   </div>
                 </div>
-                <div className="px-3 pb-2">
-                  <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
-                    {t('chrome.themeTitle')}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => setTheme('light', { x: e.clientX, y: e.clientY })}
-                      className={`rounded-xl p-2 text-left ring-1 transition ${
-                        theme === 'light'
-                          ? 'ring-[var(--color-primary)] bg-[var(--color-primary-muted)]/40'
-                          : 'ring-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
-                      }`}
-                    >
-                      <div className="overflow-hidden rounded-lg border border-slate-200 bg-[#f4f6f8] p-1.5 shadow-sm">
-                        <div className="h-1.5 w-8 rounded-full bg-slate-300" />
-                        <div className="mt-1.5 h-7 rounded-md border border-slate-200 bg-white" />
-                      </div>
-                      <div className="mt-1.5 flex items-center gap-1 text-[12px] font-medium text-[var(--color-fg)]">
-                        <IconSun className="h-3.5 w-3.5" />
-                        {t('prefs.themeLight')}
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => setTheme('dark', { x: e.clientX, y: e.clientY })}
-                      className={`rounded-xl p-2 text-left ring-1 transition ${
-                        theme === 'dark'
-                          ? 'ring-[var(--color-primary)] bg-[var(--color-primary-muted)]/40'
-                          : 'ring-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
-                      }`}
-                    >
-                      <div className="overflow-hidden rounded-lg border border-slate-700 bg-[#0b1220] p-1.5 shadow-sm">
-                        <div className="h-1.5 w-8 rounded-full bg-slate-500" />
-                        <div className="mt-1.5 h-7 rounded-md border border-slate-700 bg-[#151d2c]" />
-                      </div>
-                      <div className="mt-1.5 flex items-center gap-1 text-[12px] font-medium text-[var(--color-fg)]">
-                        <IconMoon className="h-3.5 w-3.5" />
-                        {t('prefs.themeDark')}
-                      </div>
-                    </button>
-                  </div>
-                </div>
-                <div className="p-1.5 pt-0">
+                <div className="p-1.5">
                 <button
                   type="button"
                   className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-[13px] text-[var(--color-fg)] hover:bg-[var(--color-surface-muted)]"

@@ -557,6 +557,45 @@ def _migrate_zabbix_config(sync_conn) -> None:
         )
 
 
+def _migrate_agent_pairings(sync_conn) -> None:
+    if "agent_pairings" in _table_names(sync_conn):
+        return
+    if sync_conn.dialect.name == "sqlite":
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE agent_pairings (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  public_id VARCHAR(64) NOT NULL UNIQUE,
+                  hostname VARCHAR(255) NOT NULL DEFAULT '',
+                  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                  token_once TEXT,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+    else:
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE agent_pairings (
+                  id SERIAL PRIMARY KEY,
+                  public_id VARCHAR(64) NOT NULL UNIQUE,
+                  hostname VARCHAR(255) NOT NULL DEFAULT '',
+                  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                  token_once TEXT,
+                  created_at TIMESTAMPTZ DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+            )
+        )
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_agent_pairings_public_id ON agent_pairings (public_id)"))
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_agent_pairings_status ON agent_pairings (status)"))
+
+
 def _migrate_glpi_config(sync_conn) -> None:
     if "glpi_config" in _table_names(sync_conn):
         return
@@ -1678,6 +1717,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-07_ticket_handler_enable", _migrate_ticket_handler_enable_by_default),
     ("2026-09-16_users_token_version", _migrate_users_token_version),
     ("2026-09-24_agent_collect_policy", _migrate_agent_collect_policy),
+    ("2026-09-29_agent_pairings", _migrate_agent_pairings),
     ("2026-09-29_glpi_config", _migrate_glpi_config),
 ]
 

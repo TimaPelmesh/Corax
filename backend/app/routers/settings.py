@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_policy import get_or_create_policy
 from app.auth import get_current_editor_or_superuser, get_current_superuser
 from app.database import get_db
+from app.glpi_assets import export_glpi_assets, import_glpi_assets
 from app.glpi_client import GlpiClientError, probe_glpi
 from app.glpi_sync import creds_from_row, export_glpi_tickets, import_glpi_tickets
 from app.ldap_config import get_effective_ldap_config
@@ -602,6 +603,52 @@ async def export_glpi_tickets_api(
             limit=payload.limit,
             request_ids=payload.request_ids,
         )
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GlpiTicketSyncOut(
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        failed=result.failed,
+        message=result.message,
+        errors=result.errors,
+    )
+
+
+@router.post("/glpi/import-assets", response_model=GlpiTicketSyncOut)
+async def import_glpi_assets_api(
+    body: GlpiTicketSyncIn | None = None,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    payload = body or GlpiTicketSyncIn()
+    try:
+        result = await import_glpi_assets(db, creds_from_row(row), limit=payload.limit)
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GlpiTicketSyncOut(
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        failed=result.failed,
+        message=result.message,
+        errors=result.errors,
+    )
+
+
+@router.post("/glpi/export-assets", response_model=GlpiTicketSyncOut)
+async def export_glpi_assets_api(
+    body: GlpiTicketSyncIn | None = None,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    payload = body or GlpiTicketSyncIn()
+    try:
+        result = await export_glpi_assets(db, creds_from_row(row), limit=payload.limit)
     except GlpiClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return GlpiTicketSyncOut(

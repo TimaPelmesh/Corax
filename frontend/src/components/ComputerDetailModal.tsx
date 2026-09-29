@@ -105,6 +105,7 @@ export function ComputerDetailModal({
   const [notesDraft, setNotesDraft] = useState('')
   const [locationDraft, setLocationDraft] = useState('')
   const [swFilter, setSwFilter] = useState('')
+  const [cardTab, setCardTab] = useState<'hardware' | 'peripherals' | 'software'>('hardware')
   const [allTags, setAllTags] = useState<TagBrief[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
   const [wolStatus, setWolStatus] = useState<WolStatus | null>(null)
@@ -131,6 +132,7 @@ export function ComputerDetailModal({
     setPingResult(null)
     setSoftwareRows(null)
     setSwFilter('')
+    setCardTab('hardware')
 
     const snap = previewRef.current?.id === computerId ? previewRef.current : null
     if (snap) {
@@ -518,7 +520,51 @@ export function ComputerDetailModal({
               </button>
             </div>
 
-            <div className="mt-2 shrink-0 space-y-2">
+            <div
+              role="tablist"
+              aria-label={t('computerDetail.tabsLabel')}
+              className="mt-3 flex shrink-0 gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/80 p-1"
+            >
+              {(
+                [
+                  ['hardware', t('computerDetail.tabHardware'), null],
+                  ['peripherals', t('computerDetail.tabPeripherals'), detail.peripheral_count || 0],
+                  ['software', t('computerDetail.tabSoftware'), softwareTotal],
+                ] as const
+              ).map(([id, label, count]) => {
+                const active = cardTab === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-semibold transition ${
+                      active
+                        ? 'bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm ring-1 ring-[var(--color-border)]'
+                        : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)]/60 hover:text-[var(--color-fg)]'
+                    }`}
+                    onClick={() => setCardTab(id)}
+                  >
+                    {label}
+                    {count != null ? (
+                      <span
+                        className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
+                          active
+                            ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
+                            : 'bg-[var(--color-surface)] text-[var(--color-fg-subtle)]'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+
+            {cardTab === 'hardware' ? (
+            <div className="app-scroll mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               <section className="flex min-w-0 flex-col">
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.systemAndHardware')}
@@ -891,9 +937,14 @@ export function ComputerDetailModal({
 
               </section>
             </div>
+            ) : null}
 
-            <div className="mt-2 grid h-0 min-h-0 flex-1 basis-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2 lg:gap-4">
-              <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-[var(--color-border)] pt-2 lg:border-t-0 lg:pt-0">
+            <div
+              className={`mt-2 h-0 min-h-0 flex-1 basis-0 overflow-hidden ${cardTab === 'hardware' ? 'hidden' : 'flex'}`}
+            >
+              <section
+                className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${cardTab === 'software' ? 'flex' : 'hidden'}`}
+              >
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.installedSoftware')}
                 </h3>
@@ -935,7 +986,9 @@ export function ComputerDetailModal({
                 </ul>
               </section>
 
-              <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-t border-[var(--color-border)] pt-2 lg:border-t-0 lg:border-l lg:border-[var(--color-border)] lg:pl-4 lg:pt-0">
+              <section
+                className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${cardTab === 'peripherals' ? 'flex' : 'hidden'}`}
+              >
                 <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
                   {t('computerDetail.peripherals')}
                 </h3>

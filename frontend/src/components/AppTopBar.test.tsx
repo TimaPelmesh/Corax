@@ -108,4 +108,24 @@ describe('AppTopBar search', () => {
 
     view.unmount()
   })
+
+  it('profile menu shows notifications and settings, not a theme switch', () => {
+    apiMock.serviceRequests.mockResolvedValue({ items: [], total: 0 })
+    const view = render(
+      <MemoryRouter>
+        <LocaleProvider>
+          <AppTopBar />
+        </LocaleProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Профиль' }))
+
+    expect(screen.getByRole('button', { name: 'Уведомления' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Настройки' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Светлая' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Тёмная' })).not.toBeInTheDocument()
+
+    view.unmount()
+  })
 })

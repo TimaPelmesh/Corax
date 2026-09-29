@@ -253,7 +253,7 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  if (cfg.agent_token.empty() && !silent_mode) {
+  if (cfg.agent_token.empty() && !cfg.server_url.empty()) {
     auto status = [&](const std::string& text) {
       if (use_splash) {
         splash.set_status(text);
@@ -261,19 +261,7 @@ int main(int argc, char** argv) {
       }
       say(text, console_out);
     };
-    if (enroll_on_lan(status, cfg.server_url)) cfg = load_agent_config();
-  }
-
-  if (cfg.server_url.empty() || cfg.agent_token.empty()) {
-    const std::string msg =
-        "Сервер CORAX в локальной сети не подтвердил этот компьютер.\n\n"
-        "Откройте панель → Токены агентов и нажмите «Подключить».\n\n"
-        "Лог: " +
-        log_path();
-    say("ERROR: missing server_url / agent_token", true);
-    if (use_splash) splash.finish_error(msg);
-    else if (do_pause) wait_enter("\nНажмите Enter… ");
-    return 2;
+    if (enroll_on_lan(status, cfg.server_url, !silent_mode)) cfg = load_agent_config();
   }
 
   say("server=" + cfg.server_url, console_out);
@@ -300,6 +288,20 @@ int main(int argc, char** argv) {
       return 5;
     }
     if (use_splash) splash.set_status("Установлено. Первый отчёт…");
+  }
+
+  if (cfg.server_url.empty() || cfg.agent_token.empty()) {
+    const std::string msg =
+        "Сервер CORAX не выдал токен этому компьютеру.\n\n"
+        "Проверьте, что адрес сервера в установщике открывается с этого ПК. "
+        "Как только агент до него дойдёт, токен появится в панели → Токены агентов.\n\n"
+        "Лог: " +
+        log_path();
+    say("ERROR: server did not issue an agent token", true);
+    if (silent_mode && !cfg.server_url.empty()) return 0;
+    if (use_splash) splash.finish_error(msg);
+    else if (do_pause) wait_enter("\nНажмите Enter… ");
+    return 2;
   }
 
   int ack_generation = -1;
