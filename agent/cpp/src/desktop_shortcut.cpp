@@ -95,11 +95,14 @@ std::wstring folder_csidl(int csidl) {
   return buf;
 }
 
-std::string shell32_icon_file() {
-  wchar_t sys[MAX_PATH];
-  UINT n = GetSystemDirectoryW(sys, MAX_PATH);
-  if (!n || n >= MAX_PATH) return {};
-  return util::narrow(std::wstring(sys, n) + L"\\SHELL32.dll");
+std::string agent_icon_file() {
+  const wchar_t* env = _wgetenv(L"ProgramData");
+  std::wstring installed = ((env && *env) ? std::wstring(env) : L"C:\\ProgramData") + L"\\CORAX\\Agent\\CORAX-Agent.exe";
+  if (GetFileAttributesW(installed.c_str()) != INVALID_FILE_ATTRIBUTES) return util::narrow(installed);
+  wchar_t self[MAX_PATH * 4];
+  DWORD n = GetModuleFileNameW(nullptr, self, static_cast<DWORD>(sizeof(self) / sizeof(self[0])));
+  if (!n) return {};
+  return util::narrow(std::wstring(self, n));
 }
 
 bool write_url(const std::wstring& dir, const std::string& url, const std::string& icon) {
@@ -110,7 +113,7 @@ bool write_url(const std::wstring& dir, const std::string& url, const std::strin
   const std::wstring path = dir + L"\\Оставить заявку.url";
   std::string body = "[InternetShortcut]\r\nURL=" + url + "\r\n";
   if (!icon.empty()) {
-    body += "IconFile=" + icon + "\r\nIconIndex=1\r\n";
+    body += "IconFile=" + icon + "\r\nIconIndex=0\r\n";
   }
   return util::write_file_utf8(util::narrow(path), body);
 }
@@ -144,7 +147,7 @@ std::string ensure_helpdesk_shortcut(const std::string& server_url, const std::s
   base = resolve_server_base(base);
 
   const std::string url = base + "/h#pc=" + percent_encode(host);
-  const std::string icon = shell32_icon_file();
+  const std::string icon = agent_icon_file();
   int ok = 0;
 
   if (write_url(folder_csidl(CSIDL_COMMON_DESKTOPDIRECTORY), url, icon)) ++ok;

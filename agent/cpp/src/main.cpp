@@ -208,6 +208,14 @@ int main(int argc, char** argv) {
     return ok ? 0 : 2;
   }
 
+  // Already paired: no splash, no dialogs. Refresh autostart and stay in the tray.
+  if (!opt.poll && !opt.ui_demo && !opt.install && !cfg.server_url.empty() && !cfg.agent_token.empty()) {
+    InstallResult installed = install_agent();
+    if (!installed.install_dir.empty()) launch_tray_process(installed.install_dir);
+    SecureZeroMemory(cfg.agent_token.data(), cfg.agent_token.size());
+    return installed.ok ? 0 : 5;
+  }
+
   const bool silent_mode =
       !opt.ui_demo && (opt.silent || (cfg.silent && !opt.verbose && !opt.pause)) && !opt.pause;
   const bool use_splash = !silent_mode && !opt.no_gui;
@@ -262,7 +270,7 @@ int main(int argc, char** argv) {
       }
       say(text, console_out);
     };
-    if (!enroll_on_lan(status, cfg.server_url, !silent_mode)) return false;
+    if (!enroll_on_lan(status, cfg.server_url)) return false;
     cfg = load_agent_config();
     if (cfg.agent_token.empty()) return false;
     install_agent();
@@ -277,7 +285,7 @@ int main(int argc, char** argv) {
       }
       say(text, console_out);
     };
-    if (enroll_on_lan(status, cfg.server_url, !silent_mode)) cfg = load_agent_config();
+    if (enroll_on_lan(status, cfg.server_url)) cfg = load_agent_config();
   }
 
   say("server=" + cfg.server_url, console_out);

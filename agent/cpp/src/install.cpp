@@ -78,7 +78,8 @@ std::wstring task_xml(const std::wstring& command, const std::wstring& arguments
         L"<Repetition><Interval>PT1M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition></TimeTrigger>";
   std::wstring principal = as_system
       ? L"<Principals><Principal id=\"Author\"><UserId>S-1-5-18</UserId><RunLevel>HighestAvailable</RunLevel></Principal></Principals>"
-      : L"";
+      : L"<Principals><Principal id=\"Author\"><GroupId>S-1-5-32-545</GroupId><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>";
+  std::wstring limit = at_logon ? L"PT0S" : L"PT10M";
   return L"<?xml version=\"1.0\" encoding=\"UTF-16\"?>"
          L"<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">" +
          principal + L"<Triggers>" + trigger +
@@ -87,7 +88,7 @@ std::wstring task_xml(const std::wstring& command, const std::wstring& arguments
          L"<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"
          L"<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>"
          L"<StartWhenAvailable>true</StartWhenAvailable>"
-         L"<ExecutionTimeLimit>PT10M</ExecutionTimeLimit>"
+         L"<ExecutionTimeLimit>" + limit + L"</ExecutionTimeLimit>"
          L"<Enabled>true</Enabled>"
          L"</Settings><Actions Context=\"Author\"><Exec><Command>" +
          xml_escape(command) + L"</Command><Arguments>" + xml_escape(arguments) +
@@ -104,6 +105,19 @@ bool register_task(const wchar_t* name, const wchar_t* file_name, const std::wst
   bool started = run_schtasks(L"/Create /F /TN \"" + std::wstring(name) + L"\" /XML \"" + path + L"\"", code);
   DeleteFileW(path.c_str());
   return started && code == 0;
+}
+
+void register_tray_autostart(const std::wstring& dest_exe) {
+  register_task(L"CORAX Agent Tray", L"corax-tray-task.xml", task_xml(dest_exe, L"--tray", true, false));
+  HKEY key = nullptr;
+  if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, nullptr, 0,
+                      KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    return;
+  }
+  std::wstring cmd = L"\"" + dest_exe + L"\" --tray";
+  RegSetValueExW(key, L"CORAX Agent", 0, REG_SZ, reinterpret_cast<const BYTE*>(cmd.c_str()),
+                 static_cast<DWORD>((cmd.size() + 1) * sizeof(wchar_t)));
+  RegCloseKey(key);
 }
 
 }  // namespace
@@ -165,19 +179,9 @@ InstallResult install_agent() {
     out.install_dir = util::narrow(dir);
     return out;
   }
-  STARTUPINFOW si{};
-  si.cb = sizeof(si);
-  si.dwFlags = STARTF_USESHOWWINDOW;
-  si.wShowWindow = SW_HIDE;
-  PROCESS_INFORMATION pi{};
-  wchar_t cmd[] = L"schtasks /Delete /TN \"CORAX Agent Tray\" /F";
-  if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-    WaitForSingleObject(pi.hProcess, 5000);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-  }
+  register_tray_autostart(dest_exe);
   out.ok = true;
   out.install_dir = util::narrow(dir);
-  out.message = "Установлено. Агент молчит в фоне и раз в минуту спрашивает сервер, нужен ли сбор.";
+  out.message = "Установлено. Агент в автозагрузке и в трее, без окон.";
   return out;
 }

@@ -10,6 +10,8 @@ services:
     image: pgvector/pgvector:pg16
     pull_policy: missing
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in backend/.env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
@@ -36,6 +38,8 @@ services:
     image: corax:local
     pull_policy: never
     restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
     # Starlette BaseHTTPMiddleware + static files can exhaust the Docker default 1024 FDs.
     ulimits:
       nofile:
@@ -117,6 +121,7 @@ services:
     image: prodrigestivill/postgres-backup-local:16
     pull_policy: missing
     restart: unless-stopped
+    init: true
     depends_on:
       db:
         condition: service_healthy

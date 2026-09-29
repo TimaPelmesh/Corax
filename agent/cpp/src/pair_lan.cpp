@@ -222,8 +222,7 @@ std::string load_or_create_public_id() {
 
 bool enroll_on_lan(
     const std::function<void(const std::string&)>& status,
-    const std::string& known_server,
-    bool wait_for_approval) {
+    const std::string& known_server) {
   std::string server = trim_server(known_server);
   if (!server.empty()) {
     status("Сервер инвентаризации: " + server);
@@ -242,13 +241,6 @@ bool enroll_on_lan(
   std::string announced = http_exchange(L"POST", server + "/api/v1/agent/pair/announce", announce, 8000);
   std::string token = extract_token(announced);
   std::string claim_body = "{\"public_id\":\"" + public_id + "\"}";
-  if (token.empty() && wait_for_approval) {
-    status("Компьютер " + hostname + " ждёт подтверждения в панели CORAX.");
-    for (int i = 0; i < 30 && token.empty(); ++i) {
-      Sleep(2000);
-      token = extract_token(http_exchange(L"POST", server + "/api/v1/agent/pair/claim", claim_body, 4000));
-    }
-  }
   if (token.empty()) {
     if (announced.empty()) status("Сервер CORAX не ответил и токен не выдал.");
     else status("Сервер CORAX не выдал токен.");

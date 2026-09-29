@@ -505,6 +505,7 @@ async def health_ready():
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
+            await db.execute(text("SELECT must_change_password, token_version FROM users LIMIT 1"))
     except Exception:
         return JSONResponse(
             status_code=503,

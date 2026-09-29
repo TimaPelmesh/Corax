@@ -9,7 +9,7 @@ def test_another_computer_gets_a_fresh_token_instead_of_the_first():
     assert pairing_announce_kind("claimed", "pc-1", "pc-2", False) == "fresh"
     assert pairing_announce_kind("approved", "pc-1", "PC-2", True) == "fresh"
     assert pairing_announce_kind("approved", "pc-1", "pc-1", True) == "reuse"
-    assert pairing_announce_kind("claimed", "pc-1", "pc-1", False) == "claimed"
+    assert pairing_announce_kind("claimed", "pc-1", "pc-1", False) == "fresh"
 
 
 def test_announce_stores_token_before_claim(client: TestClient, auth_headers: dict[str, str]):
@@ -48,5 +48,6 @@ def test_announce_stores_token_before_claim(client: TestClient, auth_headers: di
         json={"public_id": public_id, "hostname": hostname},
     )
     assert after.status_code == 200, after.text
-    assert after.json()["status"] == "claimed"
-    assert "agent_token" not in after.json()
+    assert after.json()["status"] == "approved"
+    assert after.json()["agent_token"]
+    assert after.json()["agent_token"] != token

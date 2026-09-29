@@ -95,7 +95,7 @@ export function sanitizeClientError(message: string): string {
     (low.includes('utf8') && low.includes('0x00')) ||
     low.includes('internal server error')
   ) {
-    return 'Сервер не смог сохранить данные. Повторите действие.'
+    return 'Сервер не завершил операцию. Подождите несколько секунд и повторите.'
   }
   return message
 }

@@ -15,7 +15,13 @@ def _create_engine(url: str):
     if url.strip().lower().startswith("postgresql"):
         # LAN-панель обычно живёт под одной репликой Uvicorn; 5+10 достаточно
         # для одновременных агент-POST, дашборда, ping-кэша и SNMP-задач.
-        kwargs.update(pool_size=5, max_overflow=10, pool_pre_ping=True)
+        kwargs.update(
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+            pool_timeout=20,
+        )
     return create_async_engine(url, **kwargs)
 
 
@@ -61,7 +67,11 @@ class WarehouseBase(DeclarativeBase):
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def get_diagrams_db() -> AsyncGenerator[AsyncSession, None]:

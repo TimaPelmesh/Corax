@@ -1218,11 +1218,21 @@ export type SearchResponse = {
 export const api = {
   health: () => request<{ status: string; api: string }>(`${API_PREFIX}/health`),
 
-  login: (username: string, password: string) =>
-    request<{ ok: boolean; access_token: string | null }>(`${API_PREFIX}/auth/login/json`, {
-      method: 'POST',
-      json: { username, password, return_token: false },
-    }),
+  login: async (username: string, password: string) => {
+    const call = () =>
+      request<{ ok: boolean; access_token: string | null }>(`${API_PREFIX}/auth/login/json`, {
+        method: 'POST',
+        json: { username, password, return_token: false },
+      })
+    try {
+      return await call()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      if (!message.includes('временно') && !message.includes('не завершил операцию')) throw error
+      await new Promise((resolve) => window.setTimeout(resolve, 700))
+      return call()
+    }
+  },
 
   logout: () => request<{ ok: boolean }>(`${API_PREFIX}/auth/logout`, { method: 'POST' }),
 

@@ -77,6 +77,7 @@ if(MSVC)
     version
     comctl32
     gdi32
+    gdiplus
     user32
     dbghelp    # MiniDumpWriteDump on crash
     psapi      # EnumProcessModules for "crashed in module X+offset" log

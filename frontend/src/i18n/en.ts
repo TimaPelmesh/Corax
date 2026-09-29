@@ -2759,7 +2759,7 @@ export const en: MessageTree = {
     win7Notice:
       'Base profile: WMI, software registry, PnP peripherals. Extended modules (patches, BitLocker, Docker, etc.) are available only in the Windows 10/11 build.',
     windowsZipNotice:
-      'One ZIP for every computer. It contains the inventory server address and no token. On each PC the installer asks the server for a token — confirm that PC under Agent tokens.',
+      'One ZIP for every computer. It contains the inventory server address and no token. On each PC the installer gets a token from the server on its own, with no confirmation in the panel.',
     collectionLevel: 'Collection level',
     levelFull: 'Full',
     levelFullHint: 'All modules: network, patches, security, Office, Docker/WSL, and more.',
@@ -2821,7 +2821,7 @@ export const en: MessageTree = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'No',
     summaryArchiveWin10:
-      'The archive is the installer plus agent.json with the server address. No token is sealed in: the inventory server issues one when you click Connect. The same ZIP installs on the next computer.',
+      'The archive is the installer plus agent.json with the server address. No token is sealed in: the server issues one as soon as the agent installs. The same ZIP installs on the next computer.',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
     summaryArchiveCpp:
@@ -2842,7 +2842,7 @@ export const en: MessageTree = {
     deployStep2LinuxBefore: 'On the host, run',
     deployStep2LinuxAfter: '— the report will be sent to {serverUrl}.',
     deployStep3Win10:
-      'While the installer waits, open Agent tokens and click Connect. The server issues a token for that computer. After that the agent stays quiet in the tray.',
+      'The token arrives on its own. There is nothing to confirm in the panel. After the report the agent stays in the tray and in startup, with no windows.',
     deployStep3Win7:
       'Scheduling: create a Windows Task Scheduler task to run the bat manually or through GPO.',
     deployStep3Cpp:

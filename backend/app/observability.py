@@ -335,6 +335,26 @@ class RequestLoggingMiddleware:
             request_id_var.reset(token)
 
 
+def _transient_database_error(exc: Exception) -> bool:
+    """Connection drops and recovery, not schema or data errors."""
+    name = type(exc).__name__.lower()
+    if name in {"operationalerror", "interfaceerror", "timeouterror"}:
+        return True
+    raw = str(exc).lower()
+    markers = (
+        "connection refused",
+        "connection reset",
+        "connection is closed",
+        "server closed the connection",
+        "could not connect",
+        "timeout expired",
+        "the database system is starting up",
+        "the database system is shutting down",
+        "too many connections",
+    )
+    return any(marker in raw for marker in markers)
+
+
 def install_exception_handlers(app, *, environment: str) -> None:
     """Log unhandled errors; hide stack traces from clients outside development."""
     from fastapi import FastAPI, Request
@@ -364,6 +384,16 @@ def install_exception_handlers(app, *, environment: str) -> None:
             return await http_exception_handler(request, exc)
 
         rid = getattr(request.state, "request_id", "-")
+        if _transient_database_error(exc):
+            _LOG.warning(
+                "database unavailable",
+                extra={"path": request.url.path, "exc_type": type(exc).__name__},
+            )
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "База временно недоступна. Повторите действие через несколько секунд.", "request_id": rid},
+                headers={"X-Request-Id": rid or "-", "Retry-After": "2"},
+            )
         _LOG.error(
             "unhandled exception",
             extra={

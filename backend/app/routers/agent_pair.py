@@ -1,4 +1,4 @@
-"""LAN-only installer pairing. The EXE announces; an admin approves; the token is claimed once."""
+"""LAN-only installer pairing. The EXE announces and receives a token immediately."""
 
 from __future__ import annotations
 
@@ -46,13 +46,12 @@ def _lan_only(request: Request) -> None:
 
 
 def pairing_announce_kind(status: str, stored_host: str, announced_host: str, has_token: bool) -> str:
-    """fresh — выдать новый токен, reuse — вернуть уже выданный, claimed — этот ПК уже забрал свой."""
+    """fresh — выдать токен сразу, reuse — вернуть уже выданный. Подтверждение в панели не требуется."""
+    del status
     stored = (stored_host or "").strip().casefold()
     announced = (announced_host or "").strip().casefold()
     if stored and announced and stored != announced:
         return "fresh"
-    if (status or "") == "claimed" and not has_token:
-        return "claimed"
     if not has_token:
         return "fresh"
     return "reuse"
