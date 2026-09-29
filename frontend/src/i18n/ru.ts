@@ -775,7 +775,7 @@ export const ru = {
       },
       office: {
         title: 'Офисные пакеты',
-        description: 'Microsoft Office / 365, LibreOffice, МойОфис и другие.',
+        description: 'Отдельно Microsoft Office 2013, 2016, 2019, 2021, Microsoft 365, LibreOffice, МойОфис и другие.',
         empty: 'Нет данных по офису',
       },
       upcomingNotes: {

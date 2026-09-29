@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import noload
 
 from app.models import Computer, DiskVolume, InstalledSoftware, Peripheral
-from app.software_families import classify_software_name
+from app.software_families import classify_software_name, office_labels_from_payload
 from app.oem_normalize import (
     manufacturer_matches_display,
     motherboard_matches_display,
@@ -183,14 +183,29 @@ async def fetch_segment_computers(
 
     if kind == "software_family":
         sw_rows = (
-            await db.execute(select(InstalledSoftware.computer_id, InstalledSoftware.name))
+            await db.execute(
+                select(InstalledSoftware.computer_id, InstalledSoftware.name, InstalledSoftware.version)
+            )
         ).all()
         want = name.casefold()
         match_ids = {
             int(cid)
-            for cid, sw_name in sw_rows
-            if (fam := classify_software_name(str(sw_name))) is not None and fam.name.casefold() == want
+            for cid, sw_name, sw_version in sw_rows
+            if (fam := classify_software_name(str(sw_name), None if sw_version is None else str(sw_version)))
+            is not None
+            and fam.name.casefold() == want
         }
+        if want.startswith("microsoft"):
+            payload_rows = (
+                await db.execute(select(Computer.id, Computer.raw_payload).where(Computer.raw_payload.is_not(None)))
+            ).all()
+            for computer_id, raw_payload in payload_rows:
+                labels = {label.casefold() for label in office_labels_from_payload(raw_payload)}
+                specific = labels - {"microsoft office"}
+                if want in labels or (want == "microsoft office" and labels and not specific):
+                    if want == "microsoft office" and specific:
+                        continue
+                    match_ids.add(int(computer_id))
         if not match_ids:
             return [], 0
         r = await db.execute(

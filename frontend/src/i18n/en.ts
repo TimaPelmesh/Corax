@@ -777,7 +777,7 @@ export const en: MessageTree = {
       },
       office: {
         title: 'Office suites',
-        description: 'Microsoft Office / 365, LibreOffice, МойОфис and similar.',
+        description: 'Microsoft Office 2013, 2016, 2019, 2021, Microsoft 365, LibreOffice, МойОфис and similar, each on its own.',
         empty: 'No office data',
       },
       upcomingNotes: {

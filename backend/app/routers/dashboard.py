@@ -16,7 +16,7 @@ from app.oem_normalize import (
     aggregate_system_model_counts,
 )
 from app.os_normalize import aggregate_os_counts
-from app.software_families import classify_software_name
+from app.software_families import classify_software_name, office_labels_from_payload
 from app.physical_disks import (
     aggregate_physical_disks,
     aggregate_pc_disk_catalog,
@@ -688,15 +688,16 @@ async def _compute_dashboard_inventory(db: AsyncSession) -> DashboardSummary:
             fam_r = await s.execute(
                 select(
                     InstalledSoftware.name,
+                    InstalledSoftware.version,
                     func.array_agg(func.distinct(InstalledSoftware.computer_id)),
                 )
                 .join(Computer, Computer.id == InstalledSoftware.computer_id)
-                .group_by(InstalledSoftware.name)
+                .group_by(InstalledSoftware.name, InstalledSoftware.version)
             )
             browsers_ids: dict[str, set[int]] = {}
             office_ids: dict[str, set[int]] = {}
-            for sw_name, pc_ids in fam_r.all():
-                fam = classify_software_name(str(sw_name))
+            for sw_name, sw_version, pc_ids in fam_r.all():
+                fam = classify_software_name(str(sw_name), None if sw_version is None else str(sw_version))
                 if fam is None:
                     continue
                 bucket = browsers_ids if fam.category == "browser" else office_ids
@@ -704,6 +705,21 @@ async def _compute_dashboard_inventory(db: AsyncSession) -> DashboardSummary:
                 for cid in pc_ids or []:
                     if cid is not None:
                         dest.add(int(cid))
+            payload_r = await s.execute(
+                select(Computer.id, Computer.raw_payload).where(Computer.raw_payload.is_not(None))
+            )
+            for computer_id, raw_payload in payload_r.all():
+                labels = office_labels_from_payload(raw_payload)
+                specific = {label for label in labels if label != "Microsoft Office"}
+                chosen = specific or labels
+                for label in chosen:
+                    office_ids.setdefault(label, set()).add(int(computer_id))
+                if specific:
+                    generic = office_ids.get("Microsoft Office")
+                    if generic is not None:
+                        generic.discard(int(computer_id))
+                        if not generic:
+                            office_ids.pop("Microsoft Office", None)
             browsers = [
                 DashboardNameCount(name=n, count=len(ids))
                 for n, ids in sorted(browsers_ids.items(), key=lambda kv: (-len(kv[1]), kv[0]))
