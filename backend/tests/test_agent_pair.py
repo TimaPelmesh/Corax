@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from starlette.testclient import TestClient
 
+from app.routers.agent_pair import pairing_announce_kind
+
+
+def test_another_computer_gets_a_fresh_token_instead_of_the_first():
+    assert pairing_announce_kind("claimed", "pc-1", "pc-2", False) == "fresh"
+    assert pairing_announce_kind("approved", "pc-1", "PC-2", True) == "fresh"
+    assert pairing_announce_kind("approved", "pc-1", "pc-1", True) == "reuse"
+    assert pairing_announce_kind("claimed", "pc-1", "pc-1", False) == "claimed"
+
 
 def test_announce_stores_token_before_claim(client: TestClient, auth_headers: dict[str, str]):
     public_id = "pair-pc-token-0001"

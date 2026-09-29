@@ -163,22 +163,58 @@ std::string extract_token(const std::string& body) {
   return body.substr(pos + 1, end - pos - 1);
 }
 
-std::string pair_id_path() { return util::exe_dir() + "\\agent.pair.json"; }
+std::string machine_public_id() {
+  // MachineGuid is unique per Windows install, so a shared installer file
+  // does not reuse the first computer's pairing.
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", 0,
+                    KEY_READ | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS) {
+    return "";
+  }
+  wchar_t buf[128]{};
+  DWORD size = sizeof(buf);
+  DWORD type = 0;
+  const LONG rc = RegQueryValueExW(key, L"MachineGuid", nullptr, &type, reinterpret_cast<LPBYTE>(buf), &size);
+  RegCloseKey(key);
+  if (rc != ERROR_SUCCESS || type != REG_SZ) return "";
+  std::string out;
+  for (wchar_t ch : std::wstring(buf)) {
+    if (ch >= L'0' && ch <= L'9') out.push_back(static_cast<char>(ch));
+    else if (ch >= L'a' && ch <= L'f') out.push_back(static_cast<char>(ch));
+    else if (ch >= L'A' && ch <= L'F') out.push_back(static_cast<char>(ch - L'A' + L'a'));
+  }
+  return out.size() >= 16 ? out : "";
+}
 
-std::string load_or_create_public_id() {
-  std::string existing = util::read_file_utf8(pair_id_path());
+std::string program_data_pair_path() {
+  const wchar_t* env = _wgetenv(L"ProgramData");
+  std::wstring root = (env && *env) ? std::wstring(env) : L"C:\\ProgramData";
+  std::wstring dir = root + L"\\CORAX\\Agent";
+  CreateDirectoryW((root + L"\\CORAX").c_str(), nullptr);
+  CreateDirectoryW(dir.c_str(), nullptr);
+  return util::narrow(dir) + "\\agent.pair.json";
+}
+
+std::string read_public_id_file(const std::string& path) {
+  std::string existing = util::read_file_utf8(path);
   const std::string key = "\"public_id\"";
   size_t pos = existing.find(key);
-  if (pos != std::string::npos) {
-    pos = existing.find('"', pos + key.size());
-    size_t end = pos == std::string::npos ? std::string::npos : existing.find('"', pos + 1);
-    if (pos != std::string::npos && end != std::string::npos && end - pos - 1 >= 16) {
-      return existing.substr(pos + 1, end - pos - 1);
-    }
-  }
+  if (pos == std::string::npos) return "";
+  pos = existing.find('"', pos + key.size());
+  size_t end = pos == std::string::npos ? std::string::npos : existing.find('"', pos + 1);
+  if (pos == std::string::npos || end == std::string::npos || end - pos - 1 < 16) return "";
+  return existing.substr(pos + 1, end - pos - 1);
+}
+
+std::string load_or_create_public_id() {
+  std::string from_machine = machine_public_id();
+  if (!from_machine.empty()) return from_machine;
+  const std::string path = program_data_pair_path();
+  std::string existing = read_public_id_file(path);
+  if (!existing.empty()) return existing;
   std::string created = hex_id();
   if (created.empty()) return "";
-  util::write_file_utf8(pair_id_path(), "{\"public_id\":\"" + created + "\"}\n");
+  util::write_file_utf8(path, "{\"public_id\":\"" + created + "\"}\n");
   return created;
 }
 

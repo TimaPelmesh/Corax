@@ -178,3 +178,8 @@ std::string load_or_provision_agent_token(const std::string& directory) {
 }
 
 std::string secure_config_status() { return g_status; }
+
+void forget_agent_token(const std::string& directory) {
+  DeleteFileW(join_path(directory, kCredentialFile).c_str());
+  DeleteFileW(join_path(directory, kProvisionFile).c_str());
+}

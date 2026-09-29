@@ -45,6 +45,19 @@ def _lan_only(request: Request) -> None:
     raise HTTPException(status_code=403, detail="Подключение агента доступно только в локальной сети")
 
 
+def pairing_announce_kind(status: str, stored_host: str, announced_host: str, has_token: bool) -> str:
+    """fresh — выдать новый токен, reuse — вернуть уже выданный, claimed — этот ПК уже забрал свой."""
+    stored = (stored_host or "").strip().casefold()
+    announced = (announced_host or "").strip().casefold()
+    if stored and announced and stored != announced:
+        return "fresh"
+    if (status or "") == "claimed" and not has_token:
+        return "claimed"
+    if not has_token:
+        return "fresh"
+    return "reuse"
+
+
 def _mint_agent_token(hostname: str) -> tuple[str, AgentToken]:
     public_id = secrets.token_hex(4)
     secret = secrets.token_urlsafe(24)
@@ -93,9 +106,16 @@ async def announce_pairing(body: PairAnnounce, request: Request, db: AsyncSessio
         row = AgentPairing(public_id=public_id, hostname=hostname, status="pending")
         db.add(row)
         await db.flush()
+    stored_host = row.hostname or ""
+    kind = pairing_announce_kind(row.status, stored_host, hostname, bool(row.token_once))
+    if kind == "fresh" and stored_host.strip().casefold() != (hostname or "").strip().casefold():
+        # Тот же файл установщика открыли на другом ПК: прежний токен остаётся у первого,
+        # этому компьютеру выдаём свой.
+        row.token_once = None
+        row.hostname = hostname or row.hostname
     elif row.status != "claimed":
         row.hostname = hostname or row.hostname
-    if row.status == "claimed" and not row.token_once:
+    if kind == "claimed":
         await db.commit()
         return {"status": "claimed"}
     if not row.token_once:

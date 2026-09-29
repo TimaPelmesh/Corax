@@ -253,6 +253,22 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  auto reissue_token = [&]() -> bool {
+    forget_agent_token(util::exe_dir());
+    auto status = [&](const std::string& text) {
+      if (use_splash) {
+        splash.set_status(text);
+        splash.pump();
+      }
+      say(text, console_out);
+    };
+    if (!enroll_on_lan(status, cfg.server_url, !silent_mode)) return false;
+    cfg = load_agent_config();
+    if (cfg.agent_token.empty()) return false;
+    install_agent();
+    return true;
+  };
+
   if (cfg.agent_token.empty() && !cfg.server_url.empty()) {
     auto status = [&](const std::string& text) {
       if (use_splash) {
@@ -310,6 +326,9 @@ int main(int argc, char** argv) {
     const std::string path = "/api/v1/agent/directive?hostname=" + query_escape(hostname) +
                              "&seen_generation=" + std::to_string(seen);
     HttpResult directive = http_get(cfg.server_url, path, cfg.agent_token);
+    if (!directive.ok && directive.status == 403 && reissue_token()) {
+      directive = http_get(cfg.server_url, path, cfg.agent_token);
+    }
     if (!directive.ok) {
       say("poll: сервер недоступен: " + directive.error, console_out);
       return 0;
@@ -356,6 +375,11 @@ int main(int argc, char** argv) {
     if (use_splash) splash.finish_error(std::string("Сбой отправки: ") + ex.what());
     else if (do_pause) wait_enter("\nНажмите Enter… ");
     return 4;
+  }
+
+  if (!res.ok && res.status == 403 && reissue_token()) {
+    say("403: сервер выдал токен этому компьютеру, повторяем отчёт", console_out);
+    res = http_post_json(cfg.server_url, "/api/v1/agent/inventory", cfg.agent_token, payload);
   }
 
   if (!res.ok) {

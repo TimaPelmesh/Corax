@@ -14,6 +14,7 @@ if(WIN32)
             -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/New-CoraxAgentIcon.ps1"
             -OutputPath "${CORAX_ICON}"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/New-CoraxAgentIcon.ps1"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../frontend/public/logo.png"
     COMMENT "Generating CORAX multi-resolution Windows icon"
     VERBATIM
   )

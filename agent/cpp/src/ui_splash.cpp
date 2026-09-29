@@ -136,18 +136,15 @@ void draw_close_button(HDC hdc) {
 }
 
 void draw_header(HDC hdc) {
-  RECT icon_tile{24, 22, 88, 86};
-  fill_round_rect(hdc, icon_tile, 20, kAccentFaint);
-  stroke_round_rect(hdc, icon_tile, 20, RGB(191, 219, 254));
-  if (g.icon) DrawIconEx(hdc, 32, 30, g.icon, 48, 48, 0, nullptr, DI_NORMAL);
+  if (g.icon) DrawIconEx(hdc, 18, 12, g.icon, 88, 88, 0, nullptr, DI_NORMAL);
 
-  draw_text(hdc, L"CORAX Agent", RECT{104, 24, 390, 56}, g.fontTitle, kText);
-  draw_text(hdc, g.subtitle, RECT{104, 57, 470, 82}, g.fontSubtitle, kMuted);
+  draw_text(hdc, L"Corax", RECT{118, 26, 390, 64}, g.fontTitle, kText);
+  draw_text(hdc, g.subtitle, RECT{118, 62, 430, 88}, g.fontSubtitle, kMuted);
 
-  RECT badge{438, 62, 592, 88};
+  RECT badge{438, 58, 592, 84};
   fill_round_rect(hdc, badge, 13, kAccentSoft);
-  fill_circle(hdc, 453, 75, 4, kAccent);
-  draw_text(hdc, L"ИНВЕНТАРИЗАЦИЯ", RECT{464, 62, 586, 88}, g.fontSmall, kAccentDark);
+  fill_circle(hdc, 454, 71, 4, kAccent);
+  draw_text(hdc, L"Инвентаризация", RECT{466, 58, 586, 84}, g.fontSmall, kAccentDark);
   draw_close_button(hdc);
 }
 
@@ -349,8 +346,8 @@ void AgentSplash::show(const std::string& title_hint) {
                               OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                               DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
   g.icon = static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),
-                                         MAKEINTRESOURCEW(IDI_CORAX_AGENT), IMAGE_ICON, 48, 48,
-                                         LR_DEFAULTCOLOR | LR_SHARED));
+                                         MAKEINTRESOURCEW(IDI_CORAX_AGENT), IMAGE_ICON, 128, 128,
+                                         LR_DEFAULTCOLOR));
 
   const int screen_x = GetSystemMetrics(SM_CXSCREEN);
   const int screen_y = GetSystemMetrics(SM_CYSCREEN);
