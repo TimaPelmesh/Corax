@@ -768,6 +768,60 @@ class ZabbixTestResponse(BaseModel):
     sample_problems: list[str] = []
 
 
+class GlpiConfigOut(BaseModel):
+    enabled: bool
+    base_url: str
+    api_mode: str
+    grant_type: str
+    client_id: str
+    client_secret_set: bool
+    username: str
+    password_set: bool
+    app_token_set: bool
+    user_token_set: bool
+    verify_tls: bool
+    last_test_at: datetime | None = None
+    last_test_ok: bool | None = None
+    last_test_message: str = ""
+    last_version: str = ""
+
+
+class GlpiConfigUpdate(BaseModel):
+    enabled: bool | None = None
+    base_url: str | None = Field(default=None, max_length=512)
+    api_mode: str | None = Field(default=None, max_length=16)
+    grant_type: str | None = Field(default=None, max_length=32)
+    client_id: str | None = Field(default=None, max_length=255)
+    client_secret: str | None = Field(default=None, max_length=512)
+    username: str | None = Field(default=None, max_length=255)
+    password: str | None = Field(default=None, max_length=255)
+    app_token: str | None = Field(default=None, max_length=255)
+    user_token: str | None = Field(default=None, max_length=255)
+    verify_tls: bool | None = None
+
+
+class GlpiTestResponse(BaseModel):
+    ok: bool
+    message: str
+    version: str | None = None
+    api_mode: str | None = None
+    tickets_visible: int | None = None
+
+
+class GlpiTicketSyncIn(BaseModel):
+    limit: int = Field(default=200, ge=1, le=2000)
+    request_ids: list[int] | None = Field(default=None, max_length=2000)
+
+
+class GlpiTicketSyncOut(BaseModel):
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    failed: int = 0
+    message: str = ""
+    errors: list[str] = Field(default_factory=list)
+
+
 class Bitrix24IncomingRequest(BaseModel):
     """Нормализованный payload для вебхука (можно слать из Битрикс-бота)."""
 

@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+import asyncio
+import secrets
+
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-import secrets
 
 from app.agent_policy import get_or_create_policy
 from app.auth import get_current_editor_or_superuser, get_current_superuser
 from app.database import get_db
+from app.glpi_client import GlpiClientError, probe_glpi
+from app.glpi_sync import creds_from_row, export_glpi_tickets, import_glpi_tickets
 from app.ldap_config import get_effective_ldap_config
-from app.models import AgentCollectRequest, Bitrix24Config, LdapConfig, User, ZabbixConfig
+from app.models import AgentCollectRequest, Bitrix24Config, GlpiConfig, LdapConfig, User, ZabbixConfig
 from app.schemas import (
     Bitrix24ConfigOut,
     Bitrix24ConfigUpdate,
+    GlpiConfigOut,
+    GlpiConfigUpdate,
+    GlpiTestResponse,
+    GlpiTicketSyncIn,
+    GlpiTicketSyncOut,
     LdapConfigOut,
     LdapConfigUpdate,
     LdapTestRequest,
@@ -407,4 +416,199 @@ async def test_zabbix_settings(
         scheme=result.scheme or None,
         sample_hosts=list(result.sample_hosts or []),
         sample_problems=list(result.sample_problems or []),
+    )
+
+
+_GLPI_MODES = frozenset({"v2", "legacy"})
+_GLPI_GRANTS = frozenset({"password", "client_credentials"})
+
+
+async def _get_or_create_glpi(db: AsyncSession) -> GlpiConfig:
+    row = await db.get(GlpiConfig, 1)
+    if row is None:
+        row = GlpiConfig(
+            id=1,
+            enabled=False,
+            base_url="",
+            api_mode="v2",
+            grant_type="password",
+            verify_tls=True,
+            last_test_message="",
+            last_version="",
+        )
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+    return row
+
+
+def _glpi_out(row: GlpiConfig) -> GlpiConfigOut:
+    return GlpiConfigOut(
+        enabled=bool(row.enabled),
+        base_url=row.base_url or "",
+        api_mode=(row.api_mode or "v2").strip().lower() or "v2",
+        grant_type=(row.grant_type or "password").strip().lower() or "password",
+        client_id=row.client_id or "",
+        client_secret_set=bool((row.client_secret or "").strip()),
+        username=row.username or "",
+        password_set=bool((row.password or "").strip()),
+        app_token_set=bool((row.app_token or "").strip()),
+        user_token_set=bool((row.user_token or "").strip()),
+        verify_tls=bool(row.verify_tls),
+        last_test_at=row.last_test_at,
+        last_test_ok=row.last_test_ok,
+        last_test_message=row.last_test_message or "",
+        last_version=row.last_version or "",
+    )
+
+
+def _clean_setting(value: str) -> str:
+    return (value or "").replace("\u00a0", " ").strip()
+
+
+def _set_glpi_secret(row: GlpiConfig, attr: str, value: str | None) -> None:
+    if value is None:
+        return
+    cleaned = _clean_setting(value)
+    if cleaned:
+        setattr(row, attr, cleaned)
+
+
+def _require_glpi_enabled(row: GlpiConfig) -> None:
+    if not row.enabled:
+        raise HTTPException(status_code=400, detail="Включите интеграцию GLPI и сохраните подключение.")
+    if not (row.base_url or "").strip():
+        raise HTTPException(status_code=400, detail="Укажите URL GLPI.")
+
+
+@router.get("/glpi", response_model=GlpiConfigOut)
+async def get_glpi_settings(
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    return _glpi_out(await _get_or_create_glpi(db))
+
+
+@router.put("/glpi", response_model=GlpiConfigOut)
+async def update_glpi_settings(
+    body: GlpiConfigUpdate,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    patch = body.model_dump(exclude_unset=True)
+    if "enabled" in patch and patch["enabled"] is not None:
+        row.enabled = bool(patch["enabled"])
+    if "base_url" in patch and patch["base_url"] is not None:
+        row.base_url = _clean_setting(patch["base_url"])[:512]
+    if "api_mode" in patch and patch["api_mode"] is not None:
+        mode = _clean_setting(patch["api_mode"]).lower()
+        if mode not in _GLPI_MODES:
+            raise HTTPException(status_code=400, detail="api_mode: v2 или legacy")
+        row.api_mode = mode
+    if "grant_type" in patch and patch["grant_type"] is not None:
+        grant = _clean_setting(patch["grant_type"]).lower()
+        if grant not in _GLPI_GRANTS:
+            raise HTTPException(status_code=400, detail="grant_type: password или client_credentials")
+        row.grant_type = grant
+    if "client_id" in patch and patch["client_id"] is not None:
+        row.client_id = _clean_setting(patch["client_id"])[:255]
+    if "username" in patch and patch["username"] is not None:
+        row.username = _clean_setting(patch["username"])[:255]
+    if "verify_tls" in patch and patch["verify_tls"] is not None:
+        row.verify_tls = bool(patch["verify_tls"])
+    _set_glpi_secret(row, "client_secret", patch.get("client_secret"))
+    _set_glpi_secret(row, "password", patch.get("password"))
+    _set_glpi_secret(row, "app_token", patch.get("app_token"))
+    _set_glpi_secret(row, "user_token", patch.get("user_token"))
+    await db.commit()
+    await db.refresh(row)
+    return _glpi_out(row)
+
+
+@router.post("/glpi/test", response_model=GlpiTestResponse)
+async def test_glpi_settings(
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    creds = creds_from_row(row)
+    try:
+        result = await asyncio.to_thread(probe_glpi, creds)
+    except GlpiClientError as exc:
+        row.last_test_at = datetime.now(timezone.utc)
+        row.last_test_ok = False
+        row.last_test_message = str(exc)[:500]
+        await db.commit()
+        return GlpiTestResponse(ok=False, message=str(exc), api_mode=creds.mode)
+    except Exception as exc:
+        row.last_test_at = datetime.now(timezone.utc)
+        row.last_test_ok = False
+        row.last_test_message = f"Ошибка: {exc}"[:500]
+        await db.commit()
+        raise HTTPException(status_code=502, detail=f"Ошибка GLPI: {exc}") from exc
+
+    row.last_test_at = datetime.now(timezone.utc)
+    row.last_test_ok = True
+    row.last_test_message = result.message[:500]
+    if result.version:
+        row.last_version = result.version[:64]
+    await db.commit()
+    return GlpiTestResponse(
+        ok=True,
+        message=result.message,
+        version=result.version,
+        api_mode=result.api_mode,
+        tickets_visible=result.tickets_visible,
+    )
+
+
+@router.post("/glpi/import-tickets", response_model=GlpiTicketSyncOut)
+async def import_glpi_tickets_api(
+    body: GlpiTicketSyncIn | None = None,
+    user: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    payload = body or GlpiTicketSyncIn()
+    try:
+        result = await import_glpi_tickets(creds_from_row(row), created_by_id=user.id, limit=payload.limit)
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GlpiTicketSyncOut(
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        failed=result.failed,
+        message=result.message,
+        errors=result.errors,
+    )
+
+
+@router.post("/glpi/export-tickets", response_model=GlpiTicketSyncOut)
+async def export_glpi_tickets_api(
+    body: GlpiTicketSyncIn | None = None,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    payload = body or GlpiTicketSyncIn()
+    try:
+        result = await export_glpi_tickets(
+            db,
+            creds_from_row(row),
+            limit=payload.limit,
+            request_ids=payload.request_ids,
+        )
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GlpiTicketSyncOut(
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        failed=result.failed,
+        message=result.message,
+        errors=result.errors,
     )

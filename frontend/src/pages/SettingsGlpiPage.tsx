@@ -4,6 +4,7 @@ import { api, type ServiceRequestImportStatus, type ServiceRequestRow, type Ware
 import { useAuth } from '../AuthContext'
 import { IconPcs, IconTicket, IconWarehouse } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { GlpiApiPanel } from './GlpiApiPanel'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -274,6 +275,7 @@ export function SettingsGlpiPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-2">
+        <GlpiApiPanel />
         <section className="space-y-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-muted)] text-[var(--color-primary)]">

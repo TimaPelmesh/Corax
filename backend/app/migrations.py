@@ -557,6 +557,63 @@ def _migrate_zabbix_config(sync_conn) -> None:
         )
 
 
+def _migrate_glpi_config(sync_conn) -> None:
+    if "glpi_config" in _table_names(sync_conn):
+        return
+    if sync_conn.dialect.name == "sqlite":
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE glpi_config (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  enabled INTEGER NOT NULL DEFAULT 0,
+                  base_url VARCHAR(512) NOT NULL DEFAULT '',
+                  api_mode VARCHAR(16) NOT NULL DEFAULT 'v2',
+                  grant_type VARCHAR(32) NOT NULL DEFAULT 'password',
+                  client_id VARCHAR(255) NOT NULL DEFAULT '',
+                  client_secret VARCHAR(512) NOT NULL DEFAULT '',
+                  username VARCHAR(255) NOT NULL DEFAULT '',
+                  password VARCHAR(255) NOT NULL DEFAULT '',
+                  app_token VARCHAR(255) NOT NULL DEFAULT '',
+                  user_token VARCHAR(255) NOT NULL DEFAULT '',
+                  verify_tls INTEGER NOT NULL DEFAULT 1,
+                  last_test_at TIMESTAMP,
+                  last_test_ok INTEGER,
+                  last_test_message VARCHAR(512) NOT NULL DEFAULT '',
+                  last_version VARCHAR(64) NOT NULL DEFAULT '',
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        )
+    else:
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE glpi_config (
+                  id SERIAL PRIMARY KEY,
+                  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                  base_url VARCHAR(512) NOT NULL DEFAULT '',
+                  api_mode VARCHAR(16) NOT NULL DEFAULT 'v2',
+                  grant_type VARCHAR(32) NOT NULL DEFAULT 'password',
+                  client_id VARCHAR(255) NOT NULL DEFAULT '',
+                  client_secret VARCHAR(512) NOT NULL DEFAULT '',
+                  username VARCHAR(255) NOT NULL DEFAULT '',
+                  password VARCHAR(255) NOT NULL DEFAULT '',
+                  app_token VARCHAR(255) NOT NULL DEFAULT '',
+                  user_token VARCHAR(255) NOT NULL DEFAULT '',
+                  verify_tls BOOLEAN NOT NULL DEFAULT TRUE,
+                  last_test_at TIMESTAMPTZ,
+                  last_test_ok BOOLEAN,
+                  last_test_message VARCHAR(512) NOT NULL DEFAULT '',
+                  last_version VARCHAR(64) NOT NULL DEFAULT '',
+                  updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+            )
+        )
+
+
 def _migrate_notes_calendar_style(sync_conn) -> None:
     """Per-note calendar color + mark for planner days (no separate day table)."""
     if "notes" not in _table_names(sync_conn):
@@ -1621,6 +1678,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-07_ticket_handler_enable", _migrate_ticket_handler_enable_by_default),
     ("2026-09-16_users_token_version", _migrate_users_token_version),
     ("2026-09-24_agent_collect_policy", _migrate_agent_collect_policy),
+    ("2026-09-29_glpi_config", _migrate_glpi_config),
 ]
 
 

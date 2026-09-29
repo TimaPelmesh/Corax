@@ -838,6 +838,41 @@ export type ZabbixTestResult = {
   sample_problems?: string[]
 }
 
+export type GlpiConfig = {
+  enabled: boolean
+  base_url: string
+  api_mode: 'v2' | 'legacy' | string
+  grant_type: 'password' | 'client_credentials' | string
+  client_id: string
+  client_secret_set: boolean
+  username: string
+  password_set: boolean
+  app_token_set: boolean
+  user_token_set: boolean
+  verify_tls: boolean
+  last_test_at?: string | null
+  last_test_ok?: boolean | null
+  last_test_message?: string
+  last_version?: string
+}
+
+export type GlpiTestResult = {
+  ok: boolean
+  message: string
+  version?: string | null
+  api_mode?: string | null
+  tickets_visible?: number | null
+}
+
+export type GlpiTicketSyncResult = {
+  created: number
+  updated: number
+  skipped: number
+  failed: number
+  message: string
+  errors: string[]
+}
+
 export type ZabbixProblem = {
   eventid: string
   name: string
@@ -1785,6 +1820,38 @@ export const api = {
 
   zabbixTest: () =>
     request<ZabbixTestResult>(`${API_PREFIX}/settings/zabbix/test`, { method: 'POST' }),
+
+  glpiConfig: () => request<GlpiConfig>(`${API_PREFIX}/settings/glpi`),
+
+  updateGlpiConfig: (body: {
+    enabled?: boolean
+    base_url?: string
+    api_mode?: string
+    grant_type?: string
+    client_id?: string
+    client_secret?: string
+    username?: string
+    password?: string
+    app_token?: string
+    user_token?: string
+    verify_tls?: boolean
+  }) => request<GlpiConfig>(`${API_PREFIX}/settings/glpi`, { method: 'PUT', json: body }),
+
+  glpiTest: () => request<GlpiTestResult>(`${API_PREFIX}/settings/glpi/test`, { method: 'POST' }),
+
+  glpiImportTickets: (limit: number) =>
+    request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/import-tickets`, {
+      method: 'POST',
+      json: { limit },
+      timeout_ms: 180_000,
+    }),
+
+  glpiExportTickets: (limit: number) =>
+    request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-tickets`, {
+      method: 'POST',
+      json: { limit },
+      timeout_ms: 180_000,
+    }),
 
   zabbixOverview: () => request<ZabbixOverview>(`${API_PREFIX}/zabbix/overview`),
 

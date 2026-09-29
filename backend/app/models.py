@@ -582,6 +582,33 @@ class ZabbixConfig(Base):
     )
 
 
+class GlpiConfig(Base):
+    """Singleton GLPI API connection. Secrets stay on the server."""
+
+    __tablename__ = "glpi_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    base_url: Mapped[str] = mapped_column(String(512), default="")
+    # v2 = GLPI 11 high-level API (OAuth). legacy = apirest.php App-Token + User-Token.
+    api_mode: Mapped[str] = mapped_column(String(16), default="v2")
+    grant_type: Mapped[str] = mapped_column(String(32), default="password")
+    client_id: Mapped[str] = mapped_column(String(255), default="")
+    client_secret: Mapped[str] = mapped_column(String(512), default="")
+    username: Mapped[str] = mapped_column(String(255), default="")
+    password: Mapped[str] = mapped_column(String(255), default="")
+    app_token: Mapped[str] = mapped_column(String(255), default="")
+    user_token: Mapped[str] = mapped_column(String(255), default="")
+    verify_tls: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_test_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_test_message: Mapped[str] = mapped_column(String(512), default="")
+    last_version: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class WakeOnLanConfig(Base):
     """Panel WoL: off by default; only allowlisted computer IDs can be woken."""
 
