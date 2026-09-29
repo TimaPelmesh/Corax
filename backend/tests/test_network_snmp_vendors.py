@@ -74,3 +74,45 @@ def test_mikrotik_oid_selects_mndp_walks():
 def test_cisco_with_lldp_skips_mndp_walks():
     oids = extra_walk_oids_for("1.3.6.1.4.1.9.1.1745", "Cisco", neighbor_count=4)
     assert OID_MTXR_NEIGH_IP not in oids
+
+
+def test_qtech_oid_walks_ndp_without_vendor_name():
+    from app.network_snmp_vendors import OID_HW_NDP_DEV, enterprise_vendor
+
+    assert enterprise_vendor("1.3.6.1.4.1.27514.1.1") == "Qtech"
+    oids = extra_walk_oids_for("1.3.6.1.4.1.27514.1.1", None, neighbor_count=2)
+    assert OID_HW_NDP_DEV in oids
+
+
+def test_lldp_caps_and_med_attach_to_neighbor():
+    from app.network_snmp_vendors import apply_lldp_caps, apply_lldp_med, decode_lldp_caps
+
+    # bit2 bridge (0x20) + bit4 router (0x08)
+    assert decode_lldp_caps(bytes((0x28,))) == "bridge,router"
+    neighbors = [
+        {
+            "protocol": "lldp",
+            "remote_name": "sw-1",
+            "local_if_index": "5",
+            "remote_descr": None,
+            "remote_chassis": None,
+        }
+    ]
+    apply_lldp_caps(neighbors, {"0.5.1": bytes((0x20,))})
+    apply_lldp_med(
+        neighbors,
+        {"0.5.1": "SN-100"},
+        {"0.5.1": "Qtech"},
+        {"0.5.1": "QSW-4610"},
+        {"0.5.1": "7.2"},
+    )
+    assert "cap:bridge" in neighbors[0]["remote_descr"]
+    assert "QSW-4610" in neighbors[0]["remote_descr"]
+    assert "SN-100" in neighbors[0]["remote_descr"]
+
+
+def test_speed_bps_uses_high_speed_above_4g():
+    from app.network_snmp import speed_bps
+
+    assert speed_bps(4_294_967_295, 10000) == 10_000_000_000
+    assert speed_bps(1_000_000_000, 1000) == 1_000_000_000

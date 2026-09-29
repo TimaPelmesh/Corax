@@ -22,10 +22,17 @@ from app.network_snmp_vendors import (
     OID_IF_ALIAS,
     OID_LLDP_LOC_PORT_DESC,
     OID_LLDP_LOC_PORT_ID,
+    OID_LLDP_MED_FW,
+    OID_LLDP_MED_MFG,
+    OID_LLDP_MED_MODEL,
+    OID_LLDP_MED_SERIAL,
     OID_LLDP_REM_CHASSIS,
+    OID_LLDP_REM_SYS_CAP,
     apply_identity_scalars,
+    apply_lldp_caps,
     apply_lldp_chassis,
     apply_lldp_local_ports,
+    apply_lldp_med,
     extra_walk_oids_for,
     identity_oids_for,
     merge_neighbors,
@@ -63,6 +70,7 @@ OID_IF_OPER = "1.3.6.1.2.1.2.2.1.8"
 OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"
 OID_IF_PHYS = "1.3.6.1.2.1.2.2.1.6"
 OID_IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"
+OID_IF_HIGH_SPEED = "1.3.6.1.2.1.31.1.1.1.15"
 
 # LLDP remote systems (LLDP-MIB)
 OID_LLDP_REM_SYS_NAME = "1.0.8802.1.1.2.1.4.1.1.9"
@@ -173,6 +181,7 @@ class NetworkSnmpSnapshot:
     ip_forwarding: bool | None = None
     bridge_num_ports: int | None = None
     is_network_gear: bool = False
+    snmp_version: str | None = None
     interfaces: list[SnmpInterface] = field(default_factory=list)
     neighbors: list[SnmpNeighbor] = field(default_factory=list)
     fdb: list[SnmpFdbEntry] = field(default_factory=list)
@@ -332,6 +341,7 @@ async def probe_network_snmp(
     """Fast discovery probe: identity first, then forwarding/bridge fallback."""
     snap = await _probe_network_snmp_with(ip, V2C(community), timeout=timeout, port=port)
     if probe_has_signal(snap):
+        snap.snmp_version = "2c"
         return snap
     if allow_v1 and SnmpV1 is not None:
         try:
@@ -339,10 +349,28 @@ async def probe_network_snmp(
         except Exception:
             return snap
         if probe_has_signal(snap_v1):
+            snap_v1.snmp_version = "1"
             return snap_v1
         if snap_v1.error and not snap.error:
             return snap_v1
     return snap
+
+
+def speed_bps(if_speed: Any, high_mbps: Any) -> int | None:
+    """ifSpeed saturates at 2^32-1. ifHighSpeed is megabits and covers 10G+."""
+    speed: int | None
+    high: int | None
+    try:
+        speed = int(if_speed) if if_speed is not None else None
+    except (TypeError, ValueError):
+        speed = None
+    try:
+        high = int(high_mbps) if high_mbps is not None else None
+    except (TypeError, ValueError):
+        high = None
+    if high and high > 0 and (speed is None or speed <= 0 or speed >= 4_000_000_000):
+        return high * 1_000_000
+    return speed
 
 
 def probe_has_signal(snap: NetworkSnmpSnapshot) -> bool:
@@ -471,12 +499,19 @@ async def fetch_network_snmp(
     timeout: float = 5.0,
     port: int = 161,
 ) -> NetworkSnmpSnapshot:
-    """Deep poll: identity + IF-MIB + LLDP/CDP + bridge FDB."""
-    snap = await probe_network_snmp(ip, community=community, timeout=min(timeout, 2.5), port=port)
+    """Deep poll: identity + IF-MIB + LLDP/MED/CDP + vendor neighbor tables + bridge FDB."""
+    snap = await probe_network_snmp(
+        ip, community=community, timeout=min(timeout, 2.5), port=port, allow_v1=True
+    )
     if snap.error and not snap.sys_descr:
         return snap
 
-    client = Client(ip, V2C(community), port=port)
+    credentials: Any = V2C(community)
+    if snap.snmp_version == "1" and SnmpV1 is not None:
+        credentials = SnmpV1(community)
+    elif not snap.snmp_version:
+        snap.snmp_version = "2c"
+    client = Client(ip, credentials, port=port)
     walk_timeout = max(timeout * 2.5, 8.0)
 
     try:
@@ -510,13 +545,14 @@ async def fetch_network_snmp(
         except Exception:
             pass
 
-        if_descr, if_name, if_type, if_oper, if_speed, if_phys = await asyncio.gather(
+        if_descr, if_name, if_type, if_oper, if_speed, if_phys, if_high = await asyncio.gather(
             _walk_oid_map(client, OID_IF_DESCR, walk_timeout),
             _walk_oid_map(client, OID_IF_NAME, walk_timeout),
             _walk_oid_map(client, OID_IF_TYPE, walk_timeout),
             _walk_oid_map(client, OID_IF_OPER, walk_timeout),
             _walk_oid_map(client, OID_IF_SPEED, walk_timeout),
             _walk_oid_map(client, OID_IF_PHYS, walk_timeout),
+            _walk_oid_map(client, OID_IF_HIGH_SPEED, walk_timeout),
         )
         keys = sorted(
             set(if_descr) | set(if_name) | set(if_type) | set(if_oper),
@@ -531,10 +567,7 @@ async def fetch_network_snmp(
                 oper_raw = int(if_oper[key]) if key in if_oper and if_oper[key] is not None else None
             except (TypeError, ValueError):
                 oper_raw = None
-            try:
-                speed = int(if_speed[key]) if key in if_speed and if_speed[key] is not None else None
-            except (TypeError, ValueError):
-                speed = None
+            speed = speed_bps(if_speed.get(key), if_high.get(key))
             mac = normalize_mac(if_phys.get(key))
             name = pg_text(if_name.get(key), max_len=128)
             descr = pg_text(if_descr.get(key), max_len=255)
@@ -553,7 +586,11 @@ async def fetch_network_snmp(
         if_by_index = {i.if_index: i for i in snap.interfaces}
 
         # LLDP + locPort + chassis (IEEE 802.1AB)
-        lldp_name, lldp_port, lldp_pdesc, lldp_sdesc, lldp_man, lldp_ch, lldp_loc, lldp_ldesc, if_alias = await asyncio.gather(
+        (
+            lldp_name, lldp_port, lldp_pdesc, lldp_sdesc, lldp_man, lldp_ch,
+            lldp_loc, lldp_ldesc, if_alias, lldp_cap,
+            med_serial, med_mfg, med_model, med_fw,
+        ) = await asyncio.gather(
             _walk_oid_map(client, OID_LLDP_REM_SYS_NAME, walk_timeout),
             _walk_oid_map(client, OID_LLDP_REM_PORT_ID, walk_timeout),
             _walk_oid_map(client, OID_LLDP_REM_PORT_DESC, walk_timeout),
@@ -563,6 +600,11 @@ async def fetch_network_snmp(
             _walk_oid_map(client, OID_LLDP_LOC_PORT_ID, walk_timeout),
             _walk_oid_map(client, OID_LLDP_LOC_PORT_DESC, walk_timeout),
             _walk_oid_map(client, OID_IF_ALIAS, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_REM_SYS_CAP, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_MED_SERIAL, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_MED_MFG, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_MED_MODEL, walk_timeout),
+            _walk_oid_map(client, OID_LLDP_MED_FW, walk_timeout),
         )
         for iface in snap.interfaces:
             alias = pg_text(if_alias.get(iface.if_index), max_len=128)
@@ -647,6 +689,8 @@ async def fetch_network_snmp(
         raw_neighbors = [n.to_dict() for n in snap.neighbors] + extra_neighbors
         apply_lldp_local_ports(raw_neighbors, lldp_loc, lldp_ldesc, if_by_index)
         apply_lldp_chassis(raw_neighbors, lldp_ch)
+        apply_lldp_caps(raw_neighbors, lldp_cap)
+        apply_lldp_med(raw_neighbors, med_serial, med_mfg, med_model, med_fw)
         snap.neighbors = [SnmpNeighbor.from_dict(n) for n in merge_neighbors(raw_neighbors)]
 
         # Bridge FDB

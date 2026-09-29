@@ -106,6 +106,8 @@ async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
         extras["ip_forwarding"] = bool(snap.ip_forwarding)
     if getattr(snap, "bridge_num_ports", None) is not None:
         extras["bridge_num_ports"] = int(snap.bridge_num_ports)
+    if getattr(snap, "snmp_version", None):
+        extras["snmp_version"] = snap.snmp_version
     if_up = sum(1 for i in snap.interfaces if i.oper_status == "up")
     eth = sum(1 for i in snap.interfaces if (i.if_type or 0) in {6, 62, 69, 117, 55})
     wifi = sum(1 for i in snap.interfaces if (i.if_type or 0) in {71, 168, 169, 188})

@@ -23,9 +23,27 @@ from app.text_sanitize import pg_text
 
 # IEEE LLDP extras (beyond the core remSysName/port walks in network_snmp.py)
 OID_LLDP_REM_CHASSIS = "1.0.8802.1.1.2.1.4.1.1.5"
+OID_LLDP_REM_SYS_CAP = "1.0.8802.1.1.2.1.4.1.1.12"
 OID_LLDP_LOC_PORT_ID = "1.0.8802.1.1.2.1.3.7.1.3"
 OID_LLDP_LOC_PORT_DESC = "1.0.8802.1.1.2.1.3.7.1.4"
 OID_IF_ALIAS = "1.3.6.1.2.1.31.1.1.1.18"
+
+# LLDP-MED inventory (TIA-1057 / LLDP-EXT-MED-MIB), same index as lldpRemEntry
+OID_LLDP_MED_FW = "1.0.8802.1.1.2.1.5.4795.1.3.3.1.2"
+OID_LLDP_MED_SERIAL = "1.0.8802.1.1.2.1.5.4795.1.3.3.1.4"
+OID_LLDP_MED_MFG = "1.0.8802.1.1.2.1.5.4795.1.3.3.1.5"
+OID_LLDP_MED_MODEL = "1.0.8802.1.1.2.1.5.4795.1.3.3.1.6"
+
+_LLDP_CAP_NAMES = (
+    "other",
+    "repeater",
+    "bridge",
+    "wlan",
+    "router",
+    "telephone",
+    "docsis",
+    "station",
+)
 
 # Q-BRIDGE-MIB — VLAN-aware FDB (Cisco/HPE/Juniper/Eltex)
 OID_DOT1Q_FDB_PORT = "1.3.6.1.2.1.17.7.1.2.2.1.2"
@@ -340,6 +358,104 @@ def apply_lldp_local_ports(
                 n["local_if_index"] = real_if
 
 
+def _rem_local_port(key: str) -> str | None:
+    parts = [p for p in (key or "").split(".") if p]
+    if len(parts) >= 2:
+        return parts[1]
+    return parts[0] if parts else None
+
+
+def decode_lldp_caps(raw: Any) -> str | None:
+    """lldpRemSysCapEnabled BITS: bit 0 is the high bit of the first octet."""
+    data: bytes | None = None
+    if isinstance(raw, (bytes, bytearray)) and raw:
+        data = bytes(raw)
+    elif isinstance(raw, int) and raw >= 0:
+        data = raw.to_bytes(max(1, (raw.bit_length() + 7) // 8), "big")
+    elif isinstance(raw, str) and raw:
+        text = raw.strip()
+        if re.fullmatch(r"[0-9A-Fa-f]{2,16}", text):
+            try:
+                data = bytes.fromhex(text)
+            except ValueError:
+                data = None
+    if not data:
+        return None
+    names: list[str] = []
+    for bit, name in enumerate(_LLDP_CAP_NAMES):
+        octet = data[bit // 8] if bit // 8 < len(data) else 0
+        if octet & (0x80 >> (bit % 8)):
+            names.append(name)
+    return ",".join(names) or None
+
+
+def apply_lldp_caps(neighbors: list[dict[str, Any]], cap_map: dict[str, Any]) -> None:
+    by_port: dict[str, str] = {}
+    for key, raw in cap_map.items():
+        local = _rem_local_port(key)
+        label = decode_lldp_caps(raw)
+        if local and label:
+            by_port.setdefault(local, label)
+    if not by_port:
+        return
+    for n in neighbors:
+        if n.get("protocol") != "lldp":
+            continue
+        label = by_port.get(str(n.get("local_if_index") or ""))
+        if not label:
+            continue
+        descr = _txt(n.get("remote_descr"))
+        tag = f"cap:{label}"
+        if descr and tag not in descr:
+            n["remote_descr"] = f"{descr} · {tag}"[:255]
+        elif not descr:
+            n["remote_descr"] = tag
+
+
+def apply_lldp_med(
+    neighbors: list[dict[str, Any]],
+    serial_map: dict[str, Any],
+    mfg_map: dict[str, Any],
+    model_map: dict[str, Any],
+    fw_map: dict[str, Any],
+) -> None:
+    """Attach LLDP-MED inventory (model, vendor, firmware, serial) onto LLDP neighbors."""
+
+    def by_port(src: dict[str, Any]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for key, raw in src.items():
+            local = _rem_local_port(key)
+            text = _txt(raw)
+            if local and text:
+                out.setdefault(local, text)
+        return out
+
+    serials = by_port(serial_map)
+    mfgs = by_port(mfg_map)
+    models = by_port(model_map)
+    fws = by_port(fw_map)
+    if not (serials or mfgs or models or fws):
+        return
+    for n in neighbors:
+        if n.get("protocol") != "lldp":
+            continue
+        local = str(n.get("local_if_index") or "")
+        bits = [part for part in (mfgs.get(local), models.get(local), fws.get(local), serials.get(local)) if part]
+        if not bits:
+            continue
+        extra = " · ".join(bits)
+        descr = _txt(n.get("remote_descr"))
+        if descr and extra not in descr:
+            n["remote_descr"] = f"{descr} · {extra}"[:255]
+        elif not descr:
+            n["remote_descr"] = extra[:255]
+        chassis = serials.get(local)
+        if chassis and not n.get("remote_chassis"):
+            mac = normalize_mac(chassis)
+            if mac:
+                n["remote_chassis"] = mac
+
+
 def apply_lldp_chassis(neighbors: list[dict[str, Any]], chassis_map: dict[str, Any]) -> None:
     for n in neighbors:
         if n.get("protocol") != "lldp" or n.get("remote_chassis"):
@@ -389,7 +505,8 @@ def extra_walk_oids_for(
 ) -> tuple[str, ...]:
     """Pick vendor neighbor tables. Fallback set only when LLDP/CDP found nothing."""
     oid = (sys_object_id or "").strip().lstrip(".")
-    vendor_l = (vendor or "").lower()
+    resolved = (vendor or enterprise_vendor(sys_object_id) or "").strip()
+    vendor_l = resolved.lower()
     out: list[str] = []
 
     def add(*oids: str) -> None:
@@ -405,18 +522,32 @@ def extra_walk_oids_for(
     huawei = oid.startswith("1.3.6.1.4.1.2011") or "huawei" in vendor_l
     eltex = oid.startswith("1.3.6.1.4.1.35265") or "eltex" in vendor_l
     tplink = oid.startswith("1.3.6.1.4.1.11863") or "tp-link" in vendor_l or "tp_link" in vendor_l
+    dlink = oid.startswith("1.3.6.1.4.1.171") or "d-link" in vendor_l
+    zyxel = oid.startswith("1.3.6.1.4.1.890") or "zyxel" in vendor_l
+    netgear = oid.startswith("1.3.6.1.4.1.4526") or "netgear" in vendor_l
+    oem_ndp = any(
+        oid.startswith(prefix) or token in vendor_l
+        for prefix, token in (
+            ("1.3.6.1.4.1.27514", "qtech"),
+            ("1.3.6.1.4.1.3320", "bdcom"),
+            ("1.3.6.1.4.1.8886", "raisecom"),
+            ("1.3.6.1.4.1.5651", "maipu"),
+            ("1.3.6.1.4.1.6339", "dcn"),
+            ("1.3.6.1.4.1.40418", "snr"),
+        )
+    )
 
     if mikrotik:
         add(OID_MTXR_NEIGH_IP, OID_MTXR_NEIGH_MAC, OID_MTXR_NEIGH_PLAT, OID_MTXR_NEIGH_ID, OID_MTXR_NEIGH_IF)
-    if h3c or eltex:
+    if h3c or eltex or oem_ndp:
         add(OID_HH3C_NDP_DEV, OID_HH3C_NDP_PORT, OID_HH3C_NDP_ADDR, OID_HH3C_NDP_PLAT)
     if foundry:
         add(OID_FDP_ID, OID_FDP_PORT, OID_FDP_ADDR, OID_FDP_PLAT)
     if extreme:
         add(OID_EDP_NAME, OID_EDP_RIF)
-    if dell or eltex or tplink:
+    if dell or eltex or tplink or dlink or zyxel or netgear:
         add(OID_ISDP_ID, OID_ISDP_PORT, OID_ISDP_ADDR, OID_ISDP_PLAT, OID_RL_ISDP_ID, OID_RL_ISDP_PORT, OID_RL_ISDP_ADDR, OID_RL_ISDP_PLAT)
-    if huawei:
+    if huawei or oem_ndp:
         add(OID_HW_NDP_DEV, OID_HW_NDP_PORT, OID_HW_NDP_ADDR)
 
     if neighbor_count == 0 and not out:
@@ -424,7 +555,10 @@ def extra_walk_oids_for(
             OID_MTXR_NEIGH_IP, OID_MTXR_NEIGH_MAC, OID_MTXR_NEIGH_ID, OID_MTXR_NEIGH_PLAT, OID_MTXR_NEIGH_IF,
             OID_HH3C_NDP_DEV, OID_HH3C_NDP_PORT, OID_HH3C_NDP_ADDR, OID_HH3C_NDP_PLAT,
             OID_FDP_ID, OID_FDP_PORT, OID_FDP_ADDR,
+            OID_EDP_NAME, OID_EDP_RIF,
             OID_ISDP_ID, OID_ISDP_PORT, OID_ISDP_ADDR,
+            OID_RL_ISDP_ID, OID_RL_ISDP_PORT, OID_RL_ISDP_ADDR,
+            OID_HW_NDP_DEV, OID_HW_NDP_PORT, OID_HW_NDP_ADDR,
         )
     return tuple(out)
 
@@ -538,6 +672,12 @@ def enterprise_vendor(sys_object_id: str | None) -> str | None:
         ("1.3.6.1.4.1.4526.", "Netgear"),
         ("1.3.6.1.4.1.890.", "Zyxel"),
         ("1.3.6.1.4.1.35265.", "Eltex"),
+        ("1.3.6.1.4.1.27514.", "Qtech"),
+        ("1.3.6.1.4.1.3320.", "BDCOM"),
+        ("1.3.6.1.4.1.8886.", "Raisecom"),
+        ("1.3.6.1.4.1.5651.", "Maipu"),
+        ("1.3.6.1.4.1.6339.", "SNR"),
+        ("1.3.6.1.4.1.40418.", "SNR"),
         ("1.3.6.1.4.1.207.", "Allied Telesis"),
         ("1.3.6.1.4.1.4881.", "Ruijie"),
         ("1.3.6.1.4.1.17713.", "Cambium"),
