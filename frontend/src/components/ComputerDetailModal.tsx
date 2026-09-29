@@ -539,7 +539,7 @@ export function ComputerDetailModal({
                     type="button"
                     role="tab"
                     aria-selected={active}
-                    className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-semibold transition ${
+                    className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition ${
                       active
                         ? 'bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm ring-1 ring-[var(--color-border)]'
                         : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)]/60 hover:text-[var(--color-fg)]'
@@ -549,7 +549,7 @@ export function ComputerDetailModal({
                     {label}
                     {count != null ? (
                       <span
-                        className={`rounded-full px-1.5 text-[10px] font-semibold tabular-nums ${
+                        className={`rounded-full px-1.5 text-xs font-medium tabular-nums ${
                           active
                             ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
                             : 'bg-[var(--color-surface)] text-[var(--color-fg-subtle)]'
@@ -566,10 +566,10 @@ export function ComputerDetailModal({
             {cardTab === 'hardware' ? (
             <div className="app-scroll mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               <section className="flex min-w-0 flex-col">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <h3 className="shrink-0 text-sm font-medium text-[var(--color-fg)]">
                   {t('computerDetail.systemAndHardware')}
                 </h3>
-                <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs lg:grid-cols-4">
+                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 lg:grid-cols-4 [&_dd]:text-sm [&_dd]:leading-5 [&_dd]:text-[var(--color-fg)] [&_dt]:text-xs [&_dt]:leading-4 [&_dt]:text-[var(--color-fg-muted)]">
                   <div className="min-w-0 sm:col-span-2">
                     <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.os')}</dt>
                     <dd className="break-words text-[var(--color-fg)]">
@@ -711,7 +711,7 @@ export function ComputerDetailModal({
                 </dl>
                 <div className="mt-3 grid grid-cols-1 gap-3 border-t border-[var(--color-border)] pt-3 sm:grid-cols-2">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <div className="text-sm font-medium text-[var(--color-fg)]">
                       {t('computerDetail.windowsPatches')}
                       {agentExtras && agentExtras.patchTotal > agentExtras.patchIds.length
                         ? ` · ${agentExtras.patchTotal}`
@@ -722,7 +722,7 @@ export function ComputerDetailModal({
                         agentExtras.patchIds.map((kb) => (
                           <span
                             key={kb}
-                            className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--color-fg)]"
+                            className="rounded bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-mono text-xs text-[var(--color-fg)]"
                           >
                             {kb}
                           </span>
@@ -733,7 +733,7 @@ export function ComputerDetailModal({
                     </div>
                   </div>
                   <div className="min-w-0 sm:text-right">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <div className="text-sm font-medium text-[var(--color-fg)]">
                       {t('computerDetail.officeVersions')}
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-1 sm:justify-end">
@@ -741,7 +741,7 @@ export function ComputerDetailModal({
                         agentExtras.office.map((o, i) => (
                           <span
                             key={i}
-                            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[11px] text-[var(--color-fg)]"
+                            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-fg)]"
                             title={o.path ?? undefined}
                           >
                             {o.label}
@@ -757,7 +757,7 @@ export function ComputerDetailModal({
                   <div className="mt-2">
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,9rem)_1fr] sm:items-start">
                       <div className="min-w-0">
-                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                        <label className="text-xs text-[var(--color-fg-muted)]">
                           {t('computerDetail.locationRoom')}
                         </label>
                         <input
@@ -768,7 +768,7 @@ export function ComputerDetailModal({
                         />
                       </div>
                       <div className="min-w-0">
-                        <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                        <label className="text-xs text-[var(--color-fg-muted)]">
                           {t('computerDetail.note')}
                         </label>
                         <input
@@ -784,7 +784,7 @@ export function ComputerDetailModal({
               </section>
 
               <section className="flex min-w-0 flex-col">
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('computerDetail.disks')}</h3>
+                <h3 className="shrink-0 text-sm font-medium text-[var(--color-fg)]">{t('computerDetail.disks')}</h3>
                 {(detail.disks?.length ?? 0) > 0 ? (
                   <div className="mt-2 flex flex-wrap content-start gap-2">
                     {(detail.disks ?? []).map((d, i) => (
@@ -810,7 +810,7 @@ export function ComputerDetailModal({
                         </span>
                         {d.used_percent != null ? (
                           <span
-                            className={`ml-auto shrink-0 rounded-md px-2 py-0.5 font-mono text-xs font-medium sm:ml-0 ${
+                            className={`ml-auto shrink-0 rounded-md px-2 py-0.5 font-mono text-sm sm:ml-0 ${
                               d.used_percent >= 90
                                 ? 'bg-blue-100 text-blue-900'
                                 : d.used_percent >= 75
@@ -832,8 +832,8 @@ export function ComputerDetailModal({
                   </p>
                 )}
                 {agentExtras && agentExtras.physicalDisks.length > 0 ? (
-                  <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11px] leading-tight text-[var(--color-fg-muted)]">
-                    <span className="font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm leading-5 text-[var(--color-fg-muted)]">
+                    <span className="text-sm font-medium text-[var(--color-fg)]">
                       {t('computerDetail.media')}
                     </span>
                     {agentExtras.physicalDisks.map((pd, i) => {
@@ -870,7 +870,7 @@ export function ComputerDetailModal({
                   agentExtras.localUsersEnabled != null ||
                   agentExtras.expiringCerts.length) ? (
                   <div className="mt-4 space-y-2 border-t border-[var(--color-border)] pt-3">
-                    <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <div className="text-sm font-medium text-[var(--color-fg)]">
                       {t('computerDetail.fullAudit')}
                     </div>
                     {agentExtras.monitors.length ? (
@@ -882,10 +882,10 @@ export function ComputerDetailModal({
                     {agentExtras.ramModules.length ? (
                       <div className="text-sm">
                         <span className="text-[var(--color-fg-muted)]">{t('computerDetail.ramModules')}: </span>
-                        <span className="font-mono text-xs text-[var(--color-fg)]">{agentExtras.ramModules.join(' · ')}</span>
+                        <span className="font-mono text-sm text-[var(--color-fg)]">{agentExtras.ramModules.join(' · ')}</span>
                       </div>
                     ) : null}
-                    <div className="flex flex-wrap gap-2 text-xs">
+                    <div className="flex flex-wrap gap-2 text-sm">
                       {agentExtras.listeningPortsCount != null ? (
                         <span className="rounded-md bg-[var(--color-surface-muted)] px-2 py-0.5 text-[var(--color-fg)]">
                           {t('computerDetail.listeningPorts', { n: agentExtras.listeningPortsCount })}
@@ -945,7 +945,7 @@ export function ComputerDetailModal({
               <section
                 className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${cardTab === 'software' ? 'flex' : 'hidden'}`}
               >
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <h3 className="shrink-0 text-sm font-medium text-[var(--color-fg)]">
                   {t('computerDetail.installedSoftware')}
                 </h3>
                 <input
@@ -978,7 +978,7 @@ export function ComputerDetailModal({
                       >
                         <span className="break-words text-[var(--color-fg)]">{s.name}</span>
                         {s.version && (
-                          <span className="ml-2 font-mono text-[13px] text-[var(--color-fg-muted)]">{s.version}</span>
+                          <span className="ml-2 font-mono text-sm text-[var(--color-fg-muted)]">{s.version}</span>
                         )}
                       </li>
                     ))
@@ -989,12 +989,12 @@ export function ComputerDetailModal({
               <section
                 className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${cardTab === 'peripherals' ? 'flex' : 'hidden'}`}
               >
-                <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <h3 className="shrink-0 text-sm font-medium text-[var(--color-fg)]">
                   {t('computerDetail.peripherals')}
                 </h3>
-                <ul className="mt-1 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-1.5 text-sm">
+                <ul className="mt-2 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] text-sm">
                   {!peripheralGroups.length ? (
-                    <li className="px-2 py-4 text-[var(--color-fg-muted)]">
+                    <li className="px-3 py-4 text-sm text-[var(--color-fg-muted)]">
                       {t('computerDetail.noPeripheralData')}
                     </li>
                   ) : (
@@ -1002,12 +1002,14 @@ export function ComputerDetailModal({
                       g.items.map((p, i) => (
                         <li
                           key={`${p.kind}-${p.name}-${i}`}
-                          className="rounded-lg border border-zinc-100/90 bg-[var(--color-surface)] px-2 py-1.5"
+                          className="border-b border-[var(--color-border)] px-2.5 py-1.5 last:border-0"
                         >
-                          <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
-                            {t(`computerDetail.kinds.${g.kind as 'keyboard' | 'mouse' | 'monitor' | 'camera' | 'audio' | 'printer' | 'biometric' | 'bluetooth' | 'touchpad' | 'net'}`)}
+                          <div className="flex items-baseline gap-3">
+                            <span className="w-28 shrink-0 text-xs text-[var(--color-fg-muted)]">
+                              {t(`computerDetail.kinds.${g.kind as 'keyboard' | 'mouse' | 'monitor' | 'camera' | 'audio' | 'printer' | 'biometric' | 'bluetooth' | 'touchpad' | 'net'}`)}
+                            </span>
+                            <span className="min-w-0 break-words text-sm text-[var(--color-fg)]">{p.name}</span>
                           </div>
-                          <div className="break-words text-xs text-[var(--color-fg)]">{p.name}</div>
                         </li>
                       )),
                     )
@@ -1049,7 +1051,7 @@ export function ComputerDetailModal({
                   </span>
                 )}
                 {pingResult?.ip_address ? (
-                  <span className="font-mono text-xs text-[var(--color-fg-muted)]">{pingResult.ip_address}</span>
+                  <span className="font-mono text-sm text-[var(--color-fg-muted)]">{pingResult.ip_address}</span>
                 ) : null}
                 {user?.is_superuser || user?.role === 'editor' ? (
                   <button

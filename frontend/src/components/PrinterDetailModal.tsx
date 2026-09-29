@@ -6,7 +6,7 @@ import { useAuth } from '../AuthContext'
 import { useConfirmDialog } from './ConfirmDialog'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
-import { IconClose, IconPencil, IconPrinter } from './icons'
+import { IconClose, IconPencil } from './icons'
 
 function fmtWhen(iso: string | null | undefined, locale: 'ru' | 'en') {
   if (!iso) return '—'
@@ -88,34 +88,23 @@ function SupplyCard({ s, colored }: { s: PrinterSupply; colored: boolean }) {
   const low = s.level_percent != null && s.level_percent <= 15
   const tone = colored
     ? supplyTone(s.name)
-    : { dot: 'bg-slate-300', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400', text: 'text-[var(--color-fg-muted)]' }
+    : { dot: 'bg-slate-300', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400', text: 'text-[var(--color-fg)]' }
   return (
-    <div
-      className={`rounded-xl border px-3 py-2.5 ${
-        low && colored ? 'border-amber-200 bg-amber-50/60' : 'border-[var(--color-border)] bg-[var(--color-surface)]'
-      }`}
-    >
-      <div className="flex items-start gap-2">
-        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ring-1 ring-black/10 ${tone.dot}`} />
-        <div className="min-w-0 flex-1">
-          <div className={`break-words text-sm font-medium leading-snug ${tone.text}`}>{s.name}</div>
-          <div className="mt-1 flex items-center justify-between gap-2 text-xs text-[var(--color-fg-muted)]">
-            <span className="font-mono tabular-nums text-[var(--color-fg)]">
-              {s.level_percent != null ? `${s.level_percent}%` : t('printerDetail.noData')}
-            </span>
-            {s.max_capacity != null && s.level_raw != null ? (
-              <span className="font-mono tabular-nums text-[var(--color-fg-subtle)]">
-                {s.level_raw}/{s.max_capacity}
-              </span>
-            ) : null}
-          </div>
-          <div className={`mt-2 h-2 w-full overflow-hidden rounded-full ${tone.track}`}>
-            <div
-              className={`h-full rounded-full ${low && colored ? 'bg-amber-500' : tone.fill}`}
-              style={{ width: `${Math.max(4, Math.min(100, s.level_percent ?? 0))}%` }}
-            />
-          </div>
-        </div>
+    <div className="min-w-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
+          <span className={`truncate text-sm ${tone.text}`}>{s.name}</span>
+        </span>
+        <span className="shrink-0 text-sm tabular-nums text-[var(--color-fg-muted)]">
+          {s.level_percent != null ? `${s.level_percent}%` : t('printerDetail.noData')}
+        </span>
+      </div>
+      <div className={`mt-1 h-1 w-full overflow-hidden rounded-full ${tone.track}`}>
+        <div
+          className={`h-full rounded-full ${low && colored ? 'bg-amber-500' : tone.fill}`}
+          style={{ width: `${Math.max(4, Math.min(100, s.level_percent ?? 0))}%` }}
+        />
       </div>
     </div>
   )
@@ -265,223 +254,178 @@ export function PrinterDetailModal({
       onClick={onClose}
     >
       <div
-        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-y-auto overscroll-contain rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-none ring-0 sm:max-h-[min(96vh,calc(100vh-0.5rem))] sm:max-w-[min(1100px,calc(100vw-1rem))] sm:rounded-2xl sm:border sm:border-[var(--color-border)] sm:p-6 sm:pt-6 sm:shadow-2xl sm:shadow-slate-900/15 sm:ring-1 sm:ring-white/40 lg:p-8"
+        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] shadow-none sm:max-h-[min(92dvh,720px)] sm:max-w-[min(920px,calc(100vw-1.5rem))] sm:rounded-xl sm:border sm:border-[var(--color-border)] sm:p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-20 -mx-4 flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-border)]/70 bg-[var(--color-surface)]/95 px-4 pb-3 pt-1 backdrop-blur-md sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pb-0 sm:pt-0 sm:backdrop-blur-none">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="page-hero-icon mt-0.5 shrink-0">
-              <IconPrinter className="h-6 w-6" />
-            </div>
-            <div className="min-w-0 flex-1 pr-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  {editingName && canEdit ? (
-                    <input
-                      className="app-input !min-h-[2.5rem] w-full text-base font-semibold"
-                      value={nameDraft}
-                      autoFocus
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="min-w-0 flex-1">
+                {editingName && canEdit ? (
+                  <input
+                    className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm font-medium text-[var(--color-fg)]"
+                    value={nameDraft}
+                    autoFocus
+                    disabled={saving}
+                    aria-label={t('printerDetail.coraxName')}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void saveNameOnly()
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault()
+                        setNameDraft(row.name ?? '')
+                        setEditingName(false)
+                      }
+                    }}
+                  />
+                ) : (
+                  <h2 className="truncate text-base font-semibold text-[var(--color-fg)]">{title}</h2>
+                )}
+              </div>
+              {canEdit ? (
+                editingName ? (
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="app-btn app-btn-primary !min-h-0 !px-2.5 !py-1 text-sm"
+                      disabled={saving || !nameDraft.trim()}
+                      onClick={() => void saveNameOnly()}
+                    >
+                      {saving ? '…' : t('common.save')}
+                    </button>
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1 text-sm"
                       disabled={saving}
-                      aria-label={t('printerDetail.coraxName')}
-                      onChange={(e) => setNameDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          void saveNameOnly()
-                        }
-                        if (e.key === 'Escape') {
-                          e.preventDefault()
-                          setNameDraft(row.name ?? '')
-                          setEditingName(false)
-                        }
+                      onClick={() => {
+                        setNameDraft(row.name ?? '')
+                        setEditingName(false)
                       }}
-                    />
-                  ) : (
-                    <h2 className="break-words text-xl font-semibold leading-snug text-[var(--color-fg)]">{title}</h2>
-                  )}
-                </div>
-                {canEdit ? (
-                  <div className="flex w-[9.5rem] shrink-0 items-center justify-end gap-1.5">
-                    {editingName ? (
-                      <>
-                        <button
-                          type="button"
-                          className="app-btn app-btn-primary !min-h-0 !px-2.5 !py-1.5 text-xs"
-                          disabled={saving || !nameDraft.trim()}
-                          onClick={() => void saveNameOnly()}
-                        >
-                          {saving ? '…' : t('common.save')}
-                        </button>
-                        <button
-                          type="button"
-                          className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 text-xs"
-                          disabled={saving}
-                          onClick={() => {
-                            setNameDraft(row.name ?? '')
-                            setEditingName(false)
-                          }}
-                        >
-                          {t('common.cancel')}
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        className="rounded-md p-1.5 text-[var(--color-fg-subtle)] transition hover:bg-blue-50 hover:text-blue-700"
-                        title={t('printers.editName')}
-                        aria-label={t('printers.editName')}
-                        onClick={() => {
-                          setNameDraft(row.name?.trim() || title)
-                          setEditingName(true)
-                        }}
-                      >
-                        <IconPencil className="h-4 w-4" />
-                      </button>
-                    )}
+                    >
+                      {t('common.cancel')}
+                    </button>
                   </div>
-                ) : null}
-              </div>
-              {row.snmp_model?.trim() && row.snmp_model.trim() !== (row.name?.trim() || '') ? (
-                <p className="mt-0.5 break-words text-sm text-[var(--color-fg-muted)]">({row.snmp_model.trim()})</p>
+                ) : (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
+                    title={t('printers.editName')}
+                    aria-label={t('printers.editName')}
+                    onClick={() => {
+                      setNameDraft(row.name?.trim() || title)
+                      setEditingName(true)
+                    }}
+                  >
+                    <IconPencil className="h-4 w-4" />
+                  </button>
+                )
               ) : null}
-              <p className="mt-1 break-words text-sm text-[var(--color-fg-muted)]">
-                {row.ip_address ?? t('printerDetail.noIp')}
-                {row.location ? ` · ${row.location}` : ''}
-                {row.source ? ` · ${t('printerDetail.source', { source: row.source })}` : ''}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {row.printer_kind === 'label' ? (
-                  <span className="rounded-md bg-sky-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800 ring-1 ring-sky-400/40 dark:text-sky-200">
-                    {t('printers.kindLabel')}
-                  </span>
-                ) : null}
-                <span className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${pollBadge}`}>
-                  {row.poll_status === 'online'
-                    ? t('printerDetail.status.online')
-                    : row.poll_status === 'offline'
-                      ? t('printerDetail.status.offline')
-                      : 'unknown'}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {row.printer_kind && row.printer_kind !== 'unknown' ? (
+                <span className="rounded-md bg-[var(--color-surface-muted)] px-1.5 py-0.5 text-xs text-[var(--color-fg)]">
+                  {row.printer_kind === 'label'
+                    ? t('printers.kindLabel')
+                    : row.printer_kind === 'mfp'
+                      ? t('printers.kindMfp')
+                      : row.printer_kind === 'inkjet'
+                        ? t('printers.kindInkjet')
+                        : row.printer_kind === 'laser'
+                          ? t('printers.kindLaser')
+                          : row.printer_kind}
                 </span>
-                <span
-                  className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${snmpBadge}`}
-                  title={row.snmp_error || undefined}
-                >
-                  SNMP{' '}
-                  {row.snmp_status === 'ok'
-                    ? t('printerDetail.status.ok')
-                    : row.snmp_status === 'error'
-                      ? t('printerDetail.status.error')
-                      : t('printerDetail.status.unknown')}
-                </span>
-              </div>
+              ) : null}
+              <span className={`rounded-md px-1.5 py-0.5 text-xs ring-1 ${pollBadge}`}>
+                {row.poll_status === 'online'
+                  ? t('printerDetail.status.online')
+                  : row.poll_status === 'offline'
+                    ? t('printerDetail.status.offline')
+                    : 'unknown'}
+              </span>
+              <span className={`rounded-md px-1.5 py-0.5 text-xs ring-1 ${snmpBadge}`} title={row.snmp_error || undefined}>
+                SNMP{' '}
+                {row.snmp_status === 'ok'
+                  ? t('printerDetail.status.ok')
+                  : row.snmp_status === 'error'
+                    ? t('printerDetail.status.error')
+                    : t('printerDetail.status.unknown')}
+              </span>
+              {row.source ? (
+                <span className="text-xs text-[var(--color-fg-muted)]">{t('printerDetail.source', { source: row.source })}</span>
+              ) : null}
             </div>
           </div>
           <button
             type="button"
-            className="group shrink-0 rounded-xl border-2 border-slate-300 bg-[var(--color-surface)] p-2.5 text-[var(--color-fg-muted)] shadow-md shadow-slate-900/10 ring-2 ring-slate-200/80 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 hover:ring-blue-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            className="shrink-0 rounded-lg border border-[var(--color-border)] p-1.5 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
             onClick={onClose}
             aria-label={t('printerDetail.close')}
           >
-            <IconClose className="h-6 w-6" />
+            <IconClose className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="mt-5 grid shrink-0 grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
-          <section className="flex min-w-0 flex-col">
-            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
-              {t('printerDetail.device')}
-            </h3>
-            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 sm:gap-x-4 sm:gap-y-3">
-              <div className="min-w-0 sm:col-span-2">
-                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.coraxName')}</dt>
-                <dd className="group/corax flex items-start gap-1.5">
-                  <span className="min-w-0 break-words font-medium text-[var(--color-fg)]">{row.name?.trim() || '—'}</span>
-                  {canEdit && !editingName ? (
-                    <button
-                      type="button"
-                      className="mt-0.5 shrink-0 rounded-md p-1 text-[var(--color-fg-subtle)] opacity-60 transition hover:bg-blue-50 hover:text-blue-700 hover:opacity-100 group-hover/corax:opacity-100"
-                      title={t('printers.editName')}
-                      aria-label={t('printers.editName')}
-                      onClick={() => {
-                        setNameDraft(row.name?.trim() || title)
-                        setEditingName(true)
-                      }}
-                    >
-                      <IconPencil className="h-3.5 w-3.5" />
-                    </button>
-                  ) : null}
-                </dd>
+        <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-2">
+          <section className="app-scroll flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto">
+            <h3 className="text-sm font-medium text-[var(--color-fg)]">{t('printerDetail.device')}</h3>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 [&_dd]:break-words [&_dd]:text-sm [&_dd]:leading-5 [&_dd]:text-[var(--color-fg)] [&_dt]:text-xs [&_dt]:leading-4 [&_dt]:text-[var(--color-fg-muted)]">
+              {row.snmp_model?.trim() && row.snmp_model.trim() !== (row.name?.trim() || '') ? (
+                <div className="min-w-0 col-span-2">
+                  <dt>{t('printerDetail.snmpModel')}</dt>
+                  <dd title={row.snmp_model.trim()}>{row.snmp_model.trim()}</dd>
+                </div>
+              ) : null}
+              <div className="min-w-0">
+                <dt>{t('printerDetail.ip')}</dt>
+                <dd className="font-mono" title={row.ip_address ?? undefined}>{row.ip_address ?? '—'}</dd>
               </div>
-              <div className="min-w-0 sm:col-span-2">
-                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.snmpModel')}</dt>
-                <dd className="break-words text-[var(--color-fg)]">{row.snmp_model?.trim() || '—'}</dd>
+              <div className="min-w-0">
+                <dt>{t('printerDetail.pages')}</dt>
+                <dd className="tabular-nums">
+                  {row.page_count != null ? row.page_count.toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU') : '—'}
+                </dd>
               </div>
               {row.serial_number ? (
                 <div className="min-w-0">
-                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.serial')}</dt>
-                  <dd className="font-mono text-[var(--color-fg)]">{row.serial_number}</dd>
+                  <dt>{t('printerDetail.serial')}</dt>
+                  <dd className="font-mono" title={row.serial_number}>{row.serial_number}</dd>
                 </div>
               ) : null}
               {row.snmp_sys_name ? (
                 <div className="min-w-0">
-                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.snmpSysName')}</dt>
-                  <dd className="break-words font-mono text-[var(--color-fg)]">{row.snmp_sys_name}</dd>
-                </div>
-              ) : null}
-              {row.printer_kind && row.printer_kind !== 'unknown' ? (
-                <div className="min-w-0">
-                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.kind')}</dt>
-                  <dd className="text-[var(--color-fg)]">
-                    {row.printer_kind === 'label'
-                      ? t('printers.kindLabel')
-                      : row.printer_kind === 'mfp'
-                        ? t('printers.kindMfp')
-                        : row.printer_kind === 'inkjet'
-                          ? t('printers.kindInkjet')
-                          : row.printer_kind === 'laser'
-                            ? t('printers.kindLaser')
-                            : row.printer_kind}
-                  </dd>
+                  <dt>{t('printerDetail.snmpSysName')}</dt>
+                  <dd className="font-mono" title={row.snmp_sys_name}>{row.snmp_sys_name}</dd>
                 </div>
               ) : null}
               <div className="min-w-0">
-                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.ip')}</dt>
-                <dd className="font-mono text-[var(--color-fg)]">{row.ip_address ?? '—'}</dd>
+                <dt>{t('printerDetail.lastPoll')}</dt>
+                <dd>{fmtWhen(row.last_poll_at, locale)}</dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.pages')}</dt>
-                <dd className="font-mono text-lg font-semibold tabular-nums text-[var(--color-fg)]">
-                  {row.page_count != null
-                    ? row.page_count.toLocaleString(locale === 'en' ? 'en-US' : 'ru-RU')
-                    : '—'}
-                </dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.lastPoll')}</dt>
-                <dd className="text-[var(--color-fg)]">{fmtWhen(row.last_poll_at, locale)}</dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.lastSnmp')}</dt>
-                <dd className="text-[var(--color-fg)]">{fmtWhen(row.last_snmp_at, locale)}</dd>
+                <dt>{t('printerDetail.lastSnmp')}</dt>
+                <dd>{fmtWhen(row.last_snmp_at, locale)}</dd>
               </div>
               {row.driver_name ? (
-                <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.driver')}</dt>
-                  <dd className="break-words text-[var(--color-fg)]">{row.driver_name}</dd>
+                <div className="min-w-0 col-span-2">
+                  <dt>{t('printerDetail.driver')}</dt>
+                  <dd title={row.driver_name}>{row.driver_name}</dd>
                 </div>
               ) : null}
               {row.port_name ? (
-                <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.port')}</dt>
-                  <dd className="break-words font-mono text-[var(--color-fg)]">{row.port_name}</dd>
+                <div className="min-w-0 col-span-2">
+                  <dt>{t('printerDetail.port')}</dt>
+                  <dd className="font-mono" title={row.port_name}>{row.port_name}</dd>
                 </div>
               ) : null}
               {row.computer_hostname || row.computer_id ? (
-                <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.linkedComputer')}</dt>
-                  <dd className="text-[var(--color-fg)]">
+                <div className="min-w-0 col-span-2">
+                  <dt>{t('printerDetail.linkedComputer')}</dt>
+                  <dd>
                     {row.computer_id ? (
-                      <Link className="text-blue-700 underline" to="/computers">
+                      <Link className="text-[var(--color-primary)] underline" to="/computers">
                         {row.computer_hostname || `ID ${row.computer_id}`}
                       </Link>
                     ) : (
@@ -490,111 +434,102 @@ export function PrinterDetailModal({
                   </dd>
                 </div>
               ) : null}
+              {!canEdit && row.location ? (
+                <div className="min-w-0 col-span-2">
+                  <dt>{t('printerDetail.location')}</dt>
+                  <dd title={row.location}>{row.location}</dd>
+                </div>
+              ) : null}
+              {!canEdit && row.notes ? (
+                <div className="min-w-0 col-span-2">
+                  <dt>{t('printerDetail.notes')}</dt>
+                  <dd className="whitespace-pre-wrap" title={row.notes}>{row.notes}</dd>
+                </div>
+              ) : null}
               {row.snmp_error ? (
-                <div className="min-w-0 sm:col-span-2">
-                  <dt className="text-[var(--color-fg-muted)]">{t('printerDetail.snmpError')}</dt>
-                  <dd className="break-words rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">
-                    {row.snmp_error}
-                  </dd>
+                <div className="min-w-0 col-span-2">
+                  <dt>{t('printerDetail.snmpError')}</dt>
+                  <dd className="break-words text-rose-700" title={row.snmp_error}>{row.snmp_error}</dd>
                 </div>
               ) : null}
             </dl>
 
             {canEdit ? (
-              <div className="mt-5 space-y-3 border-t border-[var(--color-border)] pt-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
-                  {t('printerDetail.edit')}
-                </h3>
-                <label className="block text-sm">
-                  <span className="app-label">{t('printerDetail.location')}</span>
+              <div className="grid grid-cols-1 gap-2 border-t border-[var(--color-border)] pt-3 sm:grid-cols-2">
+                <label className="block min-w-0">
+                  <span className="text-xs text-[var(--color-fg-muted)]">{t('printerDetail.location')}</span>
                   <input
-                    className="app-input"
+                    className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)]"
                     value={locationDraft}
                     onChange={(e) => setLocationDraft(e.target.value)}
                     placeholder={t('printerDetail.locationPlaceholder')}
                   />
                 </label>
-                <label className="block text-sm">
-                  <span className="app-label">{t('printerDetail.notes')}</span>
-                  <textarea
-                    className="app-input min-h-[5rem]"
+                <label className="block min-w-0">
+                  <span className="text-xs text-[var(--color-fg-muted)]">{t('printerDetail.notes')}</span>
+                  <input
+                    className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-fg)]"
                     value={notesDraft}
                     onChange={(e) => setNotesDraft(e.target.value)}
                     placeholder={t('printerDetail.notesPlaceholder')}
                   />
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="app-btn app-btn-primary"
-                    disabled={saving}
-                    onClick={() => void saveMeta()}
-                  >
+                <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+                  <button type="button" className="app-btn app-btn-primary !min-h-0 !px-3 !py-1.5 text-sm" disabled={saving} onClick={() => void saveMeta()}>
                     {saving ? t('printerDetail.saving') : t('common.save')}
                   </button>
                   <button
                     type="button"
-                    className="app-btn app-btn-secondary"
+                    className="app-btn app-btn-secondary !min-h-0 !px-3 !py-1.5 text-sm"
                     disabled={polling || !row.ip_address}
                     onClick={() => void pollNow()}
                   >
                     {polling ? t('printerDetail.polling') : t('printerDetail.pollNow')}
                   </button>
+                  <button
+                    type="button"
+                    className="app-btn app-btn-danger !min-h-0 !px-3 !py-1.5 text-sm"
+                    disabled={deleting}
+                    onClick={() => {
+                      if (!row) return
+                      void (async () => {
+                        const ok = await ask({
+                          title: t('common.delete'),
+                          body: t('printers.deleteOne'),
+                          confirmLabel: t('common.delete'),
+                          tone: 'danger',
+                        })
+                        if (!ok) return
+                        setDeleting(true)
+                        try {
+                          await api.deletePrinter(row.id)
+                          onDeleted?.(row.id)
+                          onClose()
+                        } catch (e: unknown) {
+                          toast.error(e instanceof Error ? e.message : t('printers.deleteFailed'))
+                        } finally {
+                          setDeleting(false)
+                        }
+                      })()
+                    }}
+                  >
+                    {deleting ? t('common.loading') : t('common.delete')}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="app-btn app-btn-danger"
-                  disabled={deleting}
-                  onClick={() => {
-                    if (!row) return
-                    void (async () => {
-                      const ok = await ask({
-                        title: t('common.delete'),
-                        body: t('printers.deleteOne'),
-                        confirmLabel: t('common.delete'),
-                        tone: 'danger',
-                      })
-                      if (!ok) return
-                      setDeleting(true)
-                      try {
-                        await api.deletePrinter(row.id)
-                        onDeleted?.(row.id)
-                        onClose()
-                      } catch (e: unknown) {
-                        toast.error(e instanceof Error ? e.message : t('printers.deleteFailed'))
-                      } finally {
-                        setDeleting(false)
-                      }
-                    })()
-                  }}
-                >
-                  {deleting ? t('common.loading') : t('common.delete')}
-                </button>
-              </div>
-            ) : row.notes ? (
-              <div className="mt-5 border-t border-[var(--color-border)] pt-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">{t('printerDetail.notes')}</h3>
-                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--color-fg)]">{row.notes}</p>
               </div>
             ) : null}
           </section>
 
-          <section className="flex min-w-0 flex-col">
-            <h3 className="shrink-0 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
-              {t('printerDetail.supplies')}
-            </h3>
+          <section className="app-scroll flex min-h-0 min-w-0 flex-col overflow-y-auto">
+            <h3 className="text-sm font-medium text-[var(--color-fg)]">{t('printerDetail.supplies')}</h3>
             {(row.supplies?.length ?? 0) === 0 ? (
-              <p className="mt-3 text-sm text-[var(--color-fg-muted)]">
-                {t('printerDetail.noSupplies')}
-              </p>
+              <p className="mt-2 text-sm text-[var(--color-fg-muted)]">{t('printerDetail.noSupplies')}</p>
             ) : (
-              <div className="mt-3 space-y-4">
+              <div className="mt-2 min-h-0 space-y-3 overflow-hidden">
                 {supplies.toners.length > 0 ? (
                   <div>
-                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                      {t('printerDetail.toner')}
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-1">
+                    <div className="mb-1.5 text-xs text-[var(--color-fg-muted)]">{t('printerDetail.toner')}</div>
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
                       {supplies.toners.map((s) => (
                         <SupplyCard key={s.name} s={s} colored />
                       ))}
@@ -603,10 +538,8 @@ export function PrinterDetailModal({
                 ) : null}
                 {supplies.service.length > 0 ? (
                   <div>
-                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
-                      {t('printerDetail.service')}
-                    </div>
-                    <div className="grid gap-2">
+                    <div className="mb-1.5 text-xs text-[var(--color-fg-muted)]">{t('printerDetail.service')}</div>
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
                       {supplies.service.map((s) => (
                         <SupplyCard key={s.name} s={s} colored={false} />
                       ))}
@@ -615,16 +548,6 @@ export function PrinterDetailModal({
                 ) : null}
               </div>
             )}
-
-            <div className="mt-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 text-xs text-[var(--color-fg-muted)]">
-              <div className="font-semibold text-[var(--color-fg)]">{t('printerDetail.technical')}</div>
-              <div className="mt-1 grid gap-1 font-mono">
-                <div>id: {row.id}</div>
-                <div>{t('printerDetail.created', { date: fmtWhen(row.created_at, locale) })}</div>
-                <div>{t('printerDetail.updated', { date: fmtWhen(row.updated_at, locale) })}</div>
-                <div>{t('printerDetail.seen', { date: fmtWhen(row.last_seen_at, locale) })}</div>
-              </div>
-            </div>
           </section>
         </div>
 
