@@ -274,8 +274,9 @@ export function SettingsGlpiPage() {
         subtitle={t('pages.glpiSubtitle')}
       />
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="flex flex-col gap-4">
         <GlpiApiPanel />
+        <div className="grid gap-4 xl:grid-cols-2">
         <section className="space-y-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-muted)] text-[var(--color-primary)]">
@@ -563,6 +564,7 @@ export function SettingsGlpiPage() {
             </div>
           </div>
         </section>
+        </div>
       </div>
     </div>
   )

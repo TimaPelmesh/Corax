@@ -102,12 +102,35 @@ class GlpiPushResult:
 
 
 @dataclass(frozen=True)
+class GlpiIdentity:
+    """Публичные поля сессии. Секреты и токены сюда не попадают."""
+
+    user_id: int | None = None
+    username: str | None = None
+    display_name: str | None = None
+    profile: str | None = None
+    entity: str | None = None
+
+
+@dataclass(frozen=True)
 class GlpiProbeResult:
     ok: bool
     message: str
     version: str | None
     api_mode: str
     tickets_visible: int
+    identity: GlpiIdentity | None = None
+
+
+@dataclass(frozen=True)
+class GlpiTestTicketResult:
+    ok: bool
+    message: str
+    glpi_id: int | None = None
+    url: str | None = None
+    identity: GlpiIdentity | None = None
+    version: str | None = None
+    api_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -465,14 +488,54 @@ def parse_ticket(raw: object, *, base_url: str) -> GlpiTicket | None:
 
 def probe_glpi(creds: GlpiCredentials, *, transport: httpx.BaseTransport | None = None) -> GlpiProbeResult:
     with _Session(creds, transport) as session:
+        identity = session.read_identity()
         sample = session.list_tickets(1)
         version = session.version or None
+        who = _identity_label(identity, creds)
         return GlpiProbeResult(
             ok=True,
-            message="Соединение с GLPI установлено",
+            message=f"Соединение с GLPI установлено. Работаете как: {who}",
             version=version,
             api_mode=session.mode,
             tickets_visible=len(sample),
+            identity=identity,
+        )
+
+
+def create_test_ticket(
+    creds: GlpiCredentials,
+    *,
+    title: str,
+    content: str,
+    transport: httpx.BaseTransport | None = None,
+) -> GlpiTestTicketResult:
+    """Создаёт одну заявку в GLPI от имени текущего профиля. Локальную заявку CORAX не трогает."""
+    cleaned_title = (title or "").strip()[:255] or "CORAX — тестовая заявка"
+    cleaned_content = (content or "").strip()[:_CONTENT_LIMIT] or (
+        "Тестовая заявка из панели CORAX. Можно закрыть или удалить в GLPI."
+    )
+    with _Session(creds, transport) as session:
+        identity = session.read_identity()
+        created_id = session.create_ticket(
+            GlpiOutbound(
+                corax_id=0,
+                glpi_id=None,
+                title=cleaned_title,
+                content=cleaned_content,
+                status="open",
+                priority="low",
+            )
+        )
+        url = f"{session.base}/front/ticket.form.php?id={created_id}"
+        who = _identity_label(identity, creds)
+        return GlpiTestTicketResult(
+            ok=True,
+            message=f"Заявка #{created_id} создана от имени «{who}»",
+            glpi_id=created_id,
+            url=url,
+            identity=identity,
+            version=session.version,
+            api_mode=session.mode,
         )
 
 
@@ -628,6 +691,7 @@ class _Session:
         self.version: str | None = None
         self._access = ""
         self._session_token = ""
+        self._cached_identity: GlpiIdentity | None = None
         self._name_ids: dict[tuple[object, ...], int] = {}
         self._http = httpx.Client(
             transport=transport,
@@ -675,6 +739,60 @@ class _Session:
                 break
             start += len(raw_items)
         return collected
+
+    def read_identity(self) -> GlpiIdentity:
+        """Кто сейчас авторизован и какой активный профиль. Без секретов."""
+        if self._cached_identity is not None:
+            return self._cached_identity
+        if self.mode == "legacy":
+            payload = self._full_session_payload(self._legacy_headers())
+            identity = parse_glpi_identity(payload)
+            if identity.username or identity.profile or identity.user_id:
+                self._cached_identity = identity
+                return identity
+        else:
+            for headers in (self._v2_headers(), self._asset_headers()):
+                payload = self._full_session_payload(headers)
+                identity = parse_glpi_identity(payload)
+                if identity.username or identity.profile or identity.user_id:
+                    self._cached_identity = identity
+                    return identity
+            me = self._user_me_payload()
+            identity = parse_glpi_identity(me)
+            if identity.username or identity.display_name or identity.user_id:
+                self._cached_identity = identity
+                return identity
+        username = _clip(self.creds.username, 255) if self.creds.grant == "password" else None
+        if not username and self.mode == "v2" and self.creds.grant == "client_credentials":
+            username = "oauth-client"
+        identity = GlpiIdentity(username=username)
+        self._cached_identity = identity
+        return identity
+
+    def _full_session_payload(self, headers: dict[str, str]) -> Any | None:
+        try:
+            return self._parse(
+                self._http.get(f"{self.base}/apirest.php/getFullSession", headers=headers),
+                allow_statuses=(200,),
+                empty_on=(401, 403, 404),
+            )
+        except GlpiClientError:
+            return None
+
+    def _user_me_payload(self) -> Any | None:
+        for path in (
+            f"{self.base}/api.php/Administration/User/Me",
+            f"{self.base}/api.php/Administration/User/me",
+        ):
+            try:
+                return self._parse(
+                    self._http.get(path, headers=self._v2_headers()),
+                    allow_statuses=(200,),
+                    empty_on=(401, 403, 404),
+                )
+            except GlpiClientError:
+                continue
+        return None
 
     def create_ticket(self, item: GlpiOutbound) -> int:
         payload = _outbound_body(item)
@@ -1427,7 +1545,11 @@ class _Session:
             )
         except GlpiClientError:
             return None
-        return _version_from(payload)
+        version = _version_from(payload)
+        identity = parse_glpi_identity(payload)
+        if identity.username or identity.profile or identity.user_id:
+            self._cached_identity = identity
+        return version
 
     def _logout(self) -> None:
         if not self._session_token:
@@ -1529,7 +1651,7 @@ def _outbound_body(item: GlpiOutbound) -> dict[str, Any]:
         "urgency": priority,
         "impact": 3,
         "type": 1,
-        "external_id": f"corax:{item.corax_id}",
+        "external_id": f"corax:{item.corax_id}" if item.corax_id > 0 else "corax:test",
     }
 
 
@@ -1640,6 +1762,74 @@ def _version_from(payload: Any) -> str | None:
             if isinstance(value, str) and re.match(r"^\d+\.\d+", value.strip()):
                 return value.strip()[:64]
     return None
+
+
+def parse_glpi_identity(payload: Any) -> GlpiIdentity:
+    """Достаёт логин и активный профиль из getFullSession / User/Me."""
+    if not isinstance(payload, dict):
+        return GlpiIdentity()
+    session = payload.get("session")
+    root = session if isinstance(session, dict) else payload
+    if not isinstance(root, dict):
+        return GlpiIdentity()
+
+    user_id = _as_int(root.get("glpiID") or root.get("id") or root.get("users_id"))
+    username = _clip(
+        root.get("glpiname")
+        or root.get("name")
+        or root.get("username")
+        or root.get("user_name"),
+        255,
+    )
+    first = _clip(root.get("glpifirstname") or root.get("firstname"), 128) or ""
+    last = _clip(root.get("glpirealname") or root.get("realname") or root.get("lastname"), 128) or ""
+    display = _clip(f"{first} {last}".strip() or root.get("displayname") or root.get("friendlyname"), 255)
+
+    profile_raw = root.get("glpiactiveprofile") or root.get("active_profile") or root.get("profiles_id")
+    profile = _field_name(profile_raw) or _clip(profile_raw, 255)
+    if profile and profile.isdigit():
+        profile = None
+
+    entity = _clip(
+        root.get("glpiactive_entity_name")
+        or root.get("glpiactive_entity")
+        or _field_name(root.get("entities_id")),
+        255,
+    )
+    if entity and str(entity).isdigit():
+        entity = None
+
+    if not any((user_id, username, display, profile, entity)):
+        return GlpiIdentity()
+    return GlpiIdentity(
+        user_id=user_id,
+        username=username,
+        display_name=display,
+        profile=profile,
+        entity=entity,
+    )
+
+
+def _identity_label(identity: GlpiIdentity | None, creds: GlpiCredentials) -> str:
+    if identity:
+        parts: list[str] = []
+        if identity.display_name:
+            parts.append(identity.display_name)
+        if identity.username:
+            parts.append(identity.username if not parts else f"({identity.username})")
+        if identity.profile:
+            parts.append(f"профиль «{identity.profile}»")
+        if identity.entity:
+            parts.append(f"сущность «{identity.entity}»")
+        if parts:
+            return " · ".join(parts)
+    if (creds.username or "").strip() and creds.grant == "password":
+        return (creds.username or "").strip()
+    if creds.mode == "v2" and creds.grant == "client_credentials":
+        return "OAuth client credentials"
+    if (creds.user_token or "").strip():
+        return "User-Token"
+    return "текущая сессия GLPI"
 
 
 def _requester(raw: dict[str, Any]) -> str | None:

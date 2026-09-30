@@ -14,22 +14,14 @@ from app.wikirag_context_budget import shrink_messages
 ChatMode = Literal["simple", "rag"]
 QuestionFocus = Literal["os_hardware", "software", "tickets", "network", "general"]
 
-WIKIRAG_SYSTEM_RAG = """Ты полезный русскоязычный ассистент базы знаний CORAX (режим Ask).
-
-Приоритет — факты из предоставленного контекста (WikiRAG / CORAX).
-Если прямого ответа в базе знаний нет — так и скажи: «В базе знаний прямого ответа нет».
-Затем можешь рассуждать и предложить гипотезу/рекомендацию, опираясь на те данные,
-которые всё же есть в контексте (похожие записи, косвенные улики, статистика парка).
-Чётко отделяй факты из контекста от своих выводов.
-Не выдумывай конкретные hostname, IP, серийники и инвентарные факты, которых нет в контексте.
-
-Если не хватает регламента, инструкции или описания процесса — не выдумывай документ.
-Дай короткий план, как пополнить WikiRAG: какой файл создать (заголовок и разделы),
-в какую папку библиотеки его положить, что загрузить и что проиндексировать.
-Если нужны живые данные парка — напомни импорт CORAX (папка corax-inventory) и повторную индексацию.
-Не предлагай SSH, ping и другие действия «агента» — ты только читаешь базу знаний и даёшь инструкции.
-
-Отвечай только по-русски, без скрытых рассуждений."""
+WIKIRAG_SYSTEM_RAG = """Ты отвечаешь на вопросы по базе знаний CORAX.
+Правила:
+- Бери факты только из блока «Контекст».
+- Ответ короткий: список или 2–6 предложений.
+- Не выдумывай hostname, IP, версии и числа.
+- Если факта нет в контексте — скажи это одним предложением.
+- Не пиши регламенты, планы файлов и инструкции, как пополнить базу.
+"""
 
 WIKIRAG_OS_GUIDANCE = ""
 
@@ -82,8 +74,8 @@ def completion_max_tokens(
     max_tokens = max(768, configured)
     rm = (response_mode or "fast").strip().lower()
     if mode == "rag":
-        floor = 1536 if rm == "detailed" else 1024
-        max_tokens = max(max_tokens, floor)
+        floor = 768 if rm == "detailed" else 512
+        max_tokens = max(min(max_tokens, 1024), floor)
     else:
         max_tokens = min(max(max_tokens, 512), 1024)
         if last_user_chars < 80:
@@ -562,12 +554,9 @@ def build_messages(
     if mode == "simple":
         messages.append({"role": "user", "content": question.strip()})
     else:
-        from app.wikirag_context_budget import chars_for_tokens, prompt_token_budget
-
-        # Classic RAG (Desktop/RAG/script.py): один блок «Контекст».
-        default_cap = int(getattr(settings, "wiki_rag_classic_context_chars", None) or 24_000)
-        max_data = data_char_budget or max(default_cap, chars_for_tokens(prompt_token_budget() // 2))
-        max_data = max(4_000, min(max_data, 48_000))
+        default_cap = int(getattr(settings, "wiki_rag_classic_context_chars", None) or 9_000)
+        max_data = data_char_budget or default_cap
+        max_data = max(4_000, min(max_data, 10_000))
         parts: list[str] = []
         corax = (corax_block or "").strip()
         ctx = (documents_block or "").strip()
@@ -581,10 +570,7 @@ def build_messages(
         if not joined:
             joined = "(контекст пуст — в индексе ничего не найдено)"
         user_body = (
-            "Сначала опирайся на контекст ниже. "
-            "Если прямого ответа в базе знаний нет — напиши об этом явно, "
-            "затем рассуждай по имеющимся данным и отдели факты от выводов. "
-            "Не выдумывай конкретные hostname/IP/серийники, которых нет в контексте.\n\n"
+            "Ответь только по контексту. Если факта нет — скажи об этом.\n\n"
             f"Контекст:\n{joined}"
             f"{_rag_user_suffix(question, focus)}"
         )

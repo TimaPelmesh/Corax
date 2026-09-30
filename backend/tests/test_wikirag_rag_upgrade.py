@@ -7,10 +7,23 @@ from app.wikirag_tools import ToolPack, RagSource
 def test_chunk_corax_csv_metadata():
     csv_text = "computer_id;hostname;os_name\n1;PC-OLD;Windows 7\n2;PC-NEW;Windows 10\n"
     chunks = chunk_corax_csv(csv_text, source_table="computers", filename="CORAX_компьютеры.csv")
-    assert chunks
+    assert len(chunks) == 2
     assert chunks[0].source_kind == "corax"
-    assert chunks[0].source_table == "computers"
-    assert "PC-OLD" in chunks[0].text or (chunks[0].meta or {}).get("hostnames")
+    assert chunks[0].hostname == "PC-OLD"
+    assert "PC-NEW" not in chunks[0].text
+    assert chunks[1].hostname == "PC-NEW"
+    assert "PC-OLD" not in chunks[1].text
+
+
+def test_chunk_corax_csv_keeps_one_host_when_software_rows_repeat():
+    csv_text = (
+        "computer_id;hostname;software_name\n"
+        "1;HOST-A;Office\n1;HOST-A;Chrome\n2;HOST-B;1C\n"
+    )
+    chunks = chunk_corax_csv(csv_text, source_table="software", filename="CORAX_ПО.csv")
+    assert [c.hostname for c in chunks] == ["HOST-A", "HOST-B"]
+    assert "Chrome" in chunks[0].text
+    assert "HOST-B" not in chunks[0].text
 
 
 def test_prepare_document_chunks_corax_csv():

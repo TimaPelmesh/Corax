@@ -40,6 +40,7 @@ from app.schemas import (
     WikiRagIndexStatusOut,
     WikiRagLmStudioStatus,
     WikiRagReindexOut,
+    WikiRagResearchRequest,
 )
 from app.wikirag_corax import (
     CORAX_BUNDLE_FILENAMES,
@@ -85,6 +86,7 @@ from app.wikirag_index import (
     INDEX_READY,
     build_context_from_chunks,
     retrieve_relevant_chunks,
+    retrieve_top_k,
 )
 from app.wikirag_index_queue import wikirag_index_queue
 from app.wikirag_options import (
@@ -95,6 +97,7 @@ from app.wikirag_options import (
     set_embed_model,
     set_lm_context_tokens,
 )
+from app.wikirag_research import build_research_messages, collect_public_pages, research_sources
 from app.wikirag_tools import run_wikirag_tools
 from app.wikirag_lm import (
     build_messages,
@@ -763,6 +766,26 @@ def _prioritize_corax_docs(rows: list[WikiRagDocument], *, question: str = "") -
     return ordered
 
 
+_FOCUS_TABLES: dict[str, set[str]] = {
+    "software": {"software", "software_stats"},
+    "tickets": {"tickets"},
+    "network": {"network", "printers"},
+    "os_hardware": {"computers", "hardware"},
+}
+
+
+def _prefer_focus_chunks(ranked: list[Any], focus: str) -> list[Any]:
+    """Оставляет чанки той таблицы, о которой вопрос, если их хватает."""
+    tables = _FOCUS_TABLES.get(focus)
+    capped = list(ranked)[:10]
+    if not tables:
+        return capped
+    focused = [c for c in ranked if (getattr(c, "source_table", None) or "") in tables]
+    if len(focused) >= 3:
+        return focused[:10]
+    return capped
+
+
 async def _prepare_chat_messages(
     q: str,
     document_ids: list[int] | None,
@@ -803,9 +826,17 @@ async def _prepare_chat_messages(
     else:
         docs_for_retrieve = _prioritize_corax_docs(docs_for_retrieve, question=q)
 
-    # 1) Primary: vector + lexical retrieve (k=15 by default) — like Chroma retriever.
-    ranked = await retrieve_relevant_chunks(db, q, docs_for_retrieve) if docs_for_retrieve else []
-    context_cap = int(getattr(settings, "wiki_rag_classic_context_chars", None) or 24_000)
+    # 6–10 чанков: окно локальной 7B, один компьютер уже упакован в чанк.
+    ranked = (
+        await retrieve_relevant_chunks(db, q, docs_for_retrieve, top_k=retrieve_top_k())
+        if docs_for_retrieve
+        else []
+    )
+    ranked = _prefer_focus_chunks(ranked, question_focus)
+    context_cap = min(
+        10_000,
+        int(getattr(settings, "wiki_rag_classic_context_chars", None) or 9_000),
+    )
     doc_block, doc_meta = build_context_from_chunks(
         ranked,
         max_chars=context_cap,
@@ -1046,6 +1077,63 @@ async def wiki_rag_chat_stream(
             )
             meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
             _LOG.info("WikiRAG stream completed", extra={"timings_ms": meta["timings_ms"], "mode": mode})
+            yield _sse("done", {"raw": raw, "parsed": parsed, "model": model, "meta": meta})
+        except Exception as e:
+            meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
+            yield _sse("error", {"error": str(e), "meta": meta})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/research/stream")
+async def wiki_rag_research_stream(
+    body: WikiRagResearchRequest,
+    _: User = Depends(get_current_user),
+):
+    """Ищет публичные инструкции. Базу CORAX и документы WikiRAG не читает."""
+    started = time.perf_counter()
+    q = body.message.strip()
+    lm_base = _resolve_lm_base_url(body.lm_base_url)
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
+    history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])[-2:]
+    pages = await collect_public_pages(q)
+    messages = build_research_messages(q, pages, history)
+    sources = research_sources(pages)
+    meta: dict[str, Any] = {
+        "mode": "research",
+        "isolated": True,
+        "total_chars": messages_stats(messages)["total_chars"],
+        "documents": [],
+        "corax": {},
+        "sources": sources,
+        "pages": len(pages),
+        "lm_base_url": lm_base or settings.lm_studio_base_url,
+        "num_ctx": num_ctx,
+        "timings_ms": {"context": round((time.perf_counter() - started) * 1000)},
+    }
+
+    async def event_stream() -> AsyncIterator[str]:
+        raw_parts: list[str] = []
+        model: str | None = None
+        yield _sse("meta", meta)
+        try:
+            async for delta, used_model in lm_studio_chat_stream(
+                messages,
+                base_url=lm_base,
+                model=body.lm_model,
+                mode="rag",
+                response_mode="fast",
+            ):
+                raw_parts.append(delta)
+                model = used_model or model
+                yield _sse("delta", {"text": delta})
+            raw = "".join(raw_parts)
+            parsed = _attach_rag_sources(coerce_parsed(raw), sources)
+            meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
             yield _sse("done", {"raw": raw, "parsed": parsed, "model": model, "meta": meta})
         except Exception as e:
             meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)

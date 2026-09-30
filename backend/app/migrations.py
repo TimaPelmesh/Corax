@@ -653,6 +653,14 @@ def _migrate_glpi_config(sync_conn) -> None:
         )
 
 
+def _migrate_glpi_identity(sync_conn) -> None:
+    if "glpi_config" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "glpi_config")
+    if "last_identity_json" not in cols:
+        sync_conn.execute(text("ALTER TABLE glpi_config ADD COLUMN last_identity_json TEXT DEFAULT '{}'"))
+
+
 def _migrate_notes_calendar_style(sync_conn) -> None:
     """Per-note calendar color + mark for planner days (no separate day table)."""
     if "notes" not in _table_names(sync_conn):
@@ -1742,6 +1750,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-29_agent_pairings", _migrate_agent_pairings),
     ("2026-09-29_glpi_config", _migrate_glpi_config),
     ("2026-09-29_glpi_device_ids", _migrate_glpi_device_ids),
+    ("2026-09-30_glpi_identity", _migrate_glpi_identity),
 ]
 
 

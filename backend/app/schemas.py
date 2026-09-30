@@ -768,6 +768,14 @@ class ZabbixTestResponse(BaseModel):
     sample_problems: list[str] = []
 
 
+class GlpiIdentityOut(BaseModel):
+    user_id: int | None = None
+    username: str | None = None
+    display_name: str | None = None
+    profile: str | None = None
+    entity: str | None = None
+
+
 class GlpiConfigOut(BaseModel):
     enabled: bool
     base_url: str
@@ -784,6 +792,7 @@ class GlpiConfigOut(BaseModel):
     last_test_ok: bool | None = None
     last_test_message: str = ""
     last_version: str = ""
+    identity: GlpiIdentityOut | None = None
 
 
 class GlpiConfigUpdate(BaseModel):
@@ -806,6 +815,25 @@ class GlpiTestResponse(BaseModel):
     version: str | None = None
     api_mode: str | None = None
     tickets_visible: int | None = None
+    identity: GlpiIdentityOut | None = None
+
+
+class GlpiTestTicketIn(BaseModel):
+    title: str = Field(default="CORAX — тестовая заявка", max_length=255)
+    content: str = Field(
+        default="Тестовая заявка из панели CORAX. Можно закрыть или удалить в GLPI.",
+        max_length=8000,
+    )
+
+
+class GlpiTestTicketOut(BaseModel):
+    ok: bool
+    message: str
+    glpi_id: int | None = None
+    url: str | None = None
+    identity: GlpiIdentityOut | None = None
+    version: str | None = None
+    api_mode: str | None = None
 
 
 class GlpiTicketSyncIn(BaseModel):
@@ -1033,6 +1061,15 @@ class WikiRagChatRequest(BaseModel):
     lm_model: str | None = Field(default=None, max_length=256)
     include_corax: bool = True
     response_mode: str = Field(default="detailed", pattern="^(fast|detailed)$")
+
+
+class WikiRagResearchRequest(BaseModel):
+    """Публичный поиск инструкций. Полей базы CORAX здесь нет."""
+
+    message: str = Field(min_length=1, max_length=2000)
+    history: list[WikiRagChatMessage] = Field(default_factory=list, max_length=4)
+    lm_base_url: str | None = Field(default=None, max_length=512)
+    lm_model: str | None = Field(default=None, max_length=256)
 
 
 class WikiRagChatResponse(BaseModel):

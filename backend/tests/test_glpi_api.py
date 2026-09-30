@@ -220,6 +220,83 @@ def test_legacy_session_lists_and_creates():
     assert created["input"]["priority"] == 2
 
 
+def test_probe_reads_active_profile_from_full_session():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/initSession"):
+            return httpx.Response(200, json={"session_token": "sess-1"})
+        if request.url.path.endswith("/getFullSession"):
+            return httpx.Response(
+                200,
+                json={
+                    "session": {
+                        "glpiID": 42,
+                        "glpiname": "helpdesk",
+                        "glpifirstname": "Иван",
+                        "glpirealname": "Петров",
+                        "glpiactiveprofile": {"id": 4, "name": "Technician"},
+                        "glpiactive_entity_name": "Root entity",
+                    },
+                    "cfg_glpi": {"version": "10.0.18"},
+                },
+            )
+        if request.url.path.endswith("/killSession"):
+            return httpx.Response(200, json=[True])
+        if request.method == "GET" and request.url.path.endswith("/Ticket"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json=["ERROR", request.url.path])
+
+    probe = probe_glpi(_legacy_creds(), transport=httpx.MockTransport(handler))
+    assert probe.ok is True
+    assert probe.identity is not None
+    assert probe.identity.username == "helpdesk"
+    assert probe.identity.display_name == "Иван Петров"
+    assert probe.identity.profile == "Technician"
+    assert probe.identity.entity == "Root entity"
+    assert "Technician" in probe.message
+
+
+def test_create_test_ticket_uses_corax_test_external_id():
+    created: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/initSession"):
+            return httpx.Response(200, json={"session_token": "sess-1"})
+        if request.url.path.endswith("/getFullSession"):
+            return httpx.Response(
+                200,
+                json={
+                    "session": {
+                        "glpiID": 7,
+                        "glpiname": "glpi",
+                        "glpiactiveprofile": {"name": "Super-Admin"},
+                    },
+                    "cfg_glpi": {"version": "10.0.18"},
+                },
+            )
+        if request.url.path.endswith("/killSession"):
+            return httpx.Response(200, json=[True])
+        if request.method == "POST" and request.url.path.endswith("/Ticket"):
+            created.update(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 901})
+        return httpx.Response(404, json=["ERROR", request.url.path])
+
+    from app.glpi_client import create_test_ticket
+
+    result = create_test_ticket(
+        _legacy_creds(),
+        title="Проверка",
+        content="тест",
+        transport=httpx.MockTransport(handler),
+    )
+    assert result.ok is True
+    assert result.glpi_id == 901
+    assert result.url and result.url.endswith("id=901")
+    assert result.identity is not None
+    assert result.identity.profile == "Super-Admin"
+    assert created["input"]["external_id"] == "corax:test"
+    assert created["input"]["name"] == "Проверка"
+
+
 def test_v2_push_create_then_update():
     bodies: list[tuple[str, dict]] = []
 

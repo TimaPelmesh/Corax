@@ -92,7 +92,7 @@ def chunk_overlap() -> int:
 
 
 def retrieve_top_k() -> int:
-    return max(1, min(64, int(getattr(settings, "wiki_rag_retrieve_top_k", None) or 45)))
+    return max(1, min(10, int(getattr(settings, "wiki_rag_retrieve_top_k", None) or 8)))
 
 
 @dataclass
@@ -243,7 +243,12 @@ def chunk_corax_csv(
     snapshot_at: datetime | None = None,
     rows_per_chunk: int | None = None,
 ) -> list[TextChunk]:
-    """Чанки CSV CORAX: пакет строк с метаданными hostname/computer_id."""
+    """Чанки CSV CORAX: один компьютер на чанк.
+
+    rows_per_chunk оставлен для явной упаковки пакетами. По умолчанию строки
+    одного hostname не смешиваются с другими. Длинный список ПО одного ПК
+    режется по размеру, но hostname на кусках один и тот же.
+    """
     raw = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not raw.strip():
         return []
@@ -257,53 +262,156 @@ def chunk_corax_csv(
     if not header or not any(header):
         return []
 
-    # ПО/заявки — плотнее; компьютеры — по одной/несколько строк.
-    if rows_per_chunk is None:
-        rows_per_chunk = 8 if source_table in ("software", "tickets", "peripherals") else 12
-
     data_rows = [r for r in rows[1:] if any((c or "").strip() for c in r)]
     chunks: list[TextChunk] = []
     offset = 0
-    for i in range(0, len(data_rows), rows_per_chunk):
-        batch = data_rows[i : i + rows_per_chunk]
-        parts: list[str] = []
-        hostnames: list[str] = []
-        computer_ids: list[int] = []
-        for row in batch:
-            cells = list(row)
-            if len(cells) < len(header):
-                cells.extend([""] * (len(header) - len(cells)))
-            cells = cells[: len(header)]
+
+    if rows_per_chunk is not None and rows_per_chunk > 0:
+        groups: list[tuple[str | None, int | None, list[str], list[str], list[int]]] = []
+        for i in range(0, len(data_rows), rows_per_chunk):
+            batch = data_rows[i : i + rows_per_chunk]
+            parts: list[str] = []
+            hostnames: list[str] = []
+            computer_ids: list[int] = []
+            for row in batch:
+                cells = _fit_cells(header, row)
+                hostname, computer_id = _extract_row_ids(header, cells)
+                if hostname:
+                    hostnames.append(hostname)
+                if computer_id is not None:
+                    computer_ids.append(computer_id)
+                parts.append(_format_corax_row(source_table, header, cells, filename))
+            primary_host = hostnames[0] if len(set(hostnames)) == 1 else None
+            primary_cid = computer_ids[0] if len(set(computer_ids)) == 1 else None
+            groups.append((primary_host, primary_cid, parts, hostnames, computer_ids))
+    else:
+        order: list[str] = []
+        buckets: dict[str, dict[str, Any]] = {}
+        for idx, row in enumerate(data_rows):
+            cells = _fit_cells(header, row)
             hostname, computer_id = _extract_row_ids(header, cells)
+            key = hostname or (f"id:{computer_id}" if computer_id is not None else f"row:{idx}")
+            bucket = buckets.get(key)
+            if bucket is None:
+                order.append(key)
+                bucket = {
+                    "hostname": hostname,
+                    "computer_id": computer_id,
+                    "parts": [],
+                    "hostnames": [],
+                    "computer_ids": [],
+                }
+                buckets[key] = bucket
             if hostname:
-                hostnames.append(hostname)
+                bucket["hostname"] = hostname
+                bucket["hostnames"].append(hostname)
             if computer_id is not None:
-                computer_ids.append(computer_id)
-            parts.append(_format_corax_row(source_table, header, cells, filename))
-        content = "\n---\n".join(parts)
-        primary_host = hostnames[0] if len(set(hostnames)) == 1 else None
-        primary_cid = computer_ids[0] if len(set(computer_ids)) == 1 else None
-        chunks.append(
-            TextChunk(
-                text=content,
-                char_start=offset,
-                char_end=offset + len(content),
-                source_kind="corax",
-                source_table=source_table,
-                hostname=primary_host,
-                computer_id=primary_cid,
-                snapshot_at=snapshot_at,
-                meta={
-                    "filename": filename,
-                    "row_start": i + 1,
-                    "row_end": i + len(batch),
-                    "hostnames": sorted(set(hostnames))[:40],
-                    "computer_ids": sorted(set(computer_ids))[:40],
-                },
+                bucket["computer_id"] = computer_id
+                bucket["computer_ids"].append(computer_id)
+            bucket["parts"].append(_format_corax_row(source_table, header, cells, filename))
+        groups = [
+            (
+                buckets[key]["hostname"],
+                buckets[key]["computer_id"],
+                buckets[key]["parts"],
+                buckets[key]["hostnames"],
+                buckets[key]["computer_ids"],
             )
-        )
-        offset += len(content) + 2
+            for key in order
+        ]
+
+    size_limit = max(chunk_size() * 2, 1800)
+    row_cursor = 1
+    for hostname, computer_id, parts, hostnames, computer_ids in groups:
+        start_row = row_cursor
+        piece_parts: list[str] = []
+        piece_len = 0
+        for part in parts:
+            extra = len(part) + (5 if piece_parts else 0)
+            if piece_parts and piece_len + extra > size_limit:
+                content = "\n---\n".join(piece_parts)
+                chunks.append(
+                    _csv_chunk(
+                        content,
+                        offset=offset,
+                        source_table=source_table,
+                        hostname=hostname,
+                        computer_id=computer_id,
+                        snapshot_at=snapshot_at,
+                        filename=filename,
+                        row_start=start_row,
+                        row_end=start_row + len(piece_parts) - 1,
+                        hostnames=hostnames,
+                        computer_ids=computer_ids,
+                    )
+                )
+                offset += len(content) + 2
+                start_row += len(piece_parts)
+                piece_parts = [part]
+                piece_len = len(part)
+            else:
+                piece_parts.append(part)
+                piece_len += extra
+        if piece_parts:
+            content = "\n---\n".join(piece_parts)
+            chunks.append(
+                _csv_chunk(
+                    content,
+                    offset=offset,
+                    source_table=source_table,
+                    hostname=hostname,
+                    computer_id=computer_id,
+                    snapshot_at=snapshot_at,
+                    filename=filename,
+                    row_start=start_row,
+                    row_end=start_row + len(piece_parts) - 1,
+                    hostnames=hostnames,
+                    computer_ids=computer_ids,
+                )
+            )
+            offset += len(content) + 2
+        row_cursor += len(parts)
     return chunks
+
+
+def _fit_cells(header: list[str], row: list[str]) -> list[str]:
+    cells = list(row)
+    if len(cells) < len(header):
+        cells.extend([""] * (len(header) - len(cells)))
+    return cells[: len(header)]
+
+
+def _csv_chunk(
+    content: str,
+    *,
+    offset: int,
+    source_table: str,
+    hostname: str | None,
+    computer_id: int | None,
+    snapshot_at: datetime | None,
+    filename: str,
+    row_start: int,
+    row_end: int,
+    hostnames: list[str],
+    computer_ids: list[int],
+) -> TextChunk:
+    return TextChunk(
+        text=content,
+        char_start=offset,
+        char_end=offset + len(content),
+        source_kind="corax",
+        source_table=source_table,
+        hostname=hostname,
+        computer_id=computer_id,
+        snapshot_at=snapshot_at,
+        meta={
+            "filename": filename,
+            "row_start": row_start,
+            "row_end": row_end,
+            "hostnames": sorted(set(hostnames))[:8],
+            "computer_ids": sorted(set(computer_ids))[:8],
+        },
+    )
 
 
 def chunk_corax_markdown(

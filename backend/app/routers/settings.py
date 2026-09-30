@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -11,7 +12,7 @@ from app.auth import get_current_editor_or_superuser, get_current_superuser
 from app.database import get_db
 from app.glpi_assets import export_glpi_assets, import_glpi_assets
 from app.glpi_devices import export_glpi_devices, import_glpi_devices, list_local_devices, list_remote_devices
-from app.glpi_client import GlpiClientError, probe_glpi
+from app.glpi_client import GlpiClientError, GlpiIdentity, create_test_ticket, probe_glpi
 from app.glpi_sync import creds_from_row, export_glpi_tickets, import_glpi_tickets
 from app.ldap_config import get_effective_ldap_config
 from app.models import AgentCollectRequest, Bitrix24Config, GlpiConfig, LdapConfig, User, ZabbixConfig
@@ -20,7 +21,10 @@ from app.schemas import (
     Bitrix24ConfigUpdate,
     GlpiConfigOut,
     GlpiConfigUpdate,
+    GlpiIdentityOut,
     GlpiTestResponse,
+    GlpiTestTicketIn,
+    GlpiTestTicketOut,
     GlpiDeviceRowOut,
     GlpiDeviceSyncIn,
     GlpiTicketSyncIn,
@@ -41,6 +45,67 @@ from app.zabbix_service import invalidate_zabbix_cache
 from datetime import datetime, timezone
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+def _identity_out(identity: GlpiIdentity | None) -> GlpiIdentityOut | None:
+    if identity is None:
+        return None
+    if not any(
+        (
+            identity.user_id,
+            identity.username,
+            identity.display_name,
+            identity.profile,
+            identity.entity,
+        )
+    ):
+        return None
+    return GlpiIdentityOut(
+        user_id=identity.user_id,
+        username=identity.username,
+        display_name=identity.display_name,
+        profile=identity.profile,
+        entity=identity.entity,
+    )
+
+
+def _identity_from_row(row: GlpiConfig) -> GlpiIdentityOut | None:
+    raw = (getattr(row, "last_identity_json", None) or "").strip()
+    if not raw or raw == "{}":
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    identity = GlpiIdentityOut(
+        user_id=int(data["user_id"]) if data.get("user_id") is not None else None,
+        username=(str(data["username"]).strip() or None) if data.get("username") else None,
+        display_name=(str(data["display_name"]).strip() or None) if data.get("display_name") else None,
+        profile=(str(data["profile"]).strip() or None) if data.get("profile") else None,
+        entity=(str(data["entity"]).strip() or None) if data.get("entity") else None,
+    )
+    if not any((identity.user_id, identity.username, identity.display_name, identity.profile, identity.entity)):
+        return None
+    return identity
+
+
+def _store_identity(row: GlpiConfig, identity: GlpiIdentity | None) -> None:
+    out = _identity_out(identity)
+    if out is None:
+        row.last_identity_json = "{}"
+        return
+    row.last_identity_json = json.dumps(
+        {
+            "user_id": out.user_id,
+            "username": out.username,
+            "display_name": out.display_name,
+            "profile": out.profile,
+            "entity": out.entity,
+        },
+        ensure_ascii=False,
+    )
 
 
 def _policy_out(row) -> AgentCollectPolicyOut:
@@ -463,6 +528,7 @@ def _glpi_out(row: GlpiConfig) -> GlpiConfigOut:
         last_test_ok=row.last_test_ok,
         last_test_message=row.last_test_message or "",
         last_version=row.last_version or "",
+        identity=_identity_from_row(row),
     )
 
 
@@ -557,6 +623,7 @@ async def test_glpi_settings(
     row.last_test_message = result.message[:500]
     if result.version:
         row.last_version = result.version[:64]
+    _store_identity(row, result.identity)
     await db.commit()
     return GlpiTestResponse(
         ok=True,
@@ -564,6 +631,47 @@ async def test_glpi_settings(
         version=result.version,
         api_mode=result.api_mode,
         tickets_visible=result.tickets_visible,
+        identity=_identity_out(result.identity),
+    )
+
+
+@router.post("/glpi/test-ticket", response_model=GlpiTestTicketOut)
+async def create_glpi_test_ticket(
+    body: GlpiTestTicketIn | None = None,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """Создаёт одну заявку в GLPI от текущего профиля — проверка «жив ли обмен»."""
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    payload = body or GlpiTestTicketIn()
+    try:
+        result = await asyncio.to_thread(
+            create_test_ticket,
+            creds_from_row(row),
+            title=payload.title,
+            content=payload.content,
+        )
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Ошибка GLPI: {exc}") from exc
+
+    row.last_test_at = datetime.now(timezone.utc)
+    row.last_test_ok = True
+    row.last_test_message = result.message[:500]
+    if result.version:
+        row.last_version = result.version[:64]
+    _store_identity(row, result.identity)
+    await db.commit()
+    return GlpiTestTicketOut(
+        ok=True,
+        message=result.message,
+        glpi_id=result.glpi_id,
+        url=result.url,
+        identity=_identity_out(result.identity),
+        version=result.version,
+        api_mode=result.api_mode,
     )
 
 

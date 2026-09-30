@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { api, type WikiRagCoraxImportResult, type WikiRagDocumentRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { WikiRagChat } from '../components/wikirag/WikiRagChat'
+import { WikiRagResearchChat } from '../components/wikirag/WikiRagResearchChat'
 import { WikiRagDocViewer } from '../components/wikirag/WikiRagDocViewer'
 import { WikiRagLibrary } from '../components/wikirag/WikiRagLibrary'
 import { IconClose, IconFolder } from '../components/icons'
@@ -205,6 +206,7 @@ export function WikiRagPage() {
   const [readingDrop, setReadingDrop] = useState(false)
   const [modalDocId, setModalDocId] = useState<number | null>(null)
   const [knowledgeOpen, setKnowledgeOpen] = useState(false)
+  const [lane, setLane] = useState<'ask' | 'research'>('ask')
   const [uploadPanelOpen, setUploadPanelOpen] = useState(false)
   const [autoIndex, setAutoIndex] = useState(false)
   const [embedModel, setEmbedModel] = useState('bge-m3')
@@ -594,12 +596,42 @@ export function WikiRagPage() {
           className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm"
           aria-label={t('wikirag.page.chatAria')}
         >
+          <div className="flex shrink-0 gap-1 border-b border-[var(--color-border)] px-3 py-2">
+            <button
+              type="button"
+              aria-pressed={lane === 'ask'}
+              onClick={() => setLane('ask')}
+              className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold ${
+                lane === 'ask'
+                  ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
+                  : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]'
+              }`}
+            >
+              {t('wikirag.research.laneAsk')}
+            </button>
+            <button
+              type="button"
+              aria-pressed={lane === 'research'}
+              onClick={() => setLane('research')}
+              className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold ${
+                lane === 'research'
+                  ? 'bg-amber-500/15 text-amber-800 dark:text-amber-200'
+                  : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]'
+              }`}
+            >
+              {t('wikirag.research.laneResearch')}
+            </button>
+          </div>
           <div className="min-h-0 flex-1">
-            <WikiRagChat
-              onOpenDocument={(id) => setModalDocId(id)}
-              onOpenKnowledge={() => setKnowledgeOpen(true)}
-              knowledgeCount={indexStats.total}
-            />
+            {lane === 'ask' ? (
+              <WikiRagChat
+                onOpenDocument={(id) => setModalDocId(id)}
+                onOpenKnowledge={() => setKnowledgeOpen(true)}
+                knowledgeCount={indexStats.total}
+              />
+            ) : (
+              <WikiRagResearchChat />
+            )}
           </div>
         </section>
       </div>

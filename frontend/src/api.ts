@@ -34,16 +34,9 @@ export function networkMapLiveWebSocketUrl(sceneId: number): string {
   return liveWebSocketUrl(`${API_PREFIX}/network/map-scenes/${sceneId}/live`)
 }
 
-export async function streamWikiRagChat(
-  body: {
-    message: string
-    document_ids?: number[] | null
-    history?: { role: 'user' | 'assistant'; content: string }[]
-    lm_base_url?: string | null
-    lm_model?: string | null
-    include_corax?: boolean
-    response_mode?: 'fast' | 'detailed'
-  },
+async function streamWikiRagSse(
+  path: string,
+  body: object,
   callbacks: {
     onMeta?: (meta: WikiRagChatResponse['meta']) => void
     onDelta: (text: string) => void
@@ -56,7 +49,7 @@ export async function streamWikiRagChat(
   const ctrl = new AbortController()
   const tid = window.setTimeout(() => ctrl.abort(), WIKIRAG_LM_TIMEOUT_MS)
   try {
-    const res = await fetch(apiUrl(`${API_PREFIX}/wiki-rag/chat/stream`), {
+    const res = await fetch(apiUrl(`${API_PREFIX}${path}`), {
       method: 'POST',
       credentials: 'include',
       headers,
@@ -97,11 +90,47 @@ export async function streamWikiRagChat(
       if (done) break
     }
   } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') throw new Error(requestTimeoutMessage('/wiki-rag/chat/stream'))
+    if (e instanceof Error && e.name === 'AbortError') throw new Error(requestTimeoutMessage(path))
     throw e
   } finally {
     window.clearTimeout(tid)
   }
+}
+
+export function streamWikiRagChat(
+  body: {
+    message: string
+    document_ids?: number[] | null
+    history?: { role: 'user' | 'assistant'; content: string }[]
+    lm_base_url?: string | null
+    lm_model?: string | null
+    include_corax?: boolean
+    response_mode?: 'fast' | 'detailed'
+  },
+  callbacks: {
+    onMeta?: (meta: WikiRagChatResponse['meta']) => void
+    onDelta: (text: string) => void
+    onDone: (response: WikiRagChatResponse) => void
+  },
+): Promise<void> {
+  return streamWikiRagSse('/wiki-rag/chat/stream', body, callbacks)
+}
+
+/** Публичный поиск инструкций. В теле нет документов и флага include_corax. */
+export function streamWikiRagResearch(
+  body: {
+    message: string
+    history?: { role: 'user' | 'assistant'; content: string }[]
+    lm_base_url?: string | null
+    lm_model?: string | null
+  },
+  callbacks: {
+    onMeta?: (meta: WikiRagChatResponse['meta']) => void
+    onDelta: (text: string) => void
+    onDone: (response: WikiRagChatResponse) => void
+  },
+): Promise<void> {
+  return streamWikiRagSse('/wiki-rag/research/stream', body, callbacks)
 }
 
 export type User = {
@@ -838,6 +867,14 @@ export type ZabbixTestResult = {
   sample_problems?: string[]
 }
 
+export type GlpiIdentity = {
+  user_id?: number | null
+  username?: string | null
+  display_name?: string | null
+  profile?: string | null
+  entity?: string | null
+}
+
 export type GlpiConfig = {
   enabled: boolean
   base_url: string
@@ -854,6 +891,7 @@ export type GlpiConfig = {
   last_test_ok?: boolean | null
   last_test_message?: string
   last_version?: string
+  identity?: GlpiIdentity | null
 }
 
 export type GlpiTestResult = {
@@ -862,6 +900,17 @@ export type GlpiTestResult = {
   version?: string | null
   api_mode?: string | null
   tickets_visible?: number | null
+  identity?: GlpiIdentity | null
+}
+
+export type GlpiTestTicketResult = {
+  ok: boolean
+  message: string
+  glpi_id?: number | null
+  url?: string | null
+  identity?: GlpiIdentity | null
+  version?: string | null
+  api_mode?: string | null
 }
 
 export type GlpiTicketSyncResult = {
@@ -1859,6 +1908,12 @@ export const api = {
   }) => request<GlpiConfig>(`${API_PREFIX}/settings/glpi`, { method: 'PUT', json: body }),
 
   glpiTest: () => request<GlpiTestResult>(`${API_PREFIX}/settings/glpi/test`, { method: 'POST' }),
+
+  glpiTestTicket: (body?: { title?: string; content?: string }) =>
+    request<GlpiTestTicketResult>(`${API_PREFIX}/settings/glpi/test-ticket`, {
+      method: 'POST',
+      json: body || {},
+    }),
 
   glpiImportTickets: (limit: number) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/import-tickets`, {

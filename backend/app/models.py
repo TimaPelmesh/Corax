@@ -610,6 +610,8 @@ class GlpiConfig(Base):
     last_test_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     last_test_message: Mapped[str] = mapped_column(String(512), default="")
     last_version: Mapped[str] = mapped_column(String(64), default="")
+    # JSON: user_id, username, display_name, profile, entity — без секретов.
+    last_identity_json: Mapped[str] = mapped_column(Text, default="{}")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

@@ -116,16 +116,16 @@ class Settings(BaseSettings):
     wiki_rag_embed_dims: int = 1024
     wiki_rag_chunk_size: int = 1500
     wiki_rag_chunk_overlap: int = 300
-    wiki_rag_retrieve_top_k: int = 45
+    wiki_rag_retrieve_top_k: int = 8
     # Explicit opt-in only: auto-importing CORAX at boot can unexpectedly
     # replace a user's WikiRAG corpus and trigger a full reindex.
     wiki_rag_corax_sync_minutes: int = 0
     # False = classic RAG like script.py (retrieve MD chunks → strict prompt).
     # True = legacy tools summaries (often too thin for inventory Q&A).
     wiki_rag_use_tools: bool = False
-    # Hard ceiling for retrieved context in classic RAG (chars ≈ tokens*3).
-    # ~45 chunks × ~1500 chars with headroom (matches WIKI_RAG_RETRIEVE_TOP_K).
-    wiki_rag_classic_context_chars: int = 60000
+    # Потолок контекста классического RAG. 8 чанков × ~1–1.5 тыс. символов
+    # помещаются в окно локальной 7B (около 8k токенов) вместе с ответом.
+    wiki_rag_classic_context_chars: int = 9000
     # Автоиндексация при загрузке/правке: в очередь только этот файл, не «переиндексировать всё».
     wiki_rag_auto_index: bool = False
     # pg_dump/pg_restore (резервная копия в настройках). Путь к bin, любой диск (F:\...\bin).

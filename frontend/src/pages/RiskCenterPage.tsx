@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   api,
-  type RiskAiInsight,
   type RiskHistoryPoint,
   type RiskOverview,
   type RiskProblemGroup,
@@ -13,7 +12,6 @@ import { MiniStatCard } from '../components/dashboard/DashboardWidgets'
 import { IconActivity, IconCheckBadge, IconLock, IconPcs, IconSignal } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { useLocale } from '../i18n/LocaleContext'
-import { loadWikiRagLmSettings } from '../lib/wikiragLmSettings'
 import { useToast } from '../ToastContext'
 
 const COPY = {
@@ -28,14 +26,6 @@ const COPY = {
     medium: 'Требуют внимания',
     low: 'Низкий',
     healthy: 'Без заметных рисков',
-    aiTitle: 'Инсайты локального AI',
-    aiRun: 'Проанализировать',
-    aiRefresh: 'Обновить анализ',
-    aiBusy: 'Модель анализирует…',
-    aiEmpty: 'Запустите анализ, чтобы получить приоритеты и связи между проблемами.',
-    aiPermission: 'Запуск доступен редакторам и администраторам.',
-    categories: 'Откуда складывается риск',
-    affected: 'ПК затронуто',
     problems: 'Актуальные проблемы',
     problemsHint:
       'Сортировка по типу проблемы, не по компьютеру. Игнор действует на весь тип — новые ПК с той же проблемой тоже скрываются.',
@@ -79,14 +69,6 @@ const COPY = {
     medium: 'Needs attention',
     low: 'Low',
     healthy: 'No notable risks',
-    aiTitle: 'Local AI insights',
-    aiRun: 'Analyze',
-    aiRefresh: 'Refresh analysis',
-    aiBusy: 'Model is analyzing…',
-    aiEmpty: 'Run analysis to discover priorities and relationships between issues.',
-    aiPermission: 'Editors and administrators can run the analysis.',
-    categories: 'Risk composition',
-    affected: 'computers affected',
     problems: 'Current problems',
     problemsHint:
       'Grouped by problem type, not by computer. Ignoring a type hides it fleet-wide, including new PCs with the same issue.',
@@ -235,13 +217,10 @@ export function RiskCenterPage() {
   const [severity, setSeverity] = useState<SeverityFilter>('all')
   const [query, setQuery] = useState('')
   const [findingFilter, setFindingFilter] = useState<FindingFilter>('open')
-  const [aiInsight, setAiInsight] = useState<RiskAiInsight | null>(null)
-  const [aiBusy, setAiBusy] = useState(false)
   const [detailComputerId, setDetailComputerId] = useState<number | null>(null)
   const [actionId, setActionId] = useState<string | null>(null)
   const [expandedRule, setExpandedRule] = useState<string | null>(null)
   const canManage = Boolean(user?.is_superuser || user?.role === 'editor')
-  const canRunAi = canManage
 
   const loadOverview = useCallback(async () => {
     const [nextOverview, nextHistory] = await Promise.all([
@@ -297,24 +276,6 @@ export function RiskCenterPage() {
     })
   }, [findingFilter, problemGroups, query, severity])
 
-  async function runAi(force: boolean) {
-    setAiBusy(true)
-    try {
-      const settings = loadWikiRagLmSettings()
-      const result = await api.riskAiInsights({
-        base_url: settings.baseUrl,
-        model: settings.model || undefined,
-        response_mode: settings.responseMode,
-        force,
-      })
-      setAiInsight(result)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Local AI is unavailable')
-    } finally {
-      setAiBusy(false)
-    }
-  }
-
   async function applyProblemAction(group: RiskProblemGroup, status: FindingFilter) {
     if (!canManage) return
     setActionId(group.finding_id)
@@ -332,7 +293,6 @@ export function RiskCenterPage() {
   if (loading) return <RiskSkeleton text={c.loading} />
   if (!overview) return null
 
-  const maxCategoryPoints = Math.max(1, ...overview.categories.map((item) => item.risk_points))
   const antivirusPercent = overview.computers_total
     ? Math.round((overview.antivirus_protected / overview.computers_total) * 100)
     : 0
@@ -427,68 +387,6 @@ export function RiskCenterPage() {
         ) : (
           <p className="text-sm text-[var(--color-fg-muted)]">{c.historyEmpty}</p>
         )}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(22rem,0.9fr)]">
-        <div className="risk-card-enter app-panel !rounded-2xl !p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <IconActivity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            <h2 className="font-semibold text-[var(--color-fg)]">{c.categories}</h2>
-          </div>
-          <div className="space-y-4">
-            {overview.categories.map((category) => (
-              <div key={category.id}>
-                <div className="mb-1.5 flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium text-[var(--color-fg)]">{category.label}</span>
-                  <span className="text-xs tabular-nums text-[var(--color-fg-muted)]">
-                    {category.affected_computers} {c.affected}
-                  </span>
-                </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-[var(--color-surface-muted)]">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-blue-600 to-sky-400 transition-[width] duration-700 ease-out"
-                    style={{ width: `${Math.max(4, (category.risk_points / maxCategoryPoints) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="risk-card-enter app-panel !rounded-2xl !p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <IconCheckBadge className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                <h2 className="font-semibold text-[var(--color-fg)]">{c.aiTitle}</h2>
-              </div>
-              {!canRunAi ? (
-                <p className="mt-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">{c.aiPermission}</p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className="app-btn app-btn-primary shrink-0 !min-h-[2.5rem] !px-3 !text-sm"
-              disabled={aiBusy || !canRunAi}
-              onClick={() => void runAi(Boolean(aiInsight))}
-            >
-              {aiBusy ? c.aiBusy : aiInsight ? c.aiRefresh : c.aiRun}
-            </button>
-          </div>
-          <div className="mt-4 min-h-36 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4 text-sm leading-6 text-[var(--color-fg)]">
-            {aiInsight ? (
-              <div className="whitespace-pre-wrap">{aiInsight.text}</div>
-            ) : (
-              <div className="flex min-h-24 items-center text-[var(--color-fg-muted)]">{c.aiEmpty}</div>
-            )}
-            {aiInsight?.model ? (
-              <div className="mt-3 border-t border-[var(--color-border)] pt-2 text-[10px] text-[var(--color-fg-subtle)]">
-                {aiInsight.model}
-                {aiInsight.cached ? ' · cache' : ''}
-              </div>
-            ) : null}
-          </div>
-        </div>
       </section>
 
       <section className="risk-card-enter overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
