@@ -17,8 +17,7 @@ def client() -> TestClient:
         yield tc
 
 
-@pytest.fixture(scope="session")
-def auth_headers(client: TestClient) -> dict[str, str]:
+def _login_headers(client: TestClient) -> dict[str, str]:
     # CI: fresh DB + BOOTSTRAP_ADMIN_* from defaults/.env.example.
     # Local prod-like DB: set TEST_LOGIN_USERNAME / TEST_LOGIN_PASSWORD if bootstrap ≠ real admin.
     username = (os.environ.get("TEST_LOGIN_USERNAME") or settings.bootstrap_admin_username).strip()
@@ -40,6 +39,15 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     token = r.json().get("access_token")
     assert token
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def auth_headers(client: TestClient) -> dict[str, str]:
+    """Per-test JWT.
+
+    Session-scoped tokens break after password change / logout (token_version bump).
+    """
+    return _login_headers(client)
 
 
 @pytest.fixture(scope="session")

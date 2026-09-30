@@ -43,5 +43,5 @@ def test_classic_prompt_allows_reasoned_fallback():
     assert "192.168.3.21" in user
     assert "Контекст:" in user
     system = msgs[0]["content"]
-    assert "прямого ответа" in system.lower()
-    assert "вывод" in system.lower()
+    assert "контекст" in system.lower()
+    assert "не выдумывай" in system.lower()

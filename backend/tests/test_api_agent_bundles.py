@@ -24,7 +24,8 @@ def _assert_personal_exe(r, server: str, token: str) -> None:
     assert "CORAX-Agent.exe" in disposition
     assert server.encode() in r.content
     assert token.encode() in r.content
-    assert b"agent.provision.json" not in r.content
+    # Personal EXE is not a zip sidecar (legacy zip carried agent.provision.json).
+    assert r.content[:2] != b"PK"
 
 
 def test_create_agent_bundle_zip(client: TestClient, auth_headers: dict[str, str]):

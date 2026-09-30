@@ -116,8 +116,11 @@ test('warehouse: create and delete room when editor', async ({ page }) => {
 
   await page.getByText(name, { exact: true }).click()
   await page.getByRole('button', { name: '⋮' }).click()
-  page.once('dialog', (d) => d.accept())
-  await page.getByRole('button', { name: /Удалить|Delete/i }).click()
+  await page.getByRole('button', { name: /Удалить помещение|Delete room|Удалить всё|Delete everything/i }).click()
+  // Warehouse uses in-app ConfirmDialog, not window.confirm.
+  const confirm = page.getByRole('dialog')
+  await expect(confirm).toBeVisible({ timeout: 10_000 })
+  await confirm.getByRole('button', { name: /Удалить|Delete/i }).click()
   await expect(page.getByText(name, { exact: true })).toHaveCount(0, { timeout: 15_000 })
 })
 
