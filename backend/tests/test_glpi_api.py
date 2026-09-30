@@ -958,6 +958,42 @@ def test_push_computer_includes_ip_in_comment():
     assert created[0]["comment"].startswith("кабинет")
 
 
+def test_push_computer_other_entity_update_blocked_no_duplicate():
+    """ПК в другом подразделении: UPDATE падает — дубликат не создаём."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assets/Computer") and request.method == "GET":
+            return httpx.Response(
+                200,
+                json=[{"id": 3199, "name": "PC-OTHER", "entities_id": 7, "serial": "SN-X"}],
+            )
+        if "/Assets/Computer/3199" in path and request.method == "PATCH":
+            return httpx.Response(400, json=["ERROR_API", "You don't have permission"])
+        if path.endswith("/Assets/Computer") and request.method == "POST":
+            return httpx.Response(500, json={"message": "should not create duplicate"})
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_computers(
+        _v2_creds(),
+        [GlpiComputerOutbound(corax_id=5, hostname="PC-OTHER", serial="SN-X", software=())],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "failed"
+    assert results[0].glpi_id is None
+    assert "3199" in (results[0].error or "")
+    assert "Дубликат не создан" in (results[0].error or "")
+
+
+def test_friendly_error_api_mentions_entity():
+    from app.glpi_client import _friendly
+
+    text = _friendly("ERROR_API something")
+    assert "сущност" in text.casefold() or "подраздел" in text.casefold()
+
+
 def test_glpi_asset_import_and_export_keep_the_same_software_set(
     client: TestClient,
     auth_headers: dict[str, str],

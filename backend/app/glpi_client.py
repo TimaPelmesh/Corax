@@ -121,8 +121,18 @@ def _is_permission_error(exc: Exception) -> bool:
             "error_right",
             "error_glpi_update",
             "error_right_missing",
+            "error_api",
+            "error_glpi_partial",
+            "другая сущность",
+            "entity",
+            "permission",
         )
     )
+
+
+def _is_asset_update_blocked(exc: Exception) -> bool:
+    """UPDATE ПК/устройства недоступен: права, сущность или общий ERROR_API."""
+    return _is_permission_error(exc)
 
 
 @dataclass(frozen=True)
@@ -176,6 +186,7 @@ class GlpiComputer:
     os_name: str | None = None
     os_version: str | None = None
     comment: str | None = None
+    entity_id: int | None = None
     # None — список ПО неизвестен (не затирать). Пустой кортеж — в GLPI программ нет.
     software: tuple[GlpiSoftware, ...] | None = None
 
@@ -215,6 +226,7 @@ class GlpiDevice:
     contact: str | None = None
     comment: str | None = None
     organization: str | None = None
+    entity_id: int | None = None
     updated_at: datetime | None = None
     created_at: datetime | None = None
 
@@ -381,6 +393,20 @@ def _device_itemtype(kind: str) -> str:
     raise GlpiClientError("Можно передать только мониторы или принтеры")
 
 
+def _entity_id_from(raw: dict[str, Any]) -> int | None:
+    """entities_id / entity из ответа GLPI 10 (int|dropdown) и GLPI 11 ({id})."""
+    for key in ("entities_id", "entity"):
+        value = raw.get(key)
+        found = _as_int(value)
+        if found is not None:
+            return found
+        if isinstance(value, dict):
+            found = _as_int(value.get("id"))
+            if found is not None:
+                return found
+    return None
+
+
 def parse_device(raw: object) -> GlpiDevice | None:
     if not isinstance(raw, dict):
         return None
@@ -402,6 +428,7 @@ def parse_device(raw: object) -> GlpiDevice | None:
         contact=_clip(raw.get("contact"), 255),
         comment=_clip(raw.get("comment"), 8000),
         organization=_clip(raw.get("entities_id") or raw.get("entity"), 255),
+        entity_id=_entity_id_from(raw),
         updated_at=parse_glpi_datetime(raw.get("date_mod") or raw.get("date_creation")),
         created_at=parse_glpi_datetime(raw.get("date_creation") or raw.get("date")),
     )
@@ -667,6 +694,7 @@ def parse_computer(raw: object) -> GlpiComputer | None:
         os_name=_dropdown_label(raw.get("os_name") or raw.get("operatingsystems_id")),
         os_version=_dropdown_label(raw.get("os_version") or raw.get("operatingsystemversions_id"), 255),
         comment=_clip(raw.get("comment") or raw.get("notes"), 8000),
+        entity_id=_entity_id_from(raw),
         software=software,
     )
 
@@ -1170,7 +1198,20 @@ class _Session:
             existing = parse_device(self._read_asset(itemtype, item.glpi_id))
         if existing is None:
             existing = self._find_device(itemtype, name, item.serial, item.inventory)
-        glpi_id = self._write_device(None if existing is None else existing.glpi_id, item)
+        if existing is None:
+            glpi_id = self._write_device(None, item, entity_id=None)
+        else:
+            try:
+                glpi_id = self._write_device(existing.glpi_id, item, entity_id=existing.entity_id)
+            except GlpiClientError as exc:
+                if not _is_asset_update_blocked(exc):
+                    raise
+                # Чужое подразделение / нет UPDATE — не плодим дубликат.
+                entity_hint = f" (сущность #{existing.entity_id})" if existing.entity_id is not None else ""
+                raise GlpiClientError(
+                    f"{itemtype} «{name[:80]}» уже есть в GLPI #{existing.glpi_id}{entity_hint}, "
+                    f"но UPDATE недоступен (другое подразделение или нет прав). Дубликат не создан."
+                ) from exc
         fresh = parse_device(self._read_asset(itemtype, glpi_id))
         return GlpiDevicePushResult(
             corax_id=item.corax_id,
@@ -1185,14 +1226,29 @@ class _Session:
             raise GlpiClientError("У компьютера нет имени")
         match = self._find_computer(hostname, item.serial)
         if match is None:
-            glpi_id = self._write_computer(None, item)
+            glpi_id = self._write_computer(None, item, entity_id=None)
             action = "created"
         else:
-            glpi_id = match.glpi_id
-            self._write_computer(glpi_id, item)
-            action = "updated"
-        self._replace_software(glpi_id, item.software)
-        self._write_os(glpi_id, item.os_name, item.os_version)
+            try:
+                glpi_id = self._write_computer(match.glpi_id, item, entity_id=match.entity_id)
+                action = "updated"
+            except GlpiClientError as exc:
+                if not _is_asset_update_blocked(exc):
+                    raise
+                entity_hint = f" (сущность #{match.entity_id})" if match.entity_id is not None else ""
+                raise GlpiClientError(
+                    f"ПК «{hostname}» уже есть в GLPI #{match.glpi_id}{entity_hint}, "
+                    f"но UPDATE недоступен (другое подразделение или нет прав). Дубликат не создан."
+                ) from exc
+        # ПО / ОС / IP — best-effort: основная карточка ПК уже записана.
+        try:
+            self._replace_software(glpi_id, item.software)
+        except GlpiClientError:
+            pass
+        try:
+            self._write_os(glpi_id, item.os_name, item.os_version)
+        except GlpiClientError:
+            pass
         self._ensure_computer_ip(glpi_id, item.ip_address)
         return GlpiAssetPushResult(corax_id=item.corax_id, glpi_id=glpi_id, action=action)
 
@@ -1280,7 +1336,7 @@ class _Session:
             return device.inventory
         return device.name
 
-    def _write_device(self, glpi_id: int | None, item: GlpiDeviceOutbound) -> int:
+    def _write_device(self, glpi_id: int | None, item: GlpiDeviceOutbound, *, entity_id: int | None = None) -> int:
         itemtype = _device_itemtype(item.kind)
         legacy_body: dict[str, Any] = {"name": item.name.strip()[:255]}
         v2_body: dict[str, Any] = {"name": item.name.strip()[:255]}
@@ -1312,19 +1368,24 @@ class _Session:
                 v2_body[v2_field] = {"id": ref}
             elif self.mode != "legacy":
                 v2_body[v2_field] = {"name": text[:255]}
+        focus = entity_id if glpi_id is not None else None
+        if focus is not None:
+            self._focus_entity(focus)
+        asset_headers = self._asset_headers(entity_id=focus)
+        v2_headers = self._v2_headers(entity_id=focus)
         if self.mode == "legacy":
             if glpi_id is None:
                 data = self._request(
                     "POST",
                     f"{self.base}/apirest.php/{itemtype}",
-                    headers=self._asset_headers(),
+                    headers=asset_headers,
                     json={"input": legacy_body},
                 )
             else:
                 self._request(
                     "PUT",
                     f"{self.base}/apirest.php/{itemtype}/{glpi_id}",
-                    headers=self._asset_headers(),
+                    headers=asset_headers,
                     json={"input": legacy_body},
                 )
                 return glpi_id
@@ -1332,14 +1393,14 @@ class _Session:
             data = self._request(
                 "POST",
                 f"{self.base}/api.php/Assets/{itemtype}",
-                headers=self._v2_headers(),
+                headers=v2_headers,
                 json=v2_body,
             )
         else:
             self._request(
                 "PATCH",
                 f"{self.base}/api.php/Assets/{itemtype}/{glpi_id}",
-                headers=self._v2_headers(),
+                headers=v2_headers,
                 json=v2_body,
             )
             return glpi_id
@@ -1413,7 +1474,7 @@ class _Session:
                 found.append(computer)
         return found
 
-    def _write_computer(self, glpi_id: int | None, item: GlpiComputerOutbound) -> int:
+    def _write_computer(self, glpi_id: int | None, item: GlpiComputerOutbound, *, entity_id: int | None = None) -> int:
         hostname = item.hostname.strip()[:255]
         legacy_body: dict[str, Any] = {"name": hostname}
         v2_body: dict[str, Any] = {"name": hostname}
@@ -1440,19 +1501,24 @@ class _Session:
                 v2_body[v2_field] = {"id": ref}
             elif self.mode != "legacy":
                 v2_body[v2_field] = {"name": label.strip()[:255]}
+        focus = entity_id if glpi_id is not None else None
+        if focus is not None:
+            self._focus_entity(focus)
+        asset_headers = self._asset_headers(entity_id=focus)
+        v2_headers = self._v2_headers(entity_id=focus)
         if self.mode == "legacy":
             if glpi_id is None:
                 data = self._request(
                     "POST",
                     f"{self.base}/apirest.php/Computer",
-                    headers=self._asset_headers(),
+                    headers=asset_headers,
                     json={"input": legacy_body},
                 )
             else:
-                data = self._request(
+                self._request(
                     "PUT",
                     f"{self.base}/apirest.php/Computer/{glpi_id}",
-                    headers=self._asset_headers(),
+                    headers=asset_headers,
                     json={"input": legacy_body},
                 )
                 return glpi_id
@@ -1460,14 +1526,14 @@ class _Session:
             data = self._request(
                 "POST",
                 f"{self.base}/api.php/Assets/Computer",
-                headers=self._v2_headers(),
+                headers=v2_headers,
                 json=v2_body,
             )
         else:
             self._request(
                 "PATCH",
                 f"{self.base}/api.php/Assets/Computer/{glpi_id}",
-                headers=self._v2_headers(),
+                headers=v2_headers,
                 json=v2_body,
             )
             return glpi_id
@@ -1766,17 +1832,10 @@ class _Session:
             return None
         return self._parse(response, empty_on=(404,))
 
-    def _asset_headers(self) -> dict[str, str]:
+    def _asset_headers(self, *, entity_id: int | None = None) -> dict[str, str]:
         if self.mode == "legacy" or not self._access:
             return self._legacy_headers()
-        headers = {
-            "Authorization": f"Bearer {self._access}",
-            "Accept": "application/json",
-        }
-        app_token = (self.creds.app_token or "").strip()
-        if app_token:
-            headers["App-Token"] = app_token
-        return headers
+        return self._v2_headers(entity_id=entity_id)
 
     def _authenticate(self) -> None:
         if self.mode == "legacy":
@@ -1839,6 +1898,51 @@ class _Session:
             raise GlpiClientError("GLPI не вернул session token")
         self._session_token = session_token
         self.version = self._read_legacy_version()
+        self._activate_all_entities()
+
+    def _activate_all_entities(self) -> None:
+        """По доке apirest: entities_id=all + is_recursive — видеть дочерние подразделения."""
+        if not self._session_token:
+            return
+        try:
+            self._request(
+                "POST",
+                f"{self.base}/apirest.php/changeActiveEntities",
+                headers=self._legacy_headers(),
+                json={"input": {"entities_id": "all", "is_recursive": True}},
+            )
+        except GlpiClientError:
+            try:
+                self._request(
+                    "POST",
+                    f"{self.base}/apirest.php/changeActiveEntities",
+                    headers=self._legacy_headers(),
+                    json={"entities_id": "all", "is_recursive": True},
+                )
+            except GlpiClientError:
+                return
+
+    def _focus_entity(self, entity_id: int | None) -> None:
+        """Перед UPDATE карточки из другого подразделения — переключаем активную сущность."""
+        if entity_id is None or not self._session_token:
+            return
+        try:
+            self._request(
+                "POST",
+                f"{self.base}/apirest.php/changeActiveEntities",
+                headers=self._legacy_headers(),
+                json={"input": {"entities_id": entity_id, "is_recursive": True}},
+            )
+        except GlpiClientError:
+            try:
+                self._request(
+                    "POST",
+                    f"{self.base}/apirest.php/changeActiveEntities",
+                    headers=self._legacy_headers(),
+                    json={"entities_id": entity_id, "is_recursive": True},
+                )
+            except GlpiClientError:
+                return
 
     def _read_legacy_version(self) -> str | None:
         try:
@@ -1896,13 +2000,19 @@ class _Session:
             )
         return _as_list(payload)
 
-    def _v2_headers(self) -> dict[str, str]:
-        return {
+    def _v2_headers(self, *, entity_id: int | None = None) -> dict[str, str]:
+        # GLPI 11 HL API: без GLPI-Entity — все доступные сущности;
+        # GLPI-Entity-Recursive — с дочерними; при UPDATE конкретной карточки
+        # передаём её entities_id, чтобы не словить ERROR_API чужого подразделения.
+        headers = {
             "Authorization": f"Bearer {self._access}",
             "Accept": "application/json",
             "Accept-Language": "en_GB",
             "GLPI-Entity-Recursive": "true",
         }
+        if entity_id is not None:
+            headers["GLPI-Entity"] = str(entity_id)
+        return headers
 
     def _legacy_headers(self) -> dict[str, str]:
         return {
@@ -2062,16 +2172,38 @@ def _friendly(text: str) -> str:
         ("ERROR_GLPI_LOGIN", "GLPI отклонил авторизацию. Проверьте токены API."),
         ("ERROR_WRONG_APP_TOKEN", "App-Token не совпадает с настройкой GLPI."),
         ("ERROR_APP_TOKEN_PARAMETERS_MISSING", "Не передан App-Token."),
-        ("ERROR_RIGHT_MISSING", "У профиля GLPI нет прав на заявки (Ticket)."),
-        ("ERROR_RIGHT", "У профиля GLPI нет прав на это действие с заявкой."),
+        (
+            "ERROR_RIGHT_MISSING",
+            "У профиля GLPI нет прав на это действие (Ticket/Computer/Monitor/Printer) "
+            "в нужной сущности/подразделении.",
+        ),
+        (
+            "ERROR_RIGHT",
+            "У профиля GLPI нет прав на это действие. Проверьте профиль и активную сущность.",
+        ),
         (
             "don't have permission",
-            "Нет прав на это действие в GLPI. Профилю нужны CREATE/UPDATE на Ticket "
-            "в нужной сущности. Если заявка CORAX уже связана с GLPI id — это UPDATE: "
-            "выгрузите только новые без связи или выдайте права профилю.",
+            "Нет прав на это действие в GLPI. Профилю нужны CREATE/UPDATE в нужной сущности. "
+            "Если запись уже в другом подразделении — UPDATE может быть закрыт: "
+            "дубликат CORAX не создаёт, выдайте права или работайте в той сущности.",
         ),
-        ("ERROR_GLPI_ADD", "GLPI отказал в создании заявки (права или обязательные поля)."),
-        ("ERROR_GLPI_UPDATE", "GLPI отказал в изменении заявки (права или сущность)."),
+        (
+            "ERROR_GLPI_ADD",
+            "GLPI отказал в создании (права, обязательные поля или сущность).",
+        ),
+        (
+            "ERROR_GLPI_UPDATE",
+            "GLPI отказал в изменении: нет UPDATE или запись в другом подразделении (сущности).",
+        ),
+        (
+            "ERROR_GLPI_PARTIAL_UPDATE",
+            "Часть полей GLPI не обновилась (права или сущность). Карточка могла остаться частично прежней.",
+        ),
+        (
+            "ERROR_API",
+            "GLPI вернул ERROR_API: чаще всего нет прав UPDATE или объект в другой сущности/подразделении. "
+            "Дубликат с тем же именем не создаём — выдайте права или переключите сущность профиля.",
+        ),
         ("invalid_client", "GLPI не принял Client ID или Client secret."),
         ("invalid_grant", "GLPI не принял логин или пароль."),
         ("unauthorized_client", "Этому OAuth-клиенту не разрешён выбранный способ входа."),
