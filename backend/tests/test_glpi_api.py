@@ -389,6 +389,41 @@ def test_friendly_permission_message_is_actionable():
     assert "sekret" not in text
 
 
+def test_force_create_ticket_ignores_existing_link():
+    created: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assistance/Ticket") and request.method == "POST":
+            body = json.loads(request.content.decode())
+            created.append(body)
+            return httpx.Response(201, json={"id": 9001})
+        if request.method == "PATCH":
+            return httpx.Response(500, json={"message": "should not update"})
+        return httpx.Response(404, json={"message": path})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=42,
+                glpi_id=3199,
+                title="Старая тема",
+                content="текст",
+                status="open",
+                priority="normal",
+                force_create=True,
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created"
+    assert results[0].glpi_id == 9001
+    assert "CORAX#42" in created[0]["name"]
+
+
 def test_outbound_body_maps_corax_statuses_for_glpi():
     from app.glpi_client import GlpiOutbound, _outbound_body, glpi_priority_id, glpi_status_id
 

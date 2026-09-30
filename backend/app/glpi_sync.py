@@ -165,9 +165,14 @@ async def export_glpi_tickets(
     Без ``glpi_id`` → CREATE; с ``glpi_id`` → UPDATE этой заявки в GLPI.
     """
     bounded = max(1, min(int(limit), 2000))
-    export_mode = (mode or "recent").strip().lower()
+    export_mode = (mode or "force_create").strip().lower()
     if request_ids:
         export_mode = "selected"
+
+    force_create = export_mode in {"force_create", "test_one", "new_only"}
+    # selected + force: если пользователь выбрал конкретные — тоже CREATE (без конфликтов UPDATE).
+    if export_mode == "selected":
+        force_create = True
 
     stmt = select(ServiceRequest)
     if export_mode == "selected":
@@ -176,12 +181,7 @@ async def export_glpi_tickets(
             return GlpiSyncResult(message="Укажите id заявок CORAX для выборочной выгрузки")
         stmt = stmt.where(ServiceRequest.id.in_(ids))
     elif export_mode == "test_one":
-        # Одна свежая заявка без связи — безопасная проверка CREATE.
-        stmt = (
-            stmt.where(ServiceRequest.glpi_id.is_(None))
-            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
-            .limit(1)
-        )
+        stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(1)
     elif export_mode == "new_only":
         stmt = (
             stmt.where(ServiceRequest.glpi_id.is_(None))
@@ -194,24 +194,19 @@ async def export_glpi_tickets(
             .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
             .limit(bounded)
         )
+    elif export_mode == "force_create":
+        stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(bounded)
     else:
         stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(bounded)
 
     rows = list((await db.execute(stmt)).scalars().all())
-    if not rows and export_mode == "test_one":
-        # Если все уже связаны — берём одну любую свежую (будет UPDATE / match по названию).
-        fallback = await db.execute(
-            select(ServiceRequest)
-            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
-            .limit(1)
-        )
-        rows = list(fallback.scalars().all())
     if not rows:
         empty_hint = {
             "new_only": "Нет заявок без связи с GLPI (все уже с glpi_id)",
             "linked_only": "Нет заявок, уже связанных с GLPI",
             "selected": "По указанным id заявки не найдены",
             "test_one": "В CORAX нет заявок для тестовой выгрузки",
+            "force_create": "В CORAX нет заявок для выгрузки в GLPI",
         }.get(export_mode, "В CORAX нет заявок для выгрузки в GLPI")
         return GlpiSyncResult(message=empty_hint)
 
@@ -219,7 +214,7 @@ async def export_glpi_tickets(
     outbound = [
         GlpiOutbound(
             corax_id=row.id,
-            glpi_id=row.glpi_id,
+            glpi_id=None if force_create else row.glpi_id,
             title=row.title or f"CORAX #{row.id}",
             content=(row.description or "")[:_CONTENT_SAFE],
             status=row.status or "open",
@@ -227,6 +222,7 @@ async def export_glpi_tickets(
             requester=people[row.id]["requester"],
             assignee=people[row.id]["assignee"],
             category=(row.category or "").strip() or None,
+            force_create=force_create and export_mode != "linked_only",
         )
         for row in rows
     ]
@@ -282,9 +278,10 @@ async def export_glpi_tickets(
     mode_label = {
         "new_only": "только новые",
         "linked_only": "только связанные",
-        "selected": "выбранные",
+        "selected": "выбранные (CREATE)",
         "recent": "последние",
-        "test_one": "тестовая одна",
+        "test_one": "тестовая одна (CREATE)",
+        "force_create": "всегда CREATE",
     }.get(export_mode, export_mode)
     message = (
         f"Выгрузка в GLPI ({mode_label}): создано {created}, обновлено {updated}, "

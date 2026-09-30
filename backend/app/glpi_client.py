@@ -94,6 +94,8 @@ class GlpiOutbound:
     requester: str | None = None
     assignee: str | None = None
     category: str | None = None
+    # True — всегда CREATE новой заявки в GLPI (без UPDATE и без поиска по названию).
+    force_create: bool = False
 
 
 @dataclass(frozen=True)
@@ -1071,8 +1073,24 @@ class _Session:
         return _as_list(payload) if payload else []
 
     def upsert_ticket(self, item: GlpiOutbound) -> GlpiPushResult:
-        """Связь по glpi_id или точному названию → UPDATE, иначе CREATE."""
+        """Связь по glpi_id или точному названию → UPDATE, иначе CREATE.
+
+        force_create=True — всегда новая заявка (как тестовая), без UPDATE и без поиска по теме.
+        """
         title = (item.title or f"CORAX #{item.corax_id}").strip()
+        if item.force_create:
+            # Уникальный хвост, чтобы не зацепить старую заявку по названию при следующих выгрузках.
+            marker = f"CORAX#{item.corax_id}"
+            if marker.casefold() not in title.casefold():
+                title = f"{title} · {marker}"[:255]
+            created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
+            return GlpiPushResult(
+                corax_id=item.corax_id,
+                glpi_id=created_id,
+                action="created",
+                detail="принудительный CREATE",
+            )
+
         target_id = item.glpi_id
         matched_by = "id" if target_id else None
         if target_id is None:
@@ -1090,25 +1108,26 @@ class _Session:
                     detail=f"сопоставлено по {matched_by}",
                 )
             except GlpiClientError as exc:
-                if not _is_permission_error(exc):
+                # UPDATE недоступен / HTTP 500 сущности — создаём новую, не конфликтуем.
+                if not (_is_permission_error(exc) or "http 500" in str(exc).casefold() or "error_api" in str(exc).casefold()):
                     raise
-                # UPDATE чужой/чужой сущности: не плодим дубликат с тем же названием.
-                same_title_id = self.find_ticket_id_by_title(title)
-                if same_title_id is not None:
-                    raise GlpiClientError(
-                        f"Заявка «{title[:80]}» уже есть в GLPI #{same_title_id}, "
-                        f"но у профиля нет UPDATE. Дубликат не создан. "
-                        f"Выдайте права или снимите связь glpi_id в CORAX."
-                    ) from exc
-                # Старая связь недоступна и названия в GLPI нет — создаём новую.
-                created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
+                created_id = self.create_ticket(
+                    replace(
+                        item,
+                        glpi_id=None,
+                        title=(
+                            title
+                            if f"CORAX#{item.corax_id}".casefold() in title.casefold()
+                            else f"{title} · CORAX#{item.corax_id}"[:255]
+                        ),
+                    )
+                )
                 return GlpiPushResult(
                     corax_id=item.corax_id,
                     glpi_id=created_id,
                     action="created",
                     detail=(
-                        f"старая связь GLPI #{target_id} недоступна (нет UPDATE), "
-                        f"создана новая #{created_id}"
+                        f"UPDATE GLPI #{target_id} недоступен, создана новая #{created_id}"
                     ),
                 )
 
@@ -1506,6 +1525,41 @@ class _Session:
             self._focus_entity(focus)
         asset_headers = self._asset_headers(entity_id=focus)
         v2_headers = self._v2_headers(entity_id=focus)
+        try:
+            return self._write_computer_payload(
+                glpi_id,
+                legacy_body,
+                v2_body,
+                asset_headers=asset_headers,
+                v2_headers=v2_headers,
+            )
+        except GlpiClientError as exc:
+            text = str(exc).casefold()
+            if "http 500" not in text and "error_api" not in text:
+                raise
+            # GLPI 500 на полном теле (dropdown/IP/comment) — пробуем только имя+серийник.
+            minimal_legacy: dict[str, Any] = {"name": hostname}
+            minimal_v2: dict[str, Any] = {"name": hostname}
+            if item.serial:
+                minimal_legacy["serial"] = item.serial.strip()[:255]
+                minimal_v2["serial"] = item.serial.strip()[:255]
+            return self._write_computer_payload(
+                glpi_id,
+                minimal_legacy,
+                minimal_v2,
+                asset_headers=asset_headers,
+                v2_headers=v2_headers,
+            )
+
+    def _write_computer_payload(
+        self,
+        glpi_id: int | None,
+        legacy_body: dict[str, Any],
+        v2_body: dict[str, Any],
+        *,
+        asset_headers: dict[str, str],
+        v2_headers: dict[str, str],
+    ) -> int:
         if self.mode == "legacy":
             if glpi_id is None:
                 data = self._request(

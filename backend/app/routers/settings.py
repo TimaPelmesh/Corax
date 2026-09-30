@@ -870,6 +870,7 @@ async def export_glpi_assets_api(
             limit=payload.limit,
             computer_ids=payload.computer_ids,
             mode=payload.mode,
+            skip_software=payload.skip_software,
         )
     except GlpiClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

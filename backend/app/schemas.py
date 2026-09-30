@@ -842,7 +842,7 @@ class GlpiTicketSyncIn(BaseModel):
     # recent = последние N; new_only = без glpi_id (только CREATE);
     # linked_only = уже связанные (только UPDATE); selected = явный список id CORAX;
     # test_one = одна свежая заявка без связи (безопасная проверка выгрузки).
-    mode: str = Field(default="recent", pattern="^(recent|new_only|linked_only|selected|test_one)$")
+    mode: str = Field(default="force_create", pattern="^(recent|new_only|linked_only|selected|test_one|force_create)$")
 
 
 class GlpiTicketSyncOut(BaseModel):
@@ -882,6 +882,8 @@ class GlpiAssetSyncIn(BaseModel):
     # all = ПК в пределах лимита; selected = явный список id CORAX.
     mode: str = Field(default="all", pattern="^(all|selected)$")
     computer_ids: list[int] | None = Field(default=None, max_length=2000)
+    # ПО часто валит GLPI HTTP 500 — по умолчанию можно выключить.
+    skip_software: bool = False
 
 
 class GlpiComputerRowOut(BaseModel):

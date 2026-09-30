@@ -16,7 +16,7 @@ import { useToast } from '../ToastContext'
 
 type ApiMode = 'v2' | 'legacy'
 type GrantType = 'password' | 'client_credentials'
-type TicketExportMode = 'test_one' | 'new_only' | 'recent' | 'linked_only' | 'selected'
+type TicketExportMode = 'force_create' | 'test_one' | 'selected' | 'linked_only' | 'recent' | 'new_only'
 type AssetExportMode = 'all' | 'selected'
 
 function identityLines(identity: GlpiIdentity | null | undefined, fallbackUser: string) {
@@ -45,7 +45,7 @@ export function GlpiApiPanel() {
   const [appToken, setAppToken] = useState('')
   const [userToken, setUserToken] = useState('')
   const [verifyTls, setVerifyTls] = useState(true)
-  const [limit, setLimit] = useState(200)
+  const [limit, setLimit] = useState(50)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [sendingTicket, setSendingTicket] = useState(false)
@@ -57,14 +57,17 @@ export function GlpiApiPanel() {
   )
   const [lastTicket, setLastTicket] = useState<GlpiTestTicketResult | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [exportMode, setExportMode] = useState<TicketExportMode>('test_one')
+  const [exportMode, setExportMode] = useState<TicketExportMode>('force_create')
   const [exportIdsText, setExportIdsText] = useState('')
   const [ticketPickRows, setTicketPickRows] = useState<ServiceRequestRow[]>([])
   const [ticketPickLoading, setTicketPickLoading] = useState(false)
   const [ticketPicked, setTicketPicked] = useState<number[]>([])
   const [ticketLinkDrafts, setTicketLinkDrafts] = useState<Record<number, string>>({})
   const [ticketLinksSaving, setTicketLinksSaving] = useState(false)
+  const [showTicketLinks, setShowTicketLinks] = useState(false)
+  const [showMoreTicketModes, setShowMoreTicketModes] = useState(false)
   const [assetMode, setAssetMode] = useState<AssetExportMode>('all')
+  const [assetSkipSoftware, setAssetSkipSoftware] = useState(true)
   const [assetRows, setAssetRows] = useState<GlpiComputerRow[]>([])
   const [assetPicked, setAssetPicked] = useState<number[]>([])
   const [assetLoading, setAssetLoading] = useState(false)
@@ -389,6 +392,7 @@ export function GlpiApiPanel() {
               : await api.glpiExportAssets(bounded, {
                   mode: assetMode,
                   computer_ids: assetMode === 'selected' ? assetPicked : undefined,
+                  skip_software: assetSkipSoftware,
                 })
       reportSync(kind, result)
     } catch (e) {
@@ -737,23 +741,34 @@ export function GlpiApiPanel() {
           <div className="mt-4 space-y-4">
             <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.advancedHint')}</p>
 
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/40 p-3 text-xs leading-relaxed text-[var(--color-fg-muted)]">
-              <p className="font-semibold text-[var(--color-fg)]">{t('settingsGlpi.mappingTitle')}</p>
-              <p className="mt-1">{t('settingsGlpi.mappingIds')}</p>
-              <p className="mt-1">{t('settingsGlpi.mappingFields')}</p>
-              <p className="mt-1">{t('settingsGlpi.mappingStatus')}</p>
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/40 px-3 py-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">
+                  {t('settingsGlpi.syncLimit')}
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={2000}
+                  className="app-input w-28"
+                  value={limit}
+                  onChange={(e) => setLimit(Number(e.target.value))}
+                />
+                <span className="mt-1 block text-[11px] text-[var(--color-fg-subtle)]">{t('settingsGlpi.syncLimitHint')}</span>
+              </label>
+              <p className="max-w-md text-[11px] leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.flowHint')}</p>
             </div>
 
             <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
-              <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.ticketsBlockTitle')}</p>
-              <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.exportModeHint')}</p>
+              <div>
+                <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.ticketsBlockTitle')}</p>
+                <p className="mt-0.5 text-[11px] text-[var(--color-fg-muted)]">{t('settingsGlpi.ticketsFlow')}</p>
+              </div>
               <div className="grid gap-2">
                 {(
                   [
+                    ['force_create', t('settingsGlpi.exportModeForce'), t('settingsGlpi.exportModeForceHint')],
                     ['test_one', t('settingsGlpi.exportModeTestOne'), t('settingsGlpi.exportModeTestOneHint')],
-                    ['new_only', t('settingsGlpi.exportModeNew'), t('settingsGlpi.exportModeNewHint')],
-                    ['recent', t('settingsGlpi.exportModeRecent'), t('settingsGlpi.exportModeRecentHint')],
-                    ['linked_only', t('settingsGlpi.exportModeLinked'), t('settingsGlpi.exportModeLinkedHint')],
                     ['selected', t('settingsGlpi.exportModeSelected'), t('settingsGlpi.exportModeSelectedHint')],
                   ] as const
                 ).map(([value, label, hint]) => (
@@ -779,84 +794,79 @@ export function GlpiApiPanel() {
                   </label>
                 ))}
               </div>
-              <div className="space-y-2 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)]/30 p-3">
-                <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.linksTitle')}</p>
-                <p className="text-[11px] leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.linksHint')}</p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="app-btn app-btn-secondary"
-                    disabled={busy || ticketPickLoading}
-                    onClick={() => void loadTicketPicker()}
-                  >
-                    {ticketPickLoading ? t('settingsGlpi.syncing') : t('settingsGlpi.exportPickLoad')}
-                  </button>
-                  <button
-                    type="button"
-                    className="app-btn app-btn-secondary"
-                    disabled={busy || ticketPickRows.length === 0}
-                    onClick={clearPickedLinks}
-                  >
-                    {t('settingsGlpi.linksClear')}
-                  </button>
-                  <button
-                    type="button"
-                    className="app-btn app-btn-primary"
-                    disabled={busy || ticketPickRows.length === 0}
-                    onClick={() => void saveTicketLinks()}
-                  >
-                    {ticketLinksSaving ? t('settingsGlpi.saving') : t('settingsGlpi.linksSave')}
-                  </button>
+              <button
+                type="button"
+                className="text-[11px] font-medium text-[var(--color-fg-muted)] hover:text-[var(--color-primary)]"
+                onClick={() => setShowMoreTicketModes((v) => !v)}
+              >
+                {showMoreTicketModes ? '▾' : '▸'} {t('settingsGlpi.exportModeMore')}
+              </button>
+              {showMoreTicketModes ? (
+                <div className="grid gap-2">
+                  {(
+                    [
+                      ['new_only', t('settingsGlpi.exportModeNew'), t('settingsGlpi.exportModeNewHint')],
+                      ['recent', t('settingsGlpi.exportModeRecent'), t('settingsGlpi.exportModeRecentHint')],
+                      ['linked_only', t('settingsGlpi.exportModeLinked'), t('settingsGlpi.exportModeLinkedHint')],
+                    ] as const
+                  ).map(([value, label, hint]) => (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                        exportMode === value
+                          ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary-muted)]'
+                          : 'border-[var(--color-border)]'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        className="mt-1"
+                        checked={exportMode === value}
+                        onChange={() => setExportMode(value)}
+                        name="glpi-export-mode"
+                      />
+                      <span>
+                        <span className="font-medium text-[var(--color-fg)]">{label}</span>
+                        <span className="mt-0.5 block text-[11px] leading-relaxed text-[var(--color-fg-muted)]">{hint}</span>
+                      </span>
+                    </label>
+                  ))}
                 </div>
-                {ticketPickRows.length ? (
-                  <div className="app-scroll max-h-56 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
-                    <table className="w-full text-left text-xs">
-                      <thead className="sticky top-0 bg-[var(--color-surface)]">
-                        <tr className="border-b border-[var(--color-border)] text-[var(--color-fg-muted)]">
-                          <th className="px-2 py-2">{t('settingsGlpi.devicesSelectAll')}</th>
-                          <th className="px-2 py-2">{t('settingsGlpi.linksColCorax')}</th>
-                          <th className="px-2 py-2">{t('settingsGlpi.linksColTitle')}</th>
-                          <th className="px-2 py-2">{t('settingsGlpi.linksColGlpi')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ticketPickRows.map((row) => (
-                          <tr key={row.id} className="border-b border-[var(--color-border)]">
-                            <td className="px-2 py-1.5">
-                              <input
-                                type="checkbox"
-                                checked={ticketPicked.includes(row.id)}
-                                onChange={() => toggleTicketPick(row.id)}
-                                aria-label={`#${row.id}`}
-                              />
-                            </td>
-                            <td className="px-2 py-1.5 tabular-nums font-medium text-[var(--color-fg)]">#{row.id}</td>
-                            <td className="max-w-[14rem] truncate px-2 py-1.5 text-[var(--color-fg)]" title={row.title}>
-                              {row.title}
-                            </td>
-                            <td className="px-2 py-1.5">
-                              <input
-                                className="app-input w-24 font-mono text-[12px]"
-                                inputMode="numeric"
-                                placeholder="—"
-                                value={ticketLinkDrafts[row.id] ?? ''}
-                                onChange={(e) => setLinkDraft(row.id, e.target.value)}
-                                aria-label={t('settingsGlpi.linksColGlpi')}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-[var(--color-fg-muted)]">{t('settingsGlpi.linksEmpty')}</p>
-                )}
-              </div>
+              ) : null}
 
               {exportMode === 'selected' ? (
                 <div className="space-y-2">
-                  <p className="text-[11px] text-[var(--color-fg-muted)]">{t('settingsGlpi.exportPickHint')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary"
+                      disabled={busy || ticketPickLoading}
+                      onClick={() => void loadTicketPicker()}
+                    >
+                      {ticketPickLoading ? t('settingsGlpi.syncing') : t('settingsGlpi.exportPickLoad')}
+                    </button>
+                  </div>
+                  {ticketPickRows.length ? (
+                    <div className="app-scroll max-h-40 overflow-auto rounded-lg border border-[var(--color-border)]">
+                      <ul className="divide-y divide-[var(--color-border)] text-xs">
+                        {ticketPickRows.map((row) => (
+                          <li key={row.id} className="flex items-start gap-2 px-2 py-1.5">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={ticketPicked.includes(row.id)}
+                              onChange={() => toggleTicketPick(row.id)}
+                            />
+                            <div className="min-w-0">
+                              <div className="font-medium text-[var(--color-fg)]">
+                                #{row.id} · {row.title}
+                              </div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   <label className="block text-sm">
                     <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">
                       {t('settingsGlpi.exportIdsLabel')}
@@ -873,27 +883,92 @@ export function GlpiApiPanel() {
                   </label>
                 </div>
               ) : null}
-            </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <label className="block text-sm">
-                <span className="mb-1 flex items-center gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                  <IconTicket className="h-3.5 w-3.5" />
-                  {t('settingsGlpi.syncLimit')}
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={2000}
-                  className="app-input w-32"
-                  value={limit}
-                  onChange={(e) => setLimit(Number(e.target.value))}
-                />
-              </label>
+              <button
+                type="button"
+                className="text-[11px] font-medium text-[var(--color-fg-muted)] hover:text-[var(--color-primary)]"
+                onClick={() => setShowTicketLinks((v) => !v)}
+              >
+                {showTicketLinks ? '▾' : '▸'} {t('settingsGlpi.linksTitle')}
+              </button>
+              {showTicketLinks ? (
+                <div className="space-y-2 rounded-lg border border-dashed border-[var(--color-border)] p-3">
+                  <p className="text-[11px] leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.linksHint')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary"
+                      disabled={busy || ticketPickLoading}
+                      onClick={() => void loadTicketPicker()}
+                    >
+                      {ticketPickLoading ? t('settingsGlpi.syncing') : t('settingsGlpi.exportPickLoad')}
+                    </button>
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary"
+                      disabled={busy || ticketPickRows.length === 0}
+                      onClick={clearPickedLinks}
+                    >
+                      {t('settingsGlpi.linksClear')}
+                    </button>
+                    <button
+                      type="button"
+                      className="app-btn app-btn-primary"
+                      disabled={busy || ticketPickRows.length === 0}
+                      onClick={() => void saveTicketLinks()}
+                    >
+                      {ticketLinksSaving ? t('settingsGlpi.saving') : t('settingsGlpi.linksSave')}
+                    </button>
+                  </div>
+                  {ticketPickRows.length ? (
+                    <div className="app-scroll max-h-44 overflow-auto rounded-lg border border-[var(--color-border)]">
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 bg-[var(--color-surface)]">
+                          <tr className="border-b border-[var(--color-border)] text-[var(--color-fg-muted)]">
+                            <th className="px-2 py-2" />
+                            <th className="px-2 py-2">{t('settingsGlpi.linksColCorax')}</th>
+                            <th className="px-2 py-2">{t('settingsGlpi.linksColTitle')}</th>
+                            <th className="px-2 py-2">{t('settingsGlpi.linksColGlpi')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ticketPickRows.map((row) => (
+                            <tr key={row.id} className="border-b border-[var(--color-border)]">
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={ticketPicked.includes(row.id)}
+                                  onChange={() => toggleTicketPick(row.id)}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 tabular-nums">#{row.id}</td>
+                              <td className="max-w-[12rem] truncate px-2 py-1.5" title={row.title}>
+                                {row.title}
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <input
+                                  className="app-input w-24 font-mono text-[12px]"
+                                  inputMode="numeric"
+                                  placeholder="—"
+                                  value={ticketLinkDrafts[row.id] ?? ''}
+                                  onChange={(e) => setLinkDraft(row.id, e.target.value)}
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-[var(--color-fg-muted)]">{t('settingsGlpi.linksEmpty')}</p>
+                  )}
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="app-btn app-btn-primary"
+                  className="app-btn app-btn-secondary"
                   disabled={busy || !enabled}
                   onClick={() => void runSync('import')}
                 >
@@ -901,7 +976,7 @@ export function GlpiApiPanel() {
                 </button>
                 <button
                   type="button"
-                  className="app-btn app-btn-secondary"
+                  className="app-btn app-btn-primary"
                   disabled={busy || !enabled}
                   onClick={() => void runSync('export')}
                 >
@@ -941,7 +1016,10 @@ export function GlpiApiPanel() {
             ) : null}
 
             <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
-              <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.assetsBlockTitle')}</p>
+              <div>
+                <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.assetsBlockTitle')}</p>
+                <p className="mt-0.5 text-[11px] text-[var(--color-fg-muted)]">{t('settingsGlpi.assetsFlow')}</p>
+              </div>
               <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.assetsHint')}</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {(
@@ -972,6 +1050,20 @@ export function GlpiApiPanel() {
                   </label>
                 ))}
               </div>
+              <label className="flex items-start gap-2 text-sm text-[var(--color-fg)]">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={assetSkipSoftware}
+                  onChange={(e) => setAssetSkipSoftware(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium">{t('settingsGlpi.assetsSkipSoftware')}</span>
+                  <span className="mt-0.5 block text-[11px] text-[var(--color-fg-muted)]">
+                    {t('settingsGlpi.assetsSkipSoftwareHint')}
+                  </span>
+                </span>
+              </label>
               {assetMode === 'selected' ? (
                 <div className="space-y-2">
                   <button
@@ -1033,7 +1125,7 @@ export function GlpiApiPanel() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="app-btn app-btn-primary"
+                  className="app-btn app-btn-secondary"
                   disabled={busy || !enabled}
                   onClick={() => void runSync('import-assets')}
                 >
@@ -1041,7 +1133,7 @@ export function GlpiApiPanel() {
                 </button>
                 <button
                   type="button"
-                  className="app-btn app-btn-secondary"
+                  className="app-btn app-btn-primary"
                   disabled={busy || !enabled}
                   onClick={() => void runSync('export-assets')}
                 >

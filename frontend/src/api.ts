@@ -1939,7 +1939,7 @@ export const api = {
 
   glpiExportTickets: (
     limit: number,
-    opts?: { mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one'; request_ids?: number[] },
+    opts?: { mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one' | 'force_create'; request_ids?: number[] },
   ) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-tickets`, {
       method: 'POST',
@@ -1967,7 +1967,7 @@ export const api = {
   glpiExportTicketsStream: async (
     limit: number,
     opts: {
-      mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one'
+      mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one' | 'force_create'
       request_ids?: number[]
       onProgress?: (p: {
         done: number
@@ -2074,7 +2074,7 @@ export const api = {
 
   glpiExportAssets: (
     limit: number,
-    opts?: { mode?: 'all' | 'selected'; computer_ids?: number[] },
+    opts?: { mode?: 'all' | 'selected'; computer_ids?: number[]; skip_software?: boolean },
   ) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-assets`, {
       method: 'POST',
@@ -2082,6 +2082,7 @@ export const api = {
         limit,
         mode: opts?.mode ?? 'all',
         computer_ids: opts?.computer_ids,
+        skip_software: opts?.skip_software ?? false,
       },
       timeout_ms: 300_000,
     }),

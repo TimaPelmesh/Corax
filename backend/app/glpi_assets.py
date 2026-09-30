@@ -193,18 +193,19 @@ async def import_glpi_assets(db: AsyncSession, creds: GlpiCredentials, *, limit:
     )
 
 
-def _outbound(row: Computer) -> GlpiComputerOutbound:
-    seen: set[tuple[str, str]] = set()
+def _outbound(row: Computer, *, skip_software: bool = False) -> GlpiComputerOutbound:
     software: list[tuple[str, str | None]] = []
-    for item in row.software:
-        canon = canonical_software(item.name, item.version)
-        if canon is None:
-            continue
-        key = software_key(*canon)
-        if key in seen:
-            continue
-        seen.add(key)
-        software.append(canon)
+    if not skip_software:
+        seen: set[tuple[str, str]] = set()
+        for item in row.software:
+            canon = canonical_software(item.name, item.version)
+            if canon is None:
+                continue
+            key = software_key(*canon)
+            if key in seen:
+                continue
+            seen.add(key)
+            software.append(canon)
     return GlpiComputerOutbound(
         corax_id=row.id,
         hostname=row.hostname,
@@ -268,6 +269,7 @@ async def export_glpi_assets(
     limit: int,
     computer_ids: list[int] | None = None,
     mode: str = "all",
+    skip_software: bool = False,
 ) -> GlpiSyncResult:
     """Выгрузка ПК (и IP) в GLPI: все в лимите или выбранные id CORAX."""
     bounded = max(1, min(int(limit), 2000))
@@ -294,7 +296,11 @@ async def export_glpi_assets(
         )
         return GlpiSyncResult(message=empty)
 
-    results = await asyncio.to_thread(push_computers, creds, [_outbound(row) for row in rows])
+    results = await asyncio.to_thread(
+        push_computers,
+        creds,
+        [_outbound(row, skip_software=skip_software) for row in rows],
+    )
     created = updated = failed = 0
     errors: list[str] = []
     by_id = {row.id: row for row in rows}
