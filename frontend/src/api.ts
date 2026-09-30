@@ -1951,6 +1951,18 @@ export const api = {
       timeout_ms: 180_000,
     }),
 
+  glpiPatchTicketLinks: (items: Array<{ request_id: number; glpi_id: number | null }>) =>
+    request<{
+      updated: number
+      cleared: number
+      skipped: number
+      message: string
+      errors: string[]
+    }>(`${API_PREFIX}/settings/glpi/ticket-links`, {
+      method: 'POST',
+      json: { items },
+    }),
+
   /** Выгрузка заявок с прогрессом (SSE). */
   glpiExportTicketsStream: async (
     limit: number,

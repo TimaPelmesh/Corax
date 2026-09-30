@@ -298,3 +298,75 @@ async def export_glpi_tickets(
         message=message,
         errors=errors,
     )
+
+
+async def apply_glpi_ticket_links(
+    db: AsyncSession,
+    items: list[tuple[int, int | None]],
+    *,
+    base_url: str | None = None,
+) -> GlpiSyncResult:
+    """Переписать glpi_id у заявок CORAX (снять связь или подставить другой id).
+
+    null → следующая выгрузка сделает CREATE. Число → UPDATE этой заявки в GLPI.
+    """
+    if not items:
+        return GlpiSyncResult(message="Нечего менять")
+    request_ids = list(dict.fromkeys(rid for rid, _ in items))
+    rows = list((await db.execute(select(ServiceRequest).where(ServiceRequest.id.in_(request_ids)))).scalars().all())
+    by_id = {row.id: row for row in rows}
+    base = normalize_base_url(base_url or "") if base_url else ""
+    updated = cleared = skipped = failed = 0
+    errors: list[str] = []
+    touched: list[ServiceRequest] = []
+    for request_id, glpi_id in items:
+        row = by_id.get(request_id)
+        if row is None:
+            failed += 1
+            if len(errors) < _ERROR_LIMIT:
+                errors.append(f"#{request_id}: заявка CORAX не найдена")
+            continue
+        if glpi_id is not None and glpi_id <= 0:
+            failed += 1
+            if len(errors) < _ERROR_LIMIT:
+                errors.append(f"#{request_id}: glpi_id должен быть ≥ 1 или пустым")
+            continue
+        previous = row.glpi_id
+        if previous == glpi_id:
+            skipped += 1
+            continue
+        row.glpi_id = glpi_id
+        if glpi_id is None:
+            cleared += 1
+            if (row.external_source or "").strip().casefold() == "glpi":
+                row.external_id = None
+                row.external_url = None
+                row.external_source = None
+            row.glpi_status = None
+            row.glpi_priority = None
+            row.glpi_updated_at = None
+        else:
+            updated += 1
+            if base:
+                row.external_url = f"{base}/front/ticket.form.php?id={glpi_id}"[:512]
+            if not (row.external_source or "").strip():
+                row.external_source = "glpi"
+            row.external_id = str(glpi_id)
+        touched.append(row)
+    if touched:
+        await db.flush()
+        await index_service_requests(db, touched)
+    await db.commit()
+    message = (
+        f"Связи GLPI: переписано {updated}, снято {cleared}, "
+        f"без изменений {skipped}, ошибок {failed}"
+    )
+    # created = снято (cleared), updated = переписано на новый id
+    return GlpiSyncResult(
+        created=cleared,
+        updated=updated,
+        skipped=skipped,
+        failed=failed,
+        message=message,
+        errors=errors,
+    )

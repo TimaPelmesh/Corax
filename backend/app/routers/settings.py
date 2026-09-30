@@ -15,7 +15,7 @@ from app.database import get_db
 from app.glpi_assets import export_glpi_assets, import_glpi_assets, list_local_computers
 from app.glpi_devices import export_glpi_devices, import_glpi_devices, list_local_devices, list_remote_devices
 from app.glpi_client import GlpiClientError, GlpiIdentity, GlpiPushResult, create_test_ticket, probe_glpi
-from app.glpi_sync import creds_from_row, export_glpi_tickets, import_glpi_tickets
+from app.glpi_sync import apply_glpi_ticket_links, creds_from_row, export_glpi_tickets, import_glpi_tickets
 from app.ldap_config import get_effective_ldap_config
 from app.models import AgentCollectRequest, Bitrix24Config, GlpiConfig, LdapConfig, User, ZabbixConfig
 from app.schemas import (
@@ -31,6 +31,8 @@ from app.schemas import (
     GlpiComputerRowOut,
     GlpiDeviceRowOut,
     GlpiDeviceSyncIn,
+    GlpiTicketLinksIn,
+    GlpiTicketLinksOut,
     GlpiTicketSyncIn,
     GlpiTicketSyncOut,
     LdapConfigOut,
@@ -726,6 +728,25 @@ async def export_glpi_tickets_api(
         updated=result.updated,
         skipped=result.skipped,
         failed=result.failed,
+        message=result.message,
+        errors=result.errors,
+    )
+
+
+@router.post("/glpi/ticket-links", response_model=GlpiTicketLinksOut)
+async def patch_glpi_ticket_links(
+    body: GlpiTicketLinksIn,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """Переписать или снять glpi_id у заявок CORAX (без обращения в GLPI)."""
+    row = await _get_or_create_glpi(db)
+    pairs = [(item.request_id, item.glpi_id) for item in body.items]
+    result = await apply_glpi_ticket_links(db, pairs, base_url=row.base_url)
+    return GlpiTicketLinksOut(
+        updated=result.updated,
+        cleared=result.created,
+        skipped=result.skipped,
         message=result.message,
         errors=result.errors,
     )

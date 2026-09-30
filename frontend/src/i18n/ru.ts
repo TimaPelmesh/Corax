@@ -2508,7 +2508,7 @@ export const ru = {
       'Три отдельных блока: заявки, ПК с IP, мониторы/принтеры. Сначала проверьте одной тестовой заявкой, потом выбирайте конкретные записи или все в лимите.',
     mappingTitle: 'Как стыкуются заявки CORAX и GLPI (v10 и v11)',
     mappingIds:
-      'Id CORAX и id GLPI — разные числа. Связь в glpi_id. Сначала ищем по glpi_id, иначе по точному названию. Нашли — UPDATE (пустой текст CORAX не затирает content в GLPI). Не нашли — CREATE. Если UPDATE недоступен и названия в GLPI нет — создаём новую и перепривязываем.',
+      'Id CORAX и id GLPI — разные числа. Связь в glpi_id. Ниже можно вручную снять или переписать glpi_id. Сначала ищем по glpi_id, иначе по точному названию. Нашли — UPDATE. Не нашли — CREATE. Если UPDATE недоступен и названия в GLPI нет — создаём новую и перепривязываем.',
     mappingFields:
       'Переносятся: тема, текст, статус, приоритет, категория, инициатор и ответственный (и для закрытых). Пустые поля CORAX не затирают уже заполненные в GLPI. В конец текста — метка [CORAX #id]. Вложения пока не уходят.',
     mappingStatus:
@@ -2530,8 +2530,22 @@ export const ru = {
     exportIdsLabel: 'Id заявок CORAX через запятую',
     exportIdsRequired: 'Укажите хотя бы один id заявки CORAX',
     exportPickLoad: 'Показать список заявок',
-    exportPickHint: 'Отметьте галочками — id подставятся сами.',
+    exportPickHint: 'Отметьте галочками — id подставятся сами. Ниже можно переписать glpi_id.',
     exportPickUnlinked: 'без связи GLPI',
+    linksTitle: 'Связь id CORAX ↔ GLPI',
+    linksHint:
+      'Можно снять или переписать id заявки в GLPI у строк CORAX. Пустое поле = без связи (следующая выгрузка сделает CREATE). Число = UPDATE этой заявки в GLPI. Сохранение только в CORAX, в GLPI ничего не пишет.',
+    linksClear: 'Очистить id (отмеченные / все на экране)',
+    linksSave: 'Сохранить связи',
+    linksEmpty: 'Нажмите «Показать список заявок», затем правьте столбец GLPI id.',
+    linksColCorax: 'CORAX',
+    linksColTitle: 'Тема',
+    linksColGlpi: 'GLPI id',
+    linksNeedRows: 'Сначала загрузите список заявок',
+    linksInvalidId: 'Некорректный GLPI id у заявки #{id}',
+    linksNothingChanged: 'Изменений нет',
+    linksSaved: 'Связи сохранены',
+    linksSaveFailed: 'Не удалось сохранить связи',
     progressWorking: 'Обмен с GLPI…',
     progressCreated: 'Создана CORAX #{id}',
     progressUpdated: 'Обновлена CORAX #{id}',

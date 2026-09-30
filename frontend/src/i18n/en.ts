@@ -2510,7 +2510,7 @@ export const en: MessageTree = {
       'Three blocks: tickets, PCs with IP, monitors/printers. Start with one test ticket, then pick specific rows or everything within the limit.',
     mappingTitle: 'How CORAX tickets map to GLPI (v10 and v11)',
     mappingIds:
-      'CORAX id and GLPI id are different numbers. The link is only ServiceRequest.glpi_id. Without glpi_id GLPI gets a CREATE; with glpi_id it UPDATEs that existing ticket.',
+      'CORAX id and GLPI id are different numbers. The link is ServiceRequest.glpi_id — you can clear or rewrite it below. Match by glpi_id, else exact title → UPDATE; if missing → CREATE.',
     mappingFields:
       'Sent fields: title, body, status, priority, category, requester and assignee (including closed tickets). Empty CORAX fields do not clear filled GLPI values. A [CORAX #id] marker is appended. Attachments are not sent yet.',
     mappingStatus:
@@ -2532,8 +2532,22 @@ export const en: MessageTree = {
     exportIdsLabel: 'CORAX ticket ids, comma-separated',
     exportIdsRequired: 'Enter at least one CORAX ticket id',
     exportPickLoad: 'Show ticket list',
-    exportPickHint: 'Tick rows — ids fill in automatically.',
+    exportPickHint: 'Tick rows — ids fill in automatically. Below you can rewrite glpi_id.',
     exportPickUnlinked: 'not linked to GLPI',
+    linksTitle: 'CORAX ↔ GLPI id link',
+    linksHint:
+      'Clear or rewrite the GLPI ticket id stored on CORAX rows. Empty = no link (next export will CREATE). A number = UPDATE that GLPI ticket. Saves only in CORAX; does not call GLPI.',
+    linksClear: 'Clear ids (selected / all on screen)',
+    linksSave: 'Save links',
+    linksEmpty: 'Click “Show ticket list”, then edit the GLPI id column.',
+    linksColCorax: 'CORAX',
+    linksColTitle: 'Title',
+    linksColGlpi: 'GLPI id',
+    linksNeedRows: 'Load the ticket list first',
+    linksInvalidId: 'Invalid GLPI id on ticket #{id}',
+    linksNothingChanged: 'Nothing changed',
+    linksSaved: 'Links saved',
+    linksSaveFailed: 'Could not save links',
     progressWorking: 'Syncing with GLPI…',
     progressCreated: 'Created CORAX #{id}',
     progressUpdated: 'Updated CORAX #{id}',

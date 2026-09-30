@@ -854,6 +854,29 @@ class GlpiTicketSyncOut(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class GlpiTicketLinkItem(BaseModel):
+    """Переписать связь заявки CORAX ↔ id заявки в GLPI.
+
+    glpi_id=null снимает связь (следующая выгрузка пойдёт как CREATE).
+    glpi_id=число подставляет другой id (если такой есть в GLPI — будет UPDATE).
+    """
+
+    request_id: int = Field(ge=1)
+    glpi_id: int | None = Field(default=None, ge=1)
+
+
+class GlpiTicketLinksIn(BaseModel):
+    items: list[GlpiTicketLinkItem] = Field(min_length=1, max_length=2000)
+
+
+class GlpiTicketLinksOut(BaseModel):
+    updated: int = 0
+    cleared: int = 0
+    skipped: int = 0
+    message: str = ""
+    errors: list[str] = Field(default_factory=list)
+
+
 class GlpiAssetSyncIn(BaseModel):
     limit: int = Field(default=200, ge=1, le=2000)
     # all = ПК в пределах лимита; selected = явный список id CORAX.
