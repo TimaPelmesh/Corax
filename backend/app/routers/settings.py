@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_policy import get_or_create_policy
 from app.auth import get_current_editor_or_superuser, get_current_superuser
 from app.database import get_db
-from app.glpi_assets import export_glpi_assets, import_glpi_assets
+from app.glpi_assets import export_glpi_assets, import_glpi_assets, list_local_computers
 from app.glpi_devices import export_glpi_devices, import_glpi_devices, list_local_devices, list_remote_devices
 from app.glpi_client import GlpiClientError, GlpiIdentity, GlpiPushResult, create_test_ticket, probe_glpi
 from app.glpi_sync import creds_from_row, export_glpi_tickets, import_glpi_tickets
@@ -27,6 +27,8 @@ from app.schemas import (
     GlpiTestResponse,
     GlpiTestTicketIn,
     GlpiTestTicketOut,
+    GlpiAssetSyncIn,
+    GlpiComputerRowOut,
     GlpiDeviceRowOut,
     GlpiDeviceSyncIn,
     GlpiTicketSyncIn,
@@ -833,15 +835,21 @@ async def import_glpi_assets_api(
 
 @router.post("/glpi/export-assets", response_model=GlpiTicketSyncOut)
 async def export_glpi_assets_api(
-    body: GlpiTicketSyncIn | None = None,
+    body: GlpiAssetSyncIn | None = None,
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
     row = await _get_or_create_glpi(db)
     _require_glpi_enabled(row)
-    payload = body or GlpiTicketSyncIn()
+    payload = body or GlpiAssetSyncIn()
     try:
-        result = await export_glpi_assets(db, creds_from_row(row), limit=payload.limit)
+        result = await export_glpi_assets(
+            db,
+            creds_from_row(row),
+            limit=payload.limit,
+            computer_ids=payload.computer_ids,
+            mode=payload.mode,
+        )
     except GlpiClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return GlpiTicketSyncOut(
@@ -852,6 +860,16 @@ async def export_glpi_assets_api(
         message=result.message,
         errors=result.errors,
     )
+
+
+@router.get("/glpi/computers", response_model=list[GlpiComputerRowOut])
+async def list_glpi_computers_local(
+    limit: int = 200,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """Список ПК CORAX (hostname + IP) для выбора выгрузки."""
+    return await list_local_computers(db, limit=limit)
 
 
 def _device_sync_out(result) -> GlpiTicketSyncOut:

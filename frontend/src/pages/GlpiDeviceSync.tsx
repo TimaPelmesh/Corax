@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { api, type GlpiDeviceKind, type GlpiDeviceRow, type GlpiTicketSyncResult } from '../api'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -11,6 +11,21 @@ function formatUtc(value: string | null): string {
   return `${parsed.getUTCFullYear()}-${pad(parsed.getUTCMonth() + 1)}-${pad(parsed.getUTCDate())} ${pad(parsed.getUTCHours())}:${pad(parsed.getUTCMinutes())}:${pad(parsed.getUTCSeconds())}`
 }
 
+type DeviceGroup = { label: string; rows: GlpiDeviceRow[] }
+
+function groupRows(rows: GlpiDeviceRow[]): DeviceGroup[] {
+  const map = new Map<string, GlpiDeviceRow[]>()
+  for (const row of rows) {
+    const label = (row.group_label || '').trim() || '—'
+    const bucket = map.get(label)
+    if (bucket) bucket.push(row)
+    else map.set(label, [row])
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    .map(([label, items]) => ({ label, rows: items }))
+}
+
 export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boolean }) {
   const t = useT()
   const toast = useToast()
@@ -20,6 +35,8 @@ export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boo
   const [picked, setPicked] = useState<number[]>([])
   const [loading, setLoading] = useState(false)
   const [transferring, setTransferring] = useState(false)
+
+  const groups = useMemo(() => groupRows(rows), [rows])
 
   async function load(nextSource: 'corax' | 'glpi', nextKind = kind) {
     setLoading(true)
@@ -40,6 +57,15 @@ export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boo
 
   function toggle(id: number) {
     setPicked((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
+  }
+
+  function toggleGroup(group: DeviceGroup) {
+    const ids = group.rows.map((row) => row.id)
+    setPicked((current) => {
+      const allOn = ids.every((id) => current.includes(id))
+      if (allOn) return current.filter((id) => !ids.includes(id))
+      return Array.from(new Set([...current, ...ids]))
+    })
   }
 
   function toggleAll() {
@@ -76,10 +102,17 @@ export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boo
 
   const busy = loading || transferring
   const allOn = rows.length > 0 && picked.length === rows.length
+  const groupHint =
+    kind === 'monitor' ? t('settingsGlpi.devicesGroupMonitors') : t('settingsGlpi.devicesGroupPrinters')
 
   return (
-    <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-4">
-      <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.devicesHint')}</p>
+    <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
+      <div>
+        <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.devicesTitle')}</p>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.devicesHint')}</p>
+        <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{groupHint}</p>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -104,6 +137,7 @@ export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boo
           {t('settingsGlpi.devicesPrinters')}
         </button>
       </div>
+
       <div className="flex flex-wrap gap-2">
         <button type="button" className="app-btn app-btn-secondary" disabled={busy} onClick={() => void load('corax')}>
           {t('settingsGlpi.devicesFromCorax')}
@@ -133,48 +167,74 @@ export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boo
           {t('settingsGlpi.devicesTransferAll')}
         </button>
       </div>
+
       {rows.length === 0 ? (
         <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.devicesEmpty')}</p>
       ) : (
-        <div className="app-scroll max-h-80 overflow-auto rounded-lg border border-[var(--color-border)]">
-          <table className="w-full text-left text-xs">
-            <thead className="sticky top-0 bg-[var(--color-surface)]">
-              <tr className="border-b border-[var(--color-border)] text-[var(--color-fg-muted)]">
-                <th className="px-2 py-2">
-                  <label className="inline-flex items-center gap-2">
-                    <input type="checkbox" checked={allOn} onChange={toggleAll} aria-label={t('settingsGlpi.devicesSelectAll')} />
-                    {t('settingsGlpi.devicesSelectAll')}
-                  </label>
-                </th>
-                <th className="px-2 py-2">{t('settingsGlpi.devicesColId')}</th>
-                <th className="px-2 py-2">{t('settingsGlpi.devicesColGlpi')}</th>
-                <th className="px-2 py-2">{t('settingsGlpi.devicesColName')}</th>
-                <th className="px-2 py-2">{t('settingsGlpi.devicesColSerial')}</th>
-                <th className="px-2 py-2">{t('settingsGlpi.devicesColInventory')}</th>
-                <th className="px-2 py-2">{t('settingsGlpi.devicesColUpdated')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={`${source}-${row.id}`} className="border-b border-[var(--color-border)]">
-                  <td className="px-2 py-1.5">
-                    <input
-                      type="checkbox"
-                      checked={picked.includes(row.id)}
-                      onChange={() => toggle(row.id)}
-                      aria-label={row.name}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 tabular-nums">{row.id}</td>
-                  <td className="px-2 py-1.5 tabular-nums">{row.glpi_id ?? '—'}</td>
-                  <td className="px-2 py-1.5">{row.name}</td>
-                  <td className="px-2 py-1.5">{row.serial_number || '—'}</td>
-                  <td className="px-2 py-1.5">{row.inventory_number || '—'}</td>
-                  <td className="px-2 py-1.5 tabular-nums">{formatUtc(row.updated_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          <label className="inline-flex items-center gap-2 text-xs text-[var(--color-fg-muted)]">
+            <input type="checkbox" checked={allOn} onChange={toggleAll} />
+            {t('settingsGlpi.devicesSelectAll')} · {picked.length}/{rows.length}
+          </label>
+          <div className="app-scroll max-h-96 space-y-3 overflow-auto pr-1">
+            {groups.map((group) => {
+              const groupIds = group.rows.map((row) => row.id)
+              const groupOn = groupIds.every((id) => picked.includes(id))
+              return (
+                <section
+                  key={group.label}
+                  className="overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/30"
+                >
+                  <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                    <label className="inline-flex min-w-0 items-center gap-2 text-sm font-semibold text-[var(--color-fg)]">
+                      <input type="checkbox" checked={groupOn} onChange={() => toggleGroup(group)} />
+                      <span className="truncate">{group.label}</span>
+                    </label>
+                    <span className="text-[11px] tabular-nums text-[var(--color-fg-muted)]">
+                      {group.rows.length} · {t('settingsGlpi.devicesGroupCount')}
+                    </span>
+                  </header>
+                  <ul className="divide-y divide-[var(--color-border)]">
+                    {group.rows.map((row) => (
+                      <li key={`${source}-${row.id}`} className="flex items-start gap-3 px-3 py-2 text-xs">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={picked.includes(row.id)}
+                          onChange={() => toggle(row.id)}
+                          aria-label={row.name}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-[var(--color-fg)]">{row.name}</div>
+                          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[var(--color-fg-muted)]">
+                            <span className="tabular-nums">#{row.id}</span>
+                            <span className="tabular-nums">GLPI {row.glpi_id ?? '—'}</span>
+                            {row.computer_hostname ? (
+                              <span>
+                                {t('settingsGlpi.devicesColPc')}: {row.computer_hostname}
+                              </span>
+                            ) : null}
+                            {row.ip_address ? (
+                              <span>
+                                {t('settingsGlpi.devicesColIp')}: {row.ip_address}
+                              </span>
+                            ) : null}
+                            {row.assigned_user ? (
+                              <span>
+                                {t('settingsGlpi.devicesColUser')}: {row.assigned_user}
+                              </span>
+                            ) : null}
+                            {row.serial_number ? <span>{row.serial_number}</span> : null}
+                            <span className="tabular-nums">{formatUtc(row.updated_at)}</span>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

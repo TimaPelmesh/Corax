@@ -12,6 +12,7 @@ import asyncio
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.glpi_client import (
     GlpiCredentials,
@@ -22,7 +23,7 @@ from app.glpi_client import (
     push_devices,
 )
 from app.glpi_sync import GlpiSyncResult
-from app.models import Monitor, Printer, User
+from app.models import Computer, Monitor, Printer, User
 from app.search_index import index_record
 
 _ERROR_LIMIT = 20
@@ -148,15 +149,34 @@ def _ids(raw: list[int] | None) -> list[int] | None:
 async def list_local_devices(db: AsyncSession, kind: str, *, limit: int) -> list[dict]:
     bounded = max(1, min(int(limit), 2000))
     if kind == "monitor":
-        rows = list((await db.scalars(select(Monitor).order_by(Monitor.id.desc()).limit(bounded))).all())
+        rows = list(
+            (
+                await db.scalars(
+                    select(Monitor)
+                    .options(selectinload(Monitor.assigned_user))
+                    .order_by(Monitor.id.desc())
+                    .limit(bounded)
+                )
+            ).all()
+        )
         return [_monitor_view(row) for row in rows]
     if kind == "printer":
         rows = list((await db.scalars(select(Printer).order_by(Printer.id.desc()).limit(bounded))).all())
-        return [_printer_view(row) for row in rows]
+        host_ids = {row.computer_id for row in rows if row.computer_id}
+        hosts: dict[int, str] = {}
+        if host_ids:
+            result = await db.execute(select(Computer.id, Computer.hostname).where(Computer.id.in_(host_ids)))
+            hosts = {int(cid): (name or "").strip() for cid, name in result.all()}
+        return [_printer_view(row, hosts.get(row.computer_id) if row.computer_id else None) for row in rows]
     raise ValueError("Можно передать только мониторы или принтеры")
 
 
 def _monitor_view(row: Monitor) -> dict:
+    user = row.assigned_user
+    assigned = None
+    if user is not None:
+        assigned = (user.full_name or user.username or "").strip() or None
+    group = assigned or row.organization or row.glpi_contact_raw or "Без привязки"
     return {
         "id": row.id,
         "glpi_id": row.glpi_id,
@@ -164,10 +184,19 @@ def _monitor_view(row: Monitor) -> dict:
         "serial_number": row.serial_number,
         "inventory_number": row.inventory_number,
         "updated_at": row.glpi_updated_at,
+        "kind": "monitor",
+        "computer_id": None,
+        "computer_hostname": None,
+        "ip_address": None,
+        "assigned_user": assigned,
+        "location": None,
+        "group_label": group,
     }
 
 
-def _printer_view(row: Printer) -> dict:
+def _printer_view(row: Printer, hostname: str | None = None) -> dict:
+    host = (hostname or "").strip() or None
+    group = host or (row.ip_address or "").strip() or row.location or "Без привязки"
     return {
         "id": row.id,
         "glpi_id": row.glpi_id,
@@ -175,10 +204,18 @@ def _printer_view(row: Printer) -> dict:
         "serial_number": row.serial_number,
         "inventory_number": row.inventory_number,
         "updated_at": row.glpi_updated_at,
+        "kind": "printer",
+        "computer_id": row.computer_id,
+        "computer_hostname": host,
+        "ip_address": (row.ip_address or "").strip() or None,
+        "assigned_user": None,
+        "location": row.location,
+        "group_label": group,
     }
 
 
 def _remote_view(asset: GlpiDevice) -> dict:
+    group = asset.contact or asset.location or asset.organization or "GLPI"
     return {
         "id": asset.glpi_id,
         "glpi_id": asset.glpi_id,
@@ -186,6 +223,13 @@ def _remote_view(asset: GlpiDevice) -> dict:
         "serial_number": asset.serial,
         "inventory_number": asset.inventory,
         "updated_at": asset.updated_at,
+        "kind": None,
+        "computer_id": None,
+        "computer_hostname": None,
+        "ip_address": None,
+        "assigned_user": asset.contact,
+        "location": asset.location,
+        "group_label": group,
     }
 
 

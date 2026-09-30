@@ -407,6 +407,89 @@ def test_outbound_body_maps_corax_statuses_for_glpi():
     assert body["type"] == 1
     assert "[CORAX #12]" in body["content"]
     assert "external_id" not in body
+    closed = _outbound_body(
+        GlpiOutbound(
+            corax_id=13,
+            glpi_id=50,
+            title="Закрыта",
+            content="готово",
+            status="done",
+            priority="high",
+            requester="Иван",
+            assignee="Петр",
+            category="Сеть",
+        ),
+        for_update=True,
+    )
+    assert closed["status"] == 5
+    assert closed["priority"] == 4
+    empty_update = _outbound_body(
+        GlpiOutbound(corax_id=14, glpi_id=51, title="X", content="", status="done", priority="normal"),
+        for_update=True,
+    )
+    assert "content" not in empty_update
+
+
+def test_create_ticket_keeps_requester_assignee_category_when_closed():
+    posts: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/initSession"):
+            return httpx.Response(200, json={"session_token": "sess-1"})
+        if path.endswith("/getFullSession"):
+            return httpx.Response(200, json={"cfg_glpi": {"version": "10.0.18"}})
+        if path.endswith("/killSession"):
+            return httpx.Response(200, json=[True])
+        if request.method == "GET" and "ITILCategory" in path:
+            return httpx.Response(200, json=[{"id": 9, "name": "Сеть"}])
+        if request.method == "GET" and path.rstrip("/").endswith("/User"):
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": 3, "name": "ivan", "realname": "Иванов", "firstname": "Иван"},
+                    {"id": 4, "name": "petr", "realname": "Петров", "firstname": "Пётр"},
+                ],
+            )
+        if request.method == "POST" and path.endswith("/Ticket") and "Ticket_User" not in path:
+            body = json.loads(request.content.decode())
+            posts.append(body)
+            return httpx.Response(201, json={"id": 501})
+        if request.method == "PUT" and "/Ticket/501" in path and "Ticket_User" not in path:
+            return httpx.Response(200, json={"id": 501})
+        if request.method == "GET" and "Ticket_User" in path:
+            return httpx.Response(200, json=[])
+        if request.method == "POST" and path.endswith("/Ticket_User"):
+            posts.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 1})
+        return httpx.Response(404, json=["ERROR", path])
+
+    results = push_tickets(
+        _legacy_creds(),
+        [
+            GlpiOutbound(
+                corax_id=20,
+                glpi_id=None,
+                title="Закрытый инцидент",
+                content="решено",
+                status="done",
+                priority="normal",
+                requester="Иван Иванов",
+                assignee="Пётр Петров",
+                category="Сеть",
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created"
+    assert results[0].glpi_id == 501
+    ticket_input = next(
+        p.get("input", p) for p in posts if isinstance(p.get("input", p), dict) and p.get("input", p).get("name") == "Закрытый инцидент"
+    )
+    assert ticket_input["status"] == 5
+    assert ticket_input.get("itilcategories_id") == 9
+    assert ticket_input.get("_users_id_requester") == 3
+    assert ticket_input.get("_users_id_assign") == 4
 
 
 def test_v2_push_create_then_update():
@@ -829,6 +912,50 @@ def test_v2_push_creates_computer_when_hostname_is_unknown():
     assert results[0].glpi_id == 20
     assert created[0]["name"] == "new-pc"
     assert "manufacturer" not in created[0]
+
+
+def test_push_computer_includes_ip_in_comment():
+    from app.glpi_client import _comment_with_ip
+
+    assert _comment_with_ip(None, "10.1.2.3") == "IP: 10.1.2.3"
+    assert _comment_with_ip("note", "10.1.2.3") == "note\nIP: 10.1.2.3"
+    assert _comment_with_ip("note\nIP: 10.1.2.3", "10.1.2.3") == "note\nIP: 10.1.2.3"
+    assert _comment_with_ip("note", None) == "note"
+    assert _comment_with_ip(None, None) is None
+
+    created: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assets/Computer") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Assets/Computer") and request.method == "POST":
+            created.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 33})
+        if "NetworkPort" in path:
+            return httpx.Response(200, json=[])
+        if path.endswith("/Computer/33/Item_SoftwareVersion"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_computers(
+        _v2_creds(),
+        [
+            GlpiComputerOutbound(
+                corax_id=2,
+                hostname="pc-ip",
+                ip_address="192.168.10.5",
+                comment="кабинет",
+                software=(),
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created", results[0].error
+    assert "IP: 192.168.10.5" in created[0]["comment"]
+    assert created[0]["comment"].startswith("кабинет")
 
 
 def test_glpi_asset_import_and_export_keep_the_same_software_set(

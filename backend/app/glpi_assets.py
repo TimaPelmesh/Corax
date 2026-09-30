@@ -6,6 +6,9 @@ filled CORAX value. The software set is the name+version identity: the same
 pair matches regardless of letter case, and the destination set becomes the
 source set. If GLPI does not return a software list, local software is left
 alone.
+
+Export modes: all (latest N by hostname) or selected (explicit CORAX computer ids).
+IP from CORAX goes into the GLPI computer comment and NetworkPort when possible.
 """
 
 from __future__ import annotations
@@ -212,21 +215,85 @@ def _outbound(row: Computer) -> GlpiComputerOutbound:
         os_name=row.os_name,
         os_version=row.os_version,
         comment=row.notes,
+        ip_address=(row.ip_address or "").strip() or None,
         software=tuple(software),
     )
 
 
-async def export_glpi_assets(db: AsyncSession, creds: GlpiCredentials, *, limit: int) -> GlpiSyncResult:
+async def list_local_computers(db: AsyncSession, *, limit: int) -> list[dict]:
+    """Список ПК CORAX для выбора выгрузки (hostname + IP)."""
     bounded = max(1, min(int(limit), 2000))
     rows = list(
         (
             await db.execute(
-                select(Computer).options(selectinload(Computer.software)).order_by(Computer.hostname).limit(bounded)
+                select(Computer).order_by(Computer.hostname).limit(bounded)
             )
         ).scalars().all()
     )
+    return [
+        {
+            "id": row.id,
+            "hostname": row.hostname,
+            "ip_address": (row.ip_address or "").strip() or None,
+            "serial_number": row.serial_number,
+            "location": row.location,
+        }
+        for row in rows
+    ]
+
+
+def _normalize_ids(raw: list[int] | None) -> list[int] | None:
+    if raw is None:
+        return None
+    chosen: list[int] = []
+    seen: set[int] = set()
+    for item in raw:
+        try:
+            number = int(item)
+        except (TypeError, ValueError):
+            continue
+        if number <= 0 or number in seen:
+            continue
+        seen.add(number)
+        chosen.append(number)
+        if len(chosen) >= 2000:
+            break
+    return chosen
+
+
+async def export_glpi_assets(
+    db: AsyncSession,
+    creds: GlpiCredentials,
+    *,
+    limit: int,
+    computer_ids: list[int] | None = None,
+    mode: str = "all",
+) -> GlpiSyncResult:
+    """Выгрузка ПК (и IP) в GLPI: все в лимите или выбранные id CORAX."""
+    bounded = max(1, min(int(limit), 2000))
+    export_mode = (mode or "all").strip().lower()
+    chosen = _normalize_ids(computer_ids)
+    if chosen:
+        export_mode = "selected"
+
+    stmt = select(Computer).options(selectinload(Computer.software))
+    if export_mode == "selected":
+        if not chosen:
+            return GlpiSyncResult(message="Укажите id компьютеров CORAX для выборочной выгрузки")
+        ids = chosen[:bounded]
+        stmt = stmt.where(Computer.id.in_(ids)).order_by(Computer.hostname)
+    else:
+        stmt = stmt.order_by(Computer.hostname).limit(bounded)
+
+    rows = list((await db.execute(stmt)).scalars().all())
     if not rows:
-        return GlpiSyncResult(message="В CORAX нет компьютеров для выгрузки в GLPI")
+        empty = (
+            "По указанным id компьютеры не найдены"
+            if export_mode == "selected"
+            else "В CORAX нет компьютеров для выгрузки в GLPI"
+        )
+        return GlpiSyncResult(message=empty)
+
     results = await asyncio.to_thread(push_computers, creds, [_outbound(row) for row in rows])
     created = updated = failed = 0
     errors: list[str] = []
@@ -242,8 +309,12 @@ async def export_glpi_assets(db: AsyncSession, creds: GlpiCredentials, *, limit:
                 host = by_id.get(result.corax_id)
                 label = host.hostname if host is not None else str(result.corax_id)
                 errors.append(f"{label}: {result.error}")
-    message = f"Выгрузка ПК в GLPI: создано {created}, обновлено {updated}, ошибок {failed}"
+    mode_label = "выбранные" if export_mode == "selected" else "все в лимите"
+    message = (
+        f"Выгрузка ПК в GLPI ({mode_label}): создано {created}, "
+        f"обновлено {updated}, ошибок {failed}"
+    )
     return GlpiSyncResult(created=created, updated=updated, failed=failed, message=message, errors=errors)
 
 
-__all__ = ["export_glpi_assets", "import_glpi_assets"]
+__all__ = ["export_glpi_assets", "import_glpi_assets", "list_local_computers"]

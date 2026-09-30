@@ -91,6 +91,9 @@ class GlpiOutbound:
     content: str
     status: str
     priority: str
+    requester: str | None = None
+    assignee: str | None = None
+    category: str | None = None
 
 
 @dataclass(frozen=True)
@@ -188,6 +191,7 @@ class GlpiComputerOutbound:
     os_name: str | None = None
     os_version: str | None = None
     comment: str | None = None
+    ip_address: str | None = None
     software: tuple[tuple[str, str | None], ...] = ()
 
 
@@ -816,7 +820,7 @@ class _Session:
         return None
 
     def create_ticket(self, item: GlpiOutbound) -> int:
-        payload = _outbound_body(item, for_update=False)
+        payload = self._ticket_payload(item, for_update=False)
         if self.mode == "legacy":
             data = self._request(
                 "POST",
@@ -834,12 +838,13 @@ class _Session:
         created = _id_from_payload(data)
         if created is None:
             raise GlpiClientError("GLPI не вернул id созданной заявки")
+        self._apply_ticket_meta(created, item)
         return created
 
     def update_ticket(self, item: GlpiOutbound) -> None:
         if item.glpi_id is None:
             raise GlpiClientError("Нет id заявки GLPI для обновления")
-        payload = _outbound_body(item, for_update=True)
+        payload = self._ticket_payload(item, for_update=True)
         if self.mode == "legacy":
             self._request(
                 "PUT",
@@ -847,13 +852,142 @@ class _Session:
                 headers=self._legacy_headers(),
                 json={"input": payload},
             )
+        else:
+            self._request(
+                "PATCH",
+                f"{self.base}/api.php/Assistance/Ticket/{item.glpi_id}",
+                headers=self._v2_headers(),
+                json=payload,
+            )
+        self._apply_ticket_meta(item.glpi_id, item)
+
+    def _ticket_payload(self, item: GlpiOutbound, *, for_update: bool) -> dict[str, Any]:
+        body = _outbound_body(item, for_update=for_update)
+        category_id = self._resolve_category_id(item.category)
+        if category_id is not None:
+            body["itilcategories_id"] = category_id
+        requester_id = self._resolve_user_id(item.requester)
+        if requester_id is not None:
+            body["_users_id_requester"] = requester_id
+        assignee_id = self._resolve_user_id(item.assignee)
+        if assignee_id is not None:
+            body["_users_id_assign"] = assignee_id
+        return body
+
+    def _resolve_category_id(self, name: str | None) -> int | None:
+        cleaned = (name or "").strip()
+        if not cleaned:
+            return None
+        # Не создаём дерево категорий молча — только ищем существующую.
+        for row in self._search_named("ITILCategory", cleaned):
+            row_name = (_as_text(row.get("name")) or _as_text(row.get("completename")) or "").casefold()
+            if cleaned.casefold() in row_name or row_name == cleaned.casefold():
+                found = _as_int(row.get("id"))
+                if found is not None:
+                    return found
+        try:
+            return self._ensure_item("ITILCategory", cleaned)
+        except GlpiClientError:
+            return None
+
+    def _resolve_user_id(self, name: str | None) -> int | None:
+        cleaned = (name or "").strip()
+        if not cleaned:
+            return None
+        cache_key = ("User", cleaned.casefold(), ())
+        cached = self._name_ids.get(cache_key)
+        if cached is not None:
+            return cached
+        needle = cleaned.casefold()
+        for row in self._search_named("User", cleaned):
+            if not isinstance(row, dict):
+                continue
+            candidates = [
+                _as_text(row.get("name")),
+                _as_text(row.get("realname")),
+                _as_text(row.get("firstname")),
+                " ".join(
+                    part
+                    for part in (_as_text(row.get("firstname")), _as_text(row.get("realname")))
+                    if part
+                ).strip()
+                or None,
+            ]
+            if any(c and c.casefold() == needle for c in candidates if c):
+                found = _as_int(row.get("id"))
+                if found is not None:
+                    self._name_ids[cache_key] = found
+                    return found
+        # Доп. поиск по login через searchText[name] уже выше; пробуем точный GET search.
+        return None
+
+    def _apply_ticket_meta(self, ticket_id: int, item: GlpiOutbound) -> None:
+        """Инициатор / ответственный / категория — и для закрытых заявок тоже.
+
+        Пустые значения из CORAX не затирают уже заполненные поля в GLPI.
+        """
+        category_id = self._resolve_category_id(item.category)
+        if category_id is not None:
+            try:
+                self._request(
+                    "PUT",
+                    f"{self.base}/apirest.php/Ticket/{ticket_id}",
+                    headers=self._asset_headers(),
+                    json={"input": {"itilcategories_id": category_id}},
+                )
+            except GlpiClientError:
+                pass
+        requester_id = self._resolve_user_id(item.requester)
+        if requester_id is not None:
+            self._ensure_ticket_actor(ticket_id, requester_id, actor_type=1)
+        assignee_id = self._resolve_user_id(item.assignee)
+        if assignee_id is not None:
+            self._ensure_ticket_actor(ticket_id, assignee_id, actor_type=2)
+
+    def _ensure_ticket_actor(self, ticket_id: int, user_id: int, *, actor_type: int) -> None:
+        """type 1 = инициатор (requester), 2 = ответственный (assign)."""
+        try:
+            rows = self._legacy_page(
+                f"{self.base}/apirest.php/Ticket/{ticket_id}/Ticket_User",
+                params={},
+            ) or []
+        except GlpiClientError:
+            rows = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if _as_int(row.get("type")) != actor_type:
+                continue
+            if _as_int(row.get("users_id")) == user_id:
+                return
+            link_id = _as_int(row.get("id"))
+            if link_id is not None:
+                try:
+                    self._request(
+                        "PUT",
+                        f"{self.base}/apirest.php/Ticket_User/{link_id}",
+                        headers=self._asset_headers(),
+                        json={"input": {"users_id": user_id, "type": actor_type}},
+                    )
+                    return
+                except GlpiClientError:
+                    break
+        try:
+            self._request(
+                "POST",
+                f"{self.base}/apirest.php/Ticket_User",
+                headers=self._asset_headers(),
+                json={
+                    "input": {
+                        "tickets_id": ticket_id,
+                        "users_id": user_id,
+                        "type": actor_type,
+                        "use_notification": 0,
+                    }
+                },
+            )
+        except GlpiClientError:
             return
-        self._request(
-            "PATCH",
-            f"{self.base}/api.php/Assistance/Ticket/{item.glpi_id}",
-            headers=self._v2_headers(),
-            json=payload,
-        )
 
     def find_ticket_id_by_title(self, title: str) -> int | None:
         """Точное совпадение названия (без учёта регистра и лишних пробелов)."""
@@ -1059,6 +1193,7 @@ class _Session:
             action = "updated"
         self._replace_software(glpi_id, item.software)
         self._write_os(glpi_id, item.os_name, item.os_version)
+        self._ensure_computer_ip(glpi_id, item.ip_address)
         return GlpiAssetPushResult(corax_id=item.corax_id, glpi_id=glpi_id, action=action)
 
     def _device_page(self, itemtype: str, start: int, page_size: int) -> list[object]:
@@ -1285,9 +1420,10 @@ class _Session:
         if item.serial:
             legacy_body["serial"] = item.serial.strip()[:255]
             v2_body["serial"] = item.serial.strip()[:255]
-        if item.comment:
-            legacy_body["comment"] = item.comment.strip()[:8000]
-            v2_body["comment"] = item.comment.strip()[:8000]
+        comment = _comment_with_ip(item.comment, item.ip_address)
+        if comment:
+            legacy_body["comment"] = comment[:8000]
+            v2_body["comment"] = comment[:8000]
         for label, legacy_field, v2_field in (
             (item.manufacturer, "manufacturers_id", "manufacturer"),
             (item.model, "computermodels_id", "model"),
@@ -1476,6 +1612,52 @@ class _Session:
             headers=self._asset_headers(),
             json={"input": payload},
         )
+
+    def _ensure_computer_ip(self, computer_id: int, ip_address: str | None) -> None:
+        """Пишет IPv4 в NetworkPort GLPI (best-effort; ошибка не валит выгрузку ПК)."""
+        ip = (ip_address or "").strip()
+        if not ip:
+            return
+        try:
+            ports = self._legacy_page(
+                f"{self.base}/apirest.php/Computer/{computer_id}/NetworkPort",
+                params={},
+            ) or []
+        except GlpiClientError:
+            return
+        port_id: int | None = None
+        for row in ports:
+            if not isinstance(row, dict):
+                continue
+            port_id = _as_int(row.get("id"))
+            if port_id is not None:
+                break
+        try:
+            if port_id is None:
+                created = self._request(
+                    "POST",
+                    f"{self.base}/apirest.php/NetworkPort",
+                    headers=self._asset_headers(),
+                    json={
+                        "input": {
+                            "itemtype": "Computer",
+                            "items_id": computer_id,
+                            "name": "CORAX",
+                            "instantiation_type": "NetworkPortEthernet",
+                        }
+                    },
+                )
+                port_id = _id_from_payload(created)
+            if port_id is None:
+                return
+            self._request(
+                "PUT",
+                f"{self.base}/apirest.php/NetworkPort/{port_id}",
+                headers=self._asset_headers(),
+                json={"input": {"ip": ip, "name": "CORAX"}},
+            )
+        except GlpiClientError:
+            return
 
     def _dropdown_id(self, itemtype: str, name: str, extra: dict[str, Any] | None = None) -> int | None:
         try:
@@ -1792,6 +1974,20 @@ def _outbound_body(item: GlpiOutbound, *, for_update: bool = False) -> dict[str,
     elif not for_update:
         body["content"] = ""
     return body
+
+
+def _comment_with_ip(comment: str | None, ip_address: str | None) -> str | None:
+    """Добавляет строку IP: … в комментарий ПК, не дублируя и не затирая текст."""
+    base = (comment or "").rstrip()
+    ip = (ip_address or "").strip()
+    if not ip:
+        return base or None
+    marker = f"IP: {ip}"
+    if marker in base:
+        return base or None
+    if not base:
+        return marker
+    return f"{base}\n{marker}"
 
 
 def _is_oauth_rejection(response: httpx.Response) -> bool:

@@ -21,7 +21,7 @@ from app.glpi_client import (
     normalize_base_url,
     push_tickets,
 )
-from app.models import GlpiConfig, ServiceRequest
+from app.models import GlpiConfig, ServiceRequest, User, service_request_assignees
 from app.search_index import index_service_requests
 from app.service_request_import import ImportRecord, _process_batch
 
@@ -77,6 +77,55 @@ def ticket_to_record(row_number: int, ticket: GlpiTicket) -> ImportRecord:
     )
 
 
+def _display_user(user: User | None) -> str | None:
+    if user is None:
+        return None
+    full = (user.full_name or "").strip()
+    if full:
+        return full
+    name = (user.username or "").strip()
+    return name or None
+
+
+async def _ticket_people_map(
+    db: AsyncSession,
+    rows: list[ServiceRequest],
+) -> dict[int, dict[str, str | None]]:
+    """Инициатор и первый ответственный для выгрузки в GLPI (в т.ч. закрытых)."""
+    out: dict[int, dict[str, str | None]] = {
+        row.id: {"requester": (row.requester_name or "").strip() or None, "assignee": None}
+        for row in rows
+    }
+    creator_ids = {row.created_by_id for row in rows if row.created_by_id}
+    creators: dict[int, User] = {}
+    if creator_ids:
+        result = await db.execute(select(User).where(User.id.in_(creator_ids)))
+        creators = {user.id: user for user in result.scalars().all()}
+    for row in rows:
+        if out[row.id]["requester"]:
+            continue
+        out[row.id]["requester"] = _display_user(creators.get(row.created_by_id))
+
+    request_ids = [row.id for row in rows]
+    if not request_ids:
+        return out
+    assign_q = await db.execute(
+        select(service_request_assignees.c.request_id, User)
+        .join(User, User.id == service_request_assignees.c.user_id)
+        .where(service_request_assignees.c.request_id.in_(request_ids))
+        .order_by(service_request_assignees.c.request_id, User.id)
+    )
+    seen: set[int] = set()
+    for request_id, user in assign_q.all():
+        rid = int(request_id)
+        if rid in seen:
+            continue
+        seen.add(rid)
+        if rid in out:
+            out[rid]["assignee"] = _display_user(user)
+    return out
+
+
 async def import_glpi_tickets(creds: GlpiCredentials, *, created_by_id: int, limit: int) -> GlpiSyncResult:
     tickets = await asyncio.to_thread(fetch_tickets, creds, max(1, min(int(limit), 2000)))
     records = [ticket_to_record(index, ticket) for index, ticket in enumerate(tickets, start=1)]
@@ -126,6 +175,13 @@ async def export_glpi_tickets(
         if not ids:
             return GlpiSyncResult(message="Укажите id заявок CORAX для выборочной выгрузки")
         stmt = stmt.where(ServiceRequest.id.in_(ids))
+    elif export_mode == "test_one":
+        # Одна свежая заявка без связи — безопасная проверка CREATE.
+        stmt = (
+            stmt.where(ServiceRequest.glpi_id.is_(None))
+            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
+            .limit(1)
+        )
     elif export_mode == "new_only":
         stmt = (
             stmt.where(ServiceRequest.glpi_id.is_(None))
@@ -142,14 +198,24 @@ async def export_glpi_tickets(
         stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(bounded)
 
     rows = list((await db.execute(stmt)).scalars().all())
+    if not rows and export_mode == "test_one":
+        # Если все уже связаны — берём одну любую свежую (будет UPDATE / match по названию).
+        fallback = await db.execute(
+            select(ServiceRequest)
+            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
+            .limit(1)
+        )
+        rows = list(fallback.scalars().all())
     if not rows:
         empty_hint = {
             "new_only": "Нет заявок без связи с GLPI (все уже с glpi_id)",
             "linked_only": "Нет заявок, уже связанных с GLPI",
             "selected": "По указанным id заявки не найдены",
+            "test_one": "В CORAX нет заявок для тестовой выгрузки",
         }.get(export_mode, "В CORAX нет заявок для выгрузки в GLPI")
         return GlpiSyncResult(message=empty_hint)
 
+    people = await _ticket_people_map(db, rows)
     outbound = [
         GlpiOutbound(
             corax_id=row.id,
@@ -158,6 +224,9 @@ async def export_glpi_tickets(
             content=(row.description or "")[:_CONTENT_SAFE],
             status=row.status or "open",
             priority=row.priority or "normal",
+            requester=people[row.id]["requester"],
+            assignee=people[row.id]["assignee"],
+            category=(row.category or "").strip() or None,
         )
         for row in rows
     ]
@@ -215,6 +284,7 @@ async def export_glpi_tickets(
         "linked_only": "только связанные",
         "selected": "выбранные",
         "recent": "последние",
+        "test_one": "тестовая одна",
     }.get(export_mode, export_mode)
     message = (
         f"Выгрузка в GLPI ({mode_label}): создано {created}, обновлено {updated}, "

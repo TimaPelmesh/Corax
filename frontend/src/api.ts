@@ -931,6 +931,21 @@ export type GlpiDeviceRow = {
   serial_number: string | null
   inventory_number: string | null
   updated_at: string | null
+  kind?: string | null
+  computer_id?: number | null
+  computer_hostname?: string | null
+  ip_address?: string | null
+  assigned_user?: string | null
+  location?: string | null
+  group_label?: string | null
+}
+
+export type GlpiComputerRow = {
+  id: number
+  hostname: string
+  ip_address: string | null
+  serial_number: string | null
+  location: string | null
 }
 
 export type ZabbixProblem = {
@@ -1924,7 +1939,7 @@ export const api = {
 
   glpiExportTickets: (
     limit: number,
-    opts?: { mode?: 'recent' | 'new_only' | 'linked_only' | 'selected'; request_ids?: number[] },
+    opts?: { mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one'; request_ids?: number[] },
   ) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-tickets`, {
       method: 'POST',
@@ -1940,7 +1955,7 @@ export const api = {
   glpiExportTicketsStream: async (
     limit: number,
     opts: {
-      mode?: 'recent' | 'new_only' | 'linked_only' | 'selected'
+      mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one'
       request_ids?: number[]
       onProgress?: (p: {
         done: number
@@ -2045,12 +2060,22 @@ export const api = {
       timeout_ms: 300_000,
     }),
 
-  glpiExportAssets: (limit: number) =>
+  glpiExportAssets: (
+    limit: number,
+    opts?: { mode?: 'all' | 'selected'; computer_ids?: number[] },
+  ) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-assets`, {
       method: 'POST',
-      json: { limit },
+      json: {
+        limit,
+        mode: opts?.mode ?? 'all',
+        computer_ids: opts?.computer_ids,
+      },
       timeout_ms: 300_000,
     }),
+
+  glpiLocalComputers: (limit: number) =>
+    request<GlpiComputerRow[]>(`${API_PREFIX}/settings/glpi/computers?limit=${limit}`),
 
   glpiLocalDevices: (kind: GlpiDeviceKind, limit: number) =>
     request<GlpiDeviceRow[]>(`${API_PREFIX}/settings/glpi/devices?kind=${kind}&limit=${limit}`),

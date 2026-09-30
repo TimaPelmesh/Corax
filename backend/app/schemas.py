@@ -840,8 +840,9 @@ class GlpiTicketSyncIn(BaseModel):
     limit: int = Field(default=200, ge=1, le=2000)
     request_ids: list[int] | None = Field(default=None, max_length=2000)
     # recent = последние N; new_only = без glpi_id (только CREATE);
-    # linked_only = уже связанные (только UPDATE); selected = явный список id CORAX.
-    mode: str = Field(default="recent", pattern="^(recent|new_only|linked_only|selected)$")
+    # linked_only = уже связанные (только UPDATE); selected = явный список id CORAX;
+    # test_one = одна свежая заявка без связи (безопасная проверка выгрузки).
+    mode: str = Field(default="recent", pattern="^(recent|new_only|linked_only|selected|test_one)$")
 
 
 class GlpiTicketSyncOut(BaseModel):
@@ -851,6 +852,21 @@ class GlpiTicketSyncOut(BaseModel):
     failed: int = 0
     message: str = ""
     errors: list[str] = Field(default_factory=list)
+
+
+class GlpiAssetSyncIn(BaseModel):
+    limit: int = Field(default=200, ge=1, le=2000)
+    # all = ПК в пределах лимита; selected = явный список id CORAX.
+    mode: str = Field(default="all", pattern="^(all|selected)$")
+    computer_ids: list[int] | None = Field(default=None, max_length=2000)
+
+
+class GlpiComputerRowOut(BaseModel):
+    id: int
+    hostname: str
+    ip_address: str | None = None
+    serial_number: str | None = None
+    location: str | None = None
 
 
 class GlpiDeviceSyncIn(BaseModel):
@@ -866,6 +882,14 @@ class GlpiDeviceRowOut(BaseModel):
     serial_number: str | None = None
     inventory_number: str | None = None
     updated_at: datetime | None = None
+    # Для наглядной связки: принтер → ПК, монитор → пользователь, IP принтера.
+    kind: str | None = None
+    computer_id: int | None = None
+    computer_hostname: str | None = None
+    ip_address: str | None = None
+    assigned_user: str | None = None
+    location: str | None = None
+    group_label: str | None = None
 
 
 class Bitrix24IncomingRequest(BaseModel):
