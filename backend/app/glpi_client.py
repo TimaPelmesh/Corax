@@ -360,13 +360,16 @@ def corax_priority(priority_id: int | None) -> str:
 
 
 def glpi_status_id(status: str | None) -> int:
+    """CORAX → GLPI Ticket status id.
+
+    GLPI: 1 New, 2 Assigned, 3 Planned, 4 Pending, 5 Solved, 6 Closed.
+    Закрытые в CORAX (`done` / `cancelled`) уходят как Closed (6), не Solved (5).
+    """
     value = (status or "").strip().lower()
     if value == "in_progress":
         return 2
-    if value == "cancelled":
+    if value in ("done", "cancelled", "closed"):
         return 6
-    if value == "done":
-        return 5
     return 1
 
 

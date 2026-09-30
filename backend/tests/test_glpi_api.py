@@ -429,8 +429,9 @@ def test_outbound_body_maps_corax_statuses_for_glpi():
 
     assert glpi_status_id("open") == 1
     assert glpi_status_id("in_progress") == 2
-    assert glpi_status_id("done") == 5
+    assert glpi_status_id("done") == 6
     assert glpi_status_id("cancelled") == 6
+    assert glpi_status_id("closed") == 6
     assert glpi_priority_id("low") == 2
     assert glpi_priority_id("normal") == 3
     assert glpi_priority_id("high") == 4
@@ -456,7 +457,7 @@ def test_outbound_body_maps_corax_statuses_for_glpi():
         ),
         for_update=True,
     )
-    assert closed["status"] == 5
+    assert closed["status"] == 6
     assert closed["priority"] == 4
     empty_update = _outbound_body(
         GlpiOutbound(corax_id=14, glpi_id=51, title="X", content="", status="done", priority="normal"),
@@ -521,7 +522,7 @@ def test_create_ticket_keeps_requester_assignee_category_when_closed():
     ticket_input = next(
         p.get("input", p) for p in posts if isinstance(p.get("input", p), dict) and p.get("input", p).get("name") == "Закрытый инцидент"
     )
-    assert ticket_input["status"] == 5
+    assert ticket_input["status"] == 6
     assert ticket_input.get("itilcategories_id") == 9
     assert ticket_input.get("_users_id_requester") == 3
     assert ticket_input.get("_users_id_assign") == 4
@@ -555,7 +556,7 @@ def test_v2_push_create_then_update():
     assert "input" not in bodies[0][1]
     assert bodies[0][1]["priority"] == 4
     assert bodies[0][1]["status"] == 1
-    assert bodies[1][1]["status"] == 5
+    assert bodies[1][1]["status"] == 6
 
 
 def test_glpi_settings_require_auth(client: TestClient):
