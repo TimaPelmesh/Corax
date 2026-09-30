@@ -103,7 +103,11 @@ export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boo
   const busy = loading || transferring
   const allOn = rows.length > 0 && picked.length === rows.length
   const groupHint =
-    kind === 'monitor' ? t('settingsGlpi.devicesGroupMonitors') : t('settingsGlpi.devicesGroupPrinters')
+    kind === 'monitor'
+      ? t('settingsGlpi.devicesGroupMonitors')
+      : kind === 'printer'
+        ? t('settingsGlpi.devicesGroupPrinters')
+        : t('settingsGlpi.devicesGroupNetwork')
 
   return (
     <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
@@ -135,6 +139,17 @@ export function GlpiDeviceSync({ limit, enabled }: { limit: number; enabled: boo
           }}
         >
           {t('settingsGlpi.devicesPrinters')}
+        </button>
+        <button
+          type="button"
+          className={kind === 'network' ? 'app-btn app-btn-primary' : 'app-btn app-btn-secondary'}
+          onClick={() => {
+            setKind('network')
+            setRows([])
+            setPicked([])
+          }}
+        >
+          {t('settingsGlpi.devicesNetwork')}
         </button>
       </div>
 

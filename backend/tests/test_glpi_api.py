@@ -466,6 +466,73 @@ def test_outbound_body_maps_corax_statuses_for_glpi():
     assert "content" not in empty_update
 
 
+def test_v2_create_ticket_sets_category_and_team_members():
+    posts: list[tuple[str, dict]] = []
+    user_filters: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        method = request.method
+        if path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if "Dropdowns/ITILCategory" in path and method == "GET":
+            return httpx.Response(200, json=[{"id": 9, "name": "Сеть", "completename": "Сеть"}])
+        if path.endswith("/Administration/User") and method == "GET":
+            filt = request.url.params.get("filter") or ""
+            user_filters.append(filt)
+            # name== / name=like= по ФИО на реальном GLPI пустые (поле name = login).
+            if filt:
+                return httpx.Response(200, json=[])
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": 3, "name": "ivan", "realname": "Иванов", "firstname": "Иван"},
+                    {"id": 4, "name": "petr", "realname": "Петров", "firstname": "Пётр"},
+                ],
+            )
+        if path.endswith("/Assistance/Ticket") and method == "POST":
+            body = json.loads(request.content.decode())
+            posts.append(("ticket", body))
+            return httpx.Response(201, json={"id": 77})
+        if path.endswith("/Assistance/Ticket/77") and method == "PATCH":
+            posts.append(("patch", json.loads(request.content.decode())))
+            return httpx.Response(200, json={"id": 77})
+        if path.endswith("/Ticket/77/TeamMember") and method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Ticket/77/TeamMember") and method == "POST":
+            posts.append(("team", json.loads(request.content.decode())))
+            return httpx.Response(201, json={"id": 1})
+        return httpx.Response(404, json={"message": f"{method} {path}"})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=20,
+                glpi_id=None,
+                title="С категорией",
+                content="текст",
+                status="done",
+                priority="normal",
+                requester="Иван Иванов",
+                assignee="Пётр Петров",
+                category="Сеть",
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created", results[0].error
+    assert results[0].glpi_id == 77
+    ticket = next(body for kind, body in posts if kind == "ticket")
+    assert ticket["status"] == 6
+    assert ticket["category"] == {"id": 9}
+    assert "_users_id_requester" not in ticket
+    team = [body for kind, body in posts if kind == "team"]
+    assert {"type": "User", "id": 3, "role": "requester"} in team
+    assert {"type": "User", "id": 4, "role": "assigned"} in team
+    assert any(not f for f in user_filters), "ожидался list Users без фильтра по ФИО"
+
+
 def test_create_ticket_keeps_requester_assignee_category_when_closed():
     posts: list[dict] = []
 

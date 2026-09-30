@@ -45,7 +45,7 @@ export function GlpiApiPanel() {
   const [appToken, setAppToken] = useState('')
   const [userToken, setUserToken] = useState('')
   const [verifyTls, setVerifyTls] = useState(true)
-  const [limit, setLimit] = useState(50)
+  const [limit, setLimit] = useState(500)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [sendingTicket, setSendingTicket] = useState(false)

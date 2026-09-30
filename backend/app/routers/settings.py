@@ -912,8 +912,8 @@ async def list_glpi_devices_local(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    if kind not in ("monitor", "printer"):
-        raise HTTPException(status_code=400, detail="Можно передать только мониторы или принтеры")
+    if kind not in ("monitor", "printer", "network"):
+        raise HTTPException(status_code=400, detail="Можно передать мониторы, принтеры или сетевые устройства")
     return await list_local_devices(db, kind, limit=limit)
 
 

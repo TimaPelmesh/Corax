@@ -922,7 +922,7 @@ export type GlpiTicketSyncResult = {
   errors: string[]
 }
 
-export type GlpiDeviceKind = 'monitor' | 'printer'
+export type GlpiDeviceKind = 'monitor' | 'printer' | 'network'
 
 export type GlpiDeviceRow = {
   id: number

@@ -1694,6 +1694,23 @@ def _migrate_glpi_device_ids(sync_conn) -> None:
     sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_printers_glpi_id ON printers (glpi_id)"))
 
 
+def _migrate_glpi_computer_network_ids(sync_conn) -> None:
+    if "computers" in _table_names(sync_conn):
+        cols = _column_names(sync_conn, "computers")
+        if "glpi_id" not in cols:
+            sync_conn.execute(text("ALTER TABLE computers ADD COLUMN glpi_id INTEGER"))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_computers_glpi_id ON computers (glpi_id)"))
+    if "network_devices" in _table_names(sync_conn):
+        cols = _column_names(sync_conn, "network_devices")
+        if "glpi_id" not in cols:
+            sync_conn.execute(text("ALTER TABLE network_devices ADD COLUMN glpi_id INTEGER"))
+        if "glpi_updated_at" not in cols:
+            sync_conn.execute(text("ALTER TABLE network_devices ADD COLUMN glpi_updated_at TIMESTAMP"))
+        sync_conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_network_devices_glpi_id ON network_devices (glpi_id)")
+        )
+
+
 _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-04-16_schema_migrations", lambda c: None),
     ("2026-04-16_tags_color", _migrate_tags_color_column),
@@ -1751,6 +1768,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-29_glpi_config", _migrate_glpi_config),
     ("2026-09-29_glpi_device_ids", _migrate_glpi_device_ids),
     ("2026-09-30_glpi_identity", _migrate_glpi_identity),
+    ("2026-09-30_glpi_computer_network_ids", _migrate_glpi_computer_network_ids),
 ]
 
 

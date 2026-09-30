@@ -311,6 +311,8 @@ async def export_glpi_assets(
     for result in results:
         host = by_id.get(result.corax_id)
         label = host.hostname if host is not None else str(result.corax_id)
+        if host is not None and result.glpi_id is not None and result.action in ("created", "updated"):
+            host.glpi_id = result.glpi_id
         if result.action == "created":
             created += 1
             if result.error and len(errors) < _ERROR_LIMIT:
@@ -323,6 +325,7 @@ async def export_glpi_assets(
             failed += 1
             if result.error and len(errors) < _ERROR_LIMIT:
                 errors.append(f"{label}: {result.error}")
+    await db.commit()
     mode_label = "выбранные" if export_mode == "selected" else "все в лимите"
     message = (
         f"Выгрузка ПК в GLPI ({mode_label}): создано {created}, "

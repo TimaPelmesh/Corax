@@ -21,10 +21,13 @@ _HL_DROPDOWN_TYPES = frozenset(
         "ComputerModel",
         "MonitorModel",
         "PrinterModel",
+        "NetworkEquipmentModel",
         "ComputerType",
         "MonitorType",
         "PrinterType",
+        "NetworkEquipmentType",
         "State",
+        "ITILCategory",
     }
 )
 _OAUTH_ERRORS = frozenset(
@@ -261,6 +264,10 @@ class GlpiDeviceOutbound:
     location: str | None = None
     contact: str | None = None
     comment: str | None = None
+    # GLPI id компьютера для PeripheralConnection (монитор/принтер → ПК).
+    computer_glpi_id: int | None = None
+    # Hostname CORAX — если computer_glpi_id ещё неизвестен, ищем ПК в GLPI по имени.
+    computer_hostname: str | None = None
 
 
 @dataclass(frozen=True)
@@ -410,7 +417,9 @@ def _device_itemtype(kind: str) -> str:
         return "Monitor"
     if kind == "printer":
         return "Printer"
-    raise GlpiClientError("Можно передать только мониторы или принтеры")
+    if kind == "network":
+        return "NetworkEquipment"
+    raise GlpiClientError("Можно передать мониторы, принтеры или сетевые устройства")
 
 
 def _entity_id_from(raw: dict[str, Any]) -> int | None:
@@ -915,27 +924,44 @@ class _Session:
     def _ticket_payload(self, item: GlpiOutbound, *, for_update: bool) -> dict[str, Any]:
         body = _outbound_body(item, for_update=for_update)
         category_id = self._resolve_category_id(item.category)
+        if self.mode == "legacy":
+            if category_id is not None:
+                body["itilcategories_id"] = category_id
+            requester_id = self._resolve_user_id(item.requester)
+            if requester_id is not None:
+                body["_users_id_requester"] = requester_id
+            assignee_id = self._resolve_user_id(item.assignee)
+            if assignee_id is not None:
+                body["_users_id_assign"] = assignee_id
+            return body
+        # HL: category nested; актёры — TeamMember после create/update.
         if category_id is not None:
-            body["itilcategories_id"] = category_id
-        requester_id = self._resolve_user_id(item.requester)
-        if requester_id is not None:
-            body["_users_id_requester"] = requester_id
-        assignee_id = self._resolve_user_id(item.assignee)
-        if assignee_id is not None:
-            body["_users_id_assign"] = assignee_id
+            body["category"] = {"id": category_id}
+        elif (item.category or "").strip():
+            body["category"] = {"name": (item.category or "").strip()[:255]}
         return body
 
     def _resolve_category_id(self, name: str | None) -> int | None:
         cleaned = (name or "").strip()
         if not cleaned:
             return None
-        # Не создаём дерево категорий молча — только ищем существующую.
         for row in self._search_named("ITILCategory", cleaned):
             row_name = (_as_text(row.get("name")) or _as_text(row.get("completename")) or "").casefold()
             if cleaned.casefold() in row_name or row_name == cleaned.casefold():
                 found = _as_int(row.get("id"))
                 if found is not None:
                     return found
+        if ">" in cleaned or "/" in cleaned:
+            leaf = cleaned.replace("/", ">").split(">")[-1].strip()
+            if leaf and leaf.casefold() != cleaned.casefold():
+                for row in self._search_named("ITILCategory", leaf):
+                    row_name = (
+                        _as_text(row.get("name")) or _as_text(row.get("completename")) or ""
+                    ).casefold()
+                    if leaf.casefold() in row_name or row_name == leaf.casefold():
+                        found = _as_int(row.get("id"))
+                        if found is not None:
+                            return found
         try:
             return self._ensure_item("ITILCategory", cleaned)
         except GlpiClientError:
@@ -950,9 +976,47 @@ class _Session:
         if cached is not None:
             return cached
         needle = cleaned.casefold()
-        for row in self._search_named("User", cleaned):
-            if not isinstance(row, dict):
-                continue
+        if self.mode != "legacy" and " " not in cleaned and "@" not in cleaned:
+            payload = self._read(
+                f"{self.base}/api.php/Administration/User/username/{cleaned}",
+                headers=self._v2_headers(),
+            )
+            if isinstance(payload, dict):
+                found = _as_int(payload.get("id"))
+                if found is not None:
+                    self._name_ids[cache_key] = found
+                    return found
+        rows = list(self._search_named("User", cleaned))
+        # HL filter name==login не находит ФИО — добираем список и матчим на клиенте.
+        if self.mode != "legacy" and not rows:
+            rows = self._hl_list_users()
+        found = self._match_user_row(rows, needle)
+        if found is not None:
+            self._name_ids[cache_key] = found
+            return found
+        return None
+
+    def _hl_list_users(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        url = f"{self.base}/api.php/Administration/User"
+        collected: list[dict[str, Any]] = []
+        start = 0
+        page_size = min(200, limit)
+        while start < limit:
+            page = self._hl_page(url, params={"start": start, "limit": page_size})
+            if page is None:
+                break
+            for row in page:
+                if isinstance(row, dict):
+                    collected.append(row)
+            if len(page) < page_size:
+                break
+            start += len(page)
+        return collected
+
+    @staticmethod
+    def _match_user_row(rows: list[dict[str, Any]], needle: str) -> int | None:
+        parts = [p for p in needle.split() if p]
+        for row in rows:
             candidates = [
                 _as_text(row.get("name")),
                 _as_text(row.get("realname")),
@@ -963,13 +1027,47 @@ class _Session:
                     if part
                 ).strip()
                 or None,
+                " ".join(
+                    part
+                    for part in (_as_text(row.get("realname")), _as_text(row.get("firstname")))
+                    if part
+                ).strip()
+                or None,
             ]
             if any(c and c.casefold() == needle for c in candidates if c):
                 found = _as_int(row.get("id"))
                 if found is not None:
-                    self._name_ids[cache_key] = found
                     return found
-        # Доп. поиск по login через searchText[name] уже выше; пробуем точный GET search.
+        if len(parts) >= 2:
+            for row in rows:
+                blob = " ".join(
+                    part
+                    for part in (
+                        _as_text(row.get("name")),
+                        _as_text(row.get("firstname")),
+                        _as_text(row.get("realname")),
+                    )
+                    if part
+                ).casefold()
+                if all(p in blob for p in parts):
+                    found = _as_int(row.get("id"))
+                    if found is not None:
+                        return found
+        if len(parts) == 1:
+            for row in rows:
+                blob = " ".join(
+                    part
+                    for part in (
+                        _as_text(row.get("name")),
+                        _as_text(row.get("firstname")),
+                        _as_text(row.get("realname")),
+                    )
+                    if part
+                ).casefold()
+                if parts[0] in blob:
+                    found = _as_int(row.get("id"))
+                    if found is not None:
+                        return found
         return None
 
     def _apply_ticket_meta(self, ticket_id: int, item: GlpiOutbound) -> None:
@@ -980,12 +1078,20 @@ class _Session:
         category_id = self._resolve_category_id(item.category)
         if category_id is not None:
             try:
-                self._request(
-                    "PUT",
-                    f"{self.base}/apirest.php/Ticket/{ticket_id}",
-                    headers=self._asset_headers(),
-                    json={"input": {"itilcategories_id": category_id}},
-                )
+                if self.mode == "legacy":
+                    self._request(
+                        "PUT",
+                        f"{self.base}/apirest.php/Ticket/{ticket_id}",
+                        headers=self._legacy_headers(),
+                        json={"input": {"itilcategories_id": category_id}},
+                    )
+                else:
+                    self._request(
+                        "PATCH",
+                        f"{self.base}/api.php/Assistance/Ticket/{ticket_id}",
+                        headers=self._v2_headers(),
+                        json={"category": {"id": category_id}},
+                    )
             except GlpiClientError:
                 pass
         requester_id = self._resolve_user_id(item.requester)
@@ -997,6 +1103,9 @@ class _Session:
 
     def _ensure_ticket_actor(self, ticket_id: int, user_id: int, *, actor_type: int) -> None:
         """type 1 = инициатор (requester), 2 = ответственный (assign)."""
+        if self.mode != "legacy":
+            self._ensure_ticket_actor_hl(ticket_id, user_id, actor_type=actor_type)
+            return
         try:
             rows = self._legacy_page(
                 f"{self.base}/apirest.php/Ticket/{ticket_id}/Ticket_User",
@@ -1017,7 +1126,7 @@ class _Session:
                     self._request(
                         "PUT",
                         f"{self.base}/apirest.php/Ticket_User/{link_id}",
-                        headers=self._asset_headers(),
+                        headers=self._legacy_headers(),
                         json={"input": {"users_id": user_id, "type": actor_type}},
                     )
                     return
@@ -1027,7 +1136,7 @@ class _Session:
             self._request(
                 "POST",
                 f"{self.base}/apirest.php/Ticket_User",
-                headers=self._asset_headers(),
+                headers=self._legacy_headers(),
                 json={
                     "input": {
                         "tickets_id": ticket_id,
@@ -1039,6 +1148,40 @@ class _Session:
             )
         except GlpiClientError:
             return
+
+    def _ensure_ticket_actor_hl(self, ticket_id: int, user_id: int, *, actor_type: int) -> None:
+        """GLPI 11 HL: POST /Assistance/Ticket/{id}/TeamMember."""
+        role_text = "requester" if actor_type == 1 else "assigned"
+        rows = self._hl_all(f"{self.base}/api.php/Assistance/Ticket/{ticket_id}/TeamMember")
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            row_role = (_as_text(row.get("role")) or "").casefold()
+            role_ok = row_role in (role_text, str(actor_type)) or (
+                actor_type == 1 and row_role in ("1", "requester")
+            ) or (actor_type == 2 and row_role in ("2", "assigned", "assign"))
+            if not role_ok:
+                continue
+            member_id = _as_int(row.get("id"))
+            if isinstance(row.get("user"), dict):
+                nested = _as_int(row["user"].get("id"))
+                if nested is not None:
+                    member_id = nested
+            if member_id == user_id:
+                return
+        url = f"{self.base}/api.php/Assistance/Ticket/{ticket_id}/TeamMember"
+        # Сначала текстовая роль (GLPI ≥ PR #21633), иначе числовая.
+        for role in (role_text, actor_type):
+            try:
+                self._request(
+                    "POST",
+                    url,
+                    headers=self._v2_headers(),
+                    json={"type": "User", "id": user_id, "role": role},
+                )
+                return
+            except GlpiClientError:
+                continue
 
     def find_ticket_id_by_title(self, title: str) -> int | None:
         """Точное совпадение названия (без учёта регистра и лишних пробелов)."""
@@ -1253,11 +1396,18 @@ class _Session:
                     f"но UPDATE недоступен (другое подразделение или нет прав). Дубликат не создан."
                 ) from exc
         fresh = parse_device(self._read_asset(itemtype, glpi_id))
+        link_error: str | None = None
+        if item.kind in ("monitor", "printer"):
+            try:
+                self._ensure_peripheral_link(item, glpi_id)
+            except GlpiClientError as exc:
+                link_error = f"привязка к ПК: {exc}"
         return GlpiDevicePushResult(
             corax_id=item.corax_id,
             glpi_id=glpi_id,
             action="created" if existing is None else "updated",
             updated_at=None if fresh is None else fresh.updated_at,
+            error=link_error,
         )
 
     def upsert_computer(self, item: GlpiComputerOutbound) -> GlpiAssetPushResult:
@@ -1399,16 +1549,20 @@ class _Session:
                 continue
             legacy_body[field] = text[:limit]
             v2_body[field] = text[:limit]
-        model_field, model_type = (
-            ("monitormodels_id", "MonitorModel") if itemtype == "Monitor" else ("printermodels_id", "PrinterModel")
-        )
+        model_field, model_type = {
+            "Monitor": ("monitormodels_id", "MonitorModel"),
+            "Printer": ("printermodels_id", "PrinterModel"),
+            "NetworkEquipment": ("networkequipmentmodels_id", "NetworkEquipmentModel"),
+        }.get(itemtype, ("", ""))
         for label, legacy_field, v2_field, dropdown in (
             (item.manufacturer, "manufacturers_id", "manufacturer", "Manufacturer"),
-            (item.model, model_field, "model", model_type),
+            (item.model, model_field, "model", model_type) if model_field else (None, "", "", ""),
             (item.location, "locations_id", "location", "Location"),
         ):
+            if not label:
+                continue
             text = (label or "").strip()
-            if not text:
+            if not text or not legacy_field:
                 continue
             ref = self._dropdown_id(dropdown, text)
             if ref is not None:
@@ -1632,7 +1786,7 @@ class _Session:
             )
         else:
             # GLPI 11 HL API v2.2+: Assets/{type}/{id}/SoftwareInstallation
-            rows = self._hl_page(
+            rows = self._hl_all(
                 f"{self.base}/api.php/Assets/Computer/{computer_id}/SoftwareInstallation"
             )
         if rows is None:
@@ -1925,18 +2079,34 @@ class _Session:
                 params={"searchText[name]": name, "range": "0-49"},
                 headers={**self._asset_headers(), "Range": "items=0-49"},
             )
-        else:
-            url = self._hl_catalog_url(itemtype)
-            if url is None:
+            if payload is None:
                 return []
+            return [row for row in _as_list(payload) if isinstance(row, dict)]
+        url = self._hl_catalog_url(itemtype)
+        if url is None:
+            return []
+        rows: list[dict[str, Any]] = []
+        for filt in (f"name=={name}", f"name=like=*{name}*"):
             payload = self._read(
                 url,
-                params={"filter": f"name=={name}", "start": 0, "limit": 50},
+                params={"filter": filt, "start": 0, "limit": 50},
                 headers=self._v2_headers(),
             )
-        if payload is None:
-            return []
-        return [row for row in _as_list(payload) if isinstance(row, dict)]
+            if payload is None:
+                continue
+            rows = [row for row in _as_list(payload) if isinstance(row, dict)]
+            if rows:
+                return rows
+        # ITILCategory: без фильтра, если точное имя не совпало (иерархия/локаль).
+        if itemtype == "ITILCategory":
+            payload = self._read(
+                url,
+                params={"start": 0, "limit": 200},
+                headers=self._v2_headers(),
+            )
+            if payload is not None:
+                rows = [row for row in _as_list(payload) if isinstance(row, dict)]
+        return rows
 
     def _create_item(self, itemtype: str, fields: dict[str, Any]) -> int:
         if self.mode == "legacy":
@@ -1961,9 +2131,11 @@ class _Session:
         return created
 
     def _hl_catalog_url(self, itemtype: str) -> str | None:
-        """URL каталога в HL API: Assets/Software или Dropdowns/{type}."""
+        """URL каталога в HL API: Assets/Software, Dropdowns/{type}, Administration/User."""
         if itemtype == "Software":
             return f"{self.base}/api.php/Assets/Software"
+        if itemtype == "User":
+            return f"{self.base}/api.php/Administration/User"
         if itemtype in _HL_DROPDOWN_TYPES:
             return f"{self.base}/api.php/Dropdowns/{itemtype}"
         return None
@@ -2031,6 +2203,106 @@ class _Session:
         if payload is None:
             return None
         return _as_list(payload)
+
+    def _hl_all(self, url: str, *, page_size: int = 200) -> list[object] | None:
+        """Все страницы HL search (ПО на ПК часто >200). None — эндпоинт недоступен."""
+        collected: list[object] = []
+        start = 0
+        while start < 20_000:
+            page = self._hl_page(url, params={"start": start, "limit": page_size})
+            if page is None:
+                return None if start == 0 else collected
+            if not page:
+                break
+            collected.extend(page)
+            if len(page) < page_size:
+                break
+            start += len(page)
+        return collected
+
+    def _ensure_peripheral_link(self, item: GlpiDeviceOutbound, peripheral_glpi_id: int) -> None:
+        """Связка Monitor/Printer → Computer через HL PeripheralConnection (GLPI 11 v2.3+)."""
+        computer_id = item.computer_glpi_id
+        if computer_id is None and (item.computer_hostname or "").strip():
+            found = self._find_computer(item.computer_hostname.strip(), None)
+            computer_id = None if found is None else found.glpi_id
+        if computer_id is None:
+            return
+        peripheral_type = _device_itemtype(item.kind)
+        if self.mode == "legacy":
+            self._link_peripheral_legacy(computer_id, peripheral_type, peripheral_glpi_id)
+            return
+        existing = self._hl_all(
+            f"{self.base}/api.php/Assets/Computer/{computer_id}/PeripheralConnection"
+        )
+        if existing is None:
+            # Старый GLPI без эндпоинта 2.3 — тихо пропускаем.
+            return
+        for row in existing:
+            if not isinstance(row, dict):
+                continue
+            if (_as_text(row.get("itemtype_peripheral")) or "") != peripheral_type:
+                continue
+            if _as_int(row.get("items_id_peripheral")) == peripheral_glpi_id:
+                return
+        self._request(
+            "POST",
+            f"{self.base}/api.php/Assets/Computer/{computer_id}/PeripheralConnection",
+            headers=self._v2_headers(),
+            json={
+                "itemtype_peripheral": peripheral_type,
+                "items_id_peripheral": peripheral_glpi_id,
+            },
+        )
+
+    def _link_peripheral_legacy(self, computer_id: int, peripheral_type: str, peripheral_id: int) -> None:
+        try:
+            current = self._legacy_page(
+                f"{self.base}/apirest.php/Computer/{computer_id}/Computer_Item"
+            )
+        except GlpiClientError:
+            current = None
+        if current is None:
+            try:
+                current = self._legacy_page(
+                    f"{self.base}/apirest.php/Computer/{computer_id}/Asset_PeripheralAsset"
+                )
+            except GlpiClientError:
+                return
+        for row in current or []:
+            if not isinstance(row, dict):
+                continue
+            linked_type = _as_text(row.get("itemtype")) or _as_text(row.get("itemtype_peripheral"))
+            linked_id = _as_int(row.get("items_id")) or _as_int(row.get("items_id_peripheral"))
+            if linked_type == peripheral_type and linked_id == peripheral_id:
+                return
+        try:
+            self._request(
+                "POST",
+                f"{self.base}/apirest.php/Computer_Item",
+                headers=self._asset_headers(),
+                json={
+                    "input": {
+                        "computers_id": computer_id,
+                        "itemtype": peripheral_type,
+                        "items_id": peripheral_id,
+                    }
+                },
+            )
+        except GlpiClientError:
+            self._request(
+                "POST",
+                f"{self.base}/apirest.php/Asset_PeripheralAsset",
+                headers=self._asset_headers(),
+                json={
+                    "input": {
+                        "itemtype_asset": "Computer",
+                        "items_id_asset": computer_id,
+                        "itemtype_peripheral": peripheral_type,
+                        "items_id_peripheral": peripheral_id,
+                    }
+                },
+            )
 
     def _read_item(self, itemtype: str, item_id: int) -> dict[str, Any] | None:
         if self.mode == "legacy":

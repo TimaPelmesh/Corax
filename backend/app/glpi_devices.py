@@ -23,10 +23,11 @@ from app.glpi_client import (
     push_devices,
 )
 from app.glpi_sync import GlpiSyncResult
-from app.models import Computer, Monitor, Printer, User
+from app.models import Computer, Monitor, NetworkDevice, Peripheral, Printer, User
 from app.search_index import index_record
 
 _ERROR_LIMIT = 20
+_ALLOWED_KINDS = frozenset({"monitor", "printer", "network"})
 
 
 def _clip(value: str | None, limit: int) -> str | None:
@@ -58,20 +59,30 @@ def _unique(rows: list, predicate) -> object | None:
 
 def match_device(rows: list, asset: GlpiDevice):
     if asset.glpi_id:
-        found = _unique(rows, lambda row: row.glpi_id == asset.glpi_id)
+        found = _unique(rows, lambda row: getattr(row, "glpi_id", None) == asset.glpi_id)
         if found is not None:
             return found
     for attr, raw in (("serial_number", asset.serial), ("inventory_number", asset.inventory)):
         key = _key(raw)
         if not key:
             continue
-        found = _unique(rows, lambda row, attr=attr, key=key: _key(getattr(row, attr)) == key)
+        found = _unique(
+            rows,
+            lambda row, attr=attr, key=key: hasattr(row, attr) and _key(getattr(row, attr)) == key,
+        )
         if found is not None:
             return found
     title = _key(asset.name)
     if not title:
         return None
-    return _unique(rows, lambda row: _key(row.name) == title)
+
+    def _name_of(row: object) -> str:
+        for field in ("name", "hostname", "sys_name"):
+            if hasattr(row, field):
+                return _key(getattr(row, field))
+        return ""
+
+    return _unique(rows, lambda row: _name_of(row) == title)
 
 
 def _set(row: object, field: str, raw: str | None, limit: int) -> bool:
@@ -147,6 +158,8 @@ def _ids(raw: list[int] | None) -> list[int] | None:
 
 
 async def list_local_devices(db: AsyncSession, kind: str, *, limit: int) -> list[dict]:
+    if kind not in _ALLOWED_KINDS:
+        raise ValueError("Можно передать мониторы, принтеры или сетевые устройства")
     bounded = max(1, min(int(limit), 2000))
     if kind == "monitor":
         rows = list(
@@ -159,24 +172,82 @@ async def list_local_devices(db: AsyncSession, kind: str, *, limit: int) -> list
                 )
             ).all()
         )
-        return [_monitor_view(row) for row in rows]
+        links = await _monitor_computer_links(db, rows)
+        return [_monitor_view(row, links.get(row.id)) for row in rows]
     if kind == "printer":
         rows = list((await db.scalars(select(Printer).order_by(Printer.id.desc()).limit(bounded))).all())
         host_ids = {row.computer_id for row in rows if row.computer_id}
-        hosts: dict[int, str] = {}
+        hosts: dict[int, tuple[str | None, int | None]] = {}
         if host_ids:
-            result = await db.execute(select(Computer.id, Computer.hostname).where(Computer.id.in_(host_ids)))
-            hosts = {int(cid): (name or "").strip() for cid, name in result.all()}
-        return [_printer_view(row, hosts.get(row.computer_id) if row.computer_id else None) for row in rows]
-    raise ValueError("Можно передать только мониторы или принтеры")
+            result = await db.execute(
+                select(Computer.id, Computer.hostname, Computer.glpi_id).where(Computer.id.in_(host_ids))
+            )
+            hosts = {
+                int(cid): ((name or "").strip() or None, gid)
+                for cid, name, gid in result.all()
+            }
+        return [
+            _printer_view(
+                row,
+                hosts.get(row.computer_id, (None, None))[0] if row.computer_id else None,
+                hosts.get(row.computer_id, (None, None))[1] if row.computer_id else None,
+            )
+            for row in rows
+        ]
+    rows = list(
+        (await db.scalars(select(NetworkDevice).order_by(NetworkDevice.id.desc()).limit(bounded))).all()
+    )
+    return [_network_view(row) for row in rows]
 
 
-def _monitor_view(row: Monitor) -> dict:
+async def _monitor_computer_links(db: AsyncSession, monitors: list[Monitor]) -> dict[int, Computer]:
+    """Монитор ←→ ПК: Peripheral(kind=monitor) с тем же именем или серийником в названии."""
+    if not monitors:
+        return {}
+    by_name: dict[str, list[Monitor]] = {}
+    by_serial: dict[str, Monitor] = {}
+    for row in monitors:
+        title = _key(row.name)
+        if title:
+            by_name.setdefault(title, []).append(row)
+        serial = _key(row.serial_number)
+        if serial:
+            by_serial[serial] = row
+    periph = list(
+        (
+            await db.execute(
+                select(Peripheral, Computer)
+                .join(Computer, Computer.id == Peripheral.computer_id)
+                .where(Peripheral.kind == "monitor")
+            )
+        ).all()
+    )
+    linked: dict[int, Computer] = {}
+    for peripheral, computer in periph:
+        pname = _key(peripheral.name)
+        if not pname:
+            continue
+        hit: Monitor | None = None
+        bucket = by_name.get(pname)
+        if bucket and len(bucket) == 1:
+            hit = bucket[0]
+        if hit is None:
+            for serial, monitor in by_serial.items():
+                if serial and serial in pname:
+                    hit = monitor
+                    break
+        if hit is not None and hit.id not in linked:
+            linked[hit.id] = computer
+    return linked
+
+
+def _monitor_view(row: Monitor, computer: Computer | None = None) -> dict:
     user = row.assigned_user
     assigned = None
     if user is not None:
         assigned = (user.full_name or user.username or "").strip() or None
-    group = assigned or row.organization or row.glpi_contact_raw or "Без привязки"
+    host = (computer.hostname if computer is not None else None) or None
+    group = host or assigned or row.organization or row.glpi_contact_raw or "Без привязки"
     return {
         "id": row.id,
         "glpi_id": row.glpi_id,
@@ -185,8 +256,8 @@ def _monitor_view(row: Monitor) -> dict:
         "inventory_number": row.inventory_number,
         "updated_at": row.glpi_updated_at,
         "kind": "monitor",
-        "computer_id": None,
-        "computer_hostname": None,
+        "computer_id": None if computer is None else computer.id,
+        "computer_hostname": host,
         "ip_address": None,
         "assigned_user": assigned,
         "location": None,
@@ -194,7 +265,11 @@ def _monitor_view(row: Monitor) -> dict:
     }
 
 
-def _printer_view(row: Printer, hostname: str | None = None) -> dict:
+def _printer_view(
+    row: Printer,
+    hostname: str | None = None,
+    computer_glpi_id: int | None = None,
+) -> dict:
     host = (hostname or "").strip() or None
     group = host or (row.ip_address or "").strip() or row.location or "Без привязки"
     return {
@@ -207,6 +282,27 @@ def _printer_view(row: Printer, hostname: str | None = None) -> dict:
         "kind": "printer",
         "computer_id": row.computer_id,
         "computer_hostname": host,
+        "ip_address": (row.ip_address or "").strip() or None,
+        "assigned_user": None,
+        "location": row.location,
+        "group_label": group,
+        "computer_glpi_id": computer_glpi_id,
+    }
+
+
+def _network_view(row: NetworkDevice) -> dict:
+    title = (row.hostname or row.sys_name or row.ip_address or f"#{row.id}").strip()
+    group = (row.device_type or "unknown").strip() or "unknown"
+    return {
+        "id": row.id,
+        "glpi_id": row.glpi_id,
+        "name": title,
+        "serial_number": None,
+        "inventory_number": None,
+        "updated_at": row.glpi_updated_at,
+        "kind": "network",
+        "computer_id": None,
+        "computer_hostname": None,
         "ip_address": (row.ip_address or "").strip() or None,
         "assigned_user": None,
         "location": row.location,
@@ -262,8 +358,10 @@ async def import_glpi_devices(
         result = await _import_monitors(db, assets)
     elif kind == "printer":
         result = await _import_printers(db, assets)
+    elif kind == "network":
+        result = await _import_network(db, assets)
     else:
-        raise ValueError("Можно передать только мониторы или принтеры")
+        raise ValueError("Можно передать мониторы, принтеры или сетевые устройства")
     if not chosen:
         return result
     found = {asset.glpi_id for asset in assets}
@@ -374,8 +472,12 @@ async def export_glpi_devices(
     limit: int,
     ids: list[int] | None,
 ) -> GlpiSyncResult:
+    if kind not in _ALLOWED_KINDS:
+        raise ValueError("Можно передать мониторы, принтеры или сетевые устройства")
     chosen = _ids(ids)
     bounded = max(1, min(int(limit), 2000))
+    rows: list
+    outbound: list[GlpiDeviceOutbound]
     if kind == "monitor":
         stmt = select(Monitor).order_by(Monitor.id.asc())
         if chosen is not None:
@@ -385,7 +487,12 @@ async def export_glpi_devices(
         else:
             stmt = stmt.limit(bounded)
         rows = list((await db.scalars(stmt)).all())
-        outbound = [_monitor_outbound(row) for row in rows if (row.name or "").strip()]
+        links = await _monitor_computer_links(db, rows)
+        outbound = [
+            _monitor_outbound(row, links.get(row.id))
+            for row in rows
+            if (row.name or "").strip()
+        ]
     elif kind == "printer":
         stmt = select(Printer).order_by(Printer.id.asc())
         if chosen is not None:
@@ -395,9 +502,27 @@ async def export_glpi_devices(
         else:
             stmt = stmt.limit(bounded)
         rows = list((await db.scalars(stmt)).all())
-        outbound = [_printer_outbound(row) for row in rows if (row.name or "").strip()]
+        host_ids = {row.computer_id for row in rows if row.computer_id}
+        hosts: dict[int, Computer] = {}
+        if host_ids:
+            for pc in (await db.scalars(select(Computer).where(Computer.id.in_(host_ids)))).all():
+                hosts[pc.id] = pc
+        outbound = [
+            _printer_outbound(row, hosts.get(row.computer_id) if row.computer_id else None)
+            for row in rows
+            if (row.name or "").strip()
+        ]
     else:
-        raise ValueError("Можно передать только мониторы или принтеры")
+        stmt = select(NetworkDevice).order_by(NetworkDevice.id.asc())
+        if chosen is not None:
+            if not chosen:
+                return GlpiSyncResult(message="Не выбрано ни одной записи")
+            stmt = stmt.where(NetworkDevice.id.in_(chosen))
+        else:
+            stmt = stmt.limit(bounded)
+        rows = list((await db.scalars(stmt)).all())
+        outbound = [_network_outbound(row) for row in rows]
+
     if not outbound:
         return GlpiSyncResult(message="Нечего передавать")
     results = await asyncio.to_thread(push_devices, creds, outbound)
@@ -412,18 +537,81 @@ async def export_glpi_devices(
                 errors.append(result.error)
             continue
         row.glpi_id = result.glpi_id
-        if result.updated_at is not None:
+        if result.updated_at is not None and hasattr(row, "glpi_updated_at"):
             row.glpi_updated_at = result.updated_at
+        if result.error and len(errors) < _ERROR_LIMIT:
+            errors.append(f"{getattr(row, 'name', result.corax_id)}: {result.error}")
         if result.action == "created":
             created += 1
         else:
             updated += 1
-        await index_record(db, row)
+        if kind != "network":
+            await index_record(db, row)
     await db.commit()
     return GlpiSyncResult(created=created, updated=updated, failed=failed, errors=errors)
 
 
-def _monitor_outbound(row: Monitor) -> GlpiDeviceOutbound:
+async def _import_network(db: AsyncSession, assets: list[GlpiDevice]) -> GlpiSyncResult:
+    rows = list((await db.scalars(select(NetworkDevice))).all())
+    created = updated = skipped = failed = 0
+    errors: list[str] = []
+    for asset in assets:
+        try:
+            match = match_device(rows, asset)
+            if match is None:
+                name = _clip(asset.name, 255) or asset.name[:255]
+                row = NetworkDevice(
+                    dedupe_key=f"glpi:{asset.glpi_id}",
+                    ip_address=_clip(asset.name, 64) or "0.0.0.0",
+                    hostname=name,
+                    device_type="unknown",
+                    source="glpi",
+                )
+                # Prefer IP from comment "IP: x.x.x.x" if present.
+                comment = asset.comment or ""
+                for part in comment.split():
+                    if part.count(".") == 3 and all(p.isdigit() for p in part.split(".")):
+                        row.ip_address = part[:64]
+                        break
+                db.add(row)
+                rows.append(row)
+                created += 1
+            else:
+                row = match
+                if device_is_stale(asset.updated_at, row.glpi_updated_at):
+                    if row.glpi_id is None:
+                        row.glpi_id = asset.glpi_id
+                        updated += 1
+                    else:
+                        skipped += 1
+                    continue
+                changed = row.glpi_id != asset.glpi_id
+                row.glpi_id = asset.glpi_id
+                if asset.name and row.hostname != asset.name:
+                    row.hostname = _clip(asset.name, 255)
+                    changed = True
+                if asset.location and row.location != asset.location:
+                    row.location = _clip(asset.location, 255)
+                    changed = True
+                if asset.manufacturer and row.vendor != asset.manufacturer:
+                    row.vendor = _clip(asset.manufacturer, 128)
+                    changed = True
+                if asset.updated_at is not None:
+                    row.glpi_updated_at = asset.updated_at
+                    changed = True
+                if changed:
+                    updated += 1
+                else:
+                    skipped += 1
+        except Exception as exc:  # noqa: BLE001 — одна запись не валит импорт
+            failed += 1
+            if len(errors) < _ERROR_LIMIT:
+                errors.append(f"{asset.name}: {exc}")
+    await db.commit()
+    return GlpiSyncResult(created=created, updated=updated, skipped=skipped, failed=failed, errors=errors)
+
+
+def _monitor_outbound(row: Monitor, computer: Computer | None = None) -> GlpiDeviceOutbound:
     return GlpiDeviceOutbound(
         corax_id=row.id,
         kind="monitor",
@@ -434,10 +622,12 @@ def _monitor_outbound(row: Monitor) -> GlpiDeviceOutbound:
         manufacturer=row.manufacturer,
         model=row.model,
         contact=row.glpi_contact_raw,
+        computer_glpi_id=None if computer is None else computer.glpi_id,
+        computer_hostname=None if computer is None else computer.hostname,
     )
 
 
-def _printer_outbound(row: Printer) -> GlpiDeviceOutbound:
+def _printer_outbound(row: Printer, computer: Computer | None = None) -> GlpiDeviceOutbound:
     return GlpiDeviceOutbound(
         corax_id=row.id,
         kind="printer",
@@ -449,4 +639,26 @@ def _printer_outbound(row: Printer) -> GlpiDeviceOutbound:
         model=row.glpi_model or row.snmp_model,
         location=None if row.location_manual else row.location,
         comment=row.notes,
+        computer_glpi_id=None if computer is None else computer.glpi_id,
+        computer_hostname=None if computer is None else computer.hostname,
+    )
+
+
+def _network_outbound(row: NetworkDevice) -> GlpiDeviceOutbound:
+    title = (row.hostname or row.sys_name or row.ip_address or f"net-{row.id}").strip()
+    comment_parts = []
+    if row.ip_address:
+        comment_parts.append(f"IP: {row.ip_address}")
+    if row.sys_descr:
+        comment_parts.append(row.sys_descr[:2000])
+    if row.notes:
+        comment_parts.append(row.notes[:2000])
+    return GlpiDeviceOutbound(
+        corax_id=row.id,
+        kind="network",
+        name=title[:255],
+        glpi_id=row.glpi_id,
+        manufacturer=row.vendor,
+        location=row.location,
+        comment="\n".join(comment_parts) or None,
     )

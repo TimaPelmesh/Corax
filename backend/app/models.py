@@ -65,6 +65,7 @@ class Computer(Base):
     last_report_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    glpi_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
     assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     assigned_user: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_user_id])
@@ -488,6 +489,8 @@ class NetworkDevice(Base):
     extras_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="snmp")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    glpi_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    glpi_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -188,6 +188,7 @@ def test_push_device_updates_chosen_id_and_reads_the_stamp_back():
 
 def test_push_monitor_creates_via_hl_with_dropdown_manufacturer():
     created: list[dict] = []
+    linked: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -214,6 +215,11 @@ def test_push_monitor_creates_via_hl_with_dropdown_manufacturer():
                     "date_mod": "2026-09-30 12:00:00",
                 },
             )
+        if path.endswith("/Computer/10/PeripheralConnection") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Computer/10/PeripheralConnection") and request.method == "POST":
+            linked.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 1})
         return httpx.Response(404, json={"message": f"{request.method} {path}"})
 
     results = push_devices(
@@ -226,13 +232,63 @@ def test_push_monitor_creates_via_hl_with_dropdown_manufacturer():
                 serial="CN-1",
                 manufacturer="Dell",
                 model="P2419H",
+                computer_glpi_id=10,
             )
         ],
         transport=httpx.MockTransport(handler),
     )
     assert results[0].action == "created", results[0].error
     assert results[0].glpi_id == 88
-    assert created[0]["name"] == "Dell P2419H"
-    assert created[0]["serial"] == "CN-1"
+    assert results[0].error is None
     assert created[0]["manufacturer"] == {"id": 55}
-    assert created[0]["model"] == {"id": 9}
+    assert linked == [{"itemtype_peripheral": "Monitor", "items_id_peripheral": 88}]
+
+
+def test_push_network_equipment_via_hl():
+    created: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assets/NetworkEquipment") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Assets/NetworkEquipment") and request.method == "POST":
+            created.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 44})
+        if path.endswith("/Assets/NetworkEquipment/44") and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={"id": 44, "name": "sw-core", "date_mod": "2026-09-30 12:00:00"},
+            )
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_devices(
+        _creds(),
+        [
+            GlpiDeviceOutbound(
+                corax_id=2,
+                kind="network",
+                name="sw-core",
+                manufacturer="Cisco",
+                location="Серверная",
+                comment="IP: 10.0.0.1",
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created", results[0].error
+    assert results[0].glpi_id == 44
+    assert created[0]["name"] == "sw-core"
+    assert created[0]["manufacturer"] == {"name": "Cisco"}
+
+
+def test_printer_keeps_manual_location_when_glpi_is_newer():
+    row = _row(glpi_id=4, name="HP", location="Каб. 1", location_manual=True, glpi_updated_at=None)
+    action = apply_printer(
+        row,
+        GlpiDevice(glpi_id=4, name="HP", location="Склад", updated_at=datetime(2026, 9, 29, 17, 40, tzinfo=timezone.utc)),
+    )
+    assert action == "updated"
+    assert row.location == "Каб. 1"
+    assert row.glpi_updated_at == datetime(2026, 9, 29, 17, 40, tzinfo=timezone.utc)

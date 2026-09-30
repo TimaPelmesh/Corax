@@ -895,7 +895,7 @@ class GlpiComputerRowOut(BaseModel):
 
 
 class GlpiDeviceSyncIn(BaseModel):
-    kind: Literal["monitor", "printer"]
+    kind: Literal["monitor", "printer", "network"]
     limit: int = Field(default=200, ge=1, le=2000)
     ids: list[int] | None = Field(default=None, max_length=2000)
 
