@@ -1214,17 +1214,26 @@ class _Session:
                 empty_on=(404,),
             )
             return _as_list(payload)
-        payload = self._parse(
-            self._http.get(
-                f"{self.base}/api.php/Assistance/Ticket",
-                params={"start": 0, "limit": 50, "filter[name]": cleaned},
-                headers={**self._v2_headers(), "Range": "items=0-49"},
-            ),
-            empty_on=(404,),
-        )
-        rows = _as_list(payload)
-        if rows:
-            return rows
+        # HL RSQL: только ASCII без скобок — иначе «незакрытых групп» / mb-баг лексера.
+        if _rsql_can_filter(cleaned):
+            try:
+                payload = self._parse(
+                    self._http.get(
+                        f"{self.base}/api.php/Assistance/Ticket",
+                        params={
+                            "start": 0,
+                            "limit": 50,
+                            "filter": f"name=={_rsql_quote(cleaned)}",
+                        },
+                        headers={**self._v2_headers(), "Range": "items=0-49"},
+                    ),
+                    empty_on=(404,),
+                )
+                rows = _as_list(payload)
+                if rows:
+                    return rows
+            except GlpiClientError:
+                pass
         # Fallback: legacy search under OAuth (часто доступен на GLPI 11).
         payload = self._parse(
             self._http.get(
@@ -1495,9 +1504,14 @@ class _Session:
                 headers={**self._asset_headers(), "Range": "items=0-49"},
             )
         else:
+            params: dict[str, Any] = {"start": 0, "limit": 50}
+            if _rsql_can_filter(value):
+                params["filter"] = f"{field}=={_rsql_quote(value)}"
+            else:
+                params["limit"] = 200
             payload = self._read(
                 f"{self.base}/api.php/Assets/{itemtype}",
-                params={"filter": f"{field}=={value}", "start": 0, "limit": 50},
+                params=params,
                 headers=self._v2_headers(),
             )
         if payload is None:
@@ -1658,9 +1672,14 @@ class _Session:
                 headers={**self._asset_headers(), "Range": "items=0-49"},
             )
         else:
+            params: dict[str, Any] = {"start": 0, "limit": 50}
+            if _rsql_can_filter(value):
+                params["filter"] = f"{field}=={_rsql_quote(value)}"
+            else:
+                params["limit"] = 200
             payload = self._read(
                 f"{self.base}/api.php/Assets/Computer",
-                params={"filter": f"{field}=={value}", "start": 0, "limit": 50},
+                params=params,
                 headers=self._v2_headers(),
             )
         if payload is None:
@@ -1918,9 +1937,14 @@ class _Session:
         return created
 
     def _search_software_versions(self, software_id: int, version_name: str) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"start": 0, "limit": 50}
+        if _rsql_can_filter(version_name):
+            params["filter"] = f"name=={_rsql_quote(version_name)}"
+        else:
+            params["limit"] = 200
         payload = self._read(
             f"{self.base}/api.php/Assets/Software/{software_id}/Version",
-            params={"filter": f"name=={version_name}", "start": 0, "limit": 50},
+            params=params,
             headers=self._v2_headers(),
         )
         if payload is None:
@@ -2085,28 +2109,39 @@ class _Session:
         url = self._hl_catalog_url(itemtype)
         if url is None:
             return []
-        rows: list[dict[str, Any]] = []
-        for filt in (f"name=={name}", f"name=like=*{name}*"):
-            payload = self._read(
-                url,
-                params={"filter": filt, "start": 0, "limit": 50},
-                headers=self._v2_headers(),
-            )
-            if payload is None:
-                continue
-            rows = [row for row in _as_list(payload) if isinstance(row, dict)]
-            if rows:
-                return rows
-        # ITILCategory: без фильтра, если точное имя не совпало (иерархия/локаль).
-        if itemtype == "ITILCategory":
-            payload = self._read(
-                url,
-                params={"start": 0, "limit": 200},
-                headers=self._v2_headers(),
-            )
-            if payload is not None:
-                rows = [row for row in _as_list(payload) if isinstance(row, dict)]
-        return rows
+        # Кириллица / скобки в RSQL ломают лексер GLPI («незакрытых групп»).
+        # Безопасный путь: list без filter + матч на клиенте.
+        if _rsql_can_filter(name):
+            try:
+                payload = self._read(
+                    url,
+                    params={"filter": f"name=={_rsql_quote(name)}", "start": 0, "limit": 50},
+                    headers=self._v2_headers(),
+                )
+                if payload is not None:
+                    rows = [row for row in _as_list(payload) if isinstance(row, dict)]
+                    if rows:
+                        return rows
+            except GlpiClientError:
+                pass
+        limit = 500 if itemtype == "User" else 200
+        collected: list[dict[str, Any]] = []
+        start = 0
+        page_size = min(200, limit)
+        while start < limit:
+            try:
+                page = self._hl_page(url, params={"start": start, "limit": page_size})
+            except GlpiClientError:
+                break
+            if page is None:
+                break
+            for row in page:
+                if isinstance(row, dict):
+                    collected.append(row)
+            if len(page) < page_size:
+                break
+            start += len(page)
+        return collected
 
     def _create_item(self, itemtype: str, fields: dict[str, Any]) -> int:
         if self.mode == "legacy":
@@ -2841,6 +2876,20 @@ def _field_name(value: object) -> str | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return None
     return _as_text(value)
+
+
+def _rsql_quote(value: str) -> str:
+    """Значение для RSQL filter (в одинарных кавычках)."""
+    return "'" + str(value).replace("\\", "\\\\").replace("'", "''") + "'"
+
+
+def _rsql_can_filter(value: str) -> bool:
+    """False — не слать в RSQL: кириллица ломает лексер GLPI, скобки = «незакрытых групп»."""
+    if not value or not value.isascii():
+        return False
+    if any(ch in value for ch in "(),;"):
+        return False
+    return True
 
 
 def _as_int(value: object) -> int | None:
