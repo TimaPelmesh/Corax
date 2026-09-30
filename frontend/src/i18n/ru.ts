@@ -2556,11 +2556,11 @@ export const ru = {
     importApiDone: 'Из GLPI: создано {created}, обновлено {updated}, без изменений {skipped}, ошибок {failed}',
     exportApiDone: 'В GLPI: создано {created}, обновлено {updated}, ошибок {failed}',
     assetsBlockTitle: '2. ПК · CORAX → GLPI',
-    assetsFlow: 'Hostname + IP. ПО по умолчанию выключено (часто даёт HTTP 500 на стороне GLPI).',
+    assetsFlow: 'Hostname + IP. ПО уходит через HL API GLPI 11 (SoftwareInstallation).',
     assetsHint:
       'Сопоставление по имени ПК. Если UPDATE чужой сущности падает — дубликат не создаём. При HTTP 500 пробуем упрощённое тело (имя+серийник).',
     assetsSkipSoftware: 'Не отправлять список ПО',
-    assetsSkipSoftwareHint: 'Оставьте включённым, если GLPI отвечает HTTP 500. Карточка ПК и IP всё равно уйдут.',
+    assetsSkipSoftwareHint: 'Включайте только если запись ПО падает. Карточка ПК и IP всё равно уйдут.',
     assetsModeAll: 'Все ПК в лимите',
     assetsModeAllHint: 'По алфавиту hostname, не больше лимита.',
     assetsModeSelected: 'Выбрать конкретные ПК',

@@ -2556,11 +2556,11 @@ export const en: MessageTree = {
     importApiDone: 'From GLPI: created {created}, updated {updated}, unchanged {skipped}, errors {failed}',
     exportApiDone: 'To GLPI: created {created}, updated {updated}, errors {failed}',
     assetsBlockTitle: '2. PCs · CORAX → GLPI',
-    assetsFlow: 'Hostname + IP. Software is off by default (often causes GLPI HTTP 500).',
+    assetsFlow: 'Hostname + IP. Software goes via GLPI 11 HL API (SoftwareInstallation).',
     assetsHint:
       'Matched by hostname. If UPDATE fails in another entity, no duplicate is created. On HTTP 500 we retry name+serial only.',
     assetsSkipSoftware: 'Do not send software list',
-    assetsSkipSoftwareHint: 'Keep on if GLPI returns HTTP 500. PC card and IP still go out.',
+    assetsSkipSoftwareHint: 'Enable only if software write fails. PC card and IP still go out.',
     assetsModeAll: 'All PCs in the limit',
     assetsModeAllHint: 'By hostname, up to the limit.',
     assetsModeSelected: 'Pick specific PCs',

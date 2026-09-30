@@ -819,22 +819,38 @@ def test_v2_fetch_computers_resolves_software_os_and_unknown_software():
                     {"id": 8, "name": "pc-b", "serial": "SN2"},
                 ],
             )
-        if path.endswith("/Computer/7/Item_SoftwareVersion"):
+        if path.endswith("/Computer/7/SoftwareInstallation"):
             assert request.headers["authorization"] == "Bearer atk"
-            return httpx.Response(200, json=[{"id": 15, "items_id": 7, "itemtype": "Computer", "softwareversions_id": 9}])
-        if path.endswith("/Computer/8/Item_SoftwareVersion"):
-            return httpx.Response(404, json={"message": "ERROR_ITEM_NOT_FOUND"})
-        if path.endswith("/SoftwareVersion/9"):
-            return httpx.Response(200, json={"id": 9, "name": "120.0", "softwares_id": 4})
-        if path.endswith("/Software/4"):
-            return httpx.Response(200, json={"id": 4, "name": "Google Chrome"})
-        if path.endswith("/Computer/7/Item_OperatingSystem"):
             return httpx.Response(
                 200,
-                json=[{"id": 3, "operatingsystems_id": "Windows 11", "operatingsystemversions_id": "23H2"}],
+                json=[
+                    {
+                        "id": 15,
+                        "items_id": 7,
+                        "itemtype": "Computer",
+                        "softwareversion": {
+                            "id": 9,
+                            "name": "120.0",
+                            "software": {"id": 4, "name": "Google Chrome"},
+                        },
+                    }
+                ],
             )
-        if path.endswith("/Computer/8/Item_OperatingSystem"):
-            return httpx.Response(404, json={"message": "missing"})
+        if path.endswith("/Computer/8/SoftwareInstallation"):
+            return httpx.Response(200, json=[])
+        if path.endswith("/Computer/7/OSInstallation"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 3,
+                        "operatingsystem": {"id": 2, "name": "Windows 11"},
+                        "version": {"id": 6, "name": "23H2"},
+                    }
+                ],
+            )
+        if path.endswith("/Computer/8/OSInstallation"):
+            return httpx.Response(200, json=[])
         return httpx.Response(404, json={"message": f"{request.method} {path}"})
 
     computers = fetch_computers(_v2_creds(), 10, transport=httpx.MockTransport(handler))
@@ -847,7 +863,7 @@ def test_v2_fetch_computers_resolves_software_os_and_unknown_software():
     assert first.os_version == "23H2"
     assert first.software is not None
     assert [(item.name, item.version, item.link_id) for item in first.software] == [("Google Chrome", "120.0", 15)]
-    assert computers[1].software is None
+    assert computers[1].software == ()
     assert computers[1].os_name is None
 
 
@@ -855,6 +871,7 @@ def test_v2_push_replaces_software_set_and_updates_computer():
     deleted: list[str] = []
     created_install: list[dict] = []
     patched: list[dict] = []
+    os_created: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -863,34 +880,41 @@ def test_v2_push_replaces_software_set_and_updates_computer():
         if path.endswith("/Assets/Computer") and request.method == "GET":
             assert request.url.params.get("filter") == "name==PC-01"
             return httpx.Response(200, json=[{"id": 7, "name": "PC-01", "serial": "OLD"}])
-        if path.endswith("/Manufacturer"):
+        if path.endswith("/Dropdowns/Manufacturer") or path.endswith("/Manufacturer"):
             return httpx.Response(200, json=[{"id": 5, "name": "Dell"}])
         if path.endswith("/Assets/Computer/7") and request.method == "PATCH":
             patched.append(json.loads(request.content.decode()))
             return httpx.Response(200, json={"id": 7})
-        if path.endswith("/Computer/7/Item_SoftwareVersion"):
-            return httpx.Response(200, json=[{"id": 3, "items_id": 7, "itemtype": "Computer", "softwareversions_id": 9}])
-        if path.endswith("/SoftwareVersion/9"):
-            return httpx.Response(200, json={"id": 9, "name": "1.0", "softwares_id": 4})
-        if path.endswith("/Software/4"):
-            return httpx.Response(200, json={"id": 4, "name": "OldApp"})
-        if path.endswith("/Item_SoftwareVersion/3") and request.method == "DELETE":
+        if path.endswith("/Computer/7/SoftwareInstallation") and request.method == "GET":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 3,
+                        "items_id": 7,
+                        "itemtype": "Computer",
+                        "softwareversion": {
+                            "id": 9,
+                            "name": "1.0",
+                            "software": {"id": 4, "name": "OldApp"},
+                        },
+                    }
+                ],
+            )
+        if "/SoftwareInstallation/3" in path and request.method == "DELETE":
             deleted.append(path)
             return httpx.Response(200, json={})
-        if path.endswith("/Software") and request.method == "GET":
+        if path.endswith("/Assets/Software") and request.method == "GET":
             return httpx.Response(200, json=[{"id": 8, "name": "Google Chrome"}])
-        if path.endswith("/SoftwareVersion") and request.method == "GET":
-            return httpx.Response(200, json=[{"id": 11, "name": "120", "softwares_id": 8}])
-        if path.endswith("/Item_SoftwareVersion") and request.method == "POST":
+        if "/Assets/Software/8/Version" in path and request.method == "GET":
+            return httpx.Response(200, json=[{"id": 11, "name": "120"}])
+        if path.endswith("/Computer/7/SoftwareInstallation") and request.method == "POST":
             created_install.append(json.loads(request.content.decode()))
             return httpx.Response(201, json={"id": 40})
-        if path.endswith("/Computer/7/Item_OperatingSystem") and request.method == "GET":
+        if path.endswith("/Computer/7/OSInstallation") and request.method == "GET":
             return httpx.Response(200, json=[])
-        if path.endswith("/OperatingSystem") and request.method == "GET":
-            return httpx.Response(200, json=[{"id": 2, "name": "Windows 11"}])
-        if path.endswith("/OperatingSystemVersion") and request.method == "GET":
-            return httpx.Response(200, json=[{"id": 6, "name": "23H2", "operatingsystems_id": 2}])
-        if path.endswith("/Item_OperatingSystem") and request.method == "POST":
+        if path.endswith("/Computer/7/OSInstallation") and request.method == "POST":
+            os_created.append(json.loads(request.content.decode()))
             return httpx.Response(201, json={"id": 12})
         return httpx.Response(404, json={"message": f"{request.method} {path}"})
 
@@ -910,16 +934,15 @@ def test_v2_push_replaces_software_set_and_updates_computer():
         transport=httpx.MockTransport(handler),
     )
     assert results[0].action == "updated", results[0].error
+    assert results[0].error is None, results[0].error
     assert results[0].glpi_id == 7
     assert patched[0]["name"] == "PC-01"
     assert patched[0]["serial"] == "SN1"
     assert patched[0]["manufacturer"] == {"id": 5}
-    assert deleted == ["/glpi/apirest.php/Item_SoftwareVersion/3"]
-    assert created_install[0]["input"] == {
-        "itemtype": "Computer",
-        "items_id": 7,
-        "softwareversions_id": 11,
-    }
+    assert any(path.endswith("/SoftwareInstallation/3") for path in deleted)
+    assert created_install[0] == {"softwareversion": {"id": 11}}
+    assert os_created[0]["operatingsystem"] == {"name": "Windows 11"}
+    assert os_created[0]["version"] == {"name": "23H2"}
 
 
 def test_v2_push_creates_computer_when_hostname_is_unknown():
@@ -934,7 +957,7 @@ def test_v2_push_creates_computer_when_hostname_is_unknown():
         if path.endswith("/Assets/Computer") and request.method == "POST":
             created.append(json.loads(request.content.decode()))
             return httpx.Response(201, json={"id": 20})
-        if path.endswith("/Computer/20/Item_SoftwareVersion"):
+        if path.endswith("/Computer/20/SoftwareInstallation"):
             return httpx.Response(200, json=[])
         return httpx.Response(404, json={"message": f"{request.method} {path}"})
 
@@ -971,7 +994,7 @@ def test_push_computer_includes_ip_in_comment():
             return httpx.Response(201, json={"id": 33})
         if "NetworkPort" in path:
             return httpx.Response(200, json=[])
-        if path.endswith("/Computer/33/Item_SoftwareVersion"):
+        if path.endswith("/Computer/33/SoftwareInstallation"):
             return httpx.Response(200, json=[])
         return httpx.Response(404, json={"message": f"{request.method} {path}"})
 
@@ -1013,7 +1036,7 @@ def test_push_computer_other_entity_update_blocked_no_duplicate():
 
     results = push_computers(
         _v2_creds(),
-        [GlpiComputerOutbound(corax_id=5, hostname="PC-OTHER", serial="SN-X", software=())],
+        [GlpiComputerOutbound(corax_id=5, hostname="PC-OTHER", serial="SN-X", software=None)],
         transport=httpx.MockTransport(handler),
     )
     assert results[0].action == "failed"

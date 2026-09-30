@@ -67,7 +67,7 @@ export function GlpiApiPanel() {
   const [showTicketLinks, setShowTicketLinks] = useState(false)
   const [showMoreTicketModes, setShowMoreTicketModes] = useState(false)
   const [assetMode, setAssetMode] = useState<AssetExportMode>('all')
-  const [assetSkipSoftware, setAssetSkipSoftware] = useState(true)
+  const [assetSkipSoftware, setAssetSkipSoftware] = useState(false)
   const [assetRows, setAssetRows] = useState<GlpiComputerRow[]>([])
   const [assetPicked, setAssetPicked] = useState<number[]>([])
   const [assetLoading, setAssetLoading] = useState(false)

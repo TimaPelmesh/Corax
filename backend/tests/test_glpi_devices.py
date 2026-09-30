@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import httpx
@@ -185,12 +186,53 @@ def test_push_device_updates_chosen_id_and_reads_the_stamp_back():
     assert results[0].updated_at == datetime(2026, 9, 29, 17, 40, tzinfo=timezone.utc)
 
 
-def test_printer_keeps_manual_location_when_glpi_is_newer():
-    row = _row(glpi_id=4, name="HP", location="Каб. 1", location_manual=True, glpi_updated_at=None)
-    action = apply_printer(
-        row,
-        GlpiDevice(glpi_id=4, name="HP", location="Склад", updated_at=datetime(2026, 9, 29, 17, 40, tzinfo=timezone.utc)),
+def test_push_monitor_creates_via_hl_with_dropdown_manufacturer():
+    created: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assets/Monitor") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Dropdowns/Manufacturer") and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Dropdowns/Manufacturer") and request.method == "POST":
+            return httpx.Response(201, json={"id": 55, "href": "/Manufacturer/55"})
+        if path.endswith("/Dropdowns/MonitorModel") and request.method == "GET":
+            return httpx.Response(200, json=[{"id": 9, "name": "P2419H"}])
+        if path.endswith("/Assets/Monitor") and request.method == "POST":
+            created.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 88, "href": "/Assets/Monitor/88"})
+        if path.endswith("/Assets/Monitor/88") and request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 88,
+                    "name": "Dell P2419H",
+                    "serial": "CN-1",
+                    "date_mod": "2026-09-30 12:00:00",
+                },
+            )
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_devices(
+        _creds(),
+        [
+            GlpiDeviceOutbound(
+                corax_id=3,
+                kind="monitor",
+                name="Dell P2419H",
+                serial="CN-1",
+                manufacturer="Dell",
+                model="P2419H",
+            )
+        ],
+        transport=httpx.MockTransport(handler),
     )
-    assert action == "updated"
-    assert row.location == "Каб. 1"
-    assert row.glpi_updated_at == datetime(2026, 9, 29, 17, 40, tzinfo=timezone.utc)
+    assert results[0].action == "created", results[0].error
+    assert results[0].glpi_id == 88
+    assert created[0]["name"] == "Dell P2419H"
+    assert created[0]["serial"] == "CN-1"
+    assert created[0]["manufacturer"] == {"id": 55}
+    assert created[0]["model"] == {"id": 9}

@@ -194,9 +194,12 @@ async def import_glpi_assets(db: AsyncSession, creds: GlpiCredentials, *, limit:
 
 
 def _outbound(row: Computer, *, skip_software: bool = False) -> GlpiComputerOutbound:
-    software: list[tuple[str, str | None]] = []
-    if not skip_software:
+    software: tuple[tuple[str, str | None], ...] | None
+    if skip_software:
+        software = None
+    else:
         seen: set[tuple[str, str]] = set()
+        collected: list[tuple[str, str | None]] = []
         for item in row.software:
             canon = canonical_software(item.name, item.version)
             if canon is None:
@@ -205,7 +208,8 @@ def _outbound(row: Computer, *, skip_software: bool = False) -> GlpiComputerOutb
             if key in seen:
                 continue
             seen.add(key)
-            software.append(canon)
+            collected.append(canon)
+        software = tuple(collected)
     return GlpiComputerOutbound(
         corax_id=row.id,
         hostname=row.hostname,
@@ -217,7 +221,7 @@ def _outbound(row: Computer, *, skip_software: bool = False) -> GlpiComputerOutb
         os_version=row.os_version,
         comment=row.notes,
         ip_address=(row.ip_address or "").strip() or None,
-        software=tuple(software),
+        software=software,
     )
 
 
@@ -305,15 +309,19 @@ async def export_glpi_assets(
     errors: list[str] = []
     by_id = {row.id: row for row in rows}
     for result in results:
+        host = by_id.get(result.corax_id)
+        label = host.hostname if host is not None else str(result.corax_id)
         if result.action == "created":
             created += 1
+            if result.error and len(errors) < _ERROR_LIMIT:
+                errors.append(f"{label}: {result.error}")
         elif result.action == "updated":
             updated += 1
+            if result.error and len(errors) < _ERROR_LIMIT:
+                errors.append(f"{label}: {result.error}")
         else:
             failed += 1
             if result.error and len(errors) < _ERROR_LIMIT:
-                host = by_id.get(result.corax_id)
-                label = host.hostname if host is not None else str(result.corax_id)
                 errors.append(f"{label}: {result.error}")
     mode_label = "выбранные" if export_mode == "selected" else "все в лимите"
     message = (

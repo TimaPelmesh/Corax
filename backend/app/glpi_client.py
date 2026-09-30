@@ -13,6 +13,20 @@ import httpx
 
 _PAGE = 100
 _CONTENT_LIMIT = 20_000
+# Dropdowns available under /api.php/Dropdowns/{type} (GLPI 11 HL).
+_HL_DROPDOWN_TYPES = frozenset(
+    {
+        "Manufacturer",
+        "Location",
+        "ComputerModel",
+        "MonitorModel",
+        "PrinterModel",
+        "ComputerType",
+        "MonitorType",
+        "PrinterType",
+        "State",
+    }
+)
 _OAUTH_ERRORS = frozenset(
     {"invalid_client", "invalid_grant", "unauthorized_client", "invalid_scope", "invalid_request"}
 )
@@ -205,7 +219,8 @@ class GlpiComputerOutbound:
     os_version: str | None = None
     comment: str | None = None
     ip_address: str | None = None
-    software: tuple[tuple[str, str | None], ...] = ()
+    # None — не трогать ПО в GLPI; () — синхронизировать пустой набор.
+    software: tuple[tuple[str, str | None], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -704,7 +719,10 @@ def parse_computer(raw: object) -> GlpiComputer | None:
 def parse_software_install(raw: object) -> GlpiSoftware | None:
     if not isinstance(raw, dict):
         return None
-    version_value = raw.get("version")
+    # HL API v2.2+: softwareversion {id,name,software{…}}; legacy: softwareversions_id.
+    version_value = raw.get("softwareversion")
+    if version_value is None:
+        version_value = raw.get("version")
     if version_value is None:
         version_value = raw.get("softwareversions_id")
     version_name: str | None = None
@@ -1259,17 +1277,25 @@ class _Session:
                     f"ПК «{hostname}» уже есть в GLPI #{match.glpi_id}{entity_hint}, "
                     f"но UPDATE недоступен (другое подразделение или нет прав). Дубликат не создан."
                 ) from exc
-        # ПО / ОС / IP — best-effort: основная карточка ПК уже записана.
-        try:
-            self._replace_software(glpi_id, item.software)
-        except GlpiClientError:
-            pass
+        # ПО — только если явно передали набор (None = не трогать, часто skip_software).
+        # ОС / IP — best-effort: основная карточка ПК уже записана.
+        soft_error: str | None = None
+        if item.software is not None:
+            try:
+                self._replace_software(glpi_id, item.software)
+            except GlpiClientError as exc:
+                soft_error = f"ПО не записано: {exc}"
         try:
             self._write_os(glpi_id, item.os_name, item.os_version)
         except GlpiClientError:
             pass
         self._ensure_computer_ip(glpi_id, item.ip_address)
-        return GlpiAssetPushResult(corax_id=item.corax_id, glpi_id=glpi_id, action=action)
+        return GlpiAssetPushResult(
+            corax_id=item.corax_id,
+            glpi_id=glpi_id,
+            action=action,
+            error=soft_error,
+        )
 
     def _device_page(self, itemtype: str, start: int, page_size: int) -> list[object]:
         end = start + page_size - 1
@@ -1597,7 +1623,15 @@ class _Session:
         return created
 
     def _software_for(self, computer_id: int) -> tuple[GlpiSoftware, ...] | None:
-        rows = self._legacy_page(f"{self.base}/apirest.php/Computer/{computer_id}/Item_SoftwareVersion")
+        if self.mode == "legacy":
+            rows = self._legacy_page(
+                f"{self.base}/apirest.php/Computer/{computer_id}/Item_SoftwareVersion"
+            )
+        else:
+            # GLPI 11 HL API v2.2+: Assets/{type}/{id}/SoftwareInstallation
+            rows = self._hl_page(
+                f"{self.base}/api.php/Assets/Computer/{computer_id}/SoftwareInstallation"
+            )
         if rows is None:
             return None
         installed: list[GlpiSoftware] = []
@@ -1630,27 +1664,37 @@ class _Session:
         if payload is None:
             return None, None
         version_name = _clip(payload.get("name"), 255)
-        software_id = _as_int(payload.get("softwares_id"))
-        software_name = _clip(_field_name(payload.get("softwares_id")), 512) if software_id is None else None
-        if software_id is not None:
+        software_ref = payload.get("software") or payload.get("softwares_id")
+        software_id = (
+            _as_int(software_ref)
+            if not isinstance(software_ref, dict)
+            else _as_int(software_ref.get("id"))
+        )
+        software_name = _clip(_field_name(software_ref), 512)
+        if software_id is not None and not software_name:
             software = self._read_item("Software", software_id)
             if software is not None:
                 software_name = _clip(software.get("name"), 512)
         return version_name, software_name
 
     def _os_for(self, computer_id: int) -> tuple[str | None, str | None]:
-        rows = self._legacy_page(
-            f"{self.base}/apirest.php/Computer/{computer_id}/Item_OperatingSystem",
-            params={"expand_dropdowns": "true"},
-        )
+        if self.mode == "legacy":
+            rows = self._legacy_page(
+                f"{self.base}/apirest.php/Computer/{computer_id}/Item_OperatingSystem",
+                params={"expand_dropdowns": "true"},
+            )
+        else:
+            rows = self._hl_page(
+                f"{self.base}/api.php/Assets/Computer/{computer_id}/OSInstallation"
+            )
         if not rows:
             return None, None
         raw = rows[0]
         if not isinstance(raw, dict):
             return None, None
         return (
-            _dropdown_label(raw.get("operatingsystems_id")),
-            _dropdown_label(raw.get("operatingsystemversions_id")),
+            _dropdown_label(raw.get("operatingsystem") or raw.get("operatingsystems_id")),
+            _dropdown_label(raw.get("version") or raw.get("operatingsystemversions_id")),
         )
 
     def _replace_software(self, computer_id: int, software: tuple[tuple[str, str | None], ...]) -> None:
@@ -1674,7 +1718,7 @@ class _Session:
                 continue
             for link in links:
                 if link.link_id is not None:
-                    self._delete_install(link.link_id)
+                    self._delete_install(computer_id, link.link_id)
         for key, (name, version) in desired.items():
             if key in have:
                 continue
@@ -1684,22 +1728,53 @@ class _Session:
     def _ensure_software_version(self, name: str, version: str | None) -> int:
         software_id = self._ensure_item("Software", name)
         version_name = (version or "-").strip() or "-"
-        for row in self._search_named("SoftwareVersion", version_name):
+        if self.mode == "legacy":
+            for row in self._search_named("SoftwareVersion", version_name):
+                row_name = (_as_text(row.get("name")) or "").casefold()
+                if row_name != version_name.casefold():
+                    continue
+                if _as_int(row.get("softwares_id")) != software_id:
+                    continue
+                found = _as_int(row.get("id"))
+                if found is not None:
+                    return found
+            return self._create_item(
+                "SoftwareVersion",
+                {"name": version_name[:255], "softwares_id": software_id},
+            )
+        for row in self._search_software_versions(software_id, version_name):
             row_name = (_as_text(row.get("name")) or "").casefold()
             if row_name != version_name.casefold():
-                continue
-            if _as_int(row.get("softwares_id")) != software_id:
                 continue
             found = _as_int(row.get("id"))
             if found is not None:
                 return found
-        return self._create_item(
-            "SoftwareVersion",
-            {"name": version_name[:255], "softwares_id": software_id},
+        data = self._request(
+            "POST",
+            f"{self.base}/api.php/Assets/Software/{software_id}/Version",
+            headers=self._v2_headers(),
+            json={"name": version_name[:255]},
         )
+        created = _id_from_payload(data)
+        if created is None:
+            raise GlpiClientError("GLPI не вернул id для SoftwareVersion")
+        return created
+
+    def _search_software_versions(self, software_id: int, version_name: str) -> list[dict[str, Any]]:
+        payload = self._read(
+            f"{self.base}/api.php/Assets/Software/{software_id}/Version",
+            params={"filter": f"name=={version_name}", "start": 0, "limit": 50},
+            headers=self._v2_headers(),
+        )
+        if payload is None:
+            return []
+        return [row for row in _as_list(payload) if isinstance(row, dict)]
 
     def _write_os(self, computer_id: int, os_name: str | None, os_version: str | None) -> None:
         if not (os_name or "").strip() and not (os_version or "").strip():
+            return
+        if self.mode != "legacy":
+            self._write_os_hl(computer_id, os_name, os_version)
             return
         rows = self._legacy_page(f"{self.base}/apirest.php/Computer/{computer_id}/Item_OperatingSystem")
         if rows is None:
@@ -1731,6 +1806,36 @@ class _Session:
             f"{self.base}/apirest.php/Item_OperatingSystem",
             headers=self._asset_headers(),
             json={"input": payload},
+        )
+
+    def _write_os_hl(self, computer_id: int, os_name: str | None, os_version: str | None) -> None:
+        """GLPI 11 HL: POST/PATCH Assets/Computer/{id}/OSInstallation."""
+        rows = self._hl_page(
+            f"{self.base}/api.php/Assets/Computer/{computer_id}/OSInstallation"
+        )
+        if rows is None:
+            rows = []
+        body: dict[str, Any] = {}
+        if (os_name or "").strip():
+            body["operatingsystem"] = {"name": os_name.strip()[:255]}
+        if (os_version or "").strip():
+            body["version"] = {"name": os_version.strip()[:255]}
+        if not body:
+            return
+        existing_id = _as_int(rows[0].get("id")) if rows and isinstance(rows[0], dict) else None
+        if existing_id is not None:
+            self._request(
+                "PATCH",
+                f"{self.base}/api.php/Assets/Computer/{computer_id}/OSInstallation/{existing_id}",
+                headers=self._v2_headers(),
+                json=body,
+            )
+            return
+        self._request(
+            "POST",
+            f"{self.base}/api.php/Assets/Computer/{computer_id}/OSInstallation",
+            headers=self._v2_headers(),
+            json=body,
         )
 
     def _ensure_computer_ip(self, computer_id: int, ip_address: str | None) -> None:
@@ -1811,47 +1916,91 @@ class _Session:
         return created
 
     def _search_named(self, itemtype: str, name: str) -> list[dict[str, Any]]:
-        payload = self._read(
-            f"{self.base}/apirest.php/{itemtype}",
-            params={"searchText[name]": name, "range": "0-49"},
-            headers={**self._asset_headers(), "Range": "items=0-49"},
-        )
+        if self.mode == "legacy":
+            payload = self._read(
+                f"{self.base}/apirest.php/{itemtype}",
+                params={"searchText[name]": name, "range": "0-49"},
+                headers={**self._asset_headers(), "Range": "items=0-49"},
+            )
+        else:
+            url = self._hl_catalog_url(itemtype)
+            if url is None:
+                return []
+            payload = self._read(
+                url,
+                params={"filter": f"name=={name}", "start": 0, "limit": 50},
+                headers=self._v2_headers(),
+            )
         if payload is None:
             return []
         return [row for row in _as_list(payload) if isinstance(row, dict)]
 
     def _create_item(self, itemtype: str, fields: dict[str, Any]) -> int:
-        data = self._request(
-            "POST",
-            f"{self.base}/apirest.php/{itemtype}",
-            headers=self._asset_headers(),
-            json={"input": fields},
-        )
+        if self.mode == "legacy":
+            data = self._request(
+                "POST",
+                f"{self.base}/apirest.php/{itemtype}",
+                headers=self._asset_headers(),
+                json={"input": fields},
+            )
+        else:
+            url = self._hl_catalog_url(itemtype)
+            if url is None:
+                raise GlpiClientError(f"HL API не поддерживает создание {itemtype}")
+            # HL body is flat (no {"input": …} wrapper). Softwares_id → nested software.
+            body = dict(fields)
+            if itemtype == "SoftwareVersion" and "softwares_id" in body:
+                body["software"] = body.pop("softwares_id")
+            data = self._request("POST", url, headers=self._v2_headers(), json=body)
         created = _id_from_payload(data)
         if created is None:
             raise GlpiClientError(f"GLPI не вернул id для {itemtype}")
         return created
 
+    def _hl_catalog_url(self, itemtype: str) -> str | None:
+        """URL каталога в HL API: Assets/Software или Dropdowns/{type}."""
+        if itemtype == "Software":
+            return f"{self.base}/api.php/Assets/Software"
+        if itemtype in _HL_DROPDOWN_TYPES:
+            return f"{self.base}/api.php/Dropdowns/{itemtype}"
+        return None
+
     def _add_install(self, computer_id: int, version_id: int) -> None:
+        if self.mode == "legacy":
+            self._request(
+                "POST",
+                f"{self.base}/apirest.php/Item_SoftwareVersion",
+                headers=self._asset_headers(),
+                json={
+                    "input": {
+                        "itemtype": "Computer",
+                        "items_id": computer_id,
+                        "softwareversions_id": version_id,
+                    }
+                },
+            )
+            return
         self._request(
             "POST",
-            f"{self.base}/apirest.php/Item_SoftwareVersion",
-            headers=self._asset_headers(),
-            json={
-                "input": {
-                    "itemtype": "Computer",
-                    "items_id": computer_id,
-                    "softwareversions_id": version_id,
-                }
-            },
+            f"{self.base}/api.php/Assets/Computer/{computer_id}/SoftwareInstallation",
+            headers=self._v2_headers(),
+            json={"softwareversion": {"id": version_id}},
         )
 
-    def _delete_install(self, link_id: int) -> None:
+    def _delete_install(self, computer_id: int, link_id: int) -> None:
+        if self.mode == "legacy":
+            response = self._http.request(
+                "DELETE",
+                f"{self.base}/apirest.php/Item_SoftwareVersion/{link_id}",
+                params={"force_purge": "true"},
+                headers=self._asset_headers(),
+            )
+            self._parse(response)
+            return
         response = self._http.request(
             "DELETE",
-            f"{self.base}/apirest.php/Item_SoftwareVersion/{link_id}",
-            params={"force_purge": "true"},
-            headers=self._asset_headers(),
+            f"{self.base}/api.php/Assets/Computer/{computer_id}/SoftwareInstallation/{link_id}",
+            headers=self._v2_headers(),
         )
         self._parse(response)
 
@@ -1868,8 +2017,29 @@ class _Session:
             return None
         return _as_list(payload)
 
+    def _hl_page(self, url: str, params: dict[str, Any] | None = None) -> list[object] | None:
+        query: dict[str, Any] = {"start": 0, "limit": 200}
+        if params:
+            query.update(params)
+        try:
+            payload = self._read(url, params=query, headers=self._v2_headers())
+        except GlpiClientError:
+            return None
+        if payload is None:
+            return None
+        return _as_list(payload)
+
     def _read_item(self, itemtype: str, item_id: int) -> dict[str, Any] | None:
-        payload = self._read(f"{self.base}/apirest.php/{itemtype}/{item_id}", headers=self._asset_headers())
+        if self.mode == "legacy":
+            payload = self._read(
+                f"{self.base}/apirest.php/{itemtype}/{item_id}",
+                headers=self._asset_headers(),
+            )
+        else:
+            url = self._hl_catalog_url(itemtype)
+            if url is None:
+                return None
+            payload = self._read(f"{url}/{item_id}", headers=self._v2_headers())
         if isinstance(payload, dict):
             return payload
         return None
@@ -2432,6 +2602,14 @@ def _dropdown_label(value: object, limit: int = 255) -> str | None:
 def _extra_match(row: dict[str, Any], extra: dict[str, Any]) -> bool:
     for key, expected in extra.items():
         actual = row.get(key)
+        # HL nested dropdown: softwares_id → software {id}
+        if actual is None and key.endswith("_id"):
+            nested_key = key[: -len("_id")]
+            if nested_key == "softwares":
+                nested_key = "software"
+            nested = row.get(nested_key)
+            if isinstance(nested, dict):
+                actual = nested.get("id")
         if _as_int(actual) is not None and _as_int(actual) == _as_int(expected):
             continue
         if _as_text(actual) is not None and _as_text(actual) == _as_text(expected):
