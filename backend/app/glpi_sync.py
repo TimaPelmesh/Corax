@@ -104,19 +104,48 @@ async def export_glpi_tickets(
     *,
     limit: int,
     request_ids: list[int] | None = None,
+    mode: str = "recent",
 ) -> GlpiSyncResult:
+    """Выгрузка заявок в GLPI.
+
+    Связь — только ``ServiceRequest.glpi_id`` (id заявки в GLPI).
+    CORAX id и GLPI id не совпадают и не должны подставляться друг за друга.
+    Без ``glpi_id`` → CREATE; с ``glpi_id`` → UPDATE этой заявки в GLPI.
+    """
     bounded = max(1, min(int(limit), 2000))
-    stmt = select(ServiceRequest)
+    export_mode = (mode or "recent").strip().lower()
     if request_ids:
-        ids = list(dict.fromkeys(int(item) for item in request_ids))[:bounded]
+        export_mode = "selected"
+
+    stmt = select(ServiceRequest)
+    if export_mode == "selected":
+        ids = list(dict.fromkeys(int(item) for item in (request_ids or [])))[:bounded]
         if not ids:
-            return GlpiSyncResult(message="Нет заявок для выгрузки в GLPI")
+            return GlpiSyncResult(message="Укажите id заявок CORAX для выборочной выгрузки")
         stmt = stmt.where(ServiceRequest.id.in_(ids))
+    elif export_mode == "new_only":
+        stmt = (
+            stmt.where(ServiceRequest.glpi_id.is_(None))
+            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
+            .limit(bounded)
+        )
+    elif export_mode == "linked_only":
+        stmt = (
+            stmt.where(ServiceRequest.glpi_id.isnot(None))
+            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
+            .limit(bounded)
+        )
     else:
         stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(bounded)
+
     rows = list((await db.execute(stmt)).scalars().all())
     if not rows:
-        return GlpiSyncResult(message="В CORAX нет заявок для выгрузки в GLPI")
+        empty_hint = {
+            "new_only": "Нет заявок без связи с GLPI (все уже с glpi_id)",
+            "linked_only": "Нет заявок, уже связанных с GLPI",
+            "selected": "По указанным id заявки не найдены",
+        }.get(export_mode, "В CORAX нет заявок для выгрузки в GLPI")
+        return GlpiSyncResult(message=empty_hint)
 
     outbound = [
         GlpiOutbound(
@@ -131,7 +160,7 @@ async def export_glpi_tickets(
     ]
     results = await asyncio.to_thread(push_tickets, creds, outbound)
     by_id = {row.id: row for row in rows}
-    created = updated = failed = 0
+    created = updated = failed = skipped = 0
     errors: list[str] = []
     now = datetime.now(timezone.utc)
     base = normalize_base_url(creds.base_url)
@@ -140,7 +169,9 @@ async def export_glpi_tickets(
         if result.action == "failed" or result.glpi_id is None or row is None:
             failed += 1
             if result.error and len(errors) < _ERROR_LIMIT:
-                errors.append(f"#{result.corax_id}: {result.error}")
+                linked = f", GLPI #{row.glpi_id}" if row is not None and row.glpi_id else ""
+                action = "UPDATE" if row is not None and row.glpi_id else "CREATE"
+                errors.append(f"#{result.corax_id}{linked} [{action}]: {result.error}")
             continue
         row.glpi_id = result.glpi_id
         row.glpi_status = glpi_status_label(row.status)
@@ -163,10 +194,20 @@ async def export_glpi_tickets(
         await db.flush()
         await index_service_requests(db, touched)
     await db.commit()
-    message = f"Выгрузка в GLPI: создано {created}, обновлено {updated}, ошибок {failed}"
+    mode_label = {
+        "new_only": "только новые",
+        "linked_only": "только связанные",
+        "selected": "выбранные",
+        "recent": "последние",
+    }.get(export_mode, export_mode)
+    message = (
+        f"Выгрузка в GLPI ({mode_label}): создано {created}, обновлено {updated}, "
+        f"ошибок {failed}"
+    )
     return GlpiSyncResult(
         created=created,
         updated=updated,
+        skipped=skipped,
         failed=failed,
         message=message,
         errors=errors,

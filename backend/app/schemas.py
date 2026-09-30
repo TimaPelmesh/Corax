@@ -839,6 +839,9 @@ class GlpiTestTicketOut(BaseModel):
 class GlpiTicketSyncIn(BaseModel):
     limit: int = Field(default=200, ge=1, le=2000)
     request_ids: list[int] | None = Field(default=None, max_length=2000)
+    # recent = последние N; new_only = без glpi_id (только CREATE);
+    # linked_only = уже связанные (только UPDATE); selected = явный список id CORAX.
+    mode: str = Field(default="recent", pattern="^(recent|new_only|linked_only|selected)$")
 
 
 class GlpiTicketSyncOut(BaseModel):

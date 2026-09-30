@@ -713,6 +713,7 @@ async def export_glpi_tickets_api(
             creds_from_row(row),
             limit=payload.limit,
             request_ids=payload.request_ids,
+            mode=payload.mode,
         )
     except GlpiClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

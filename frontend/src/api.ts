@@ -1922,10 +1922,17 @@ export const api = {
       timeout_ms: 180_000,
     }),
 
-  glpiExportTickets: (limit: number) =>
+  glpiExportTickets: (
+    limit: number,
+    opts?: { mode?: 'recent' | 'new_only' | 'linked_only' | 'selected'; request_ids?: number[] },
+  ) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-tickets`, {
       method: 'POST',
-      json: { limit },
+      json: {
+        limit,
+        mode: opts?.mode || 'recent',
+        request_ids: opts?.request_ids?.length ? opts.request_ids : undefined,
+      },
       timeout_ms: 180_000,
     }),
 

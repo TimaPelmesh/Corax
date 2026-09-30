@@ -1642,16 +1642,25 @@ class _Session:
 
 
 def _outbound_body(item: GlpiOutbound) -> dict[str, Any]:
+    """Поля Ticket, общие для GLPI 10 (apirest) и GLPI 11 (api.php).
+
+    Не шлём external_id — у стандартного Ticket такого поля нет, на части
+    инстансов API отвечает ошибкой. Связь хранится в CORAX (glpi_id).
+    """
     priority = glpi_priority_id(item.priority)
+    content = (item.content or "").rstrip()
+    if item.corax_id > 0:
+        marker = f"[CORAX #{item.corax_id}]"
+        if marker not in content:
+            content = f"{content}\n\n{marker}".strip() if content else marker
     return {
         "name": (item.title or f"CORAX #{item.corax_id}")[:255],
-        "content": item.content or "",
+        "content": content,
         "status": glpi_status_id(item.status),
         "priority": priority,
         "urgency": priority,
         "impact": 3,
         "type": 1,
-        "external_id": f"corax:{item.corax_id}" if item.corax_id > 0 else "corax:test",
     }
 
 
@@ -1727,7 +1736,16 @@ def _friendly(text: str) -> str:
         ("ERROR_GLPI_LOGIN", "GLPI отклонил авторизацию. Проверьте токены API."),
         ("ERROR_WRONG_APP_TOKEN", "App-Token не совпадает с настройкой GLPI."),
         ("ERROR_APP_TOKEN_PARAMETERS_MISSING", "Не передан App-Token."),
-        ("ERROR_RIGHT_MISSING", "У учётной записи GLPI нет прав на заявки."),
+        ("ERROR_RIGHT_MISSING", "У профиля GLPI нет прав на заявки (Ticket)."),
+        ("ERROR_RIGHT", "У профиля GLPI нет прав на это действие с заявкой."),
+        (
+            "don't have permission",
+            "Нет прав на это действие в GLPI. Профилю нужны CREATE/UPDATE на Ticket "
+            "в нужной сущности. Если заявка CORAX уже связана с GLPI id — это UPDATE: "
+            "выгрузите только новые без связи или выдайте права профилю.",
+        ),
+        ("ERROR_GLPI_ADD", "GLPI отказал в создании заявки (права или обязательные поля)."),
+        ("ERROR_GLPI_UPDATE", "GLPI отказал в изменении заявки (права или сущность)."),
         ("invalid_client", "GLPI не принял Client ID или Client secret."),
         ("invalid_grant", "GLPI не принял логин или пароль."),
         ("unauthorized_client", "Этому OAuth-клиенту не разрешён выбранный способ входа."),

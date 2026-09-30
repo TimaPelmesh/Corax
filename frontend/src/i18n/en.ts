@@ -2507,6 +2507,22 @@ export const en: MessageTree = {
     testTicketOpen: 'Open in GLPI',
     advancedTitle: 'Bulk sync and devices',
     advancedHint: 'Batch import and export — after a test ticket already succeeds.',
+    mappingTitle: 'How CORAX tickets map to GLPI (v10 and v11)',
+    mappingIds:
+      'CORAX id and GLPI id are different numbers. The link is only ServiceRequest.glpi_id. Without glpi_id GLPI gets a CREATE; with glpi_id it UPDATEs that existing ticket.',
+    mappingFields:
+      'Sent fields: title → name, description → content, status, priority. A [CORAX #id] marker is appended to the body. Assignees, CORAX categories, and attachments are not sent yet.',
+    mappingStatus:
+      'Statuses: open→New(1), in_progress→Processing(2), done→Solved(5), cancelled→Closed(6). Priorities: low→2, normal→3, high→4. Same for GLPI 10 and 11.',
+    exportModeTitle: 'What to push to GLPI',
+    exportModeHint:
+      'If you see “You don\'t have permission” on a ticket that already has a GLPI id, the profile cannot UPDATE that ticket (rights or entity). Safest mode: “New only, no link”.',
+    exportModeNew: 'New only, no link (CREATE) — safe for a check',
+    exportModeRecent: 'Latest N (CREATE and UPDATE)',
+    exportModeLinked: 'Already linked only (UPDATE by glpi_id)',
+    exportModeSelected: 'Selected CORAX ids',
+    exportIdsLabel: 'CORAX ticket ids, comma-separated',
+    exportIdsRequired: 'Enter at least one CORAX ticket id',
     syncLimit: 'Limit per sync',
     importApi: 'Pull tickets from GLPI',
     exportApi: 'Push tickets to GLPI',

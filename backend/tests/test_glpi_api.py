@@ -215,7 +215,8 @@ def test_legacy_session_lists_and_creates():
     )
     assert results[0].action == "created"
     assert results[0].glpi_id == 70
-    assert created["input"]["external_id"] == "corax:4"
+    assert "CORAX #4" in created["input"]["content"]
+    assert "external_id" not in created["input"]
     assert created["input"]["status"] == 1
     assert created["input"]["priority"] == 2
 
@@ -293,8 +294,38 @@ def test_create_test_ticket_uses_corax_test_external_id():
     assert result.url and result.url.endswith("id=901")
     assert result.identity is not None
     assert result.identity.profile == "Super-Admin"
-    assert created["input"]["external_id"] == "corax:test"
+    assert "external_id" not in created["input"]
     assert created["input"]["name"] == "Проверка"
+    assert created["input"]["content"] == "тест"
+
+
+def test_friendly_permission_message_is_actionable():
+    from app.glpi_client import _friendly
+
+    text = _friendly("You don't have permission to perform this action.")
+    assert "прав" in text.casefold() or "Нет прав" in text
+    assert "UPDATE" in text or "CREATE" in text
+    assert "sekret" not in text
+
+
+def test_outbound_body_maps_corax_statuses_for_glpi():
+    from app.glpi_client import GlpiOutbound, _outbound_body, glpi_priority_id, glpi_status_id
+
+    assert glpi_status_id("open") == 1
+    assert glpi_status_id("in_progress") == 2
+    assert glpi_status_id("done") == 5
+    assert glpi_status_id("cancelled") == 6
+    assert glpi_priority_id("low") == 2
+    assert glpi_priority_id("normal") == 3
+    assert glpi_priority_id("high") == 4
+    body = _outbound_body(
+        GlpiOutbound(corax_id=12, glpi_id=None, title="Тема", content="Текст", status="open", priority="normal")
+    )
+    assert body["status"] == 1
+    assert body["priority"] == 3
+    assert body["type"] == 1
+    assert "[CORAX #12]" in body["content"]
+    assert "external_id" not in body
 
 
 def test_v2_push_create_then_update():

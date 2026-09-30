@@ -53,6 +53,10 @@ export function GlpiApiPanel() {
   )
   const [lastTicket, setLastTicket] = useState<GlpiTestTicketResult | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [exportMode, setExportMode] = useState<'recent' | 'new_only' | 'linked_only' | 'selected'>('new_only')
+  const [exportIdsText, setExportIdsText] = useState('')
+  const [lastSyncErrors, setLastSyncErrors] = useState<string[]>([])
+  const [lastSyncMessage, setLastSyncMessage] = useState('')
 
   const apply = useCallback((next: GlpiConfig) => {
     setCfg(next)
@@ -202,7 +206,10 @@ export function GlpiApiPanel() {
                 updated: result.updated,
                 failed: result.failed,
               })
-    const detail = result.errors?.[0]
+    const errors = result.errors || []
+    setLastSyncMessage(result.message || text)
+    setLastSyncErrors(errors)
+    const detail = errors[0]
     if (result.failed > 0 && result.created + result.updated === 0) {
       toast.error(detail ? `${text}. ${detail}` : text)
       return
@@ -211,17 +218,38 @@ export function GlpiApiPanel() {
     else toast.ok(text)
   }
 
+  function parseExportIds(raw: string): number[] {
+    return Array.from(
+      new Set(
+        raw
+          .split(/[\s,;]+/)
+          .map((part) => Number(part.trim()))
+          .filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ).slice(0, 2000)
+  }
+
   async function runSync(kind: 'import' | 'export' | 'import-assets' | 'export-assets') {
     setSyncing(kind)
     try {
       const saved = await save(true)
       if (!saved) return
       const bounded = Math.min(2000, Math.max(1, Math.round(limit) || 200))
+      if (kind === 'export' && exportMode === 'selected') {
+        const ids = parseExportIds(exportIdsText)
+        if (!ids.length) {
+          toast.error(t('settingsGlpi.exportIdsRequired'))
+          return
+        }
+      }
       const result =
         kind === 'import'
           ? await api.glpiImportTickets(bounded)
           : kind === 'export'
-            ? await api.glpiExportTickets(bounded)
+            ? await api.glpiExportTickets(bounded, {
+                mode: exportMode,
+                request_ids: exportMode === 'selected' ? parseExportIds(exportIdsText) : undefined,
+              })
             : kind === 'import-assets'
               ? await api.glpiImportAssets(bounded)
               : await api.glpiExportAssets(bounded)
@@ -570,6 +598,60 @@ export function GlpiApiPanel() {
         {showAdvanced ? (
           <div className="mt-4 space-y-4">
             <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.advancedHint')}</p>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/40 p-3 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+              <p className="font-semibold text-[var(--color-fg)]">{t('settingsGlpi.mappingTitle')}</p>
+              <p className="mt-1">{t('settingsGlpi.mappingIds')}</p>
+              <p className="mt-1">{t('settingsGlpi.mappingFields')}</p>
+              <p className="mt-1">{t('settingsGlpi.mappingStatus')}</p>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
+              <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.exportModeTitle')}</p>
+              <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.exportModeHint')}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    ['new_only', t('settingsGlpi.exportModeNew')],
+                    ['recent', t('settingsGlpi.exportModeRecent')],
+                    ['linked_only', t('settingsGlpi.exportModeLinked')],
+                    ['selected', t('settingsGlpi.exportModeSelected')],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label
+                    key={value}
+                    className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                      exportMode === value
+                        ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary-muted)]'
+                        : 'border-[var(--color-border)]'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      checked={exportMode === value}
+                      onChange={() => setExportMode(value)}
+                      name="glpi-export-mode"
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              {exportMode === 'selected' ? (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('settingsGlpi.exportIdsLabel')}
+                  </span>
+                  <input
+                    className="app-input w-full font-mono text-[13px]"
+                    value={exportIdsText}
+                    onChange={(e) => setExportIdsText(e.target.value)}
+                    placeholder="12, 45, 458"
+                  />
+                </label>
+              ) : null}
+            </div>
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <label className="block text-sm">
                 <span className="mb-1 flex items-center gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
@@ -604,6 +686,19 @@ export function GlpiApiPanel() {
                 </button>
               </div>
             </div>
+
+            {lastSyncMessage || lastSyncErrors.length ? (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-fg-muted)]">
+                {lastSyncMessage ? <p className="font-medium text-[var(--color-fg)]">{lastSyncMessage}</p> : null}
+                {lastSyncErrors.length ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-4">
+                    {lastSyncErrors.slice(0, 8).map((err) => (
+                      <li key={err}>{err}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="space-y-3 border-t border-[var(--color-border)] pt-4">
               <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.assetsHint')}</p>
