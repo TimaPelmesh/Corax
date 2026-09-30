@@ -1,3 +1,6 @@
+## WoL request queue (host ↔ container). May contain the relay token.
+data/wol-queue/
+
 ## Secrets / local config (keep *.env.example — needed to bootstrap)
 .env
 .env.*

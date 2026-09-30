@@ -51,7 +51,7 @@ async def create_agent_bundle(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    """Собрать агент: ZIP Windows (Win7+10/11) / Linux, или EXE C++."""
+    """Собрать агент: один Windows EXE (токен внутри) или ZIP Linux."""
     try:
         data, filename = await build_agent_bundle_zip(db, body)
     except FileNotFoundError as exc:

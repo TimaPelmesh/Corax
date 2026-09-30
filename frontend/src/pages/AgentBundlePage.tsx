@@ -197,7 +197,7 @@ export function AgentBundlePage() {
             server_url: server,
             target: platform,
             profile: showExtended ? level : 'full',
-            create_token: platform === 'linux',
+            create_token: true,
             token_label: label,
             modules: showModules ? modules : undefined,
             schedule:
@@ -601,7 +601,7 @@ export function AgentBundlePage() {
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryFormat')}</dt>
                 <dd className="text-right font-medium text-[var(--color-fg)]">
-                  ZIP
+                  {platform === 'linux' ? 'ZIP' : 'EXE'}
                 </dd>
               </div>
               {showExtended ? (
@@ -615,7 +615,7 @@ export function AgentBundlePage() {
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryToken')}</dt>
                 <dd className="text-right text-[var(--color-fg)]">
-                  {platform === 'linux' ? t('agentBundle.summaryTokenValue') : t('agentBundle.summaryTokenFromServer')}
+                  {t('agentBundle.summaryTokenValue')}
                 </dd>
               </div>
               {showModules ? (
@@ -649,7 +649,11 @@ export function AgentBundlePage() {
               className="app-btn app-btn-primary w-full"
               disabled={busy || lanLoading || !serverHost.trim()}
             >
-              {busy ? t('agentBundle.building') : t('agentBundle.downloadZip')}
+              {busy
+                ? t('agentBundle.building')
+                : platform === 'linux'
+                  ? t('agentBundle.downloadZip')
+                  : t('agentBundle.downloadExe')}
             </button>
           </div>
 

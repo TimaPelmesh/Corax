@@ -46,7 +46,7 @@ def _lan_only(request: Request) -> None:
 
 
 def pairing_announce_kind(status: str, stored_host: str, announced_host: str, has_token: bool) -> str:
-    """fresh — выдать токен сразу, reuse — вернуть уже выданный. Подтверждение в панели не требуется."""
+    """fresh — выдать токен сразу, reuse — вернуть уже выданный. Панель ничего не подтверждает."""
     del status
     stored = (stored_host or "").strip().casefold()
     announced = (announced_host or "").strip().casefold()
@@ -55,6 +55,19 @@ def pairing_announce_kind(status: str, stored_host: str, announced_host: str, ha
     if not has_token:
         return "fresh"
     return "reuse"
+
+
+def _ensure_pairing_token(row: AgentPairing) -> tuple[str, AgentToken | None]:
+    """Return a usable token now. Pending rows are not left waiting for an admin."""
+    if row.token_once:
+        if row.status == "pending":
+            row.status = "approved"
+        return row.token_once, None
+    token, issued = _mint_agent_token(row.hostname)
+    row.token_once = token
+    if row.status == "pending":
+        row.status = "approved"
+    return token, issued
 
 
 def _mint_agent_token(hostname: str) -> tuple[str, AgentToken]:
@@ -102,7 +115,7 @@ async def announce_pairing(body: PairAnnounce, request: Request, db: AsyncSessio
         await db.execute(select(AgentPairing).where(AgentPairing.public_id == public_id))
     ).scalar_one_or_none()
     if row is None:
-        row = AgentPairing(public_id=public_id, hostname=hostname, status="pending")
+        row = AgentPairing(public_id=public_id, hostname=hostname, status="approved")
         db.add(row)
         await db.flush()
     stored_host = row.hostname or ""
@@ -114,17 +127,13 @@ async def announce_pairing(body: PairAnnounce, request: Request, db: AsyncSessio
         row.hostname = hostname or row.hostname
     elif row.status != "claimed":
         row.hostname = hostname or row.hostname
-    if kind == "claimed":
-        await db.commit()
-        return {"status": "claimed"}
-    if not row.token_once:
-        token, issued = _mint_agent_token(row.hostname or hostname)
+    token, issued = _ensure_pairing_token(row)
+    if issued is not None:
         db.add(issued)
-        row.token_once = token
     row.status = "approved"
     await db.commit()
     await db.refresh(row)
-    return {"status": "approved", "agent_token": row.token_once}
+    return {"status": "approved", "agent_token": token}
 
 
 @router.post("/pair/claim")
@@ -133,9 +142,11 @@ async def claim_pairing(body: PairClaim, request: Request, db: AsyncSession = De
     row = (
         await db.execute(select(AgentPairing).where(AgentPairing.public_id == body.public_id.strip()))
     ).scalar_one_or_none()
-    if row is None or row.status != "approved" or not row.token_once:
-        return {"status": "pending"}
-    token = row.token_once
+    if row is None:
+        return {"status": "unknown"}
+    token, issued = _ensure_pairing_token(row)
+    if issued is not None:
+        db.add(issued)
     row.token_once = None
     row.status = "claimed"
     await db.commit()

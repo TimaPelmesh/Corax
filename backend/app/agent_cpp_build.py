@@ -3,23 +3,17 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
 import shutil
 import subprocess
-import zipfile
-from datetime import datetime, timezone
 from pathlib import Path
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_bundle import _resolve_modules
 from app.schemas import AgentBundleCreate
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _CPP_ROOT = _PROJECT_ROOT / "agent" / "cpp"
-_PORTABLE_ROOT = _CPP_ROOT / "portable"
 _PREBUILT_EXE = _CPP_ROOT / "prebuilt" / "CORAX-Agent.template.exe"
 _CACHE_DIR = _PROJECT_ROOT / "backend" / ".cache" / "corax_agent_cpp"
 _TEMPLATE_EXE = _CACHE_DIR / "CORAX-Agent.template.exe"
@@ -314,7 +308,7 @@ def _cpp_public_config(body: AgentBundleCreate, server: str) -> dict:
     return {
         "schema_version": 1,
         "server_url": server,
-        "agent_version": "5.0.0",
+        "agent_version": "5.1.0",
         "profile": profile,
         "silent": False,
         "helpdesk_shortcut": True,
@@ -327,50 +321,22 @@ def _cpp_public_config(body: AgentBundleCreate, server: str) -> dict:
     }
 
 
-async def build_cpp_agent_bundle(_db: AsyncSession, body: AgentBundleCreate) -> tuple[bytes, str]:
+def build_cpp_agent_exe(body: AgentBundleCreate, token: str) -> tuple[bytes, str]:
+    """One personal Windows EXE. Server URL and token are stamped into the binary."""
     server = body.server_url.strip().rstrip("/")
     if not server.lower().startswith(("http://", "https://")):
         raise ValueError("server_url должен начинаться с http:// или https://")
+    secret = (token or "").strip()
+    if not secret:
+        raise ValueError("Не удалось выпустить токен агента")
 
     embed = _cpp_public_config(body, server)
+    embed["agent_version"] = "5.1.0"
+    embed["agent_token"] = secret
 
     template = ensure_cpp_template_exe()
-    exe = template.read_bytes()
-    exe_sha256 = hashlib.sha256(exe).hexdigest()
-
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-    profile_key = "custom" if body.profile == "custom" else body.profile
-    filename = f"CORAX-Agent-portable-{profile_key}-{stamp}.zip"
-
-    package_meta = {
-        "format": "corax-agent-portable",
-        "schema_version": 1,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "agent_version": "5.0.0",
-        "executable_sha256": exe_sha256,
-        "credential_storage": "token is issued by the inventory server at install time",
-        "transport": "TLS" if server.lower().startswith("https://") else "plaintext HTTP",
-    }
-
-    out = io.BytesIO()
-    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-        zf.writestr("CORAX-Agent.exe", exe, compress_type=zipfile.ZIP_STORED)
-        zf.writestr(
-            "agent.json",
-            json.dumps(embed, ensure_ascii=False, indent=2) + "\n",
-        )
-        zf.writestr("package.json", json.dumps(package_meta, ensure_ascii=False, indent=2) + "\n")
-        zf.writestr("SHA256SUMS.txt", f"{exe_sha256}  CORAX-Agent.exe\n")
-        for name in (
-            "Run CORAX Agent.cmd",
-            "corax_run.cmd",
-            "Install-HelpdeskShortcut.ps1",
-            "Install scheduled task.cmd",
-            "Install-CORAXScheduledTask.ps1",
-            "README.txt",
-        ):
-            path = _PORTABLE_ROOT / name
-            if not path.is_file():
-                raise FileNotFoundError(f"Не найден файл portable-пакета: {path}")
-            zf.writestr(name, path.read_bytes())
-    return out.getvalue(), filename
+    exe = patch_config_slot(
+        template.read_bytes(),
+        json.dumps(embed, ensure_ascii=False, separators=(",", ":")),
+    )
+    return exe, "CORAX-Agent.exe"

@@ -962,19 +962,15 @@ std::string build_inventory_payload_full(const AgentConfig& cfg, const OsInfo& o
   }
 
   if (cfg.modules.docker_wsl) {
-    if (os.family == "win10" || os.family == "win11" || os.family == "server") {
-      j.key("virtual");
-      j.begin_object();
-      j.key("wsl");
-      j.value(GetFileAttributesW(L"C:\\Windows\\System32\\wsl.exe") != INVALID_FILE_ATTRIBUTES);
-      j.key("docker_desktop");
-      j.value(GetFileAttributesW(L"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe") !=
-              INVALID_FILE_ATTRIBUTES);
-      j.end_object();
-      mark("docker_wsl", "ok");
-    } else {
-      mark("docker_wsl", "unsupported", "Win10+ only");
-    }
+    j.key("virtual");
+    j.begin_object();
+    j.key("wsl");
+    j.value(GetFileAttributesW(L"C:\\Windows\\System32\\wsl.exe") != INVALID_FILE_ATTRIBUTES);
+    j.key("docker_desktop");
+    j.value(GetFileAttributesW(L"C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe") !=
+            INVALID_FILE_ATTRIBUTES);
+    j.end_object();
+    mark("docker_wsl", "ok");
   } else {
     mark("docker_wsl", "skipped");
   }

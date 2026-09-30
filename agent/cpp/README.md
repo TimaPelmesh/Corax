@@ -6,7 +6,7 @@ Native Windows inventory agent. One portable `CORAX-Agent.exe` for Win7 / Win10 
 
 | Host OS | What happens |
 |---------|----------------|
-| **Linux / Docker** | Packages the immutable `prebuilt/CORAX-Agent.template.exe` with public config and one-time provisioning. No MSVC. |
+| **Linux / Docker** | Stamps server URL and token into `prebuilt/CORAX-Agent.template.exe` and returns that single EXE. No MSVC. |
 | **Windows + VS Build Tools** | Can rebuild the same immutable EXE. Falls back to prebuilt if CMake is missing. |
 
 Agents always run on **Windows PCs**. The Linux box only packages the EXE.
@@ -28,14 +28,13 @@ $env:CORAX_SIGN_CERT_THUMBPRINT = "CERTIFICATE_THUMBPRINT"
 
 All generation, signing, verification, and offline packaging scripts live in `agent/`.
 
-## Runtime configuration and credential protection
+## Runtime configuration
 
-1. `agent.json` contains public configuration only.
-2. On first launch, `agent.provision.json` is protected with Windows DPAPI
-   `LocalMachine`, written as hidden `agent.cred`, then removed.
-3. Environment variables remain available for managed deployment.
-4. The old embedded config slot remains read-only for compatibility with
-   previously generated agents. New panel bundles never patch the EXE.
+The panel stamps `server_url` and `agent_token` into the EXE config slot.
+That file is the whole Windows agent. On launch it copies itself into
+`%ProgramData%\CORAX\Agent` (or the user profile without administrator rights),
+sends an inventory report, and stays in the tray. A sidecar `agent.json` is
+still read if it is present.
 
 The server stores an HMAC hash of the token secret. HTTPS is still required to
 encrypt the token and inventory in transit; DPAPI protects only endpoint storage.

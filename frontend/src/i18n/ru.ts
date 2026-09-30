@@ -227,7 +227,7 @@ export const ru = {
     zabbixSubtitle: 'Подключение Zabbix (чтение API)',
     zabbixDataSubtitle: 'Хосты и проблемы из Zabbix (только чтение).',
     agentTokensSubtitle: 'Токены для агентов инвентаризации',
-    agentBundleSubtitle: 'Windows 10/11: EXE с треем или ZIP PowerShell. Linux: ZIP bash.',
+    agentBundleSubtitle: 'Windows: один EXE с токеном. Linux: ZIP bash.',
     wolSubtitle:
       'Кому разрешено включать ПК для обслуживания. Кнопка — в карточке ПК, только если машина не в сети.',
     httpsSubtitle:
@@ -2678,11 +2678,11 @@ export const ru = {
     revokedOn: 'отозван {date}',
     revokeAction: 'Отозвать',
     emptyState: 'Пока нет токенов',
-    pendingTitle: 'Ждут подключения',
-    pendingHint: 'Установщик сам получает токен: сервер сразу записывает его в список ниже. Кнопка нужна только для старого установщика, который ещё ждёт подтверждения.',
-    pendingEmpty: 'Сейчас никто не ждёт подключения',
+    pendingTitle: 'Подключение',
+    pendingHint: 'Подтверждать компьютер в панели не нужно. Агент получает токен сам и сразу шлёт отчёт.',
+    pendingEmpty: 'Подтверждение не требуется',
     connect: 'Подключить',
-    connected: 'Подключено. Установщик получит токен и скроется.',
+    connected: 'Токен выдан. Агент шлёт отчёт сам.',
   },
   agentBundle: {
     modules: {
@@ -2710,7 +2710,7 @@ export const ru = {
     defaultTokenLabelCpp: 'CORAX deploy cpp',
     defaultTokenLabelLinux: 'CORAX deploy linux',
     defaultTokenLabelDesktop: 'CORAX deploy desktop',
-    downloadSuccess: 'Архив скачан: {filename}',
+    downloadSuccess: 'Файл скачан: {filename}',
     buildError: 'Ошибка сборки',
     apiNotRespondingSuffix:
       '. API CORAX не отвечает на этом URL/порту — проверьте, что сервер запущен (prod :3000 или dev API :3001).',
@@ -2755,7 +2755,7 @@ export const ru = {
     win7Notice:
       'Базовый профиль: WMI, реестр ПО, PnP-периферия. Расширенные модули (патчи, BitLocker, Docker и т.д.) доступны только в сборке для Windows 10/11.',
     windowsZipNotice:
-      'Один ZIP на все компьютеры. Внутри адрес сервера инвентаризации, токена нет. На каждом ПК установщик сам получает токен у сервера, без подтверждения в панели.',
+      'Один EXE на любой Windows, который его запустит. Адрес сервера и токен уже внутри. Положите файл на шару, запустите на ПК — агент сам установится, отправит отчёт и останется в трее. Окно небольшое, его можно свернуть.',
     collectionLevel: 'Уровень сбора',
     levelFull: 'Полный',
     levelFullHint: 'Все модули: сеть, патчи, безопасность, Office, Docker/WSL и т.д.',
@@ -2787,7 +2787,7 @@ export const ru = {
     scheduleTimeLabel: 'Время',
     fleetTitle: 'Сбор с сервера',
     fleetHint:
-      'Скачанный EXE ставит себя и остаётся в трее. Отчёт уходит только на сервер CORAX: по кнопке «Собрать сейчас» или в указанное здесь время. Токен в панели больше не показывается.',
+      'Первый отчёт уходит сразу при запуске. Дальше агент сидит в трее и шлёт отчёт по кнопке «Собрать сейчас» или в указанное здесь время.',
     fleetMode: 'Когда собирать',
     fleetOnDemand: 'Только по запросу',
     fleetDaily: 'Каждый день',
@@ -2817,7 +2817,8 @@ export const ru = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'Нет',
     summaryArchiveWin10:
-      'В архиве установщик и agent.json с адресом сервера. Токен не вшит: сервер выдаёт его сразу при установке. Тот же ZIP ставится на следующий компьютер.',
+      'Один файл CORAX-Agent.exe. Токен и адрес сервера вшиты. Тот же файл можно положить на шару и запустить на любом ПК.',
+    downloadExe: 'Скачать EXE',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
     summaryArchiveCpp:
@@ -2829,7 +2830,7 @@ export const ru = {
     downloadCpp: 'Скачать portable ZIP',
     deploymentTitle: 'Развёртывание',
     deployStep1:
-      'Один и тот же ZIP запускайте на любом ПК. Установщик сам положит агента в %ProgramData%\\CORAX\\Agent и обратится по адресу сервера из agent.json.',
+      'Скачайте CORAX-Agent.exe и положите его на шару или сразу на ПК. Других файлов нет.',
     deployStep1Linux: 'Скопируйте ZIP на Linux-хост и распакуйте (например /opt/corax-agent).',
     deployStep2Before: 'На ПК запустите',
     deployStep2After: '— отчёт уйдёт на {serverUrl}.',
@@ -2838,7 +2839,7 @@ export const ru = {
     deployStep2LinuxBefore: 'На хосте выполните',
     deployStep2LinuxAfter: '— отчёт уйдёт на {serverUrl}.',
     deployStep3Win10:
-      'Токен приходит сам, подтверждать в панели не нужно. После отчёта агент остаётся в трее и в автозагрузке, без окон.',
+      'Появится небольшое горизонтальное окно. Его можно свернуть в трей. Агент отправит отчёт, поставит себя в автозагрузку и останется в трее.',
     deployStep3Win7:
       'Расписание: настройте задачу в Планировщике Windows на запуск bat вручную или через GPO.',
     deployStep3Cpp:

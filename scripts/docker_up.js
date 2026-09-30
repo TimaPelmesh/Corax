@@ -9,7 +9,7 @@
  */
 "use strict";
 
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
 const http = require("http");
@@ -151,11 +151,41 @@ function waitHealth(timeoutMs) {
   });
 }
 
+function startWolRelay() {
+  const dir = path.join(root, "data", "wol-queue");
+  fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.chmodSync(dir, 0o777);
+  } catch {
+    /* Windows */
+  }
+  const script = path.join(root, "scripts", "wol_relay.py");
+  const candidates =
+    process.platform === "win32" ? ["python", "py", "python3"] : ["python3", "python"];
+  for (const bin of candidates) {
+    const child = spawn(bin, [script], {
+      cwd: root,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      shell: process.platform === "win32",
+    });
+    if (child.pid) {
+      child.unref();
+      console.log("WoL: ретранслятор на хосте (data/wol-queue). Пакет уходит с этой сетевой карты, не из Docker.");
+      return;
+    }
+  }
+  console.error("WoL: не найден Python, ретранслятор не запущен. Кнопка в панели не разбудит ПК.");
+}
+
 async function main() {
   console.log("=== CORAX docker:up ===");
 
   const init = spawnNode("run_python.js", ["scripts/ensure_docker_env.py"]);
   if ((init.status ?? 1) !== 0) process.exit(init.status ?? 1);
+
+  startWolRelay();
 
   const reason = needBuild();
   if (reason) {

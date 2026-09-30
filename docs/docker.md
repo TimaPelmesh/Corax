@@ -44,7 +44,8 @@ npm run docker:up
 2. Есть `.env` → секреты **не** ротирует.
 3. Первый create пишет логин в `backend/.docker-credentials`.
 4. Собирает образ `corax:local` **только если его нет** или сменился код образа / рабочее дерево. Иначе просто `compose up -d`.
-5. Ждёт `GET /api/v1/health/ready`.
+5. Поднимает на хосте ретранслятор Wake-on-LAN (`data/wol-queue`). Кнопка в панели шлёт magic packet с сетевой карты хоста: из контейнера broadcast до ПК не доходит.
+6. Ждёт `GET /api/v1/health/ready`.
 
 `npm ci` в корне не нужен для запуска (это Playwright для тестов).
 

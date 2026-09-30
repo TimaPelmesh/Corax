@@ -208,14 +208,6 @@ int main(int argc, char** argv) {
     return ok ? 0 : 2;
   }
 
-  // Already paired: no splash, no dialogs. Refresh autostart and stay in the tray.
-  if (!opt.poll && !opt.ui_demo && !opt.install && !cfg.server_url.empty() && !cfg.agent_token.empty()) {
-    InstallResult installed = install_agent();
-    if (!installed.install_dir.empty()) launch_tray_process(installed.install_dir);
-    SecureZeroMemory(cfg.agent_token.data(), cfg.agent_token.size());
-    return installed.ok ? 0 : 5;
-  }
-
   const bool silent_mode =
       !opt.ui_demo && (opt.silent || (cfg.silent && !opt.verbose && !opt.pause)) && !opt.pause;
   const bool use_splash = !silent_mode && !opt.no_gui;
@@ -228,7 +220,7 @@ int main(int argc, char** argv) {
 
   AgentSplash splash;
   if (use_splash) {
-    splash.show("Агент инвентаризации v" + cfg.agent_version);
+    splash.show("Инвентаризация");
     splash.set_status(cfg.server_url.empty() ? "Чтение конфигурации…" : ("Сервер: " + cfg.server_url));
     splash.set_progress(8);
   }
@@ -306,12 +298,12 @@ int main(int argc, char** argv) {
     InstallResult installed = run_with_ui(splash, use_splash, 10, 18, "Установка агента…", [] { return install_agent(); });
     tray_dir = installed.install_dir;
     say(installed.message, console_out);
-    if (!installed.ok) {
+    if (!installed.ok && installed.install_dir.empty()) {
       if (use_splash) splash.finish_error(installed.message);
       else if (do_pause) wait_enter("\nНажмите Enter… ");
       return 5;
     }
-    if (use_splash) splash.set_status("Установлено. Первый отчёт…");
+    if (use_splash) splash.set_status("Отправка отчёта…");
   }
 
   if (cfg.server_url.empty() || cfg.agent_token.empty()) {
@@ -413,8 +405,7 @@ int main(int argc, char** argv) {
 
   if (use_splash) {
     splash.set_progress(100);
-    splash.finish_ok("Готово — отчёт отправлен.\n\nДальше агент сидит в трее и молчит.\nСбор только по команде панели или в заданное время.\n\nСервер:\n" +
-                     cfg.server_url);
+    splash.finish_ok("Отчёт отправлен");
   } else if (do_pause) {
     wait_enter("\nГотово. Enter — закрыть… ");
   }

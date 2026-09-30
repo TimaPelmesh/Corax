@@ -107,17 +107,26 @@ bool register_task(const wchar_t* name, const wchar_t* file_name, const std::wst
   return started && code == 0;
 }
 
-void register_tray_autostart(const std::wstring& dest_exe) {
-  register_task(L"CORAX Agent Tray", L"corax-tray-task.xml", task_xml(dest_exe, L"--tray", true, false));
+void register_run_key(HKEY root, const std::wstring& dest_exe, REGSAM extra) {
   HKEY key = nullptr;
-  if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, nullptr, 0,
-                      KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+  if (RegCreateKeyExW(root, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, nullptr, 0,
+                      KEY_SET_VALUE | extra, nullptr, &key, nullptr) != ERROR_SUCCESS) {
     return;
   }
   std::wstring cmd = L"\"" + dest_exe + L"\" --tray";
   RegSetValueExW(key, L"CORAX Agent", 0, REG_SZ, reinterpret_cast<const BYTE*>(cmd.c_str()),
                  static_cast<DWORD>((cmd.size() + 1) * sizeof(wchar_t)));
   RegCloseKey(key);
+}
+
+void register_tray_autostart(const std::wstring& dest_exe) {
+  register_task(L"CORAX Agent Tray", L"corax-tray-task.xml", task_xml(dest_exe, L"--tray", true, false));
+  register_run_key(HKEY_LOCAL_MACHINE, dest_exe, KEY_WOW64_64KEY);
+}
+
+bool ensure_dir(const std::wstring& path) {
+  if (CreateDirectoryW(path.c_str(), nullptr)) return true;
+  return GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 }  // namespace
@@ -145,43 +154,44 @@ InstallResult install_agent() {
     out.message = "Не удалось определить путь к EXE.";
     return out;
   }
-  const wchar_t* env = _wgetenv(L"ProgramData");
-  std::wstring root = (env && *env) ? std::wstring(env) : L"C:\\ProgramData";
-  std::wstring dir = root + L"\\CORAX\\Agent";
-  if (!CreateDirectoryW((root + L"\\CORAX").c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
-    out.message = "Нет прав создать C:\\ProgramData\\CORAX. Запустите EXE от администратора.";
-    return out;
-  }
-  if (!CreateDirectoryW(dir.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
-    out.message = "Нет прав создать папку агента. Запустите EXE от администратора.";
-    return out;
+  size_t slash = self.find_last_of(L"\\/");
+  std::wstring src_dir = slash == std::wstring::npos ? L"." : self.substr(0, slash);
+
+  const wchar_t* program_data = _wgetenv(L"ProgramData");
+  std::wstring machine_root = (program_data && *program_data) ? std::wstring(program_data) : L"C:\\ProgramData";
+  std::wstring machine_dir = machine_root + L"\\CORAX\\Agent";
+  bool machine = ensure_dir(machine_root + L"\\CORAX") && ensure_dir(machine_dir);
+
+  std::wstring dir = machine_dir;
+  if (!machine) {
+    const wchar_t* local_app = _wgetenv(L"LOCALAPPDATA");
+    std::wstring user_root = (local_app && *local_app) ? std::wstring(local_app) : L"C:\\Users\\Public";
+    dir = user_root + L"\\CORAX\\Agent";
+    if (!ensure_dir(user_root + L"\\CORAX") || !ensure_dir(dir)) dir = src_dir;
   }
 
   std::wstring dest_exe = dir + L"\\CORAX-Agent.exe";
   if (!same_path(self, dest_exe)) {
     if (!CopyFileW(self.c_str(), dest_exe.c_str(), FALSE)) {
-      out.message = "Не удалось скопировать EXE в ProgramData\\CORAX\\Agent.";
-      return out;
+      dest_exe = self;
+      dir = src_dir;
     }
   }
-  size_t slash = self.find_last_of(L"\\/");
-  std::wstring src_dir = slash == std::wstring::npos ? L"." : self.substr(0, slash);
   copy_if_present(src_dir, dir, L"agent.json");
   copy_if_present(src_dir, dir, L"agent.provision.json");
   copy_if_present(src_dir, dir, L"agent.cred");
 
-  const bool elevated = util::is_elevated();
-  bool poll_ok = register_task(
-      L"CORAX Agent", L"corax-poll-task.xml",
-      task_xml(dest_exe, L"--poll --silent", false, elevated));
-  if (!poll_ok) {
-    out.message = "EXE скопирован, но задача планировщика не создана. Запустите от администратора.";
-    out.install_dir = util::narrow(dir);
-    return out;
+  // Current user always gets a logon start, even without administrator rights.
+  register_run_key(HKEY_CURRENT_USER, dest_exe, 0);
+
+  if (util::is_elevated()) {
+    register_task(L"CORAX Agent", L"corax-poll-task.xml", task_xml(dest_exe, L"--poll --silent", false, true));
+    register_tray_autostart(dest_exe);
   }
-  register_tray_autostart(dest_exe);
+
   out.ok = true;
   out.install_dir = util::narrow(dir);
-  out.message = "Установлено. Агент в автозагрузке и в трее, без окон.";
+  out.message = machine ? "Установлено. Агент в автозагрузке и в трее."
+                        : "Установлено для этого пользователя. Агент в автозагрузке и в трее.";
   return out;
 }

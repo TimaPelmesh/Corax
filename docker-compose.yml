@@ -71,6 +71,9 @@ services:
       # Host LAN prefixes detected by npm run docker:up (Windows/Linux host, not 172.x).
       CORAX_HOST_LAN_NETWORKS: ${CORAX_HOST_LAN_NETWORKS:-}
       CORAX_SCAN_NETWORKS: ${CORAX_SCAN_NETWORKS:-}
+      # Container UDP broadcast never reaches the LAN. The host relay sends the packet.
+      CORAX_WOL_QUEUE_DIR: /wol-queue
+      CORAX_WOL_RELAY_TOKEN: ${CORAX_WOL_RELAY_TOKEN:-}
       TLS_DIR: /data/tls
       AGENT_INBOX_DIR: ${AGENT_INBOX_DIR:-}
       WIKI_RAG_DIR: /data/wiki_rag_docs
@@ -101,6 +104,7 @@ services:
       - "${CORAX_PUBLISH_PORT:-3000}:3000"
     volumes:
       - corax_data:/data
+      - ./data/wol-queue:/wol-queue
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

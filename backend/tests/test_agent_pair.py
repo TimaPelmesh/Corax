@@ -5,6 +5,18 @@ from starlette.testclient import TestClient
 from app.routers.agent_pair import pairing_announce_kind
 
 
+def test_pending_pairing_is_issued_without_panel_approval():
+    from app.models import AgentPairing
+    from app.routers.agent_pair import _ensure_pairing_token
+
+    row = AgentPairing(public_id="pair-no-approval-0001", hostname="pc-waiting", status="pending")
+    token, issued = _ensure_pairing_token(row)
+    assert issued is not None
+    assert token == row.token_once
+    assert "." in token
+    assert row.status == "approved"
+
+
 def test_another_computer_gets_a_fresh_token_instead_of_the_first():
     assert pairing_announce_kind("claimed", "pc-1", "pc-2", False) == "fresh"
     assert pairing_announce_kind("approved", "pc-1", "PC-2", True) == "fresh"

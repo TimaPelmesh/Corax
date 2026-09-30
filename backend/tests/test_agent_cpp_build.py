@@ -41,6 +41,34 @@ def test_patch_config_slot_rejects_tiny_slot():
         patch_config_slot(fake, "{}")
 
 
+def test_build_cpp_agent_exe_embeds_token_and_server():
+    from app.agent_cpp_build import build_cpp_agent_exe
+    from app.schemas import AgentBundleCreate
+
+    prebuilt = (
+        Path(__file__).resolve().parent.parent.parent
+        / "agent"
+        / "cpp"
+        / "prebuilt"
+        / "CORAX-Agent.template.exe"
+    )
+    if not prebuilt.is_file():
+        pytest.skip("prebuilt template not in tree")
+    body = AgentBundleCreate(
+        server_url="http://192.168.1.10:3001",
+        target="windows",
+        profile="full",
+        create_token=False,
+        existing_token="unit.token-value",
+    )
+    data, name = build_cpp_agent_exe(body, "unit.token-value")
+    assert name == "CORAX-Agent.exe"
+    assert data[:2] == b"MZ"
+    assert b"http://192.168.1.10:3001" in data
+    assert b"unit.token-value" in data
+    assert b"agent.json" not in data[:200]
+
+
 def test_ensure_cpp_template_uses_prebuilt():
     """Linux/Docker path: stamp-only from shipped template (no MSVC)."""
     prebuilt = (

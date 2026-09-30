@@ -229,7 +229,7 @@ export const en: MessageTree = {
     zabbixSubtitle: 'Zabbix API connection (read-only)',
     zabbixDataSubtitle: 'Hosts and problems from Zabbix (read-only).',
     agentTokensSubtitle: 'Tokens for inventory agents',
-    agentBundleSubtitle: 'Windows 10/11: tray EXE or PowerShell ZIP. Linux: bash ZIP.',
+    agentBundleSubtitle: 'Windows: one EXE with the token inside. Linux: bash ZIP.',
     wolSubtitle:
       'Who may wake PCs for maintenance. The button is on the PC card and only appears when the host is offline.',
     httpsSubtitle:
@@ -2682,11 +2682,11 @@ export const en: MessageTree = {
     revokedOn: 'revoked {date}',
     revokeAction: 'Revoke',
     emptyState: 'No tokens yet',
-    pendingTitle: 'Waiting to connect',
-    pendingHint: 'The installer collects its own token: the server stores it in the list below immediately. The button is only for an older installer that is still waiting for approval.',
-    pendingEmpty: 'Nobody is waiting',
+    pendingTitle: 'Connection',
+    pendingHint: 'Do not approve the computer in the panel. The agent receives a token on its own and sends a report immediately.',
+    pendingEmpty: 'No approval step',
     connect: 'Connect',
-    connected: 'Connected. The installer will receive the token and close.',
+    connected: 'Token issued. The agent sends the report on its own.',
   },
   agentBundle: {
     modules: {
@@ -2714,7 +2714,7 @@ export const en: MessageTree = {
     defaultTokenLabelCpp: 'CORAX deploy cpp',
     defaultTokenLabelLinux: 'CORAX deploy linux',
     defaultTokenLabelDesktop: 'CORAX deploy desktop',
-    downloadSuccess: 'Archive downloaded: {filename}',
+    downloadSuccess: 'File downloaded: {filename}',
     buildError: 'Build failed',
     apiNotRespondingSuffix:
       '. The CORAX API is not responding on this URL/port — check that the server is running (prod :3000 or dev API :3001).',
@@ -2759,7 +2759,7 @@ export const en: MessageTree = {
     win7Notice:
       'Base profile: WMI, software registry, PnP peripherals. Extended modules (patches, BitLocker, Docker, etc.) are available only in the Windows 10/11 build.',
     windowsZipNotice:
-      'One ZIP for every computer. It contains the inventory server address and no token. On each PC the installer gets a token from the server on its own, with no confirmation in the panel.',
+      'One EXE for any Windows PC that runs it. The server address and token are already inside. Drop the file on a share, run it on the PC — it installs itself, sends a report, and stays in the tray. The window is small and can be minimized.',
     collectionLevel: 'Collection level',
     levelFull: 'Full',
     levelFullHint: 'All modules: network, patches, security, Office, Docker/WSL, and more.',
@@ -2791,7 +2791,7 @@ export const en: MessageTree = {
     scheduleTimeLabel: 'Time',
     fleetTitle: 'Server-driven collection',
     fleetHint:
-      'The EXE installs itself into ProgramData and asks the server every 5 minutes. A report is sent only after Collect now, or at the time set here.',
+      'The first report goes out as soon as you run the EXE. After that the tray agent reports on Collect now, or at the time set here.',
     fleetMode: 'When to collect',
     fleetOnDemand: 'On demand only',
     fleetDaily: 'Every day',
@@ -2821,7 +2821,8 @@ export const en: MessageTree = {
     summaryScheduleEnabled: 'install_schedule.bat',
     summaryScheduleDisabled: 'No',
     summaryArchiveWin10:
-      'The archive is the installer plus agent.json with the server address. No token is sealed in: the server issues one as soon as the agent installs. The same ZIP installs on the next computer.',
+      'A single CORAX-Agent.exe. The token and server address are built in. Put the same file on a share and run it on any PC.',
+    downloadExe: 'Download EXE',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
     summaryArchiveCpp:
@@ -2833,7 +2834,7 @@ export const en: MessageTree = {
     downloadCpp: 'Download portable ZIP',
     deploymentTitle: 'Deployment',
     deployStep1:
-      'Run the same ZIP on any PC. The installer copies itself to %ProgramData%\\CORAX\\Agent and calls the server address from agent.json.',
+      'Download CORAX-Agent.exe and put it on a share or straight onto the PC. There are no other files.',
     deployStep1Linux: 'Copy the ZIP to the Linux host and extract it (e.g. /opt/corax-agent).',
     deployStep2Before: 'On the PC, run',
     deployStep2After: '— the report will be sent to {serverUrl}.',
@@ -2842,7 +2843,7 @@ export const en: MessageTree = {
     deployStep2LinuxBefore: 'On the host, run',
     deployStep2LinuxAfter: '— the report will be sent to {serverUrl}.',
     deployStep3Win10:
-      'The token arrives on its own. There is nothing to confirm in the panel. After the report the agent stays in the tray and in startup, with no windows.',
+      'A small horizontal window appears. Minimize it to the tray. The agent sends a report, adds itself to startup, and stays in the tray.',
     deployStep3Win7:
       'Scheduling: create a Windows Task Scheduler task to run the bat manually or through GPO.',
     deployStep3Cpp:

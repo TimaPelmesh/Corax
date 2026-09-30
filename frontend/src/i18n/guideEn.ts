@@ -105,7 +105,7 @@ export const GUIDE_EN: GuideCopy = {
       id: 'agent',
       title: 'Inventory agent',
       summary:
-        'PCs do not appear by themselves. The agent reports them. Build only from the panel on the LAN IP. Windows: PowerShell ZIP (7/10/11). Linux: bash ZIP.',
+        'PCs do not appear by themselves. The agent reports them. Build only from the panel on the LAN IP. Windows: one EXE. Linux: bash ZIP.',
       steps: [
         {
           title: 'Why you need an agent',
@@ -113,7 +113,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Two packages on the panel',
-          body: 'Settings → Agent build.\n• Windows ZIP — CORAX-Agent.exe. It installs into %ProgramData%\\CORAX\\Agent, stays in the tray, and sends a report when the panel asks. After the first report a “Оставить заявку” desktop shortcut opens /h#pc=HOSTNAME.\n• ZIP Linux (bash) — see the Linux section below.',
+          body: 'Settings → Agent build.\n• Windows — a single CORAX-Agent.exe. The token and server address are already inside. Running it installs the agent, sends a report immediately, and leaves a tray icon. The window is small and can be minimized. After the first report a “Оставить заявку” desktop shortcut opens /h#pc=HOSTNAME.\n• ZIP Linux (bash) — see the Linux section below.',
         },
         {
           title: 'Before you build — LAN IP',
@@ -121,7 +121,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Build',
-          body: 'Sign in as admin → Settings → Agent build. Check the URL, pick a package, download. Server URL and token are stamped into the file — you do not paste them by hand. Each build creates a new token. One downloaded ZIP can be rolled out to many PCs.',
+          body: 'Sign in as admin → Settings → Agent build. Check the URL and download CORAX-Agent.exe. Server URL and token are stamped into the file — you do not paste them by hand. Each build creates a new token. The same EXE can sit on a share and run on any Windows PC.',
         },
         {
           title: 'Tokens',
@@ -129,23 +129,23 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Where not to put the agent',
-          body: 'Do not run scripts from the CORAX server tree: next to docker-compose.yml, backend\\.env, run.py, or from /opt/corax/agent/…. Those copies have __INVENTORY_SERVER__ placeholders; reports go nowhere and production looks “down”.\nWindows: unpack the ZIP to %ProgramData%\\CORAX\\agent or a share \\\\fileserver\\corax\\agent.\nLinux: only /opt/corax-agent (the server stays in /opt/corax).',
+          body: 'Do not run scripts from the CORAX server tree: next to docker-compose.yml, backend\\.env, run.py, or from /opt/corax/agent/…. Those copies have __INVENTORY_SERVER__ placeholders; reports go nowhere and production looks “down”.\nWindows: put the downloaded CORAX-Agent.exe on \\\\fileserver\\corax\\ and run it on the PC. It copies itself to %ProgramData%\\CORAX\\Agent.\nLinux: only /opt/corax-agent (the server stays in /opt/corax).',
         },
         {
-          title: 'ZIP Windows — contents',
-          body: 'CORAX-Agent.exe — installer and tray agent.\nagent.json — server address, no token.\nagent.provision.json — one-time token. After the first launch Windows seals it with DPAPI and deletes the file.\nTask “CORAX Agent” — poll once a minute, including when nobody is logged on.\nTray — poll every 15 seconds while a user is logged on.',
+          title: 'Windows EXE',
+          body: 'CORAX-Agent.exe is the only file. The token and server address are built into it.\nLaunch shows a small horizontal window. Minimize hides it in the tray without stopping the report.\nAfter the report the tray icon stays. Task “CORAX Agent” polls the panel when the agent was started as administrator.',
         },
         {
-          title: 'ZIP Windows — first run',
-          body: 'Unpack the ZIP and run CORAX-Agent.exe as administrator. It copies itself to %ProgramData%\\CORAX\\Agent.\nThe install window closes and the tray icon stays. Later reports go out only on Collect now / Request report, or at the time set on the server.\nA “Оставить заявку” shortcut appears: http://LAN-IP:3000/h#pc=HOSTNAME.\nCheck: Computers — hostname and “last report”.',
+          title: 'Windows EXE — first run',
+          body: 'Run CORAX-Agent.exe on the PC (a network share is fine). It copies itself to %ProgramData%\\CORAX\\Agent, or into the user profile when it is not elevated.\nThe window can be minimized. The first report is sent immediately and the tray icon stays. Later reports go out on Collect now / Request report, or at the time set on the server.\nA “Оставить заявку” shortcut appears: http://LAN-IP:3000/h#pc=HOSTNAME.\nCheck: Computers — hostname and “last report”.',
         },
         {
-          title: 'ZIP Windows — schedule',
-          body: 'The EXE creates task “CORAX Agent” (every minute) and “CORAX Agent Tray” (at logon). The first report is sent during install. Later collection happens only when the panel asks or at the configured time, with no window for the user.',
+          title: 'Windows EXE — startup',
+          body: 'The EXE registers itself for logon. As administrator it also creates task “CORAX Agent”. The first report is sent as soon as you run it. Later collection happens only when the panel asks or at the configured time, with no window for the user.',
         },
         {
-          title: 'ZIP Windows — update without wiping the token',
-          body: 'A new ZIP is a new token. Run the fresh CORAX-Agent.exe: it updates files in %ProgramData%\\CORAX\\Agent. Revoke the old token under Agent tokens after every PC has the new package.',
+          title: 'Windows EXE — update',
+          body: 'A new EXE is a new token. Run the fresh CORAX-Agent.exe: it replaces the copy in %ProgramData%\\CORAX\\Agent. Revoke the old token under Agent tokens after every PC has the new file.',
         },
         {
           title: 'What it sends and how to verify',

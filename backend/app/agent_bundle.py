@@ -240,6 +240,7 @@ async def build_agent_bundle_zip(db: AsyncSession, body: AgentBundleCreate) -> t
         token, _ = await _resolve_agent_token(db, body)
         return _build_linux_zip(body, server, token)
 
-    from app.agent_cpp_build import build_cpp_agent_bundle
+    from app.agent_cpp_build import build_cpp_agent_exe
 
-    return await build_cpp_agent_bundle(db, body)
+    token, _ = await _resolve_agent_token(db, body)
+    return build_cpp_agent_exe(body, token)

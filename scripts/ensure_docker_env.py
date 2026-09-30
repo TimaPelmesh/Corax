@@ -154,6 +154,7 @@ def _apply_first_create(text: str) -> str:
     text = _set_env_value(text, "SECRET_KEY", _hex_secret(32))
     text = _set_env_value(text, "AGENT_TOKEN", _hex_secret(32))
     text = _set_env_value(text, "AGENT_TOKEN_PEPPER", _hex_secret(32))
+    text = _set_env_value(text, "CORAX_WOL_RELAY_TOKEN", _hex_secret(32))
     text = _set_env_value(
         text,
         "DATABASE_URL",
@@ -184,6 +185,10 @@ def _repair_existing(text: str) -> tuple[str, list[str]]:
     if not boot:
         text = _set_env_value(text, "BOOTSTRAP_ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD)
         changed.append("BOOTSTRAP_ADMIN_PASSWORD(empty→lab default)")
+    wol = (_get_env_value(text, "CORAX_WOL_RELAY_TOKEN") or "").strip()
+    if len(wol) < 16:
+        text = _set_env_value(text, "CORAX_WOL_RELAY_TOKEN", _hex_secret(32))
+        changed.append("CORAX_WOL_RELAY_TOKEN")
     return text, changed
 
 

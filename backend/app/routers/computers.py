@@ -1043,8 +1043,9 @@ async def wake_computer(
     except ValueError as e:
         raise HTTPException(status_code=400, detail="Некорректный MAC в карточке ПК.") from e
 
-    result = send_wake(mac)
-    mark_woken(computer_id)
+    result = send_wake(mac, target_ip=(c.ip_address or "").strip() or None)
+    if int(result["sent"]) > 0:
+        mark_woken(computer_id)
     mac_s = format_mac(mac)
     db.add(
         AssetChangeLog(
@@ -1068,12 +1069,25 @@ async def wake_computer(
     )
     await db.commit()
 
-    ok = result["sent"] > 0
+    ok = int(result["sent"]) > 0
+    fail = {
+        "docker_no_relay": (
+            "Панель в Docker не может послать Wake в локальную сеть. "
+            "Перезапустите стек командой npm run docker:up — пакет уйдёт с хоста."
+        ),
+        "relay_timeout": (
+            "Ретранслятор Wake-on-LAN на этом компьютере не отвечает. "
+            "Запустите npm run docker:up и повторите."
+        ),
+        "no_token": "Не задан CORAX_WOL_RELAY_TOKEN. Запустите npm run docker:up.",
+        "bad_token": "Ретранслятор Wake-on-LAN отклонил токен. Запустите npm run docker:up ещё раз.",
+    }
+    detail = str(result.get("detail") or "")
     msg = (
         f"Magic packet отправлен ({result['sent']} шт.). "
-        "ПК должен быть в той же L2-сети; WoL — в BIOS и NIC."
+        "ПК должен быть в той же сети; WoL включён в BIOS и на сетевой карте."
         if ok
-        else "Не удалось отправить пакеты (сеть/интерфейсы сервера)."
+        else fail.get(detail, "Не удалось отправить пакеты с сетевой карты этого компьютера.")
     )
     return WolWakeOut(
         ok=ok,

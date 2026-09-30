@@ -2148,7 +2148,7 @@ export const api = {
     const blob = await res.blob()
     const cd = res.headers.get('Content-Disposition') ?? ''
     const m = /filename="([^"]+)"/i.exec(cd)
-    const filename = m?.[1] ?? 'corax-agent-windows.zip'
+    const filename = m?.[1] ?? (body.target === 'linux' ? 'corax-agent-linux.zip' : 'CORAX-Agent.exe')
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

@@ -19,6 +19,7 @@ const STRIP = [
   "POSTGRES_USER",
   "DATABASE_URL",
   "AGENT_LEGACY_TOKENS",
+  "CORAX_WOL_RELAY_TOKEN",
 ];
 
 function envFileValue(key) {

@@ -6,8 +6,8 @@ IDI_CORAX_AGENT ICON "../assets/corax-agent.ico"
 1 RT_MANIFEST "CORAX-Agent.manifest"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 5,0,0,0
- PRODUCTVERSION 5,0,0,0
+ FILEVERSION 5,1,0,0
+ PRODUCTVERSION 5,1,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
@@ -24,12 +24,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "CORAX Project\0"
       VALUE "FileDescription", "CORAX secure LAN inventory agent\0"
-      VALUE "FileVersion", "5.0.0\0"
+      VALUE "FileVersion", "5.1.0\0"
       VALUE "InternalName", "CORAX-Agent\0"
       VALUE "LegalCopyright", "Copyright (C) 2026 Timur Ivanov\0"
       VALUE "OriginalFilename", "CORAX-Agent.exe\0"
       VALUE "ProductName", "CORAX Agent\0"
-      VALUE "ProductVersion", "5.0.0\0"
+      VALUE "ProductVersion", "5.1.0\0"
     END
   END
   BLOCK "VarFileInfo"
