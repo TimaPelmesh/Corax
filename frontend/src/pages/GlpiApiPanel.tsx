@@ -57,6 +57,9 @@ export function GlpiApiPanel() {
   const [exportIdsText, setExportIdsText] = useState('')
   const [lastSyncErrors, setLastSyncErrors] = useState<string[]>([])
   const [lastSyncMessage, setLastSyncMessage] = useState('')
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number; percent: number; label: string } | null>(
+    null,
+  )
 
   const apply = useCallback((next: GlpiConfig) => {
     setCfg(next)
@@ -246,9 +249,25 @@ export function GlpiApiPanel() {
         kind === 'import'
           ? await api.glpiImportTickets(bounded)
           : kind === 'export'
-            ? await api.glpiExportTickets(bounded, {
+            ? await api.glpiExportTicketsStream(bounded, {
                 mode: exportMode,
                 request_ids: exportMode === 'selected' ? parseExportIds(exportIdsText) : undefined,
+                onProgress: (p) => {
+                  const label =
+                    p.action === 'created'
+                      ? t('settingsGlpi.progressCreated', { id: p.corax_id ?? '—' })
+                      : p.action === 'updated'
+                        ? t('settingsGlpi.progressUpdated', { id: p.corax_id ?? '—' })
+                        : p.action === 'failed'
+                          ? t('settingsGlpi.progressFailed', { id: p.corax_id ?? '—' })
+                          : t('settingsGlpi.progressWorking')
+                  setExportProgress({
+                    done: p.done,
+                    total: p.total,
+                    percent: p.percent,
+                    label,
+                  })
+                },
               })
             : kind === 'import-assets'
               ? await api.glpiImportAssets(bounded)
@@ -258,6 +277,7 @@ export function GlpiApiPanel() {
       toast.error(e instanceof Error ? e.message : t('settingsGlpi.syncFailed'))
     } finally {
       setSyncing(null)
+      setExportProgress(null)
     }
   }
 
@@ -686,6 +706,23 @@ export function GlpiApiPanel() {
                 </button>
               </div>
             </div>
+
+            {exportProgress ? (
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                <div className="flex items-center justify-between gap-2 text-xs text-[var(--color-fg-muted)]">
+                  <span>{exportProgress.label}</span>
+                  <span className="tabular-nums font-semibold text-[var(--color-fg)]">
+                    {exportProgress.done}/{exportProgress.total} · {exportProgress.percent}%
+                  </span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
+                  <div
+                    className="h-full rounded-full bg-[var(--color-primary)] transition-[width] duration-200"
+                    style={{ width: `${Math.min(100, Math.max(0, exportProgress.percent))}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {lastSyncMessage || lastSyncErrors.length ? (
               <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-fg-muted)]">

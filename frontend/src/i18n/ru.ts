@@ -2507,20 +2507,24 @@ export const ru = {
     advancedHint: 'Импорт и экспорт пачками — после того, как тестовая заявка уже проходит.',
     mappingTitle: 'Как стыкуются заявки CORAX и GLPI (v10 и v11)',
     mappingIds:
-      'Id CORAX и id GLPI — разные числа. Связь только в поле glpi_id у заявки CORAX. Без glpi_id в GLPI создаётся новая; с glpi_id — обновляется уже существующая там.',
+      'Id CORAX и id GLPI — разные числа. Связь в glpi_id. Сначала ищем по glpi_id, иначе по точному названию. Нашли — UPDATE (пустой текст CORAX не затирает content в GLPI). Не нашли — CREATE. Если UPDATE недоступен и названия в GLPI нет — создаём новую и перепривязываем.',
     mappingFields:
       'Переносятся: тема → name, текст → content, статус, приоритет. В конец текста добавляется метка [CORAX #id]. Assignees, категории CORAX и вложения пока не уходят.',
     mappingStatus:
       'Статусы: open→New(1), in_progress→Processing(2), done→Solved(5), cancelled→Closed(6). Приоритеты: low→2, normal→3, high→4. Одинаково для GLPI 10 и 11.',
     exportModeTitle: 'Что отправлять в GLPI',
     exportModeHint:
-      'Если видите «You don\'t have permission» на заявке с GLPI id — профилю нельзя UPDATE эту заявку (права или сущность). Безопасный режим: «Только новые без связи».',
+      'Тестовая заявка — всегда CREATE. Массовая выгрузка: сначала связь по glpi_id, иначе точное совпадение названия → UPDATE; если заявки нет — CREATE. Если UPDATE недоступен (нет прав), а названия в GLPI нет — создаётся новая и связь обновляется. Дубликат с тем же названием не создаётся.',
     exportModeNew: 'Только новые без связи (CREATE) — безопасно для проверки',
-    exportModeRecent: 'Последние N (и CREATE, и UPDATE)',
-    exportModeLinked: 'Только уже связанные (UPDATE по glpi_id)',
+    exportModeRecent: 'Последние N (CREATE по названию или UPDATE)',
+    exportModeLinked: 'Только уже связанные (UPDATE по glpi_id, иначе CREATE если названия нет)',
     exportModeSelected: 'Выбранные id CORAX',
     exportIdsLabel: 'Id заявок CORAX через запятую',
     exportIdsRequired: 'Укажите хотя бы один id заявки CORAX',
+    progressWorking: 'Обмен с GLPI…',
+    progressCreated: 'Создана CORAX #{id}',
+    progressUpdated: 'Обновлена CORAX #{id}',
+    progressFailed: 'Ошибка CORAX #{id}',
     syncLimit: 'Лимит за один обмен',
     importApi: 'Забрать заявки из GLPI',
     exportApi: 'Отправить заявки в GLPI',

@@ -299,6 +299,87 @@ def test_create_test_ticket_uses_corax_test_external_id():
     assert created["input"]["content"] == "тест"
 
 
+def test_upsert_matches_by_title_instead_of_duplicating():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/initSession"):
+            return httpx.Response(200, json={"session_token": "sess-1"})
+        if path.endswith("/getFullSession"):
+            return httpx.Response(200, json={"cfg_glpi": {"version": "10.0.18"}})
+        if path.endswith("/killSession"):
+            return httpx.Response(200, json=[True])
+        if request.method == "GET" and path.endswith("/Ticket"):
+            calls.append("search")
+            return httpx.Response(
+                200,
+                json=[{"id": 77, "name": "Принтер не печатает", "status": 1, "priority": 3}],
+            )
+        if request.method == "PUT" and path.endswith("/Ticket/77"):
+            calls.append("update")
+            return httpx.Response(200, json={"id": 77})
+        if request.method == "POST" and path.endswith("/Ticket"):
+            calls.append("create")
+            return httpx.Response(201, json={"id": 999})
+        return httpx.Response(404, json=["ERROR", path])
+
+    results = push_tickets(
+        _legacy_creds(),
+        [
+            GlpiOutbound(
+                corax_id=5,
+                glpi_id=None,
+                title="Принтер не печатает",
+                content="детали",
+                status="open",
+                priority="normal",
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "updated"
+    assert results[0].glpi_id == 77
+    assert "create" not in calls
+    assert "update" in calls
+
+
+def test_upsert_creates_when_stale_link_has_no_update_rights_and_title_missing():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/initSession"):
+            return httpx.Response(200, json={"session_token": "sess-1"})
+        if path.endswith("/getFullSession"):
+            return httpx.Response(200, json={"cfg_glpi": {"version": "10.0.18"}})
+        if path.endswith("/killSession"):
+            return httpx.Response(200, json=[True])
+        if request.method == "PUT" and path.endswith("/Ticket/158"):
+            return httpx.Response(403, json=["ERROR_RIGHT", "You don't have permission to perform this action."])
+        if request.method == "GET" and path.endswith("/Ticket"):
+            return httpx.Response(200, json=[])
+        if request.method == "POST" and path.endswith("/Ticket"):
+            return httpx.Response(201, json={"id": 9001})
+        return httpx.Response(404, json=["ERROR", path])
+
+    results = push_tickets(
+        _legacy_creds(),
+        [
+            GlpiOutbound(
+                corax_id=458,
+                glpi_id=158,
+                title="Уникальная тема CORAX",
+                content="текст",
+                status="open",
+                priority="normal",
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created"
+    assert results[0].glpi_id == 9001
+    assert results[0].detail and "старая связь" in results[0].detail
+
+
 def test_friendly_permission_message_is_actionable():
     from app.glpi_client import _friendly
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import secrets
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_policy import get_or_create_policy
@@ -12,7 +14,7 @@ from app.auth import get_current_editor_or_superuser, get_current_superuser
 from app.database import get_db
 from app.glpi_assets import export_glpi_assets, import_glpi_assets
 from app.glpi_devices import export_glpi_devices, import_glpi_devices, list_local_devices, list_remote_devices
-from app.glpi_client import GlpiClientError, GlpiIdentity, create_test_ticket, probe_glpi
+from app.glpi_client import GlpiClientError, GlpiIdentity, GlpiPushResult, create_test_ticket, probe_glpi
 from app.glpi_sync import creds_from_row, export_glpi_tickets, import_glpi_tickets
 from app.ldap_config import get_effective_ldap_config
 from app.models import AgentCollectRequest, Bitrix24Config, GlpiConfig, LdapConfig, User, ZabbixConfig
@@ -724,6 +726,85 @@ async def export_glpi_tickets_api(
         failed=result.failed,
         message=result.message,
         errors=result.errors,
+    )
+
+
+@router.post("/glpi/export-tickets/stream")
+async def export_glpi_tickets_stream(
+    body: GlpiTicketSyncIn | None = None,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """SSE: progress → done|error. Сопоставление по glpi_id и по названию."""
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    payload = body or GlpiTicketSyncIn()
+    creds = creds_from_row(row)
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[tuple] = asyncio.Queue()
+
+    def on_progress(done: int, total: int, result: GlpiPushResult) -> None:
+        loop.call_soon_threadsafe(
+            queue.put_nowait,
+            (
+                "progress",
+                {
+                    "done": done,
+                    "total": total,
+                    "percent": int(round(100 * done / total)) if total else 100,
+                    "corax_id": result.corax_id,
+                    "glpi_id": result.glpi_id,
+                    "action": result.action,
+                    "error": result.error,
+                    "detail": result.detail,
+                },
+            ),
+        )
+
+    async def runner() -> None:
+        try:
+            result = await export_glpi_tickets(
+                db,
+                creds,
+                limit=payload.limit,
+                request_ids=payload.request_ids,
+                mode=payload.mode,
+                on_progress=on_progress,
+            )
+            await queue.put(
+                (
+                    "done",
+                    {
+                        "created": result.created,
+                        "updated": result.updated,
+                        "skipped": result.skipped,
+                        "failed": result.failed,
+                        "message": result.message,
+                        "errors": result.errors,
+                    },
+                )
+            )
+        except Exception as exc:
+            await queue.put(("error", {"error": str(exc)}))
+
+    def _sse(event: str, data: dict) -> str:
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    async def event_stream() -> AsyncIterator[str]:
+        task = asyncio.create_task(runner())
+        try:
+            while True:
+                kind, data = await queue.get()
+                yield _sse(kind, data)
+                if kind in {"done", "error"}:
+                    break
+        finally:
+            await task
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

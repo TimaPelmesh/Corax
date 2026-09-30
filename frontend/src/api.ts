@@ -1936,6 +1936,108 @@ export const api = {
       timeout_ms: 180_000,
     }),
 
+  /** Выгрузка заявок с прогрессом (SSE). */
+  glpiExportTicketsStream: async (
+    limit: number,
+    opts: {
+      mode?: 'recent' | 'new_only' | 'linked_only' | 'selected'
+      request_ids?: number[]
+      onProgress?: (p: {
+        done: number
+        total: number
+        percent: number
+        corax_id?: number
+        glpi_id?: number | null
+        action?: string
+        error?: string | null
+        detail?: string | null
+      }) => void
+    } = {},
+  ): Promise<GlpiTicketSyncResult> => {
+    const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' })
+    const csrf = getCookie('csrf_token')
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+    const ctrl = new AbortController()
+    const tid = window.setTimeout(() => ctrl.abort(), 300_000)
+    try {
+      const res = await fetch(apiUrl(`${API_PREFIX}/settings/glpi/export-tickets/stream`), {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          limit,
+          mode: opts.mode || 'recent',
+          request_ids: opts.request_ids?.length ? opts.request_ids : undefined,
+        }),
+        signal: ctrl.signal,
+      })
+      if (!res.ok || !res.body) {
+        const detail = await res.text().catch(() => res.statusText)
+        throw new Error(detail || res.statusText)
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let finalResult: GlpiTicketSyncResult | null = null
+      const dispatch = (packet: string) => {
+        const event = /^event:\s*(.+)$/m.exec(packet)?.[1]?.trim()
+        const dataLine = /^data:\s*(.+)$/m.exec(packet)?.[1]
+        if (!event || !dataLine) return
+        let data: Record<string, unknown>
+        try {
+          data = JSON.parse(dataLine) as Record<string, unknown>
+        } catch {
+          return
+        }
+        if (event === 'progress') {
+          opts.onProgress?.({
+            done: Number(data.done) || 0,
+            total: Number(data.total) || 0,
+            percent: Number(data.percent) || 0,
+            corax_id: data.corax_id as number | undefined,
+            glpi_id: data.glpi_id as number | null | undefined,
+            action: data.action as string | undefined,
+            error: data.error as string | null | undefined,
+            detail: data.detail as string | null | undefined,
+          })
+        }
+        if (event === 'done') {
+          finalResult = {
+            created: Number(data.created) || 0,
+            updated: Number(data.updated) || 0,
+            skipped: Number(data.skipped) || 0,
+            failed: Number(data.failed) || 0,
+            message: String(data.message || ''),
+            errors: Array.isArray(data.errors) ? (data.errors as string[]) : [],
+          }
+        }
+        if (event === 'error') {
+          throw new Error(typeof data.error === 'string' ? data.error : 'Ошибка выгрузки в GLPI')
+        }
+      }
+      while (true) {
+        const { done, value } = await reader.read()
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done })
+        let end = buffer.indexOf('\n\n')
+        while (end >= 0) {
+          dispatch(buffer.slice(0, end))
+          buffer = buffer.slice(end + 2)
+          end = buffer.indexOf('\n\n')
+        }
+        if (done) break
+      }
+      if (!finalResult) throw new Error('Поток выгрузки завершился без результата')
+      return finalResult
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        throw new Error(requestTimeoutMessage('/settings/glpi/export-tickets/stream'))
+      }
+      throw e
+    } finally {
+      window.clearTimeout(tid)
+    }
+  },
+
   glpiImportAssets: (limit: number) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/import-assets`, {
       method: 'POST',

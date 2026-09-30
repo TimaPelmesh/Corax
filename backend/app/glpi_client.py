@@ -6,7 +6,7 @@ import html
 import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 import httpx
@@ -99,6 +99,27 @@ class GlpiPushResult:
     glpi_id: int | None
     action: str
     error: str | None = None
+    detail: str | None = None
+
+
+def _titles_match(left: str | None, right: str | None) -> bool:
+    a = " ".join((left or "").casefold().split())
+    b = " ".join((right or "").casefold().split())
+    return bool(a) and a == b
+
+
+def _is_permission_error(exc: Exception) -> bool:
+    text = str(exc).casefold()
+    return any(
+        token in text
+        for token in (
+            "don't have permission",
+            "нет прав",
+            "error_right",
+            "error_glpi_update",
+            "error_right_missing",
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -555,32 +576,32 @@ def push_tickets(
     items: list[GlpiOutbound],
     *,
     transport: httpx.BaseTransport | None = None,
+    on_progress: Callable[[int, int, GlpiPushResult], None] | None = None,
 ) -> list[GlpiPushResult]:
+    """CREATE / UPDATE с сопоставлением по glpi_id или точному названию.
+
+    CREATE работает у профиля с правом на создание. UPDATE может падать на
+    чужой сущности — тогда при отсутствии заявки с тем же названием создаём
+    новую и перепривязываем, дубликат по названию не плодим.
+    """
     if not items:
         return []
     results: list[GlpiPushResult] = []
+    total = len(items)
     with _Session(creds, transport) as session:
-        for item in items:
+        for index, item in enumerate(items, start=1):
             try:
-                if item.glpi_id:
-                    session.update_ticket(item)
-                    results.append(
-                        GlpiPushResult(corax_id=item.corax_id, glpi_id=item.glpi_id, action="updated")
-                    )
-                else:
-                    created_id = session.create_ticket(item)
-                    results.append(
-                        GlpiPushResult(corax_id=item.corax_id, glpi_id=created_id, action="created")
-                    )
+                result = session.upsert_ticket(item)
             except GlpiClientError as exc:
-                results.append(
-                    GlpiPushResult(
-                        corax_id=item.corax_id,
-                        glpi_id=item.glpi_id,
-                        action="failed",
-                        error=str(exc),
-                    )
+                result = GlpiPushResult(
+                    corax_id=item.corax_id,
+                    glpi_id=item.glpi_id,
+                    action="failed",
+                    error=str(exc),
                 )
+            results.append(result)
+            if on_progress is not None:
+                on_progress(index, total, result)
     return results
 
 
@@ -795,7 +816,7 @@ class _Session:
         return None
 
     def create_ticket(self, item: GlpiOutbound) -> int:
-        payload = _outbound_body(item)
+        payload = _outbound_body(item, for_update=False)
         if self.mode == "legacy":
             data = self._request(
                 "POST",
@@ -818,7 +839,7 @@ class _Session:
     def update_ticket(self, item: GlpiOutbound) -> None:
         if item.glpi_id is None:
             raise GlpiClientError("Нет id заявки GLPI для обновления")
-        payload = _outbound_body(item)
+        payload = _outbound_body(item, for_update=True)
         if self.mode == "legacy":
             self._request(
                 "PUT",
@@ -832,6 +853,109 @@ class _Session:
             f"{self.base}/api.php/Assistance/Ticket/{item.glpi_id}",
             headers=self._v2_headers(),
             json=payload,
+        )
+
+    def find_ticket_id_by_title(self, title: str) -> int | None:
+        """Точное совпадение названия (без учёта регистра и лишних пробелов)."""
+        needle = " ".join((title or "").split())
+        if not needle:
+            return None
+        for raw in self._search_tickets_by_name(needle):
+            if not isinstance(raw, dict):
+                continue
+            name = _clip(raw.get("name") or raw.get("title"), 255)
+            if _titles_match(name, needle):
+                found = _as_int(raw.get("id"))
+                if found is not None:
+                    return found
+        return None
+
+    def _search_tickets_by_name(self, name: str) -> list[object]:
+        cleaned = name[:255]
+        if self.mode == "legacy":
+            payload = self._parse(
+                self._http.get(
+                    f"{self.base}/apirest.php/Ticket",
+                    params={
+                        "searchText[name]": cleaned,
+                        "range": "0-49",
+                        "expand_dropdowns": "true",
+                    },
+                    headers={**self._legacy_headers(), "Range": "items=0-49"},
+                ),
+                empty_on=(404,),
+            )
+            return _as_list(payload)
+        payload = self._parse(
+            self._http.get(
+                f"{self.base}/api.php/Assistance/Ticket",
+                params={"start": 0, "limit": 50, "filter[name]": cleaned},
+                headers={**self._v2_headers(), "Range": "items=0-49"},
+            ),
+            empty_on=(404,),
+        )
+        rows = _as_list(payload)
+        if rows:
+            return rows
+        # Fallback: legacy search under OAuth (часто доступен на GLPI 11).
+        payload = self._parse(
+            self._http.get(
+                f"{self.base}/apirest.php/Ticket",
+                params={"searchText[name]": cleaned, "range": "0-49"},
+                headers={**self._asset_headers(), "Range": "items=0-49"},
+            ),
+            empty_on=(401, 403, 404),
+        )
+        return _as_list(payload) if payload else []
+
+    def upsert_ticket(self, item: GlpiOutbound) -> GlpiPushResult:
+        """Связь по glpi_id или точному названию → UPDATE, иначе CREATE."""
+        title = (item.title or f"CORAX #{item.corax_id}").strip()
+        target_id = item.glpi_id
+        matched_by = "id" if target_id else None
+        if target_id is None:
+            target_id = self.find_ticket_id_by_title(title)
+            if target_id is not None:
+                matched_by = "title"
+
+        if target_id is not None:
+            try:
+                self.update_ticket(replace(item, glpi_id=target_id, title=title))
+                return GlpiPushResult(
+                    corax_id=item.corax_id,
+                    glpi_id=target_id,
+                    action="updated",
+                    detail=f"сопоставлено по {matched_by}",
+                )
+            except GlpiClientError as exc:
+                if not _is_permission_error(exc):
+                    raise
+                # UPDATE чужой/чужой сущности: не плодим дубликат с тем же названием.
+                same_title_id = self.find_ticket_id_by_title(title)
+                if same_title_id is not None:
+                    raise GlpiClientError(
+                        f"Заявка «{title[:80]}» уже есть в GLPI #{same_title_id}, "
+                        f"но у профиля нет UPDATE. Дубликат не создан. "
+                        f"Выдайте права или снимите связь glpi_id в CORAX."
+                    ) from exc
+                # Старая связь недоступна и названия в GLPI нет — создаём новую.
+                created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
+                return GlpiPushResult(
+                    corax_id=item.corax_id,
+                    glpi_id=created_id,
+                    action="created",
+                    detail=(
+                        f"старая связь GLPI #{target_id} недоступна (нет UPDATE), "
+                        f"создана новая #{created_id}"
+                    ),
+                )
+
+        created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
+        return GlpiPushResult(
+            corax_id=item.corax_id,
+            glpi_id=created_id,
+            action="created",
+            detail="новая заявка",
         )
 
     def list_computers(self, limit: int) -> list[GlpiComputer]:
@@ -1641,27 +1765,33 @@ class _Session:
         return friendly or fallback
 
 
-def _outbound_body(item: GlpiOutbound) -> dict[str, Any]:
+def _outbound_body(item: GlpiOutbound, *, for_update: bool = False) -> dict[str, Any]:
     """Поля Ticket, общие для GLPI 10 (apirest) и GLPI 11 (api.php).
 
-    Не шлём external_id — у стандартного Ticket такого поля нет, на части
-    инстансов API отвечает ошибкой. Связь хранится в CORAX (glpi_id).
+    Не шлём external_id — у стандартного Ticket такого поля нет.
+    При UPDATE пустой текст CORAX не затирает content в GLPI.
     """
     priority = glpi_priority_id(item.priority)
     content = (item.content or "").rstrip()
     if item.corax_id > 0:
         marker = f"[CORAX #{item.corax_id}]"
-        if marker not in content:
-            content = f"{content}\n\n{marker}".strip() if content else marker
-    return {
+        if content and marker not in content:
+            content = f"{content}\n\n{marker}".strip()
+        elif not content and not for_update:
+            content = marker
+    body: dict[str, Any] = {
         "name": (item.title or f"CORAX #{item.corax_id}")[:255],
-        "content": content,
         "status": glpi_status_id(item.status),
         "priority": priority,
         "urgency": priority,
         "impact": 3,
         "type": 1,
     }
+    if content:
+        body["content"] = content
+    elif not for_update:
+        body["content"] = ""
+    return body
 
 
 def _is_oauth_rejection(response: httpx.Response) -> bool:

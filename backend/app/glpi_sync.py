@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.glpi_client import (
     GlpiCredentials,
     GlpiOutbound,
+    GlpiPushResult,
     GlpiTicket,
     fetch_tickets,
     glpi_priority_label,
@@ -105,6 +107,7 @@ async def export_glpi_tickets(
     limit: int,
     request_ids: list[int] | None = None,
     mode: str = "recent",
+    on_progress: Callable[[int, int, GlpiPushResult], None] | None = None,
 ) -> GlpiSyncResult:
     """Выгрузка заявок в GLPI.
 
@@ -158,7 +161,12 @@ async def export_glpi_tickets(
         )
         for row in rows
     ]
-    results = await asyncio.to_thread(push_tickets, creds, outbound)
+    results = await asyncio.to_thread(
+        push_tickets,
+        creds,
+        outbound,
+        on_progress=on_progress,
+    )
     by_id = {row.id: row for row in rows}
     created = updated = failed = skipped = 0
     errors: list[str] = []
@@ -171,8 +179,10 @@ async def export_glpi_tickets(
             if result.error and len(errors) < _ERROR_LIMIT:
                 linked = f", GLPI #{row.glpi_id}" if row is not None and row.glpi_id else ""
                 action = "UPDATE" if row is not None and row.glpi_id else "CREATE"
-                errors.append(f"#{result.corax_id}{linked} [{action}]: {result.error}")
+                extra = f" ({result.detail})" if result.detail else ""
+                errors.append(f"#{result.corax_id}{linked} [{action}]: {result.error}{extra}")
             continue
+        previous = row.glpi_id
         row.glpi_id = result.glpi_id
         row.glpi_status = glpi_status_label(row.status)
         row.glpi_priority = glpi_priority_label(row.priority)
@@ -181,8 +191,14 @@ async def export_glpi_tickets(
         if not (row.external_source or "").strip():
             row.external_source = "glpi"
             row.external_id = str(result.glpi_id)
+        elif result.action == "created" and previous and previous != result.glpi_id:
+            row.external_id = str(result.glpi_id)
+            row.external_source = "glpi"
         if result.action == "created":
             created += 1
+            if result.detail and len(errors) < _ERROR_LIMIT and "старая связь" in (result.detail or ""):
+                # Informative, not a hard failure — keep in errors list as notice? Better skip.
+                pass
         else:
             updated += 1
     touched = [
