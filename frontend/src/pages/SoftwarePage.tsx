@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   api,
   type CatalogFilterItem,
@@ -6,6 +7,7 @@ import {
   type DashboardSegmentComputer,
   type SoftwareCatalogRow,
 } from '../api'
+import { useAuth } from '../AuthContext'
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { IconDetails } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
@@ -26,6 +28,8 @@ function filterKey(f: CatalogFilterItem) {
 export function SoftwarePage() {
   const t = useT()
   const toast = useToast()
+  const { user } = useAuth()
+  const canDownloadAgent = Boolean(user?.is_superuser)
   const [kind, setKind] = useState<CatalogKind>('software')
   const [query, setQuery] = useState('')
   const [rows, setRows] = useState<SoftwareCatalogRow[]>([])
@@ -204,7 +208,7 @@ export function SoftwarePage() {
 
       {filters.length ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
+          <span className="text-[13px] font-medium text-[var(--color-fg-subtle)]">
             {t('software.activeFilters')}
           </span>
           {filters.map((f) => (
@@ -235,7 +239,7 @@ export function SoftwarePage() {
       <div key={`sw-${kind}`} className="grid min-h-0 flex-1 items-stretch gap-4 overflow-hidden lg:grid-cols-5">
         <div className="min-h-0 overflow-auto overscroll-contain rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-3">
           <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
               <tr>
                 <th className="px-3 py-2.5">{nameColumnLabel}</th>
                 <th className="px-3 py-2.5 text-right">{t('software.columns.pcs')}</th>
@@ -249,11 +253,15 @@ export function SoftwarePage() {
                     {query.trim() ? (
                       <button
                         type="button"
-                        className="mt-3 rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-bg-muted)]"
+                        className="app-btn app-btn-secondary mt-4"
                         onClick={() => setQuery('')}
                       >
                         {t('software.clearSearch')}
                       </button>
+                    ) : canDownloadAgent ? (
+                      <Link to="/settings/agent-bundle" className="app-btn app-btn-primary mt-4">
+                        {t('common.downloadAgent')}
+                      </Link>
                     ) : null}
                   </td>
                 </tr>

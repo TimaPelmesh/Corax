@@ -264,7 +264,7 @@ export function NetworkMapInspector({
     return (
       <aside className={shell}>
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+          <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
             {t('networkMap.cable')}
           </div>
           <div className="mt-1 text-sm font-semibold leading-5">
@@ -311,7 +311,7 @@ export function NetworkMapInspector({
   if (group && !node) {
     return (
       <aside className={shell}>
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+        <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
           {t(`networkMap.groupKind.${group.kind}` as MessageKey)}
         </div>
         <label className="block text-xs">

@@ -577,7 +577,7 @@ export function ClosedTicketsDynamicsChart({
         <div className="mb-1 flex items-end">
           <div className="flex items-baseline gap-2">
             <span className="text-[1.1rem] font-semibold tabular-nums leading-none text-[var(--color-fg)]">{totalClosed}</span>
-            <span className="text-[9px] font-medium text-[var(--color-fg-subtle)]">{t('dashboard.tickets.closedTotal')}</span>
+            <span className="text-xs font-medium text-[var(--color-fg-subtle)]">{t('dashboard.tickets.closedTotal')}</span>
           </div>
         </div>
       ) : null}
@@ -707,7 +707,7 @@ export function ClosedTicketsDynamicsChart({
               top: `${Math.max(4, (hoverCoord.y / h) * 100 - 18)}%`,
             }}
           >
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            <div className="text-xs font-semibold text-[var(--color-fg-subtle)]">
               {formatSeriesDate(hoverPt.date, granularity, loc)}
             </div>
             <div className="mt-0.5 text-[13px] font-semibold tabular-nums text-[var(--color-fg)]">
@@ -745,9 +745,9 @@ export function MiniStatCard({
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[9px] font-semibold uppercase tracking-[0.05em] text-[var(--color-fg-subtle)]">{label}</div>
-          <div className="mt-0.5 text-[1.2rem] font-semibold leading-none tabular-nums text-[var(--color-fg)]">{value}</div>
-          {sub ? <div className="mt-0.5 truncate text-[9px] font-medium leading-snug text-[var(--color-fg-subtle)]">{sub}</div> : null}
+          <div className="truncate text-[13px] font-medium text-[var(--color-fg-subtle)]">{label}</div>
+          <div className="mt-0.5 font-mono text-[1.2rem] font-semibold leading-none tabular-nums text-[var(--color-fg)]">{value}</div>
+          {sub ? <div className="mt-0.5 truncate text-xs font-medium leading-snug text-[var(--color-fg-subtle)]">{sub}</div> : null}
         </div>
       </div>
     </div>

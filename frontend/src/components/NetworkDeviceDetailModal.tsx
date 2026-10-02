@@ -260,7 +260,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
               {traceRoute ? (
                 <section>
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                    <h3 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('network.traceRoute')}
                     </h3>
                     <span className="text-[11px] text-[var(--color-fg-subtle)]">
@@ -287,7 +287,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
 
               {row.sys_descr ? (
                 <div>
-                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                  <h3 className="mb-1 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                     sysDescr
                   </h3>
                   <pre className="whitespace-pre-wrap rounded-lg bg-[var(--color-bg-muted)] p-3 text-xs text-[var(--color-fg)]">

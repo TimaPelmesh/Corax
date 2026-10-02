@@ -171,7 +171,7 @@ export function DashboardCalendar({
           <div>
             <div
               id="dashboard-calendar-title"
-              className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-subtle)]"
+              className="text-[13px] font-semibold text-[var(--color-fg-subtle)]"
             >
               {t('dashboard.calendar.title')}
             </div>
@@ -290,7 +290,7 @@ export function DashboardCalendar({
                   )
                 })}
                 {events.length > visible.length ? (
-                  <div className="px-1 text-[9px] font-medium text-[var(--color-fg-subtle)]">
+                  <div className="px-1 text-xs font-medium text-[var(--color-fg-subtle)]">
                     {t('dashboard.calendar.more', { count: events.length - visible.length })}
                   </div>
                 ) : null}

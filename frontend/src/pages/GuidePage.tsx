@@ -61,7 +61,7 @@ export function GuidePage() {
   return (
     <div className="mx-auto max-w-5xl pb-12">
       <header className="mb-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-5 sm:px-6 sm:py-6">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-primary)]">
+        <p className="text-[13px] font-semibold text-[var(--color-primary)]">
           {copy.eyebrow}
         </p>
         <h1 className="mt-1.5 text-2xl font-semibold tracking-tight text-[var(--color-fg)]">{copy.title}</h1>
@@ -83,7 +83,7 @@ export function GuidePage() {
           className="guide-toc lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1"
           aria-label={copy.toc}
         >
-          <p className="mb-1 hidden px-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--color-fg-subtle)] lg:block">
+          <p className="mb-1 hidden px-2.5 text-xs font-semibold text-[var(--color-fg-subtle)] lg:block">
             {copy.toc}
           </p>
           <ul className="guide-toc-list flex gap-1 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:thin] lg:flex-col lg:gap-px lg:overflow-visible lg:pb-0">
@@ -180,7 +180,7 @@ export function GuidePage() {
           )}
 
           <aside className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-primary-muted)]/35 px-5 py-4 text-sm leading-relaxed text-[var(--color-fg)]">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-primary)]">
+            <p className="text-[13px] font-semibold text-[var(--color-primary)]">
               {copy.tip}
             </p>
             <p className="mt-1.5 text-[var(--color-fg-muted)]">{copy.tipBody}</p>

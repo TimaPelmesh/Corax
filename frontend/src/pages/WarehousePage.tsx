@@ -666,7 +666,7 @@ export function WarehousePage() {
                 </header>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                       <tr>
                         <th className="px-3 py-2">{t('warehouse.columns.name')}</th>
                         <th className="app-hide-xs px-3 py-2">{t('warehouse.columns.manufacturer')}</th>
@@ -771,7 +771,7 @@ export function WarehousePage() {
         <aside className="shrink-0 lg:w-56">
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="px-1 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+              <span className="px-1 text-xs font-medium text-[var(--color-fg-subtle)]">
                 {t('warehouse.rooms')}
               </span>
               {canEdit ? (
@@ -958,7 +958,7 @@ export function WarehousePage() {
                         if (!list.length) return null
                         return (
                           <div key={group} className="mb-2 last:mb-0">
-                            <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--color-fg-subtle)]">
+                            <div className="px-2 py-1 text-xs font-medium text-[var(--color-fg-subtle)]">
                               {t(groupLabelKey(group))}
                             </div>
                             <div className="flex flex-wrap gap-1">
@@ -1017,7 +1017,7 @@ export function WarehousePage() {
             ) : (
               <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                  <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                     <tr>
                       <th className="px-3 py-2.5">{t('warehouse.columns.updated')}</th>
                       <th className="px-3 py-2.5">{t('warehouse.columns.type')}</th>
@@ -1091,6 +1091,31 @@ export function WarehousePage() {
               </p>
               {activeRoom && items.length === 0 ? (
                 <p className="mx-auto mt-2 max-w-lg text-sm text-[var(--color-fg-muted)]">{t('warehouse.emptyHint')}</p>
+              ) : null}
+              {!activeRoom && rooms.length === 0 && canEdit ? (
+                <button
+                  type="button"
+                  className="app-btn app-btn-primary mt-4"
+                  onClick={() =>
+                    setRoomDialog({
+                      mode: 'create',
+                      title: t('warehouse.roomDefaultName', { n: rooms.length + 1 }),
+                      notes: '',
+                    })
+                  }
+                >
+                  {t('warehouse.addRoom')}
+                </button>
+              ) : null}
+              {activeRoom && items.length > 0 ? (
+                <button type="button" className="app-btn app-btn-secondary mt-4" onClick={() => setGroupFilter('all')}>
+                  {t('common.clearFilters')}
+                </button>
+              ) : null}
+              {activeRoom && items.length === 0 && canEdit ? (
+                <button type="button" className="app-btn app-btn-primary mt-4" onClick={() => setAddMenuOpen(true)}>
+                  {t('warehouse.addButton')}
+                </button>
               ) : null}
             </div>
           ) : (

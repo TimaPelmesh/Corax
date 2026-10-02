@@ -403,7 +403,7 @@ export function AgentBundlePage() {
 
               {showModules ? (
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                  <div className="mb-2 text-[13px] font-semibold text-[var(--color-fg-muted)]">
                     {t('agentBundle.modulesTitle')}
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">

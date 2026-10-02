@@ -41,7 +41,7 @@ export function SettingsDatabasePage() {
       {status ? (
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsDatabase.databaseCard')}
             </div>
             <div className="mt-1 font-medium text-[var(--color-fg)]">
@@ -49,7 +49,7 @@ export function SettingsDatabasePage() {
             </div>
           </div>
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsDatabase.recordsCard')}
             </div>
             <div className="mt-1 text-[var(--color-fg-muted)]">
@@ -61,7 +61,7 @@ export function SettingsDatabasePage() {
             </div>
           </div>
           <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm">
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+            <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsDatabase.pgToolsCard')}
             </div>
             <div

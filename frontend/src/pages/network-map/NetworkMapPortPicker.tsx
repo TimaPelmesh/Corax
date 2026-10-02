@@ -32,7 +32,7 @@ function PortList({
 }) {
   return (
     <div className="min-w-0 flex-1">
-      <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+      <div className="truncate text-[13px] font-semibold text-[var(--color-fg-subtle)]">
         {label}
       </div>
       <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-[var(--color-border)]">

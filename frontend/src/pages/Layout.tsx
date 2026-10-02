@@ -105,7 +105,7 @@ export function Layout() {
 
   const sidebarNav = (
     <>
-      <div className="relative flex h-14 shrink-0 items-center justify-center border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 pr-14 lg:pr-3.5">
+      <div className="sidebar-brand-bar relative flex h-14 shrink-0 items-center justify-center border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 pr-14 lg:pr-3.5">
         <CoraxLogo variant="sidebar" alt="Corax" />
         <button
           type="button"
@@ -158,8 +158,8 @@ export function Layout() {
   )
 
   return (
-    <div className="app-layout-bg relative isolate flex h-dvh min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg)] lg:flex-row">
-      <header className="safe-area-pt relative z-10 flex h-14 shrink-0 items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 lg:hidden">
+    <div className="app-shell app-layout-bg relative isolate flex h-dvh min-h-0 w-full flex-col overflow-hidden lg:flex-row">
+      <header className="sidebar-brand-bar safe-area-pt relative z-10 flex h-14 shrink-0 items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 lg:hidden">
         <button
           type="button"
           className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-lg text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)] active:bg-[var(--color-surface-muted)]"
@@ -219,7 +219,7 @@ export function Layout() {
         </aside>
       ) : null}
 
-      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {welcomeToast ? (
           <div
             className={`pointer-events-none fixed right-4 z-[200] max-w-[min(22rem,calc(100vw-2rem))] app-panel-sm !rounded-2xl text-sm text-[var(--color-fg)] top-[calc(3.5rem+0.75rem+env(safe-area-inset-top,0px))] sm:right-6 lg:top-6 ${
@@ -232,13 +232,22 @@ export function Layout() {
         ) : null}
         <button
           type="button"
-          className={`sidebar-edge-toggle hidden lg:flex fixed top-3 z-[15] items-center rounded-r-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-1.5 text-[11px] font-semibold text-[var(--color-fg-muted)] transition-all duration-300 hover:bg-[var(--color-surface-muted)] ${
+          className={`sidebar-edge-toggle hidden lg:flex fixed top-3 z-[15] items-center rounded-r-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-2 text-[var(--color-fg-muted)] transition-all duration-300 hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)] ${
             desktopNavHidden ? 'left-0' : settingsFlyoutOpen ? 'left-[31.9rem]' : 'left-[15.9rem]'
           }`}
           onClick={() => setDesktopNavHidden((v) => !v)}
           title={desktopNavHidden ? t('nav.showSidebar') : t('nav.hideSidebar')}
+          aria-label={desktopNavHidden ? t('nav.showSidebar') : t('nav.hideSidebar')}
         >
-          {desktopNavHidden ? '▶' : '◀'}
+          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" aria-hidden>
+            <path
+              d={desktopNavHidden ? 'M7.5 4.5 13 10l-5.5 5.5' : 'M12.5 4.5 7 10l5.5 5.5'}
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
         <div
           className={`app-scroll relative z-0 min-h-0 flex-1 overflow-x-hidden overscroll-y-contain ${

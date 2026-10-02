@@ -1248,7 +1248,7 @@ export function KnowledgeSitemapPage() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5 shadow-sm">
-            <span className="pl-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+            <span className="pl-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('sitemap.floors')}
             </span>
             <select
@@ -2075,7 +2075,7 @@ export function KnowledgeSitemapPage() {
           ) : (
             <div className="mt-3 space-y-2">
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                   {t('sitemap.type')}
                 </span>
                 <select
@@ -2106,7 +2106,7 @@ export function KnowledgeSitemapPage() {
               </label>
 
               <label className="block">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Название</span>
+                <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Название</span>
                 <input
                   value={selectedMarker.label ?? ''}
                   onChange={(e) => updateMarker(selectedMarker.id, { label: e.target.value })}
@@ -2119,7 +2119,7 @@ export function KnowledgeSitemapPage() {
               {isOutletKind(selectedMarker.kind) ? (
                 <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-2 space-y-2">
                   <label className="block">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                    <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       Номер розетки
                     </span>
                     <input
@@ -2135,7 +2135,7 @@ export function KnowledgeSitemapPage() {
                     />
                   </label>
                   <div className="block">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                    <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       Кабель к ПК на карте
                     </span>
                     <FloorPcMarkerPicker
@@ -2161,7 +2161,7 @@ export function KnowledgeSitemapPage() {
 
               {selectedMarker.kind === 'pc' ? (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                     {t('sitemap.pcParkLink')}
                   </span>
                   <div className="mt-0.5 flex flex-wrap gap-1.5">
@@ -2229,7 +2229,7 @@ export function KnowledgeSitemapPage() {
 
               {selectedMarker.kind === 'printer' ? (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                     {t('sitemap.printerLink')}
                   </span>
                   <div className="mt-0.5 flex flex-wrap gap-1.5">
@@ -2321,7 +2321,7 @@ export function KnowledgeSitemapPage() {
 
               {selectedMarker.kind === 'pc' ? (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                     Внутренний номер сотрудника
                   </span>
                   <input
@@ -2340,7 +2340,7 @@ export function KnowledgeSitemapPage() {
 
               {selectedMarker.kind === 'pc' ? (
                 <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Розетки</div>
+                  <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Розетки</div>
                   <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1.5">
                     <label className="block min-w-0">
                       <span className="text-[11px] font-medium text-[var(--color-fg-muted)]">Ethernet</span>
@@ -2376,7 +2376,7 @@ export function KnowledgeSitemapPage() {
 
               <div className="grid grid-cols-3 gap-1.5">
                 <label className="block min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">X</span>
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">X</span>
                   <input
                     type="number"
                     value={Math.round(selectedMarker.x)}
@@ -2386,7 +2386,7 @@ export function KnowledgeSitemapPage() {
                   />
                 </label>
                 <label className="block min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Y</span>
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Y</span>
                   <input
                     type="number"
                     value={Math.round(selectedMarker.y)}
@@ -2396,7 +2396,7 @@ export function KnowledgeSitemapPage() {
                   />
                 </label>
                 <label className="block min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Размер</span>
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Размер</span>
                   <input
                     type="number"
                     min={0.6}
@@ -2417,7 +2417,7 @@ export function KnowledgeSitemapPage() {
               {!isOutletKind(selectedMarker.kind) ? (
                 <div className="grid min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-2">
                   <label className="block min-w-0">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">IP</span>
+                    <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">IP</span>
                     <input
                       value={selectedMarker.meta?.ip ?? ''}
                       onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, ip: e.target.value } })}
@@ -2427,7 +2427,7 @@ export function KnowledgeSitemapPage() {
                     />
                   </label>
                   <label className="block min-w-0">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">MAC</span>
+                    <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">MAC</span>
                     <input
                       value={selectedMarker.meta?.mac ?? ''}
                       onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, mac: e.target.value } })}
@@ -2449,7 +2449,7 @@ export function KnowledgeSitemapPage() {
                   }`}
                 >
                   <div className="relative z-40 mb-1 min-h-5 pr-6">
-                    <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
+                    <span className="block text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       Фото с места установки
                     </span>
                     <span className="group/tooltip absolute right-0 top-0 inline-flex">
@@ -2531,7 +2531,7 @@ export function KnowledgeSitemapPage() {
                 </div>
 
                 <label className="block min-h-[8.5rem] min-w-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Комментарий</span>
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Комментарий</span>
                   <textarea
                     value={selectedMarker.meta?.notes ?? ''}
                     onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, notes: e.target.value } })}
@@ -2543,7 +2543,7 @@ export function KnowledgeSitemapPage() {
               </div>
               ) : (
                 <label className="block">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">Комментарий</span>
+                  <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Комментарий</span>
                   <textarea
                     value={selectedMarker.meta?.notes ?? ''}
                     onChange={(e) => updateMarker(selectedMarker.id, { meta: { ...selectedMarker.meta, notes: e.target.value } })}

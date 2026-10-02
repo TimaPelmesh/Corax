@@ -311,7 +311,7 @@ export function RiskCenterPage() {
         <div className="app-panel flex items-center gap-4 !rounded-2xl !p-5">
           <HealthRing score={overview.fleet_health_score} />
           <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {c.health}
             </div>
             <p className="mt-1 text-sm leading-relaxed text-[var(--color-fg-muted)]">{c.healthHint}</p>

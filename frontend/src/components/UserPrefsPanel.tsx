@@ -29,7 +29,7 @@ function SectionCard({
       className={`flex min-h-0 flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm ${className}`}
     >
       <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-2.5">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+        <h3 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
           {title}
         </h3>
         {action}
@@ -200,7 +200,7 @@ export function UserPrefsPanel({
 
             {/* Язык / тема — без вложенных плашек */}
             <section className="lg:col-span-5">
-              <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+              <div className="mb-3 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('prefs.interface')}
               </div>
               <div className="space-y-4">

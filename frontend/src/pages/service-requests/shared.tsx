@@ -306,7 +306,7 @@ export function CategoryPicker({
 
   return (
     <div ref={boxRef} className="relative">
-      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+      <label className="mb-1.5 block text-[13px] font-semibold text-[var(--color-fg-muted)]">
         {label ?? t('requests.categoryPicker.label')}
       </label>
       <div className="relative">
@@ -624,7 +624,7 @@ export function HorizontalBars({
   }
   return (
     <div>
-      <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{title}</div>
+      <div className="mb-2 text-[13px] font-semibold text-[var(--color-fg-muted)]">{title}</div>
       <div className="space-y-2">
         {items.map((item, i) => {
           const pct = Math.max(2, Math.round((item.count / total) * 100))
@@ -716,7 +716,7 @@ export function ComputerPicker({
     <div ref={boxRef} className={className ?? 'relative'}>
       <label
         className={
-          labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]'
+          labelClassName ?? 'mb-1.5 block text-[13px] font-semibold text-[var(--color-fg-muted)]'
         }
       >
         {t('requests.computerPicker.label')}
@@ -861,7 +861,7 @@ export function DirectoryRequesterPicker({
 
   return (
     <label className="block">
-      <span className={labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]'}>
+      <span className={labelClassName ?? 'mb-1.5 block text-[13px] font-semibold text-[var(--color-fg-muted)]'}>
         {label}
       </span>
       <div className="relative">
@@ -1017,7 +1017,7 @@ export function DirectoryAssigneesPicker({
     <div className={className ?? 'mb-3'}>
       <span
         className={
-          labelClassName ?? 'mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]'
+          labelClassName ?? 'mb-1.5 block text-[13px] font-semibold text-[var(--color-fg-muted)]'
         }
       >
         {label ?? t('requests.assigneesPicker.label')}

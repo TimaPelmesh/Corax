@@ -93,10 +93,11 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
                   </div>
 
                   <label className="mb-2 block">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                    <span className="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]">
                       {t('requests.templates.templateTitle')}
                     </span>
                     <input
+                      id="template-title-input"
                       value={tplTitle}
                       onChange={(e) => setTplTitle(e.target.value)}
                       className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)]"
@@ -105,7 +106,7 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
                   </label>
 
                   <label className="mb-3 flex min-h-[10rem] flex-1 flex-col">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                    <span className="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]">
                       {t('requests.templates.description')}
                     </span>
                     <textarea
@@ -135,7 +136,7 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
 
                   <div className="mb-2 grid grid-cols-2 gap-2">
                     <label className="block">
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                      <span className="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]">
                         {t('requests.templates.statusDefault')}
                       </span>
                       <select
@@ -154,7 +155,7 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
                       </select>
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                      <span className="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]">
                         {t('requests.templates.priorityDefault')}
                       </span>
                       <select
@@ -176,7 +177,7 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
 
                   <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label className="block">
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                      <span className="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]">
                         {t('requests.templates.openedAt')}
                       </span>
                       <input
@@ -187,7 +188,7 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
                       />
                     </label>
                     <label className="block">
-                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                      <span className="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]">
                         {t('requests.templates.plannedCloseAt')}
                       </span>
                       <input
@@ -216,7 +217,7 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
                   </div>
 
                   <label className="mb-2 block">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                    <span className="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]">
                       {t('requests.templates.closedAt')}
                     </span>
                     <label className="mb-1 flex cursor-pointer items-center gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-1">
@@ -267,7 +268,7 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
                       valueId={tplComputerId}
                       onChange={setTplComputerId}
                       className="relative min-w-0"
-                      labelClassName="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]"
+                      labelClassName="mb-1 block text-xs font-semibold text-[var(--color-fg-muted)]"
                       inputClassName="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-sm text-[var(--color-fg)] placeholder:text-[var(--color-fg-subtle)]"
                     />
                   </div>
@@ -319,7 +320,16 @@ export function RequestsTemplatesPanel(p: RequestsTemplatesPanelProps) {
                   {tplLoading ? (
                     <p className="app-empty-state">{t('requests.templates.loading')}</p>
                   ) : tplRows.length === 0 ? (
-                    <p className="app-empty-state">{t('requests.templates.empty')}</p>
+                    <div className="app-empty-state">
+                      <p>{t('requests.templates.empty')}</p>
+                      <button
+                        type="button"
+                        className="app-btn app-btn-primary mt-4"
+                        onClick={() => document.getElementById('template-title-input')?.focus()}
+                      >
+                        {t('requests.templates.emptyAction')}
+                      </button>
+                    </div>
                   ) : (
                     tplRows.map((tpl) => (
                       <article

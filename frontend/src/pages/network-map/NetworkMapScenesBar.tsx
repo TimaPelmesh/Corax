@@ -381,7 +381,7 @@ export function NetworkMapScenesBar({
                     setMore(false)
                   }}
                 >
-                  <div className="text-[10px] uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                  <div className="text-xs font-medium text-[var(--color-fg-subtle)]">
                     {t('networkMap.legendTrace')}
                   </div>
                   <div className="mt-1 flex gap-1">

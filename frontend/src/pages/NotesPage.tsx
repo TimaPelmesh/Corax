@@ -429,7 +429,7 @@ export function NotesPage() {
             </span>
             {t('notes.create')}
           </button>
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+          <div className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
             {t('notes.list')}
           </div>
           {loading ? (
@@ -577,7 +577,7 @@ export function NotesPage() {
 
               <div className="grid gap-4 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)]/30 p-4 sm:grid-cols-2">
                 <div>
-                  <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                  <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                     <IconPencil className="h-3.5 w-3.5" />
                     {t('notes.planDates')}
                   </div>
@@ -615,7 +615,7 @@ export function NotesPage() {
                   </label>
 
                   <div className="mt-3">
-                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <div className="mb-1.5 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.planColor')}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -648,7 +648,7 @@ export function NotesPage() {
                   </div>
 
                   <div className="mt-3">
-                    <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <div className="mb-1.5 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.planMark')}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -687,7 +687,7 @@ export function NotesPage() {
 
                 {isOwner ? (
                   <div>
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <div className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.access')}
                     </div>
                     <p className="mb-2 text-[11px] text-[var(--color-fg-subtle)]">{t('notes.accessHint')}</p>
@@ -747,7 +747,7 @@ export function NotesPage() {
                   </div>
                 ) : (
                   <div>
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <div className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.access')}
                     </div>
                     <p className="text-xs text-[var(--color-fg-muted)]">

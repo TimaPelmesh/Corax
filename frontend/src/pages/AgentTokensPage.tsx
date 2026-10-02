@@ -97,7 +97,7 @@ export function AgentTokensPage() {
       ) : null}
 
       <form onSubmit={onCreate} className="app-card mb-10 max-w-xl space-y-4 p-6 sm:p-7">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+        <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
           {t('agentTokens.newTokenTitle')}
         </h2>
         <div className="mt-4 space-y-3">

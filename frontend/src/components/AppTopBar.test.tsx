@@ -109,6 +109,21 @@ describe('AppTopBar search', () => {
     view.unmount()
   })
 
+  it('lists pages when the search field is focused', () => {
+    const view = render(
+      <MemoryRouter>
+        <LocaleProvider>
+          <AppTopBar />
+        </LocaleProvider>
+      </MemoryRouter>,
+    )
+
+    fireEvent.focus(screen.getByLabelText(/Глобальный поиск|Global search/i))
+    expect(screen.getByRole('option', { name: /Дашборд|Dashboard/ })).toBeInTheDocument()
+
+    view.unmount()
+  })
+
   it('profile menu shows notifications and settings, not a theme switch', () => {
     apiMock.serviceRequests.mockResolvedValue({ items: [], total: 0 })
     const view = render(
@@ -119,10 +134,10 @@ describe('AppTopBar search', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Профиль' }))
+    fireEvent.click(screen.getByRole('button', { name: /Профиль|Profile/i }))
 
-    expect(screen.getByRole('button', { name: 'Уведомления' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Настройки' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Уведомления|Notifications/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Настройки|Settings/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Светлая' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Тёмная' })).not.toBeInTheDocument()
 

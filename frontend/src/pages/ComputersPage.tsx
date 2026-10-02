@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, type Computer, type TagBrief } from '../api'
 import { useAuth } from '../AuthContext'
 import { ComputerDetailModal, fmtDate, tagPillProps } from '../components/ComputerDetailModal'
@@ -62,6 +62,7 @@ export function ComputersPage() {
   const t = useT()
   const { user } = useAuth()
   const canCollect = Boolean(user?.is_superuser || user?.role === 'editor')
+  const canDownloadAgent = Boolean(user?.is_superuser)
   const [collectBusy, setCollectBusy] = useState(false)
   const PAGE_SIZE = 100
   const [searchParams, setSearchParams] = useSearchParams()
@@ -112,6 +113,18 @@ export function ComputersPage() {
     },
     columnsMenuOpen || tagsMenuOpen,
   )
+
+  function clearListFilters() {
+    setHostSearch('')
+    setDebouncedHostSearch('')
+    setFilterTagIds([])
+    setPingFilter('all')
+    if (searchParams.has('ping')) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('ping')
+      setSearchParams(next, { replace: true })
+    }
+  }
 
   function toggleColumn(key: PcColumnKey) {
     setColumns((prev) => {
@@ -404,7 +417,7 @@ export function ComputersPage() {
                   className="popup-enter absolute left-0 top-[calc(100%+0.35rem)] z-30 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-[var(--shadow-card)] sm:left-auto sm:right-0"
                 >
                   <div className="mb-1.5 flex items-center justify-between gap-2 px-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                    <p className="text-xs font-semibold text-[var(--color-fg-subtle)]">
                       {t('computers.tagsAnySelected')}
                     </p>
                     {filterTagIds.length > 0 ? (
@@ -470,7 +483,7 @@ export function ComputersPage() {
                 role="menu"
                 className="popup-enter absolute right-0 top-[calc(100%+0.35rem)] z-30 w-52 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 shadow-[var(--shadow-card)]"
               >
-                <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <p className="px-2 pb-1 text-xs font-semibold text-[var(--color-fg-subtle)]">
                   {t('computers.columnsTitle')}
                 </p>
                 {pcColumnDefs.map((col) => (
@@ -565,13 +578,21 @@ export function ComputersPage() {
                 <td colSpan={visibleColumnCount} className="px-4 py-10">
                   <div className="app-empty-state mx-auto max-w-lg">
                     <p>{t('computers.emptyHint')}</p>
+                    {canDownloadAgent ? (
+                      <Link to="/settings/agent-bundle" className="app-btn app-btn-primary mt-4">
+                        {t('common.downloadAgent')}
+                      </Link>
+                    ) : null}
                   </div>
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={visibleColumnCount} className="px-4 py-12 text-center text-[var(--color-fg-muted)]">
-                  {t('computers.noMatches')}
+                  <p>{t('computers.noMatches')}</p>
+                  <button type="button" className="app-btn app-btn-secondary mt-4" onClick={clearListFilters}>
+                    {t('common.clearFilters')}
+                  </button>
                 </td>
               </tr>
             ) : (

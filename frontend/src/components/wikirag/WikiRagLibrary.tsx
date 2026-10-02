@@ -607,7 +607,7 @@ export function WikiRagLibrary({
               fillHeight ? 'flex min-h-0 flex-col' : ''
             } ${compact ? 'md:border-b-0 md:border-r' : 'lg:border-b-0 lg:border-r'}`}
           >
-            <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+            <p className="px-3 pb-1 pt-3 text-xs font-semibold text-[var(--color-fg-muted)]">
               {t('wikirag.library.treeTitle')}
             </p>
             <ul
@@ -685,7 +685,7 @@ export function WikiRagLibrary({
 
           <div className={`min-w-0 ${fillHeight ? 'flex min-h-0 flex-col overflow-hidden' : ''}`}>
             <div className="border-b border-[var(--color-border)] px-4 py-2 sm:px-5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+              <p className="text-xs font-semibold text-[var(--color-fg-muted)]">
                 {t('wikirag.library.filesHere')}
               </p>
             </div>

@@ -113,7 +113,7 @@ export function SettingsBitrix24Page() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="app-card space-y-3 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsBitrix.handlerTitle')}
             </h2>
             <p className="text-sm text-[var(--color-fg-muted)]">
@@ -128,7 +128,7 @@ export function SettingsBitrix24Page() {
           </section>
 
           <section className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsBitrix.settingsTitle')}
             </h2>
 
@@ -219,7 +219,7 @@ export function SettingsBitrix24Page() {
           </section>
 
           <section className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsBitrix.webhookTitle')}
             </h2>
             <p className="text-sm text-[var(--color-fg-muted)]">
@@ -241,7 +241,7 @@ export function SettingsBitrix24Page() {
             </div>
 
             <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-fg)]">
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              <div className="text-[13px] font-semibold text-[var(--color-fg-muted)]">
                 {t('settingsBitrix.sampleJsonTitle')}
               </div>
               <pre className="mt-2 overflow-auto rounded-lg bg-neutral-950 p-3 text-[12px] text-white">

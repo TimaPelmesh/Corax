@@ -344,7 +344,7 @@ export function UsersPage() {
       {section === 'profile' ? (
         <div className="grid gap-4 xl:grid-cols-2">
           <form onSubmit={onUpdateMyProfile} className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('users.myProfile')}
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -372,7 +372,7 @@ export function UsersPage() {
           </form>
 
           <form onSubmit={onChangeMyPassword} className="app-card space-y-4 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('users.changeMyPassword')}
             </h2>
             <div>
@@ -407,7 +407,7 @@ export function UsersPage() {
         <>
           <div className="grid gap-4 xl:grid-cols-2">
             <form onSubmit={onCreate} className="app-card space-y-4 p-6 sm:p-7">
-              <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+              <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('users.newAccount')}
               </h2>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -463,7 +463,7 @@ export function UsersPage() {
 
             {editId != null ? (
               <form onSubmit={onSaveEdit} className="app-card space-y-4 p-6 sm:p-7">
-                <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                   {t('users.editAccount')}
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -527,7 +527,7 @@ export function UsersPage() {
 
           <div className="app-card mt-4 overflow-hidden p-0">
             <div className="border-b border-[var(--color-border)] px-4 py-3">
-              <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+              <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('users.coraxAccounts')}
               </h2>
               <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.coraxAccountsHint')}</p>
@@ -656,7 +656,7 @@ export function UsersPage() {
       {section === 'directory' ? (
         <div className="app-card overflow-hidden p-0">
           <div className="border-b border-[var(--color-border)] px-4 py-3">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('users.directoryTitle')}
             </h2>
             <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.directoryHint')}</p>

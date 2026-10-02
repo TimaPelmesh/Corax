@@ -772,7 +772,7 @@ export function PrintersPage() {
                     </button>
                   </div>
                 ) : null}
-                <div className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <div className="mb-1.5 px-1 text-xs font-semibold text-[var(--color-fg-subtle)]">
                   {t('printers.columns')}
                 </div>
                 <input

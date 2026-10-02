@@ -9,10 +9,7 @@ import { markLoginGreeting } from '../loginGreeting'
 
 const LS_KEY_REMEMBER = 'inventory.remember_login'
 const LS_KEY_USERNAME = 'inventory.saved_username'
-const ERROR_VISIBLE_MS = 4800
-const ERROR_EXIT_MS = 5200
-
-type ErrorPhase = 'hidden' | 'in' | 'out'
+type ErrorPhase = 'hidden' | 'in'
 
 function LoginUserIcon() {
   return (
@@ -101,19 +98,13 @@ export function LoginPage() {
 
   useEffect(() => {
     if (!error) return
-
     setErrorPhase('in')
-    const hideTimer = window.setTimeout(() => setErrorPhase('out'), ERROR_VISIBLE_MS)
-    const clearTimer = window.setTimeout(() => {
-      setError(null)
-      setErrorPhase('hidden')
-    }, ERROR_EXIT_MS)
-
-    return () => {
-      window.clearTimeout(hideTimer)
-      window.clearTimeout(clearTimer)
-    }
   }, [error])
+
+  function dismissError() {
+    setError(null)
+    setErrorPhase('hidden')
+  }
 
   function savePasswordNow(nextRemember: boolean) {
     try {
@@ -177,15 +168,16 @@ export function LoginPage() {
         <div className="login-error-wrap">
           <div
             role="alert"
-            className={[
-              'login-error-toast',
-              errorPhase === 'in' ? 'login-error-toast-in' : '',
-              errorPhase === 'out' ? 'login-error-toast-out' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
+            className={errorPhase === 'in' ? 'login-error-toast login-error-toast-in' : 'login-error-toast'}
           >
-            <div className="login-error-content">{error}</div>
+            <div className="login-error-content">
+              <span className="min-w-0 flex-1">{error}</span>
+              <button type="button" className="login-error-dismiss" onClick={dismissError} aria-label={t('common.close')}>
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden>
+                  <path d="M5 5l10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -423,7 +423,7 @@ export function NetworkPage() {
 
           <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                 <tr>
                   {canEdit ? <th className="w-10 px-3 py-2.5" /> : null}
                   <th className="app-table-sticky-col px-3 py-2.5">{t('network.colHostname')}</th>
@@ -443,8 +443,18 @@ export function NetworkPage() {
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-[var(--color-fg-subtle)]">
-                      {t('network.empty')}
+                    <td colSpan={7} className="px-3 py-10 text-center text-[var(--color-fg-subtle)]">
+                      <p>{t('network.empty')}</p>
+                      {canEdit && rows.length === 0 && !search.trim() && roleFilter === 'all' ? (
+                        <button
+                          type="button"
+                          className="app-btn app-btn-primary mt-4"
+                          disabled={pollBusy || discoverBusy}
+                          onClick={() => void runPoll()}
+                        >
+                          {pollBusy ? t('network.pollBusy') : t('network.pollAll')}
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ) : (

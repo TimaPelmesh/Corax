@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<Props, State> {
             this.props.inline ? 'min-h-0 flex-1' : 'min-h-dvh'
           }`}
         >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-primary)]">
+          <p className="text-[13px] font-semibold text-[var(--color-primary)]">
             Corax
           </p>
           <h1 className="text-lg font-semibold text-[var(--color-fg)]">

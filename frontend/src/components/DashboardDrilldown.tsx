@@ -101,7 +101,7 @@ export function DashboardDrilldownPanel({ selection, onClose }: Props) {
           >
             <div className="flex shrink-0 items-start justify-between gap-3 px-5 py-4">
               <div className="min-w-0 pr-2">
-                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+                <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                   {selection.chartTitle}
                 </div>
                 <h3

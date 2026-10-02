@@ -1602,7 +1602,7 @@ export function ServiceRequestsPage() {
                         return (
                           <div className="mt-2 grid gap-2 rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-3 py-2 text-sm">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                              <span className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                                 {aiSuggestBusy && !titleDiff && !catDiff
                                   ? t('requests.create.aiWorking')
                                   : t('requests.create.aiFormalize')}
@@ -2086,7 +2086,7 @@ export function ServiceRequestsPage() {
                 <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl">
                   <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3">
                     <div>
-                      <div className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">{t('requests.database.reportHeader')}</div>
+                      <div className="text-[13px] font-semibold text-[var(--color-fg-muted)]">{t('requests.database.reportHeader')}</div>
                       <div className="text-sm font-semibold text-[var(--color-fg)]">
                         {t('requests.database.reportForCurrentList', {
                           visible: visibleRows.length,
@@ -2116,21 +2116,21 @@ export function ServiceRequestsPage() {
                   <div className="p-4 sm:p-5">
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.total')}</div>
+                        <div className="text-xs font-semibold text-[var(--color-fg-muted)]">{t('requests.database.total')}</div>
                         <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-fg)]">
                           {visibleRows.length}
                         </div>
                         <div className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('requests.database.totalSub')}</div>
                       </div>
                       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.closed')}</div>
+                        <div className="text-xs font-semibold text-[var(--color-fg-muted)]">{t('requests.database.closed')}</div>
                         <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-fg)]">
                           {visibleRows.filter((r) => r.status === 'done').length}
                         </div>
                         <div className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('requests.database.closedSub')}</div>
                       </div>
                       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.withDeadline')}</div>
+                        <div className="text-xs font-semibold text-[var(--color-fg-muted)]">{t('requests.database.withDeadline')}</div>
                         <div className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-[var(--color-fg)]">
                           {visibleRows.filter((r) => Boolean(r.planned_close_at)).length}
                         </div>
@@ -2140,7 +2140,7 @@ export function ServiceRequestsPage() {
 
                     <div className="mt-4 grid gap-3 lg:grid-cols-2">
                       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
-                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.byStatus')}</div>
+                        <div className="mb-3 text-[13px] font-semibold text-[var(--color-fg-muted)]">{t('requests.database.byStatus')}</div>
                         <div className="space-y-2">
                           {(() => {
                             const m = new Map<string, number>()
@@ -2171,7 +2171,7 @@ export function ServiceRequestsPage() {
                       </div>
 
                       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
-                        <div className="mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-muted)]">{t('requests.database.byPriority')}</div>
+                        <div className="mb-3 text-[13px] font-semibold text-[var(--color-fg-muted)]">{t('requests.database.byPriority')}</div>
                         <div className="space-y-2">
                           {(() => {
                             const m = new Map<string, number>()
@@ -2217,19 +2217,37 @@ export function ServiceRequestsPage() {
                 {t('requests.database.loading')}
               </p>
             ) : visibleRows.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] py-14 text-center text-sm text-[var(--color-fg-muted)]">
-                {query.trim()
-                  ? t('requests.database.noSearchResults')
-                  : filterStatus
-                    ? t('requests.database.noItemsInFilter')
-                    : t('requests.database.empty')}
-              </p>
+              <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-14 text-center text-sm text-[var(--color-fg-muted)]">
+                <p>
+                  {query.trim()
+                    ? t('requests.database.noSearchResults')
+                    : filterStatus
+                      ? t('requests.database.noItemsInFilter')
+                      : t('requests.database.empty')}
+                </p>
+                {query.trim() || filterStatus ? (
+                  <button
+                    type="button"
+                    className="app-btn app-btn-secondary mt-4"
+                    onClick={() => {
+                      setQuery('')
+                      setFilterStatus(null)
+                    }}
+                  >
+                    {t('common.clearFilters')}
+                  </button>
+                ) : canManageRequests ? (
+                  <button type="button" className="app-btn app-btn-primary mt-4" onClick={openCreateForm}>
+                    {t('requests.create.createRequest')}
+                  </button>
+                ) : null}
+              </div>
             ) : (
               <div className="overflow-x-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
                 <div>
                   <table className="min-w-[980px] w-full max-sm:min-w-[36rem] border-collapse text-left text-sm">
                     <thead className="bg-[var(--color-surface-muted)]">
-                      <tr className="border-b border-[var(--color-border)] text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+                      <tr className="border-b border-[var(--color-border)] text-[13px] font-semibold text-[var(--color-fg-muted)]">
                         <th
                           className="app-table-sticky-col cursor-pointer px-3 py-2.5"
                           onClick={() => setSortKey((prev) => (prev === 'id_asc' ? 'id_desc' : 'id_asc'))}
@@ -2404,7 +2422,7 @@ export function ServiceRequestsPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between print:hidden">
               <div className="min-w-0">
                 {statsFrom.trim() || statsTo.trim() ? (
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-fg-subtle)]">
+                  <p className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                     {statsPeriodLabel}
                   </p>
                 ) : null}
@@ -2456,7 +2474,7 @@ export function ServiceRequestsPage() {
                     key={label}
                     className={`min-w-0 px-5 py-5 ${index < 3 ? 'xl:border-r' : ''} ${index % 2 === 0 ? 'sm:border-r' : ''} border-[var(--color-border)] ${index < 2 ? 'border-b xl:border-b-0' : ''} ${index === 2 ? 'border-b sm:border-b-0 xl:border-b-0' : ''}`}
                   >
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+                    <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                       {label}
                     </div>
                     <div className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold tabular-nums tracking-tight text-[var(--color-fg)]">
@@ -2556,7 +2574,7 @@ export function ServiceRequestsPage() {
             </div>
 
             <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 print:hidden sm:p-5">
-              <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+              <div className="mb-4 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('requests.stats.filters')}
               </div>
               <div className="grid gap-4 lg:grid-cols-12">
@@ -2693,7 +2711,7 @@ export function ServiceRequestsPage() {
                 </div>
               </div>
               <details className="mt-4 border-t border-[var(--color-border)] pt-3">
-                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
+                <summary className="cursor-pointer text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                   {t('requests.stats.pdfOptionsToggle')}
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -2748,7 +2766,7 @@ export function ServiceRequestsPage() {
 
               {statsStatusItems.some((i) => i.count > 0) ? (
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm lg:col-span-6 sm:p-5">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                  <div className="mb-3 text-[13px] font-semibold text-[var(--color-fg-muted)]">
                     {t('requests.stats.byStatuses')}
                   </div>
                   <DonutDistribution
@@ -2761,7 +2779,7 @@ export function ServiceRequestsPage() {
 
               {statsPriorityItems.some((i) => i.count > 0) ? (
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm lg:col-span-6 sm:p-5">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                  <div className="mb-3 text-[13px] font-semibold text-[var(--color-fg-muted)]">
                     {t('requests.stats.byPriorities')}
                   </div>
                   <DonutDistribution
@@ -2774,7 +2792,7 @@ export function ServiceRequestsPage() {
 
               {statsCategoryItems.some((i) => i.count > 0) ? (
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm lg:col-span-6 sm:p-5">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                  <div className="mb-3 text-[13px] font-semibold text-[var(--color-fg-muted)]">
                     {t('requests.stats.byCategoryTop')}
                   </div>
                   <DonutDistribution
@@ -2787,7 +2805,7 @@ export function ServiceRequestsPage() {
 
               {statsRequesterItems.some((i) => i.count > 0) ? (
                 <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm lg:col-span-6 sm:p-5">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">
+                  <div className="mb-3 text-[13px] font-semibold text-[var(--color-fg-muted)]">
                     {t('requests.stats.byRequesterTop')}
                   </div>
                   <DonutDistribution
@@ -2814,7 +2832,7 @@ export function ServiceRequestsPage() {
                     <h3 className="text-sm font-semibold text-[var(--color-fg)]">{t('requests.stats.assigneeBoard')}</h3>
                   </div>
                   <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                       <tr>
                         <th className="px-3 py-2.5">{t('requests.stats.assigneeName')}</th>
                         <th className="px-3 py-2.5 text-right">{t('requests.stats.assigneeTickets')}</th>
@@ -2873,7 +2891,7 @@ export function ServiceRequestsPage() {
                   </p>
                 ) : (
                   <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-xs uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                       <tr>
                         <th className="px-3 py-2.5">ID</th>
                         <th className="px-3 py-2.5">{t('requests.database.table.title')}</th>

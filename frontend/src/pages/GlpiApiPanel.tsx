@@ -629,7 +629,7 @@ export function GlpiApiPanel() {
           <dl className="mt-3 grid gap-2 sm:grid-cols-2">
             {profileLines.map((line) => (
               <div key={line.label} className="rounded-lg border border-[var(--color-border)]/70 bg-[var(--color-surface)]/70 px-3 py-2">
-                <dt className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
+                <dt className="text-xs font-medium text-[var(--color-fg-subtle)]">
                   {line.label === 'name'
                     ? t('settingsGlpi.profileName')
                     : line.label === 'login'

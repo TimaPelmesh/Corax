@@ -321,7 +321,7 @@ export function SettingsGlpiPage() {
 
           <div className="flex flex-col gap-4 border-t border-[var(--color-border)] pt-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              <p className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('settingsGlpi.importTitle')}
               </p>
               <button
@@ -334,7 +334,7 @@ export function SettingsGlpiPage() {
               </button>
             </div>
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              <p className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('settingsGlpi.exportTitle')}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -432,7 +432,7 @@ export function SettingsGlpiPage() {
 
           <div className="flex flex-col gap-4 border-t border-[var(--color-border)] pt-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              <p className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('settingsGlpi.importTitle')}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -459,7 +459,7 @@ export function SettingsGlpiPage() {
               </div>
             </div>
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              <p className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('settingsGlpi.exportTitle')}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -519,7 +519,7 @@ export function SettingsGlpiPage() {
 
           <div className="flex flex-col gap-4 border-t border-[var(--color-border)] pt-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0 flex-1 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              <p className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('settingsGlpi.importTitle')}
               </p>
               <label className="block max-w-md">
@@ -550,7 +550,7 @@ export function SettingsGlpiPage() {
               </button>
             </div>
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
+              <p className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('settingsGlpi.exportTitle')}
               </p>
               <button

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, type Computer, type NetworkPrinter, type ServiceRequestRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { useLocale } from '../i18n/LocaleContext'
+import { buildNavSections } from './layout/navConfig'
 import {
   readNotificationPrefs,
   unreadAssigned,
@@ -28,7 +29,7 @@ type AppTopBarProps = {
 }
 
 export function AppTopBar({ navItems = [] }: AppTopBarProps) {
-  const { t } = useLocale()
+  const { t, isNavHidden } = useLocale()
   const { user, logout } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
@@ -39,6 +40,7 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
 
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
   const [searchLoading, setSearchLoading] = useState(false)
   const [hits, setHits] = useState<SearchHit[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -256,6 +258,68 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
     return { computers, printers, requests }
   }, [hits])
 
+  const pages = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const seen = new Set<string>()
+    const out: { to: string; label: string; icon: ComponentType<{ className?: string }> }[] = []
+    const push = (to: string, label: string, icon: ComponentType<{ className?: string }>, hay: string) => {
+      if (seen.has(to) || isNavHidden(to)) return
+      if (q && !hay.includes(q)) return
+      seen.add(to)
+      out.push({ to, label, icon })
+    }
+    for (const section of buildNavSections(user)) {
+      if (section.flyout) {
+        const label = t('nav.settings')
+        push('/settings', label, IconSettings, `${label} settings настройки`.toLowerCase())
+      }
+      for (const item of section.items) {
+        const label = t(item.labelKey)
+        const hay = [item.to, label, ...(item.keywords ?? [])].join(' ').toLowerCase()
+        push(item.to, label, item.icon, hay)
+      }
+    }
+    return out
+  }, [query, user, t, isNavHidden])
+
+  const entityRows = useMemo(() => {
+    if (query.trim().length < 2) return []
+    return [...groupedHits.computers, ...groupedHits.printers, ...groupedHits.requests]
+  }, [query, groupedHits])
+
+  const paletteOpen = searchOpen && (pages.length > 0 || query.trim().length >= 2)
+  const commandKbd = useMemo(() => {
+    if (typeof navigator === 'undefined') return 'Ctrl K'
+    return /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'
+  }, [])
+
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [query, pages.length, entityRows.length])
+
+  useEffect(() => {
+    if (!paletteOpen) return
+    document.getElementById(`cmd-row-${activeIndex}`)?.scrollIntoView?.({ block: 'nearest' })
+  }, [activeIndex, paletteOpen])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'k') return
+      e.preventDefault()
+      setSearchOpen(true)
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const openPage = (to: string) => {
+    setSearchOpen(false)
+    setQuery('')
+    navigate(to)
+  }
+
   const goHit = (hit: SearchHit) => {
     setSearchOpen(false)
     setQuery('')
@@ -304,64 +368,131 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
               setQuery(e.target.value)
               setSearchOpen(true)
             }}
-            onFocus={() => {
-              if (query.trim().length >= 2) setSearchOpen(true)
-            }}
+            onFocus={() => setSearchOpen(true)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setSearchOpen(false)
                 searchInputRef.current?.blur()
+                return
+              }
+              if (!paletteOpen || pages.length + entityRows.length === 0) return
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setActiveIndex((i) => Math.min(i + 1, pages.length + entityRows.length - 1))
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setActiveIndex((i) => Math.max(i - 1, 0))
+              } else if (e.key === 'Enter') {
+                e.preventDefault()
+                if (activeIndex < pages.length) {
+                  const page = pages[activeIndex]
+                  if (page) openPage(page.to)
+                  return
+                }
+                const hit = entityRows[activeIndex - pages.length]
+                if (hit) goHit(hit)
               }
             }}
             placeholder={t('chrome.searchPlaceholder')}
-            className="app-input app-input-glass !min-h-[40px] !rounded-full !py-2 !pl-10 !pr-4 !text-[13px] !shadow-none"
+            className="app-input app-input-glass !min-h-[40px] !rounded-full !py-2 !pl-10 !pr-[4.5rem] !text-[13px] !shadow-none"
             aria-label={t('chrome.searchAria')}
+            aria-expanded={paletteOpen}
+            aria-controls="command-palette"
+            aria-keyshortcuts="Control+K"
+            aria-activedescendant={paletteOpen ? `cmd-row-${activeIndex}` : undefined}
             autoComplete="off"
           />
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-1.5 py-0.5 font-sans text-[11px] font-medium text-[var(--color-fg-subtle)] sm:inline">
+            {commandKbd}
+          </kbd>
         </div>
-        {searchOpen && query.trim().length >= 2 ? (
-          <div className="absolute left-1/2 top-[calc(100%+0.4rem)] z-50 w-[min(39rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl chrome-glass-card">
-            {searchLoading ? (
-              <div className="px-4 py-3 text-xs text-[var(--color-fg-subtle)]">{t('chrome.searchLoading')}</div>
-            ) : hits.length === 0 ? (
-              <div className="px-4 py-3 text-xs text-[var(--color-fg-subtle)]">{t('chrome.searchEmpty')}</div>
-            ) : (
-              <div className="app-scroll max-h-[min(24rem,60vh)] overflow-y-auto py-1.5">
-                {(
-                  [
-                    ['computers', groupedHits.computers, IconPcs, t('chrome.searchComputer')] as const,
-                    ['printers', groupedHits.printers, IconPrinter, t('chrome.searchPrinter')] as const,
-                    ['requests', groupedHits.requests, IconTicket, t('chrome.searchRequest')] as const,
-                  ] as const
-                ).map(([key, items, Icon, label]) =>
-                  items.length === 0 ? null : (
-                    <div key={key} className="px-1.5 py-1">
-                      <div className="px-2.5 pb-1 pt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-fg-subtle)]">
-                        {label}
+        {paletteOpen ? (
+          <div
+            id="command-palette"
+            role="listbox"
+            className="absolute left-1/2 top-[calc(100%+0.4rem)] z-50 w-[min(39rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl chrome-glass-card"
+          >
+            <div className="app-scroll max-h-[min(28rem,70vh)] overflow-y-auto py-1.5">
+              {pages.length > 0 ? (
+                <div className="px-1.5 py-1">
+                  <div className="px-2.5 pb-1 pt-1 text-xs font-semibold text-[var(--color-fg-subtle)]">
+                    {t('chrome.commandPages')}
+                  </div>
+                  {pages.map((page, index) => {
+                    const Icon = page.icon
+                    const active = index === activeIndex
+                    return (
+                      <button
+                        key={page.to}
+                        id={`cmd-row-${index}`}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        onClick={() => openPage(page.to)}
+                        className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${
+                          active ? 'bg-[var(--color-primary-muted)]' : 'hover:bg-[var(--color-surface-muted)]'
+                        }`}
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--color-fg)]">{page.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+              {query.trim().length >= 2 ? (
+                searchLoading && hits.length === 0 ? (
+                  <div className="px-4 py-3 text-xs text-[var(--color-fg-subtle)]">{t('chrome.searchLoading')}</div>
+                ) : hits.length === 0 && pages.length === 0 ? (
+                  <div className="px-4 py-3 text-xs text-[var(--color-fg-subtle)]">{t('chrome.searchEmpty')}</div>
+                ) : (
+                  (
+                    [
+                      ['computers', groupedHits.computers, IconPcs, t('chrome.searchComputer'), pages.length] as const,
+                      ['printers', groupedHits.printers, IconPrinter, t('chrome.searchPrinter'), pages.length + groupedHits.computers.length] as const,
+                      ['requests', groupedHits.requests, IconTicket, t('chrome.searchRequest'), pages.length + groupedHits.computers.length + groupedHits.printers.length] as const,
+                    ] as const
+                  ).map(([key, items, Icon, label, offset]) =>
+                    items.length === 0 ? null : (
+                      <div key={key} className="px-1.5 py-1">
+                        <div className="px-2.5 pb-1 pt-1 text-xs font-semibold text-[var(--color-fg-subtle)]">{label}</div>
+                        {items.map((hit, index) => {
+                          const row = offset + index
+                          const active = row === activeIndex
+                          return (
+                            <button
+                              key={`${hit.kind}-${hit.id}`}
+                              id={`cmd-row-${row}`}
+                              type="button"
+                              role="option"
+                              aria-selected={active}
+                              onMouseEnter={() => setActiveIndex(row)}
+                              onClick={() => goHit(hit)}
+                              className={`flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition ${
+                                active ? 'bg-[var(--color-primary-muted)]' : 'hover:bg-[var(--color-surface-muted)]'
+                              }`}
+                            >
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]">
+                                <Icon className="h-4 w-4" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[13px] font-medium text-[var(--color-fg)]">{hit.title}</span>
+                                {hit.subtitle ? (
+                                  <span className="mt-0.5 block truncate text-xs text-[var(--color-fg-subtle)]">{hit.subtitle}</span>
+                                ) : null}
+                              </span>
+                            </button>
+                          )
+                        })}
                       </div>
-                      {items.map((hit) => (
-                        <button
-                          key={`${hit.kind}-${hit.id}`}
-                          type="button"
-                          onClick={() => goHit(hit)}
-                          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-[var(--color-surface-muted)]"
-                        >
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]">
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13px] font-medium text-[var(--color-fg)]">{hit.title}</span>
-                            {hit.subtitle ? (
-                              <span className="mt-0.5 block truncate text-[11px] text-[var(--color-fg-subtle)]">{hit.subtitle}</span>
-                            ) : null}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ),
-                )}
-              </div>
-            )}
+                    ),
+                  )
+                )
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>

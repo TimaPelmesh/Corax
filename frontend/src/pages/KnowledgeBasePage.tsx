@@ -211,7 +211,7 @@ export function KnowledgeBasePage() {
                 </ReactFlow>
               </div>
               <aside className="hidden w-[min(28rem,44vw)] shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:block">
-                <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Карточка тега</div>
+                <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Карточка тега</div>
                 {!activeTag ? (
                   <div className="mt-3 rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 px-4 py-6 text-sm text-[var(--color-fg-muted)]">
                     Выберите тег в облаке.
@@ -226,7 +226,7 @@ export function KnowledgeBasePage() {
                     </div>
 
                     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">ПК</div>
+                      <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">ПК</div>
                       {tagPcs.length ? (
                         <ul className="mt-2 space-y-1 text-sm text-[var(--color-fg)]">
                           {tagPcs.slice(0, 12).map((pc) => (
@@ -244,7 +244,7 @@ export function KnowledgeBasePage() {
                     </div>
 
                     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Пользователи</div>
+                      <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Пользователи</div>
                       {tagUsers.length ? (
                         <ul className="mt-2 space-y-1 text-sm text-[var(--color-fg)]">
                           {tagUsers.slice(0, 12).map((u) => (
@@ -262,7 +262,7 @@ export function KnowledgeBasePage() {
                     </div>
 
                     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">Заявки</div>
+                      <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">Заявки</div>
                       {tagRequests.length ? (
                         <ul className="mt-2 space-y-1 text-sm text-[var(--color-fg)]">
                           {tagRequests.slice(0, 12).map((r) => (

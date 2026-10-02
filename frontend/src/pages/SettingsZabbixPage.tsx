@@ -210,7 +210,7 @@ export function SettingsZabbixPage() {
           </div>
 
           <div className="app-card space-y-2 p-6 sm:p-7">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--color-fg-subtle)]">
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsZabbix.nextTitle')}
             </h2>
             <ul className="list-disc space-y-1 pl-5 text-sm text-[var(--color-fg-muted)]">
