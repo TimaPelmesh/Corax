@@ -236,7 +236,6 @@ body {
   background: var(--color-primary-muted);
   color: var(--color-primary);
   font-weight: 600;
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .sidebar-link-icon,
