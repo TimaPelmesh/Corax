@@ -1,4 +1,4 @@
-from app.desktop_client import patch_utf16_config_slot
+from app.desktop_client import patch_utf16_config_slot, stamp_config_trailer
 
 
 def test_utf16_slot_accepts_server_url():
@@ -11,3 +11,13 @@ def test_utf16_slot_accepts_server_url():
     assert "http://10.0.0.5:3000" in text
     assert patched.startswith(b"prefix")
     assert patched.endswith(b"suffix")
+
+
+def test_trailer_carries_server_url_and_replaces_itself():
+    stamped = stamp_config_trailer(b"MZ-exe", {"server_url": "http://10.0.0.5:3000"})
+    assert stamped.startswith(b"MZ-exe")
+    assert stamped.endswith(b"CORAXCFG")
+    again = stamp_config_trailer(stamped, {"server_url": "https://corax.lan:3000"})
+    assert again.startswith(b"MZ-exe")
+    assert b"https://corax.lan:3000" in again
+    assert b"http://10.0.0.5:3000" not in again

@@ -33,15 +33,13 @@ dotnet publish -c Release
 agent\windows-client\bin\Release\net8.0-windows\win-x64\publish\Corax.exe
 ```
 
-Это один self-contained EXE под win-x64, около 160 МБ: внутри runtime, отдельный .NET на компьютеры ставить не нужно.
-
-Сжатие одиночного файла выключено в `Corax.Client.csproj` (`EnableCompressionInSingleFile=false`). Его нельзя включать: панель ищет в EXE метки `<<<CORAX_CFG_BEGIN>>>` и `<<<CORAX_CFG_END>>>` в кодировке UTF-16. Со сжатием метки пропадают, и скачивание из панели отвечает ошибкой.
+Это один self-contained EXE под win-x64: внутри runtime, отдельный .NET на компьютеры ставить не нужно. Первый запуск — установщик. Дальше то же окно заявок.
 
 Иконка необязательна. Если `Assets\corax.ico` нет, проект собирается без неё. `Build-Icon.ps1` рисует знак C и кладёт `Assets\corax.ico`.
 
 ## Куда положить шаблон
 
-Панель не компилирует клиент. Она берёт готовый EXE и вписывает туда адрес.
+Панель не компилирует клиент и не переписывает файл. Кнопка отдаёт этот EXE как есть: `Corax.exe`. Первый запуск — установщик, в нём сервер, порт и токен.
 
 Скопируйте опубликованный файл сюда, **под этим именем**:
 
@@ -60,7 +58,7 @@ docker compose build
 Проверка слота без панели (из корня репозитория, нужен Python):
 
 ```powershell
-python -c "from pathlib import Path; p=Path('agent/windows-client/prebuilt/Corax.template.exe'); b=p.read_bytes(); print('BEGIN', b.find('<<<CORAX_CFG_BEGIN>>>'.encode('utf-16le'))>=0)"
+python -c "from pathlib import Path; p=Path('agent/windows-client/prebuilt/Corax.template.exe'); print(p.is_file(), p.stat().st_size if p.is_file() else 0)"
 ```
 
 `BEGIN True` — шаблон годится.

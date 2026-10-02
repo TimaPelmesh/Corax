@@ -51,7 +51,7 @@ async def create_desktop_client(
     body: DesktopClientCreate,
     _: User = Depends(get_current_superuser),
 ):
-    """Employee window: tickets and directory. Server URL is stamped into the EXE."""
+    """Employee installer. Bytes are the template EXE, not a rewritten bundle."""
     try:
         data, filename = build_desktop_client_exe(body.server_url)
     except FileNotFoundError as exc:
@@ -61,7 +61,13 @@ async def create_desktop_client(
     return Response(
         content=data,
         media_type="application/vnd.microsoft.portable-executable",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # Starlette gzip would recompress the bundle and the saved file
+            # is no longer a PE. identity tells the middleware to leave it.
+            "Content-Encoding": "identity",
+            "Cache-Control": "no-store",
+        },
     )
 
 

@@ -2950,7 +2950,7 @@ export const ru = {
     downloadExe: 'Скачать EXE',
     downloadClient: 'Клиент для сотрудников',
     downloadClientHint:
-      'Окно заявок и телефонный справочник для Windows 10 и 11. Адрес панели вшивается при скачивании. Сначала соберите шаблон — docs/windows-client.md.',
+      'Установщик для Windows 10 и 11. После запуска на компьютере введите сервер, порт и токен.',
     downloadClientBusy: 'Готовим клиент…',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',

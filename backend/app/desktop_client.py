@@ -9,6 +9,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _TEMPLATE = _PROJECT_ROOT / "agent" / "windows-client" / "prebuilt" / "Corax.template.exe"
 _BEGIN = "<<<CORAX_CFG_BEGIN>>>".encode("utf-16le")
 _END = "<<<CORAX_CFG_END>>>".encode("utf-16le")
+_TRAILER_MAGIC = b"CORAXCFG"
 
 
 def template_path() -> Path:
@@ -49,15 +50,42 @@ def patch_utf16_config_slot(blob: bytes, config: dict) -> bytes:
     return bytes(patched)
 
 
+def stamp_config_trailer(blob: bytes, config: dict) -> bytes:
+    """Append the server URL at the end of the EXE.
+
+    The panel serves this file as the installer. A trailer stays readable
+    even when the single-file bundle is compressed.
+    """
+    body = _strip_trailer(blob)
+    raw = json.dumps(config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(raw) > 8192:
+        raise ValueError("Конфиг клиента не влезает в хвост EXE")
+    return body + raw + len(raw).to_bytes(4, "little") + _TRAILER_MAGIC
+
+
+def _strip_trailer(blob: bytes) -> bytes:
+    if len(blob) < 12 or blob[-8:] != _TRAILER_MAGIC:
+        return blob
+    length = int.from_bytes(blob[-12:-8], "little")
+    if length < 2 or length > 8192 or len(blob) < 12 + length:
+        return blob
+    return blob[: -(12 + length)]
+
+
 def build_desktop_client_exe(server_url: str) -> tuple[bytes, str]:
+    """Return the installer unchanged.
+
+    The panel must not rewrite the EXE. The single-file host reads its
+    bundle from the end of the file; a stamp there makes Windows run garbage.
+    Server, port and token are typed in the installer on each PC.
+    """
     path = template_path()
     if not path.is_file():
         raise FileNotFoundError(
-            "Нет шаблона agent/windows-client/prebuilt/Corax.template.exe. "
-            "Соберите его на Windows: docs/windows-client.md"
+            "На сервере нет установщика. Положите Corax.template.exe в "
+            "agent/windows-client/prebuilt и пересоберите образ панели."
         )
     server = server_url.strip().rstrip("/")
-    if not server.lower().startswith(("http://", "https://")):
+    if server and not server.lower().startswith(("http://", "https://")):
         raise ValueError("server_url должен начинаться с http:// или https://")
-    data = patch_utf16_config_slot(path.read_bytes(), {"server_url": server})
-    return data, "Corax.exe"
+    return path.read_bytes(), "Corax.exe"
