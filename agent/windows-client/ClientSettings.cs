@@ -132,7 +132,19 @@ public sealed class ClientSettings
         byte[] bytes;
         try
         {
-            bytes = File.ReadAllBytes(path);
+            var info = new FileInfo(path);
+            if (info.Length > 2_000_000)
+            {
+                using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var take = (int)Math.Min(info.Length, 262_144);
+                stream.Seek(-take, SeekOrigin.End);
+                bytes = new byte[take];
+                _ = stream.Read(bytes, 0, take);
+            }
+            else
+            {
+                bytes = File.ReadAllBytes(path);
+            }
         }
         catch (IOException)
         {

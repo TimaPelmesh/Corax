@@ -14,6 +14,11 @@ public partial class InstallWindow : Window
         Opacity = 0;
         Loaded += (_, _) =>
         {
+            var settings = ClientSettings.Load();
+            SplitServer(settings.ServerUrl, out var host, out var port);
+            HostBox.Text = host;
+            if (port.Length > 0) PortBox.Text = port;
+            TokenBox.Password = settings.HandlerSecret;
             var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
             BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(480)) { EasingFunction = ease });
             Root.RenderTransformOrigin = new System.Windows.Point(0.5, 0.42);
@@ -39,13 +44,24 @@ public partial class InstallWindow : Window
 
     async void Install_Click(object sender, RoutedEventArgs e)
     {
+        var server = ComposeServer(HostBox.Text, PortBox.Text);
+        if (server.Length == 0)
+        {
+            Status.Text = "Укажите сервер и порт";
+            return;
+        }
         InstallButton.IsEnabled = false;
         Bar.Visibility = Visibility.Visible;
         try
         {
+            var settings = ClientSettings.Load();
+            settings.ServerUrl = server;
+            settings.HandlerSecret = TokenBox.Password.Trim();
+            settings.Autostart = AutostartBox.IsChecked == true;
+            settings.Save();
             Status.Text = "Копируем программу";
             await AnimateBar(35);
-            MachineInstall.Install(AutostartBox.IsChecked == true);
+            MachineInstall.Install(settings.Autostart);
             Status.Text = "Ярлык и автозапуск";
             await AnimateBar(100);
             Status.Text = "Готово";
@@ -58,6 +74,26 @@ public partial class InstallWindow : Window
             Status.Text = ex.Message;
             InstallButton.IsEnabled = true;
         }
+    }
+
+    static string ComposeServer(string host, string port)
+    {
+        host = host.Trim().TrimEnd('/');
+        if (host.Length == 0) return "";
+        if (host.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || host.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return host;
+        var p = port.Trim();
+        if (p.Length == 0) p = "3000";
+        return "http://" + host + ":" + p;
+    }
+
+    static void SplitServer(string server, out string host, out string port)
+    {
+        host = "";
+        port = "";
+        if (!Uri.TryCreate(server, UriKind.Absolute, out var uri)) return;
+        host = uri.Host;
+        if (!uri.IsDefaultPort) port = uri.Port.ToString();
     }
 
     static void Drift(System.Windows.UIElement target, System.Windows.DependencyProperty property, double from, double to, double seconds)
