@@ -1,0 +1,36 @@
+<Window x:Class="Corax.Client.InstallWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Corax"
+        Width="460" Height="560"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True">
+  <Border x:Name="Root" CornerRadius="22" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1" MouseLeftButtonDown="Drag">
+    <Grid>
+      <Canvas IsHitTestVisible="False">
+        <Ellipse x:Name="OrbA" Width="320" Height="320" Canvas.Left="-70" Canvas.Top="-90" Fill="{DynamicResource GlowA}"/>
+        <Ellipse x:Name="OrbB" Width="240" Height="240" Canvas.Left="240" Canvas.Top="10" Fill="{DynamicResource GlowB}"/>
+      </Canvas>
+      <StackPanel Margin="36,32,36,28">
+        <DockPanel LastChildFill="False" Margin="0,0,0,18">
+          <Button DockPanel.Dock="Right" Content="×" Click="Close_Click" Style="{StaticResource ChromeButton}"/>
+        </DockPanel>
+        <Border Width="72" Height="72" CornerRadius="18" Background="{DynamicResource PrimarySoft}" HorizontalAlignment="Left">
+          <TextBlock Text="C" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="36" FontWeight="SemiBold"
+                     Foreground="{DynamicResource Primary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <TextBlock Text="Corax" Margin="0,22,0,0" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="40" FontWeight="SemiBold" Foreground="{DynamicResource Fg}"/>
+        <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" FontSize="15" Foreground="{DynamicResource Muted}"
+                   Text="Заявки и телефонный справочник на этом компьютере. Адрес панели уже внутри файла."/>
+        <CheckBox x:Name="AutostartBox" Margin="0,28,0,0" IsChecked="True" Foreground="{DynamicResource Fg}" Content="Запускать вместе с Windows"/>
+        <Button x:Name="InstallButton" Margin="0,22,0,0" Height="46" Style="{StaticResource PrimaryButton}" Content="Установить" Click="Install_Click"/>
+        <ProgressBar x:Name="Bar" Margin="0,18,0,0" Height="4" Minimum="0" Maximum="100" Value="0" Foreground="{DynamicResource Primary}" Background="{DynamicResource SurfaceMuted}" BorderThickness="0" Visibility="Collapsed"/>
+        <TextBlock x:Name="Status" Margin="0,10,0,0" FontSize="13" Foreground="{DynamicResource Muted}" Text=""/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>

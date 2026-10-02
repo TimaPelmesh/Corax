@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Corax.Client</RootNamespace>
+    <AssemblyName>Corax</AssemblyName>
+    <ApplicationTitle>Corax</ApplicationTitle>
+    <Product>Corax</Product>
+    <Version>1.0.0</Version>
+    <Description>Заявки и справочник CORAX для Windows 10 и 11</Description>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>false</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ApplicationIcon Condition="Exists('Assets\corax.ico')">Assets\corax.ico</ApplicationIcon>
+  </PropertyGroup>
+</Project>

@@ -2363,6 +2363,43 @@ export const api = {
     return filename
   },
 
+  downloadDesktopClient: async (serverUrl: string): Promise<string> => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    const csrf = getCookie('csrf_token')
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+    const res = await fetch(apiUrl(`${API_PREFIX}/agent-bundles/desktop`), {
+      method: 'POST',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ server_url: serverUrl }),
+      signal: AbortSignal.timeout(120_000),
+    })
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`
+      try {
+        const j = (await res.json()) as { detail?: string }
+        if (j.detail) detail = String(j.detail)
+      } catch {
+        // ignore
+      }
+      throw new Error(detail)
+    }
+    const blob = await res.blob()
+    const cd = res.headers.get('Content-Disposition') ?? ''
+    const m = /filename="([^"]+)"/i.exec(cd)
+    const filename = m?.[1] ?? 'Corax.exe'
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    return filename
+  },
+
   serviceRequests: (opts?: { status?: string; limit?: number; skip?: number }) => {
     const p = new URLSearchParams()
     if (opts?.status) p.set('status', opts.status)

@@ -106,6 +106,8 @@ COPY --chown=corax:corax backend ./backend
 # Agent templates for panel ZIP/EXE builds (PowerShell + stamped C++ EXE + Linux bash)
 COPY --chown=corax:corax agent/cpp ./agent/cpp
 COPY --chown=corax:corax agent/linux ./agent/linux
+# Stamped on download. Built on Windows — see docs/windows-client.md
+COPY --chown=corax:corax agent/windows-client/prebuilt ./agent/windows-client/prebuilt
 COPY --from=frontend-build --chown=corax:corax /frontend/dist ./frontend/dist
 COPY --chown=corax:corax deploy/docker/entrypoint.sh /entrypoint.sh
 

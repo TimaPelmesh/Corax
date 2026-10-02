@@ -21,6 +21,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     avatar_emoji: Mapped[str | None] = mapped_column(String(32), nullable=True)
     avatar_bg: Mapped[str | None] = mapped_column(String(16), nullable=True)
     avatar_data: Mapped[str | None] = mapped_column(Text, nullable=True)

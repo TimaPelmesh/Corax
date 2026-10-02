@@ -32,6 +32,10 @@ def test_ticket_handler_public_context_and_intake(client: TestClient, agent_head
     assert created_row["status"] == "open"
     assert created_row["assignees"] == []
 
+    directory = client.get("/api/v1/ticket-handler/public/directory", params={"hostname": hostname})
+    assert directory.status_code == 200, directory.text
+    assert isinstance(directory.json().get("items"), list)
+
 
 def test_ticket_handler_lan_without_hostname_is_rejected(client: TestClient):
     response = client.post(

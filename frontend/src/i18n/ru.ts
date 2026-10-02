@@ -2948,6 +2948,10 @@ export const ru = {
     summaryArchiveWin10:
       'Один файл CORAX-Agent.exe. Токен и адрес сервера вшиты. Тот же файл можно положить на шару и запустить на любом ПК.',
     downloadExe: 'Скачать EXE',
+    downloadClient: 'Клиент для сотрудников',
+    downloadClientHint:
+      'Окно заявок и телефонный справочник для Windows 10 и 11. Адрес панели вшивается при скачивании. Сначала соберите шаблон — docs/windows-client.md.',
+    downloadClientBusy: 'Готовим клиент…',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
     summaryArchiveCpp:

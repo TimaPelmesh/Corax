@@ -78,6 +78,7 @@ export function AgentBundlePage() {
     Object.fromEntries(MODULE_KEYS.map((k) => [k, true])),
   )
   const [busy, setBusy] = useState(false)
+  const [clientBusy, setClientBusy] = useState(false)
   const [urlScheme, setUrlScheme] = useState<AgentUrlScheme>(() =>
     typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'https' : 'http',
   )
@@ -220,6 +221,27 @@ export function AgentBundlePage() {
       toast.error(msg)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function onDownloadClient() {
+    if (!serverHost.trim()) {
+      toast.error(t('agentBundle.serverHostRequired'))
+      return
+    }
+    if (isDockerBridgeIp(serverHost)) {
+      toast.error(t('agentBundle.dockerBridgeIp'))
+      return
+    }
+    setClientBusy(true)
+    try {
+      const server = buildAgentServerUrl(serverHost, serverPort, urlScheme)
+      const filename = await api.downloadDesktopClient(server)
+      toast.ok(t('agentBundle.downloadSuccess', { filename }))
+    } catch (ex) {
+      toast.error(ex instanceof Error ? ex.message : t('agentBundle.buildError'))
+    } finally {
+      setClientBusy(false)
     }
   }
 
@@ -655,6 +677,15 @@ export function AgentBundlePage() {
                   ? t('agentBundle.downloadZip')
                   : t('agentBundle.downloadExe')}
             </button>
+            <button
+              type="button"
+              className="app-btn app-btn-secondary w-full"
+              disabled={clientBusy || busy || lanLoading || !serverHost.trim()}
+              onClick={() => void onDownloadClient()}
+            >
+              {clientBusy ? t('agentBundle.downloadClientBusy') : t('agentBundle.downloadClient')}
+            </button>
+            <p className="text-xs leading-relaxed text-[var(--color-fg-muted)]">{t('agentBundle.downloadClientHint')}</p>
           </div>
 
           <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)]/70 p-5 text-sm text-[var(--color-fg-muted)]">

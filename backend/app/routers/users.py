@@ -431,6 +431,8 @@ async def ldap_sync(
                     eff.username_attr,
                     eff.display_name_attr,
                     eff.email_attr,
+                    "telephoneNumber",
+                    "mobile",
                 }
             )
             conn.search(
@@ -465,12 +467,15 @@ async def ldap_sync(
         username_key = username.lower()
         full_name = _attr_value(e, eff.display_name_attr)
         email = _attr_value(e, eff.email_attr)
+        phone = _attr_value(e, "telephoneNumber") or _attr_value(e, "mobile")
         existing = existing_by_name.get(username_key)
         if existing is not None:
             if full_name and existing.full_name != full_name:
                 existing.full_name = full_name
             if email and existing.email != email:
                 existing.email = email
+            if phone and existing.phone != phone:
+                existing.phone = phone
             if not existing.is_ldap:
                 existing.is_ldap = True
             existing.role = "directory"
@@ -484,6 +489,7 @@ async def ldap_sync(
             username=username,
             email=email,
             full_name=full_name,
+            phone=phone,
             hashed_password=hash_password(one_time_password),
             is_superuser=False,
             role="directory",

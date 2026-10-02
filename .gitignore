@@ -33,6 +33,10 @@ dist/
 !agent/cpp/prebuilt/
 !agent/cpp/prebuilt/**
 
+# .NET client build output. The stamp template in prebuilt/ is kept.
+agent/windows-client/bin/
+agent/windows-client/obj/
+
 ## Node / frontend
 node_modules/
 **/node_modules/

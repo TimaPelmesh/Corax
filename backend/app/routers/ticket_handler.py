@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_editor_or_superuser, get_current_user
@@ -13,6 +13,8 @@ from app.database import get_db
 from app.models import TicketHandlerConfig, TicketHandlerRun, User
 from app.schemas import (
     TicketHandlerConfigOut,
+    TicketHandlerDirectoryItem,
+    TicketHandlerDirectoryOut,
     TicketHandlerConfigUpdate,
     TicketHandlerIntakeRequest,
     TicketHandlerIntakeResponse,
@@ -522,6 +524,43 @@ async def public_tickets(
                 opened_at=row.opened_at,
                 updated_at=row.updated_at,
                 closed_at=row.closed_at,
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.get("/public/directory", response_model=TicketHandlerDirectoryOut)
+async def public_directory(
+    request: Request,
+    hostname: str | None = Query(default=None, max_length=255),
+    secret: str | None = Query(default=None, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Phone book for the desktop client. Same LAN gate as /h — no panel login."""
+    cfg = await _get_or_create_config(db)
+    await _require_intake_access(cfg, request, secret, db, hostname)
+    rows = list(
+        (
+            await db.execute(
+                select(User)
+                .where(
+                    User.is_active.is_(True),
+                    User.is_superuser.is_(False),
+                    or_(User.is_ldap.is_(True), User.role == "directory"),
+                    or_(User.role.is_(None), User.role.notin_(("observer", "editor"))),
+                )
+                .order_by(User.full_name.asc(), User.username.asc())
+            )
+        ).scalars().all()
+    )
+    return TicketHandlerDirectoryOut(
+        items=[
+            TicketHandlerDirectoryItem(
+                full_name=row.full_name,
+                username=row.username,
+                email=row.email,
+                phone=row.phone,
             )
             for row in rows
         ]

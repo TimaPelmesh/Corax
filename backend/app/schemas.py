@@ -672,6 +672,10 @@ class AgentBundleLanIpOut(BaseModel):
     candidates: list[str] = []
 
 
+class DesktopClientCreate(BaseModel):
+    server_url: str = Field(default="", max_length=512)
+
+
 class AgentBundleCreate(BaseModel):
     server_url: str = Field(default="", max_length=512)
     target: str = Field(default="windows", pattern="^(windows|linux|cpp|win10)$")
@@ -1328,6 +1332,17 @@ class TicketHandlerPublicTicketOut(BaseModel):
 
 class TicketHandlerPublicTicketsOut(BaseModel):
     items: list[TicketHandlerPublicTicketOut] = Field(default_factory=list)
+
+
+class TicketHandlerDirectoryItem(BaseModel):
+    full_name: str | None = None
+    username: str
+    email: str | None = None
+    phone: str | None = None
+
+
+class TicketHandlerDirectoryOut(BaseModel):
+    items: list[TicketHandlerDirectoryItem] = Field(default_factory=list)
 
 
 class TicketHandlerIntakeRequest(BaseModel):

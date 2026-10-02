@@ -2950,6 +2950,10 @@ export const en: MessageTree = {
     summaryArchiveWin10:
       'A single CORAX-Agent.exe. The token and server address are built in. Put the same file on a share and run it on any PC.',
     downloadExe: 'Download EXE',
+    downloadClient: 'Employee client',
+    downloadClientHint:
+      'Tickets and phone book for Windows 10 and 11. The panel address is stamped on download. Build the template first — docs/windows-client.md.',
+    downloadClientBusy: 'Preparing the client…',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
     summaryArchiveCpp:

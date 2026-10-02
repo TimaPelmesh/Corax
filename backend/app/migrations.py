@@ -1694,6 +1694,14 @@ def _migrate_glpi_device_ids(sync_conn) -> None:
     sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_printers_glpi_id ON printers (glpi_id)"))
 
 
+def _migrate_users_phone(sync_conn) -> None:
+    if "users" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "users")
+    if "phone" not in cols:
+        sync_conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(64)"))
+
+
 def _migrate_glpi_computer_network_ids(sync_conn) -> None:
     if "computers" in _table_names(sync_conn):
         cols = _column_names(sync_conn, "computers")
@@ -1769,6 +1777,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-29_glpi_device_ids", _migrate_glpi_device_ids),
     ("2026-09-30_glpi_identity", _migrate_glpi_identity),
     ("2026-09-30_glpi_computer_network_ids", _migrate_glpi_computer_network_ids),
+    ("2026-10-02_users_phone", _migrate_users_phone),
 ]
 
 
