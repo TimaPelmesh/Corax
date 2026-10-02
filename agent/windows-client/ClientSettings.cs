@@ -73,9 +73,14 @@ public sealed class ClientSettings
         var paths = new[]
         {
             Environment.ProcessPath,
-            Path.Combine(AppContext.BaseDirectory, "Corax.dll"),
             Path.Combine(AppContext.BaseDirectory, "Corax.exe"),
+            Path.Combine(AppContext.BaseDirectory, "Corax.dll"),
         };
+        foreach (var path in paths)
+        {
+            var trailer = ReadTrailer(path);
+            if (trailer != null) return trailer;
+        }
         string? best = null;
         var bestLen = -1;
         foreach (var path in paths)
@@ -87,10 +92,39 @@ public sealed class ClientSettings
                 bestLen = json.Length;
             }
         }
-        // Touch the literal so the compiler keeps the UTF-16 slot in the binary.
         _ = ConfigSlot.Slot.Length;
         return best;
     }
+
+    static string? ReadTrailer(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return null;
+        try
+        {
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (stream.Length < 12) return null;
+            stream.Seek(-12, SeekOrigin.End);
+            var tail = new byte[12];
+            if (stream.Read(tail, 0, 12) != 12) return null;
+            for (var i = 0; i < TrailerMagic.Length; i++)
+            {
+                if (tail[4 + i] != TrailerMagic[i]) return null;
+            }
+            var length = BitConverter.ToInt32(tail, 0);
+            if (length is < 2 or > 8192 || stream.Length < 12 + length) return null;
+            stream.Seek(-(12 + length), SeekOrigin.End);
+            var payload = new byte[length];
+            if (stream.Read(payload, 0, length) != length) return null;
+            var json = Encoding.UTF8.GetString(payload).Trim();
+            return json.StartsWith('{') ? json : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    static readonly byte[] TrailerMagic = "CORAXCFG"u8.ToArray();
 
     static string? ExtractSlot(string? path)
     {

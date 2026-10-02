@@ -59,18 +59,12 @@ public partial class App : System.Windows.Application
         void Paint(string key, string hex)
         {
             var color = (Media.Color)Media.ColorConverter.ConvertFromString(hex);
-            var fade = new Media.Animation.ColorAnimation(color, TimeSpan.FromMilliseconds(360))
-            {
-                EasingFunction = new Media.Animation.CubicEase { EasingMode = Media.Animation.EasingMode.EaseOut },
-            };
             if (Current.Resources[key] is Media.SolidColorBrush brush && !brush.IsFrozen)
             {
-                brush.BeginAnimation(Media.SolidColorBrush.ColorProperty, fade);
+                brush.Color = color;
                 return;
             }
-            var created = new Media.SolidColorBrush(color);
-            Current.Resources[key] = created;
-            created.BeginAnimation(Media.SolidColorBrush.ColorProperty, fade);
+            Current.Resources[key] = new Media.SolidColorBrush(color);
         }
 
         if (dark)
@@ -113,20 +107,13 @@ public partial class App : System.Windows.Application
         }
 
         var shadow = Current.Resources["CardShadow"] as Media.Effects.DropShadowEffect;
-        if (shadow == null || shadow.IsFrozen)
-        {
-            shadow = new Media.Effects.DropShadowEffect();
-            Current.Resources["CardShadow"] = shadow;
-        }
-        shadow.Color = (Media.Color)Media.ColorConverter.ConvertFromString(dark ? "#000000" : "#2563EB");
+        var fresh = shadow == null || shadow.IsFrozen;
+        if (fresh) shadow = new Media.Effects.DropShadowEffect();
+        shadow!.Color = (Media.Color)Media.ColorConverter.ConvertFromString(dark ? "#000000" : "#2563EB");
         shadow.BlurRadius = dark ? 16 : 32;
         shadow.ShadowDepth = dark ? 0 : 12;
         shadow.Direction = 270;
-        shadow.BeginAnimation(
-            Media.Effects.DropShadowEffect.OpacityProperty,
-            new Media.Animation.DoubleAnimation(dark ? 0 : 0.12, TimeSpan.FromMilliseconds(360))
-            {
-                EasingFunction = new Media.Animation.CubicEase { EasingMode = Media.Animation.EasingMode.EaseOut },
-            });
+        shadow.Opacity = dark ? 0 : 0.12;
+        if (fresh) Current.Resources["CardShadow"] = shadow;
     }
 }
