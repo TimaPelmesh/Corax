@@ -74,6 +74,33 @@ function isUsefulDns(addr: string) {
   return true
 }
 
+const GPU_VIRTUAL =
+  /basic\s+(display|render)|standard\s+vga|microsoft\s+remote|remote\s+display|rdp\s+display|mirror(\s+driver)?|virtual\s+(display|desktop|monitor)|indirect\s+display|iddsample|orayidd|usbmmidd|idd\s*(adapter|device|driver)|displaylink|usb\s*(3\.0\s*)?(vga|display|monitor)|usb\s+mobile\s+monitor|spacedesk|parsec|teamviewer|anydesk|tightvnc|ultravnc|realvnc|splashtop|rustdesk|todesk|sunlogin|\boray\b|awesun|dameware|citrix|nomachine|chrome\s+remote|google\s+remote|logmein|gotomypc|connectwise|ammyy|radmin|litemanager|aeroadmin|getscreen|supremo|steam\s+streaming|sunshine|moonlight|frameview|miracast|wireless\s+display|nvidia\s+virtual|amd\s+virtual|radeon\s+sharing|vnc\s+(server|hook|mirror)|hook\s+driver|easy\s+virtual|meta\s+quest|\boculus\b/i
+
+const GPU_DISCRETE =
+  /geforce|\brtx\b|\bgtx\b|quadro|tesla|rtx\s*a\d|radeon\s+(rx|pro|vii|\d)|firepro|\barc\s*a\d|intel\s+arc/i
+
+const GPU_IGP = /iris|uhd\s*graphics|hd\s+graphics|intel\(r\)?\s+graphics|intel.*graphics|radeon\s+graphics|vega\s+\d/i
+
+function gpuScore(name: string, vramGb: number | null): number {
+  const text = name.trim()
+  if (!text || GPU_VIRTUAL.test(text)) return 0
+  let score = 15
+  if (GPU_DISCRETE.test(text)) score = 100
+  else if (GPU_IGP.test(text)) score = 50
+  else if (/nvidia|geforce|amd|radeon|intel|\barc\b/i.test(text)) score = 70
+  if (vramGb != null && vramGb >= 1) score += Math.min(Math.floor(vramGb), 24)
+  return score
+}
+
+function gpuLabel(name: string | null, processor: string | null): string | null {
+  const n = name?.trim() || null
+  const p = processor?.trim() || null
+  if (n && !GPU_VIRTUAL.test(n)) return n
+  if (p && !GPU_VIRTUAL.test(p)) return p
+  return n || p
+}
+
 const OFFICE_VER: Record<string, string> = {
   '14.0': 'Office 2010',
   '15.0': 'Office 2013',
@@ -149,15 +176,26 @@ export function parseAgentExtras(ext: Record<string, unknown> | null | undefined
   if (ext.pending_reboot === true) secParts.push('Pending reboot')
   if (avName) secParts.push(avName)
 
-  const gpus = asArr(ext.gpus)
+  const gpuRows = asArr(ext.gpus)
     .map((row) => {
       const r = asObj(row)
       if (!r) return null
-      const name = s(r.name)
+      const name = gpuLabel(s(r.name), s(r.video_processor))
       if (!name) return null
-      const vram = typeof r.vram_gb === 'number' ? ` ${r.vram_gb} GB` : ''
-      const drv = s(r.driver_version)
-      return drv ? `${name}${vram} · ${drv}` : `${name}${vram}`
+      const vram = typeof r.vram_gb === 'number' && r.vram_gb > 0 ? r.vram_gb : null
+      return { name, vram, score: gpuScore(name, vram) }
+    })
+    .filter((x): x is { name: string; vram: number | null; score: number } => x != null)
+    .sort((a, b) => b.score - a.score)
+  const seenGpu = new Set<string>()
+  const gpus = gpuRows
+    .filter((row) => row.score > 0)
+    .map((row) => {
+      const key = row.name.toLowerCase()
+      if (seenGpu.has(key)) return null
+      seenGpu.add(key)
+      const vram = row.vram != null ? ` ${row.vram} GB` : ''
+      return `${row.name}${vram}`
     })
     .filter((x): x is string => Boolean(x))
 

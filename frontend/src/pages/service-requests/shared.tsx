@@ -26,7 +26,8 @@ export type StatsChartMode = (typeof STATS_CHART_MODES)[number]
 
 export const STATUS_PILL: Record<string, string> = {
   open: 'bg-[var(--color-surface)] text-[var(--color-fg)] ring-1 ring-neutral-200/90',
-  in_progress: 'bg-[var(--color-surface)] text-[var(--color-fg)] ring-1 ring-neutral-200/90',
+  in_progress:
+    'bg-[var(--color-info-bg)] text-[var(--color-info-fg)] ring-1 ring-[var(--color-info-border)]',
   done: 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-1 ring-neutral-200/90',
   cancelled: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-1 ring-neutral-200/90',
 }

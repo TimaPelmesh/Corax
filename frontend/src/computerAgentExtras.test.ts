@@ -68,6 +68,7 @@ describe('parseAgentExtras', () => {
     expect(extras?.securityHint).toContain('Secure Boot')
     expect(extras?.securityHint).toContain('Pending reboot')
     expect(extras?.gpus[0]).toContain('RTX')
+    expect(extras?.gpus[0]).not.toContain('32.0')
     expect(extras?.localAdmins).toEqual(['Administrator', 'EKM\\helpdesk'])
     expect(extras?.batteryHealthPercent).toBe(87)
     expect(extras?.batteryPercent).toBe(55)
@@ -91,5 +92,18 @@ describe('parseAgentExtras', () => {
     expect(extras?.loggedOnUsers).toEqual(['ivanov'])
     expect(extras?.usbHistoryCount).toBe(5)
     expect(extras?.patchTotal).toBe(2)
+  })
+
+  it('ignores virtual display adapters and driver versions from other software', () => {
+    const extras = parseAgentExtras({
+      gpus: [
+        { name: 'Parsec Virtual Display Adapter', driver_version: '10.0.1.2', vram_gb: null },
+        { name: 'OrayIddDriver Device', video_processor: 'NVIDIA GeForce RTX 4070', driver_version: '1.2.3' },
+        { name: 'Intel(R) UHD Graphics 770', vram_gb: 0.13 },
+      ],
+    })
+    expect(extras?.gpus[0]).toContain('RTX 4070')
+    expect(extras?.gpus[0]).not.toMatch(/Parsec|Oray|10\.0\.1/)
+    expect(extras?.gpus.some((g) => /UHD Graphics 770/.test(g))).toBe(true)
   })
 })

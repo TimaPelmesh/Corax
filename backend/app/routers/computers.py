@@ -19,6 +19,7 @@ from app.models import (
     User,
     computer_tags,
 )
+from app.gpu_normalize import resolve_gpu_name
 from app.peripheral_display import prepare_peripherals_for_display
 from app.printer_poll import ping_ip
 from app.rate_limit import limiter
@@ -888,7 +889,7 @@ async def get_computer(
         manufacturer=c.manufacturer,
         model=c.model,
         location=c.location,
-        gpu_name=c.gpu_name,
+        gpu_name=resolve_gpu_name(c.gpu_name, _agent_extended_from_raw(c.raw_payload)),
         memory_used_percent=c.memory_used_percent,
         motherboard_manufacturer=c.motherboard_manufacturer,
         motherboard_product=c.motherboard_product,

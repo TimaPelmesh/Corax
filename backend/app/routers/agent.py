@@ -14,6 +14,7 @@ from app.config import settings
 from app.rate_limit import limiter
 from app.database import get_db
 from app.models import AgentToken, Computer, DiskVolume, InstalledSoftware, Peripheral, User
+from app.gpu_normalize import resolve_gpu_name
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
 from app.peripheral_display import is_noise_peripheral
 from app.schemas import AgentInventoryReport
@@ -217,6 +218,8 @@ async def submit_inventory(
     reported_user = await _reported_assigned_user(
         db, report.extended if isinstance(report.extended, dict) else None
     )
+    ext = report.extended if isinstance(report.extended, dict) else None
+    gpu_name = resolve_gpu_name(report.gpu_name, ext)
     mfr = normalize_manufacturer(report.manufacturer)
     model = normalize_system_model(report.model) or normalize_system_model(report.motherboard_product)
     ip_from_agent = primary_ipv4_from_extended(
@@ -244,7 +247,7 @@ async def submit_inventory(
         pc.manufacturer = mfr
         pc.model = model
         pc.location = report.location
-        pc.gpu_name = report.gpu_name
+        pc.gpu_name = gpu_name
         pc.memory_used_percent = report.memory_used_percent
         pc.motherboard_manufacturer = normalize_manufacturer(report.motherboard_manufacturer)
         pc.motherboard_product = normalize_system_model(report.motherboard_product)
@@ -275,7 +278,7 @@ async def submit_inventory(
             manufacturer=mfr,
             model=model,
             location=report.location,
-            gpu_name=report.gpu_name,
+            gpu_name=gpu_name,
             memory_used_percent=report.memory_used_percent,
             motherboard_manufacturer=normalize_manufacturer(report.motherboard_manufacturer),
             motherboard_product=normalize_system_model(report.motherboard_product),

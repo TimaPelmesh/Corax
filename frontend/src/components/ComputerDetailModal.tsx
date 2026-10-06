@@ -596,7 +596,9 @@ export function ComputerDetailModal({
                   <div className="min-w-0">
                     <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.gpu')}</dt>
                     <dd className="break-words text-[var(--color-fg)]">
-                      {agentExtras?.gpus[0] || detail.gpu_name || '—'}
+                      {agentExtras?.gpus.length
+                        ? agentExtras.gpus.join(' / ')
+                        : detail.gpu_name || '—'}
                     </dd>
                   </div>
                   <div className="min-w-0 sm:col-span-2">
