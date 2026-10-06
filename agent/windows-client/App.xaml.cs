@@ -80,8 +80,8 @@ public partial class App : System.Windows.Application
             Paint("OnPrimary", "#0A0A0A");
             Paint("Danger", "#FECACA");
             Paint("DangerBg", "#3F1D1D");
-            Paint("GlowA", "#332563EB");
-            Paint("GlowB", "#1A38BDF8");
+            Paint("GlowA", "#1A2563EB");
+            Paint("GlowB", "#0D38BDF8");
             Paint("FgSubtle", "#A1A1AA");
             Paint("BorderStrong", "#2A2A2A");
             Paint("PrimaryHover", "#93C5FD");
@@ -99,8 +99,8 @@ public partial class App : System.Windows.Application
             Paint("OnPrimary", "#FFFFFF");
             Paint("Danger", "#991B1B");
             Paint("DangerBg", "#FEF2F2");
-            Paint("GlowA", "#1F2563EB");
-            Paint("GlowB", "#1438BDF8");
+            Paint("GlowA", "#102563EB");
+            Paint("GlowB", "#0A38BDF8");
             Paint("FgSubtle", "#6B7280");
             Paint("BorderStrong", "#D5DAE3");
             Paint("PrimaryHover", "#1D4ED8");
@@ -110,10 +110,10 @@ public partial class App : System.Windows.Application
         var fresh = shadow == null || shadow.IsFrozen;
         if (fresh) shadow = new Media.Effects.DropShadowEffect();
         shadow!.Color = (Media.Color)Media.ColorConverter.ConvertFromString(dark ? "#000000" : "#2563EB");
-        shadow.BlurRadius = dark ? 16 : 32;
-        shadow.ShadowDepth = dark ? 0 : 12;
+        shadow.BlurRadius = dark ? 16 : 18;
+        shadow.ShadowDepth = dark ? 0 : 6;
         shadow.Direction = 270;
-        shadow.Opacity = dark ? 0 : 0.12;
+        shadow.Opacity = dark ? 0 : 0.07;
         if (fresh) Current.Resources["CardShadow"] = shadow;
     }
 }

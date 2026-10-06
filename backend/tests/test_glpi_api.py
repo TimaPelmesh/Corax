@@ -424,6 +424,46 @@ def test_force_create_ticket_ignores_existing_link():
     assert "CORAX#42" in created[0]["name"]
 
 
+def test_upsert_updates_ticket_found_by_corax_marker():
+    patched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if request.method == "GET" and "Ticket" in path:
+            return httpx.Response(
+                200,
+                json=[{"id": 88, "name": "Принтер не печатает · CORAX#15"}],
+            )
+        if request.method == "PATCH" and path.endswith("/Assistance/Ticket/88"):
+            patched.append(request.content.decode())
+            return httpx.Response(200, json={"id": 88})
+        if request.method == "POST":
+            return httpx.Response(500, json={"message": "must not create"})
+        return httpx.Response(404, json={"message": path})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=15,
+                glpi_id=None,
+                title="Принтер не печатает",
+                content="обновлённый текст",
+                status="in_progress",
+                priority="high",
+                force_create=False,
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "updated"
+    assert results[0].glpi_id == 88
+    assert patched
+    assert "CORAX#15" in patched[0]
+
+
 def test_outbound_body_maps_corax_statuses_for_glpi():
     from app.glpi_client import GlpiOutbound, _outbound_body, glpi_priority_id, glpi_status_id
 
@@ -587,8 +627,12 @@ def test_create_ticket_keeps_requester_assignee_category_when_closed():
     assert results[0].action == "created"
     assert results[0].glpi_id == 501
     ticket_input = next(
-        p.get("input", p) for p in posts if isinstance(p.get("input", p), dict) and p.get("input", p).get("name") == "Закрытый инцидент"
+        p.get("input", p)
+        for p in posts
+        if isinstance(p.get("input", p), dict)
+        and "Закрытый инцидент" in str(p.get("input", p).get("name") or "")
     )
+    assert "CORAX#20" in ticket_input["name"]
     assert ticket_input["status"] == 6
     assert ticket_input.get("itilcategories_id") == 9
     assert ticket_input.get("_users_id_requester") == 3

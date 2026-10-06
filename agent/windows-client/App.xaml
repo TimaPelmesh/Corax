@@ -15,12 +15,16 @@
     <SolidColorBrush x:Key="OnPrimary" Color="#0A0A0A" options:Freeze="False"/>
     <SolidColorBrush x:Key="Danger" Color="#FECACA" options:Freeze="False"/>
     <SolidColorBrush x:Key="DangerBg" Color="#3F1D1D" options:Freeze="False"/>
-    <SolidColorBrush x:Key="GlowA" Color="#332563EB" options:Freeze="False"/>
-    <SolidColorBrush x:Key="GlowB" Color="#1A38BDF8" options:Freeze="False"/>
+    <SolidColorBrush x:Key="GlowA" Color="#1A2563EB" options:Freeze="False"/>
+    <SolidColorBrush x:Key="GlowB" Color="#0D38BDF8" options:Freeze="False"/>
     <SolidColorBrush x:Key="FgSubtle" Color="#A1A1AA" options:Freeze="False"/>
     <SolidColorBrush x:Key="BorderStrong" Color="#2A2A2A" options:Freeze="False"/>
     <SolidColorBrush x:Key="PrimaryHover" Color="#93C5FD" options:Freeze="False"/>
-    <DropShadowEffect x:Key="CardShadow" BlurRadius="28" ShadowDepth="10" Direction="270" Opacity="0" Color="#2563EB" options:Freeze="False"/>
+    <DropShadowEffect x:Key="CardShadow" BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0" Color="#2563EB" options:Freeze="False"/>
+
+    <!-- One radius scale for the whole client: 8 for controls, 12 for cards, 14 for windows. -->
+    <CornerRadius x:Key="ControlRadius">8</CornerRadius>
+    <CornerRadius x:Key="CardRadius">12</CornerRadius>
 
     <Style TargetType="Window">
       <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
@@ -29,19 +33,26 @@
     </Style>
 
     <Style x:Key="FieldLabel" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="13"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontSize" Value="12"/>
       <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
-      <Setter Property="Margin" Value="2,0,0,6"/>
+      <Setter Property="Margin" Value="0,0,0,6"/>
     </Style>
 
+    <!--
+      Padding lives on the frame border, so the text host and the placeholder
+      inherit the same inset instead of carrying two hand-tuned margins that
+      drift apart. Single-line fields keep Padding vertically at 0 and centre
+      their content: the text host then sizes to its own line height and can
+      never be squeezed below it.
+    -->
     <Style x:Key="Field" TargetType="TextBox">
       <Setter Property="Background" Value="{DynamicResource Surface}"/>
       <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+      <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontSize" Value="14"/>
-      <Setter Property="MinHeight" Value="44"/>
-      <Setter Property="Padding" Value="14,10"/>
+      <Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Padding" Value="11,0"/>
       <Setter Property="CaretBrush" Value="{DynamicResource Fg}"/>
       <Setter Property="SelectionBrush" Value="{DynamicResource Primary}"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -50,13 +61,26 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="TextBox">
-            <Border x:Name="Ring" BorderBrush="Transparent" BorderThickness="2" CornerRadius="16" Padding="2" Background="Transparent">
-              <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="12">
-                <Grid>
-                  <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Focusable="False"/>
-                  <TextBlock x:Name="Hint" Text="{TemplateBinding Tag}" Margin="14,0,14,0" VerticalAlignment="Center" Foreground="{DynamicResource FgSubtle}" IsHitTestVisible="False" Visibility="Collapsed" FontSize="14"/>
-                </Grid>
-              </Border>
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource ControlRadius}"
+                    Padding="{TemplateBinding Padding}"
+                    SnapsToDevicePixels="True">
+              <Grid>
+                <ScrollViewer x:Name="PART_ContentHost"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                              Focusable="False"/>
+                <TextBlock x:Name="Hint"
+                           Text="{TemplateBinding Tag}"
+                           FontSize="{TemplateBinding FontSize}"
+                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                           Foreground="{DynamicResource FgSubtle}"
+                           TextTrimming="CharacterEllipsis"
+                           IsHitTestVisible="False"
+                           Visibility="Collapsed"/>
+              </Grid>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="Text" Value="">
@@ -67,7 +91,9 @@
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Primary}"/>
-                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource Primary}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.55"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -75,37 +101,18 @@
       </Setter>
     </Style>
 
+    <!--
+      Multi-line variant reuses the same template. Stretch makes the text host
+      fill the frame so scrolling works, and a stretched TextBlock draws its
+      placeholder from the top — no second template needed.
+    -->
     <Style x:Key="FieldNote" TargetType="TextBox" BasedOn="{StaticResource Field}">
-      <Setter Property="MinHeight" Value="88"/>
-      <Setter Property="VerticalContentAlignment" Value="Top"/>
+      <Setter Property="MinHeight" Value="92"/>
+      <Setter Property="Padding" Value="11,9"/>
+      <Setter Property="VerticalContentAlignment" Value="Stretch"/>
       <Setter Property="AcceptsReturn" Value="True"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="TextBox">
-            <Border x:Name="Ring" BorderBrush="Transparent" BorderThickness="2" CornerRadius="16" Padding="2" Background="Transparent">
-              <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="12">
-                <Grid>
-                  <ScrollViewer x:Name="PART_ContentHost" Margin="14,10,14,10" VerticalAlignment="Stretch" Focusable="False"/>
-                  <TextBlock x:Name="Hint" Text="{TemplateBinding Tag}" Margin="14,10,14,0" VerticalAlignment="Top" Foreground="{DynamicResource FgSubtle}" IsHitTestVisible="False" Visibility="Collapsed" FontSize="14"/>
-                </Grid>
-              </Border>
-            </Border>
-            <ControlTemplate.Triggers>
-              <Trigger Property="Text" Value="">
-                <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
-              </Trigger>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BorderStrong}"/>
-              </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Primary}"/>
-                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource Primary}"/>
-              </Trigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
+      <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
     </Style>
 
     <Style x:Key="Secret" TargetType="PasswordBox">
@@ -113,17 +120,27 @@
       <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="MinHeight" Value="44"/>
       <Setter Property="FontSize" Value="14"/>
+      <Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Padding" Value="11,0"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="CaretBrush" Value="{DynamicResource Fg}"/>
+      <Setter Property="SelectionBrush" Value="{DynamicResource Primary}"/>
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="PasswordBox">
-            <Border x:Name="Ring" BorderBrush="Transparent" BorderThickness="2" CornerRadius="16" Padding="2">
-              <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="12">
-                <ScrollViewer x:Name="PART_ContentHost" Margin="14,10,14,10" Focusable="False"/>
-              </Border>
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource ControlRadius}"
+                    Padding="{TemplateBinding Padding}"
+                    SnapsToDevicePixels="True">
+              <ScrollViewer x:Name="PART_ContentHost"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                            Focusable="False"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -131,7 +148,9 @@
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
                 <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Primary}"/>
-                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource Primary}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.55"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -143,32 +162,41 @@
       <Setter Property="Background" Value="{DynamicResource Primary}"/>
       <Setter Property="Foreground" Value="{DynamicResource OnPrimary}"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="MinHeight" Value="44"/>
-      <Setter Property="Padding" Value="16,10"/>
+      <Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Padding" Value="16,0"/>
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Ring" BorderBrush="Transparent" BorderThickness="2" CornerRadius="16" Padding="2">
-              <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="12" Padding="{TemplateBinding Padding}">
-                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-              </Border>
+            <!-- The 1px transparent border is always present so focus never shifts layout. -->
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource ControlRadius}"
+                    Padding="{TemplateBinding Padding}"
+                    SnapsToDevicePixels="True">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Bd" Property="Background" Value="{DynamicResource PrimaryHover}"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="Bd" Property="Opacity" Value="0.92"/>
+                <Setter TargetName="Bd" Property="Opacity" Value="0.9"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource Primary}"/>
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource OnPrimary}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -180,16 +208,26 @@
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Padding" Value="8,6"/>
-      <Setter Property="HorizontalContentAlignment" Value="Center"/>
-      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="Padding" Value="10,0"/>
       <Setter Property="FontSize" Value="14"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="10" Padding="{TemplateBinding Padding}">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="Transparent"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource ControlRadius}"
+                    Padding="{TemplateBinding Padding}"
+                    SnapsToDevicePixels="True">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -206,10 +244,11 @@
     </Style>
 
     <Style x:Key="ChromeButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
-      <Setter Property="Width" Value="32"/>
-      <Setter Property="Height" Value="32"/>
+      <Setter Property="Width" Value="28"/>
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="MinHeight" Value="28"/>
       <Setter Property="Padding" Value="0"/>
-      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontSize" Value="14"/>
     </Style>
 
     <Style TargetType="CheckBox">
@@ -217,12 +256,13 @@
       <Setter Property="FontSize" Value="14"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="CheckBox">
-            <StackPanel Orientation="Horizontal">
-              <Border x:Name="Box" Width="18" Height="18" CornerRadius="5" BorderThickness="1" Margin="0,0,10,0" VerticalAlignment="Center"
-                      BorderBrush="{DynamicResource Border}" Background="{DynamicResource SurfaceMuted}">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border x:Name="Box" Width="17" Height="17" CornerRadius="4" BorderThickness="1" Margin="0,0,10,0" VerticalAlignment="Center"
+                      BorderBrush="{DynamicResource Border}" Background="{DynamicResource SurfaceMuted}" SnapsToDevicePixels="True">
                 <Path x:Name="Mark" Visibility="Collapsed" Margin="3" Stretch="Uniform" StrokeThickness="1.7"
                       Stroke="{DynamicResource OnPrimary}" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                       Data="M 2,6 L 5.2,9.2 L 11,2.5"/>
@@ -231,7 +271,7 @@
             </StackPanel>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Primary}"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource BorderStrong}"/>
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Box" Property="Background" Value="{DynamicResource Primary}"/>
@@ -239,11 +279,7 @@
                 <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Box" Property="Effect">
-                  <Setter.Value>
-                    <DropShadowEffect Color="#2563EB" BlurRadius="8" ShadowDepth="0" Opacity="0.35"/>
-                  </Setter.Value>
-                </Setter>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Primary}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -252,14 +288,14 @@
     </Style>
 
     <Style TargetType="ProgressBar">
-      <Setter Property="Height" Value="4"/>
+      <Setter Property="Height" Value="3"/>
       <Setter Property="Background" Value="{DynamicResource SurfaceMuted}"/>
       <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ProgressBar">
-            <Grid Height="4" SnapsToDevicePixels="True">
+            <Grid Height="3" SnapsToDevicePixels="True">
               <Border Name="PART_Track" Background="{TemplateBinding Background}" CornerRadius="2"/>
               <Border Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="2"/>
             </Grid>

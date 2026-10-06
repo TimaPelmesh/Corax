@@ -1939,7 +1939,7 @@ export const api = {
 
   glpiExportTickets: (
     limit: number,
-    opts?: { mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one' | 'force_create'; request_ids?: number[] },
+    opts?: { mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'selected_update' | 'test_one' | 'force_create'; request_ids?: number[] },
   ) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/export-tickets`, {
       method: 'POST',
@@ -1967,7 +1967,7 @@ export const api = {
   glpiExportTicketsStream: async (
     limit: number,
     opts: {
-      mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'test_one' | 'force_create'
+      mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'selected_update' | 'test_one' | 'force_create'
       request_ids?: number[]
       onProgress?: (p: {
         done: number

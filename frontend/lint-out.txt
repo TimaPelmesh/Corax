@@ -1,0 +1,463 @@
+﻿node.exe : npm warn Unknown env config "devdir". This will stop working in the next major version of npm. See `npm help
+ npmrc` for supported config options.
+строка:1 знак:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...config options.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+> frontend@1.3.0 lint
+> eslint .
+
+
+D:\projects\Corax\frontend\src\ThemeContext.tsx
+  81:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\ToastContext.tsx
+  92:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\components\AppTopBar.tsx
+  66:6  warning  React Hook useEffect has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\components\ComputerDetailModal.tsx
+   21:17  error    Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                     react-refresh/only-export-components
+   30:17  error    Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                     react-refresh/only-export-components
+  231:9   warning  The 'softwareSafe' conditional could make the dependencies of useMemo Hook (at line 238) change on every render. To fix this, wrap the initialization of 'softwareSafe' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  258:6   warning  React Hook useEffect has a missing dependency: 'detail'. Either include it or remove the dependency array                                                                                          react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\components\ConfirmDialog.tsx
+   34:3   error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+D:\projects\Corax\frontend\src\components\ConfirmDialog.tsx:34:3
+  32 |   const confirmRef = useRef<HTMLButtonElement>(null)
+  33 |   const onCloseRef = useRef(onClose)
+> 34 |   onCloseRef.current = onClose
+     |   ^^^^^^^^^^^^^^^^^^ Cannot update ref during render
+  35 |
+  36 |   useEffect(() => {
+  37 |     if (!open) return  react-hooks/refs
+  107:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\components\DashboardDrilldown.tsx
+  33:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\components\DashboardDrilldown.tsx:33:7
+  31 |   useEffect(() => {
+  32 |     if (!selection) {
+> 33 |       setData(null)
+     |       ^^^^^^^ Avoid calling setState() directly within an effect
+  34 |       setError(null)
+  35 |       setComputerId(null)
+  36 |       return  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\components\NetworkDeviceDetailModal.tsx
+  71:6  warning  React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\components\NetworkTypeIcon.tsx
+  37:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\components\UserAvatar.tsx
+   3:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  41:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\components\dashboard\DashboardCalendar.tsx
+  108:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\components\dashboard\DashboardCalendar.tsx:108:5
+  106 |   useEffect(() => {
+  107 |     let cancelled = false
+> 108 |     setLoading(true)
+      |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  109 |     setFailed(false)
+  110 |     void api
+  111 |       .dashboardCalendar(dateKey(month))  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\components\dashboard\DashboardWidgets.tsx
+   12:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  465:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  481:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\components\wikirag\WikiRagIndexWatcher.tsx
+  21:3  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+D:\projects\Corax\frontend\src\components\wikirag\WikiRagIndexWatcher.tsx:21:3
+  19 |   const toastRef = useRef(toast)
+  20 |   const tRef = useRef(t)
+> 21 |   toastRef.current = toast
+     |   ^^^^^^^^^^^^^^^^ Cannot update ref during render
+  22 |   tRef.current = t
+  23 |
+  24 |   useEffect(() => {  react-hooks/refs
+  22:3  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+D:\projects\Corax\frontend\src\components\wikirag\WikiRagIndexWatcher.tsx:22:3
+  20 |   const tRef = useRef(t)
+  21 |   toastRef.current = toast
+> 22 |   tRef.current = t
+     |   ^^^^^^^^^^^^ Cannot update ref during render
+  23 |
+  24 |   useEffect(() => {
+  25 |     let cancelled = false             react-hooks/refs
+
+D:\projects\Corax\frontend\src\components\zabbix\zabbixUi.tsx
+  5:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\floorPlacePhotos.ts
+  55:11  error  'width' is never reassigned. Use 'const' instead   prefer-const
+  55:18  error  'height' is never reassigned. Use 'const' instead  prefer-const
+
+D:\projects\Corax\frontend\src\hooks\useComputerPingLive.ts
+  36:3  error  Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+D:\projects\Corax\frontend\src\hooks\useComputerPingLive.ts:36:3
+  34 | }: Options) {
+  35 |   const onItemsRef = useRef(onItems)
+> 36 |   onItemsRef.current = onItems
+     |   ^^^^^^^^^^^^^^^^^^ Cannot update ref during render
+  37 |
+  38 |   useEffect(() => {
+  39 |     if (!enabled) return  react-hooks/refs
+
+D:\projects\Corax\frontend\src\hooks\useNavCounts.ts
+  10:7  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\hooks\useNavCounts.ts:10:7
+   8 |   useEffect(() => {
+   9 |     if (!enabled) {
+> 10 |       setNavCounts(null)
+     |       ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  11 |       return
+  12 |     }
+  13 |     let cancelled = false  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\hooks\useWelcomeToast.ts
+  23:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\hooks\useWelcomeToast.ts:23:5
+  21 |     if (!stored) return
+  22 |     const accountName = user.full_name?.trim() || user.username || stored
+> 23 |     setWelcomeToastLeaving(false)
+     |     ^^^^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  24 |     setWelcomeToast(`${t(dayGreetingKey())}, ${accountName}`)
+  25 |   }, [user, t])
+  26 |  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\i18n\LocaleContext.tsx
+  116:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  122:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  127:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\lib\wikiragStreamDisplay.ts
+  120:7  error  'stripped' is never reassigned. Use 'const' instead  prefer-const
+
+D:\projects\Corax\frontend\src\pages\ComputersPage.tsx
+  13:7  error  'PC_COLUMN_KEYS' is assigned a value but only used as a type  @typescript-eslint/no-unused-vars
+
+D:\projects\Corax\frontend\src\pages\GuidePage.tsx
+  21:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\pages\GuidePage.tsx:21:5
+  19 |     if (!wanted) return
+  20 |     if (!copy.sections.some((s) => s.id === wanted)) return
+> 21 |     setActive(wanted)
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  22 |     const el = document.getElementById(wanted)
+  23 |     if (el) {
+  24 |       requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }))  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\pages\KnowledgeBasePage.tsx
+  50:10  error  '_mode' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+D:\projects\Corax\frontend\src\pages\KnowledgeSitemapPage.tsx
+  186:13  error    'nw' is never reassigned. Use 'const' instead                                                                                                                                                     prefer-const
+  187:13  error    'nh' is never reassigned. Use 'const' instead                                                                                                                                                     prefer-const
+  188:13  error    'nx' is never reassigned. Use 'const' instead                                                                                                                                                     prefer-const
+  189:13  error    'ny' is never reassigned. Use 'const' instead                                                                                                                                                     prefer-const
+  198:9   warning  The 'markers' logical expression could make the dependencies of useEffect Hook (at line 203) change on every render. To fix this, wrap the initialization of 'markers' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  198:9   warning  The 'markers' logical expression could make the dependencies of useMemo Hook (at line 220) change on every render. To fix this, wrap the initialization of 'markers' in its own useMemo() Hook    react-hooks/exhaustive-deps
+  198:9   warning  The 'markers' logical expression could make the dependencies of useMemo Hook (at line 228) change on every render. To fix this, wrap the initialization of 'markers' in its own useMemo() Hook    react-hooks/exhaustive-deps
+  198:9   warning  The 'markers' logical expression could make the dependencies of useMemo Hook (at line 266) change on every render. To fix this, wrap the initialization of 'markers' in its own useMemo() Hook    react-hooks/exhaustive-deps
+  198:9   warning  The 'markers' logical expression could make the dependencies of useMemo Hook (at line 271) change on every render. To fix this, wrap the initialization of 'markers' in its own useMemo() Hook    react-hooks/exhaustive-deps
+  198:9   warning  The 'markers' logical expression could make the dependencies of useMemo Hook (at line 273) change on every render. To fix this, wrap the initialization of 'markers' in its own useMemo() Hook    react-hooks/exhaustive-deps
+  198:9   warning  The 'markers' logical expression could make the dependencies of useEffect Hook (at line 909) change on every render. To fix this, wrap the initialization of 'markers' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  467:6   warning  React Hook useCallback has a missing dependency: 'toast'. Either include it or remove the dependency array                                                                                        react-hooks/exhaustive-deps
+  666:5   warning  React Hook useMemo has a missing dependency: 'selectedMarker'. Either include it or remove the dependency array                                                                                   react-hooks/exhaustive-deps
+  718:15  error    'next' is never reassigned. Use 'const' instead                                                                                                                                                   prefer-const
+  738:5   warning  React Hook useCallback has a missing dependency: 'toast'. Either include it or remove the dependency array                                                                                        react-hooks/exhaustive-deps
+  849:5   warning  React Hook useCallback has a missing dependency: 'toast'. Either include it or remove the dependency array                                                                                        react-hooks/exhaustive-deps
+  884:6   warning  React Hook useCallback has a missing dependency: 'toast'. Either include it or remove the dependency array                                                                                        react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\pages\Layout.tsx
+   93:5  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  103:5  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+
+D:\projects\Corax\frontend\src\pages\NetworkMapPage.tsx
+  686:6  warning  React Hook useEffect has a missing dependency: 'scene'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\pages\NotesPage.tsx
+  63:3   error    Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+D:\projects\Corax\frontend\src\pages\NotesPage.tsx:63:3
+  61 |   const elRef = useRef<HTMLDivElement>(null)
+  62 |   const onHtmlChangeRef = useRef(onHtmlChange)
+> 63 |   onHtmlChangeRef.current = onHtmlChange
+     |   ^^^^^^^^^^^^^^^^^^^^^^^ Cannot update ref during render
+  64 |   const initialRef = useRef(initialHtml)
+  65 |   initialRef.current = initialHtml
+  66 |  react-hooks/refs
+  65:3   error    Error: Cannot access refs during render
+
+React refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).
+
+D:\projects\Corax\frontend\src\pages\NotesPage.tsx:65:3
+  63 |   onHtmlChangeRef.current = onHtmlChange
+  64 |   const initialRef = useRef(initialHtml)
+> 65 |   initialRef.current = initialHtml
+     |   ^^^^^^^^^^^^^^^^^^ Cannot update ref during render
+  66 |
+  67 |   useEffect(() => {
+  68 |     const el = elRef.current                                                  react-hooks/refs
+  71:37  warning  The ref value 'elRef.current' will likely have changed by the time this effect cleanup function runs. If this ref points to a node rendered by React, copy 'elRef.current' to a variable inside the effect, and use that variable in the cleanup function                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\pages\PrintersPage.tsx
+  477:6  warning  React Hook useEffect has missing dependencies: 't' and 'toast'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\pages\RiskCenterPage.tsx
+  249:9  warning  The 'problemGroups' logical expression could make the dependencies of useMemo Hook (at line 257) change on every render. To fix this, wrap the initialization of 'problemGroups' in its own useMemo() Hook  react-hooks/exhaustive-deps
+  249:9  warning  The 'problemGroups' logical expression could make the dependencies of useMemo Hook (at line 277) change on every render. To fix this, wrap the initialization of 'problemGroups' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\pages\ServiceRequestsPage.tsx
+  549:6  warning  React Hook useCallback has a missing dependency: 'toast'. Either include it or remove the dependency array         react-hooks/exhaustive-deps
+  635:6  warning  React Hook useEffect has a missing dependency: 'ticketFormOpen'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\pages\UsersPage.tsx
+  53:16  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\pages\UsersPage.tsx:53:16
+  51 |
+  52 |   useEffect(() => {
+> 53 |     if (!open) setQuery(selected ? directoryLabel(selected) : '')
+     |                ^^^^^^^^ Avoid calling setState() directly within an effect
+  54 |   }, [selected, open, value])
+  55 |
+  56 |   const filtered = useMemo(() => {  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapCanvasNode.tsx
+  38:19  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapCanvasNode.tsx:38:19
+  36 |
+  37 |   useEffect(() => {
+> 38 |     if (!editing) setDraft(title)
+     |                   ^^^^^^^^ Avoid calling setState() directly within an effect
+  39 |   }, [editing, title])
+  40 |
+  41 |   useEffect(() => {  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapClearDialog.tsx
+  20:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapClearDialog.tsx:20:5
+  18 |   useEffect(() => {
+  19 |     if (!open) return
+> 20 |     setTyped('')
+     |     ^^^^^^^^ Avoid calling setState() directly within an effect
+  21 |     const timer = window.setTimeout(() => inputRef.current?.focus(), 40)
+  22 |     return () => window.clearTimeout(timer)
+  23 |   }, [open])  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapInspector.tsx
+  129:6  warning  React Hook useEffect has a missing dependency: 'group'. Either include it or remove the dependency array. If 'setGroupW' needs the current value of 'group', you can also switch to useReducer instead of useState and read 'group' in the reducer  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapResizer.tsx
+   5:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+   9:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  16:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapScenesBar.tsx
+  77:59  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapScenesBar.tsx:77:59
+  75 |
+  76 |   useEffect(() => {
+> 77 |     if (editingId === 'active' || editingId === activeId) setDraft(title)
+     |                                                           ^^^^^^^^ Avoid calling setState() directly within an effect
+  78 |   }, [title, editingId, activeId])
+  79 |
+  80 |   useEffect(() => {  react-hooks/set-state-in-effect
+  82:7   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\pages\network-map\NetworkMapScenesBar.tsx:82:7
+  80 |   useEffect(() => {
+  81 |     if (!open) {
+> 82 |       setConfirmId(null)
+     |       ^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  83 |       if (editingId !== 'active') setEditingId(null)
+  84 |       return
+  85 |     }                                                                  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\pages\service-requests\shared.tsx
+   11:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   12:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   17:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   18:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   19:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   27:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   37:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   43:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   47:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   51:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   62:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   66:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   74:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+   80:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  115:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  126:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  134:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  140:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  166:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  173:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  181:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  192:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  209:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  224:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  237:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  252:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  259:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  263:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  267:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  414:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  418:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  424:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  436:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  453:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  455:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  460:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  648:14  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  803:17  error  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           react-refresh/only-export-components
+  832:19  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+D:\projects\Corax\frontend\src\pages\service-requests\shared.tsx:832:19
+  830 |   const [open, setOpen] = useState(false)
+  831 |   const [query, setQuery] = useState(value)
+> 832 |   useEffect(() => setQuery(value), [value])
+      |                   ^^^^^^^^ Avoid calling setState() directly within an effect
+  833 |
+  834 |   const normalizedLabelMap = useMemo(() => {
+  835 |     const m = new Map<string, string>()  react-hooks/set-state-in-effect
+
+D:\projects\Corax\frontend\src\pages\service-requests\useRequestStats.ts
+  81:6  warning  React Hook useMemo has an unnecessary dependency: 't'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+
+D:\projects\Corax\frontend\src\useDiagramLive.ts
+  97:54  error  Error: Cannot access variable before it is declared
+
+`connect` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+D:\projects\Corax\frontend\src\useDiagramLive.ts:97:54
+   95 |       if (!enabled || !diagramId) return
+   96 |       if (reconnectRef.current) window.clearTimeout(reconnectRef.current)
+>  97 |       reconnectRef.current = window.setTimeout(() => connect(), 2500)
+      |                                                      ^^^^^^^ `connect` accessed before it is declared
+   98 |     }
+   99 |     ws.onerror = () => {
+  100 |       ws.close()
+
+D:\projects\Corax\frontend\src\useDiagramLive.ts:70:3
+   68 |   }, [saveState])
+   69 |
+>  70 |   const connect = useCallback(() => {
+      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  71 |     if (!diagramId || !enabled) return
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+>  72 |     const url = socketUrl(diagramId)
+      тАж
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 132 |     }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 133 |   }, [autosaveInFlightRef, diagramId, enabled, lastLocalCommitAtRef, onRemoteIconDragRef, refetchLayout, socketUrl])
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `connect` is declared here
+  134 |
+  135 |   const sendIconDrag = useCallback((icons: Array<{ id: string; x: number; y: number }>) => {
+  136 |     const ws = wsRef.current  react-hooks/immutability
+
+тЬЦ 111 problems (84 errors, 27 warnings)
+  8 errors and 2 warnings potentially fixable with the `--fix` option.
+

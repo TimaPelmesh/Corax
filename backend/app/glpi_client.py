@@ -130,6 +130,22 @@ def _titles_match(left: str | None, right: str | None) -> bool:
     return bool(a) and a == b
 
 
+def _corax_marker(corax_id: int) -> str:
+    return f"CORAX#{int(corax_id)}"
+
+
+def _title_with_marker(title: str, corax_id: int) -> str:
+    marker = _corax_marker(corax_id)
+    cleaned = (title or "").strip() or f"CORAX #{corax_id}"
+    if marker.casefold() in cleaned.casefold():
+        return cleaned[:255]
+    return f"{cleaned} · {marker}"[:255]
+
+
+def _title_has_marker(title: str | None, corax_id: int) -> bool:
+    return _corax_marker(corax_id).casefold() in (title or "").casefold()
+
+
 def _is_permission_error(exc: Exception) -> bool:
     text = str(exc).casefold()
     return any(
@@ -1198,6 +1214,19 @@ class _Session:
                     return found
         return None
 
+    def find_ticket_id_by_marker(self, corax_id: int) -> int | None:
+        """Заявка GLPI, в названии которой уже есть хвост CORAX#15."""
+        marker = _corax_marker(corax_id)
+        for raw in self._search_tickets_by_name(marker):
+            if not isinstance(raw, dict):
+                continue
+            name = _clip(raw.get("name") or raw.get("title"), 255)
+            if _title_has_marker(name, corax_id):
+                found = _as_int(raw.get("id"))
+                if found is not None:
+                    return found
+        return None
+
     def _search_tickets_by_name(self, name: str) -> list[object]:
         cleaned = name[:255]
         if self.mode == "legacy":
@@ -1246,16 +1275,12 @@ class _Session:
         return _as_list(payload) if payload else []
 
     def upsert_ticket(self, item: GlpiOutbound) -> GlpiPushResult:
-        """Связь по glpi_id или точному названию → UPDATE, иначе CREATE.
+        """Связь по glpi_id, хвосту CORAX#id в теме или точному названию → UPDATE, иначе CREATE.
 
         force_create=True — всегда новая заявка (как тестовая), без UPDATE и без поиска по теме.
         """
-        title = (item.title or f"CORAX #{item.corax_id}").strip()
+        title = _title_with_marker(item.title or "", item.corax_id)
         if item.force_create:
-            # Уникальный хвост, чтобы не зацепить старую заявку по названию при следующих выгрузках.
-            marker = f"CORAX#{item.corax_id}"
-            if marker.casefold() not in title.casefold():
-                title = f"{title} · {marker}"[:255]
             created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
             return GlpiPushResult(
                 corax_id=item.corax_id,
@@ -1267,7 +1292,13 @@ class _Session:
         target_id = item.glpi_id
         matched_by = "id" if target_id else None
         if target_id is None:
-            target_id = self.find_ticket_id_by_title(title)
+            target_id = self.find_ticket_id_by_marker(item.corax_id)
+            if target_id is not None:
+                matched_by = "corax_id"
+        if target_id is None:
+            target_id = self.find_ticket_id_by_title(item.title or "")
+            if target_id is None:
+                target_id = self.find_ticket_id_by_title(title)
             if target_id is not None:
                 matched_by = "title"
 
@@ -1284,23 +1315,13 @@ class _Session:
                 # UPDATE недоступен / HTTP 500 сущности — создаём новую, не конфликтуем.
                 if not (_is_permission_error(exc) or "http 500" in str(exc).casefold() or "error_api" in str(exc).casefold()):
                     raise
-                created_id = self.create_ticket(
-                    replace(
-                        item,
-                        glpi_id=None,
-                        title=(
-                            title
-                            if f"CORAX#{item.corax_id}".casefold() in title.casefold()
-                            else f"{title} · CORAX#{item.corax_id}"[:255]
-                        ),
-                    )
-                )
+                created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
                 return GlpiPushResult(
                     corax_id=item.corax_id,
                     glpi_id=created_id,
                     action="created",
                     detail=(
-                        f"UPDATE GLPI #{target_id} недоступен, создана новая #{created_id}"
+                        f"UPDATE GLPI #{target_id} недоступен, старая связь, создана новая #{created_id}"
                     ),
                 )
 
@@ -2887,7 +2908,7 @@ def _rsql_can_filter(value: str) -> bool:
     """False — не слать в RSQL: кириллица ломает лексер GLPI, скобки = «незакрытых групп»."""
     if not value or not value.isascii():
         return False
-    if any(ch in value for ch in "(),;"):
+    if any(ch in value for ch in "(),;#"):
         return False
     return True
 

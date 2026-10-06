@@ -293,7 +293,7 @@ public partial class ShellWindow : Window
 
     static Border PersonCard(DirectoryPerson person)
     {
-        var mark = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(10), Margin = new Thickness(0, 0, 12, 0) };
+        var mark = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 12, 0) };
         mark.SetResourceReference(Border.BackgroundProperty, "PrimarySoft");
         var initials = new TextBlock { Text = person.Initials, FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = System.Windows.VerticalAlignment.Center };
         initials.SetResourceReference(TextBlock.ForegroundProperty, "Primary");

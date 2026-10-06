@@ -166,16 +166,13 @@ async def export_glpi_tickets(
     """
     bounded = max(1, min(int(limit), 2000))
     export_mode = (mode or "force_create").strip().lower()
-    if request_ids:
+    if request_ids and export_mode not in {"selected", "selected_update"}:
         export_mode = "selected"
 
-    force_create = export_mode in {"force_create", "test_one", "new_only"}
-    # selected + force: если пользователь выбрал конкретные — тоже CREATE (без конфликтов UPDATE).
-    if export_mode == "selected":
-        force_create = True
+    force_create = export_mode in {"force_create", "test_one", "new_only", "selected"}
 
     stmt = select(ServiceRequest)
-    if export_mode == "selected":
+    if export_mode in {"selected", "selected_update"}:
         ids = list(dict.fromkeys(int(item) for item in (request_ids or [])))[:bounded]
         if not ids:
             return GlpiSyncResult(message="Укажите id заявок CORAX для выборочной выгрузки")
@@ -205,6 +202,7 @@ async def export_glpi_tickets(
             "new_only": "Нет заявок без связи с GLPI (все уже с glpi_id)",
             "linked_only": "Нет заявок, уже связанных с GLPI",
             "selected": "По указанным id заявки не найдены",
+            "selected_update": "По указанным id заявки не найдены",
             "test_one": "В CORAX нет заявок для тестовой выгрузки",
             "force_create": "В CORAX нет заявок для выгрузки в GLPI",
         }.get(export_mode, "В CORAX нет заявок для выгрузки в GLPI")
@@ -222,7 +220,7 @@ async def export_glpi_tickets(
             requester=people[row.id]["requester"],
             assignee=people[row.id]["assignee"],
             category=(row.category or "").strip() or None,
-            force_create=force_create and export_mode != "linked_only",
+            force_create=force_create,
         )
         for row in rows
     ]
@@ -279,6 +277,7 @@ async def export_glpi_tickets(
         "new_only": "только новые",
         "linked_only": "только связанные",
         "selected": "выбранные (CREATE)",
+        "selected_update": "выбранные (UPDATE по CORAX#id)",
         "recent": "последние",
         "test_one": "тестовая одна (CREATE)",
         "force_create": "всегда CREATE",
