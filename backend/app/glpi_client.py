@@ -53,6 +53,8 @@ _BR_RE = re.compile(r"(?i)<\s*br\s*/?\s*>")
 _BLOCK_RE = re.compile(r"(?i)</\s*(p|div|li|tr|h[1-6])\s*>")
 _TAG_RE = re.compile(r"<[^>]+>")
 _HOST_RE = re.compile(r"^[a-zA-Z0-9.-]+(:\d+)?(/.*)?$")
+_PAREN_LOGIN_RE = re.compile(r"\(([^)]+)\)\s*$")
+_MARKER_SUFFIX_RE = re.compile(r"(?:\s*[·•\-–—]\s*)?corax#\d+\s*$", re.IGNORECASE)
 
 
 class GlpiClientError(Exception):
@@ -113,6 +115,8 @@ class GlpiOutbound:
     category: str | None = None
     # True — всегда CREATE новой заявки в GLPI (без UPDATE и без поиска по названию).
     force_create: bool = False
+    requester_hints: tuple[str, ...] = ()
+    assignee_hints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -144,6 +148,49 @@ def _title_with_marker(title: str, corax_id: int) -> str:
 
 def _title_has_marker(title: str | None, corax_id: int) -> bool:
     return _corax_marker(corax_id).casefold() in (title or "").casefold()
+
+
+def _content_marker(corax_id: int) -> str:
+    return f"[CORAX #{int(corax_id)}]"
+
+
+def _title_core(title: str | None) -> str:
+    text = " ".join((title or "").casefold().split())
+    return _MARKER_SUFFIX_RE.sub("", text).strip()
+
+
+def _titles_related(left: str | None, right: str | None) -> bool:
+    if _titles_match(left, right):
+        return True
+    a = _title_core(left)
+    b = _title_core(right)
+    return bool(a) and a == b
+
+
+def _user_lookup_names(*names: str | None) -> list[str]:
+    """ФИО, «ФИО (login)» и сырой login — отдельные попытки поиска в GLPI."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in names:
+        cleaned = " ".join((raw or "").split())
+        if not cleaned:
+            continue
+        pieces = [cleaned]
+        match = _PAREN_LOGIN_RE.search(cleaned)
+        if match:
+            login = match.group(1).strip()
+            rest = cleaned[: match.start()].strip()
+            if login:
+                pieces.append(login)
+            if rest:
+                pieces.append(rest)
+        for piece in pieces:
+            key = piece.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(piece)
+    return out
 
 
 def _is_permission_error(exc: Exception) -> bool:
@@ -920,7 +967,8 @@ class _Session:
     def update_ticket(self, item: GlpiOutbound) -> None:
         if item.glpi_id is None:
             raise GlpiClientError("Нет id заявки GLPI для обновления")
-        payload = self._ticket_payload(item, for_update=True)
+        current = self._read_ticket(item.glpi_id)
+        payload = self._ticket_payload(item, for_update=True, current=current)
         if self.mode == "legacy":
             self._request(
                 "PUT",
@@ -937,25 +985,61 @@ class _Session:
             )
         self._apply_ticket_meta(item.glpi_id, item)
 
-    def _ticket_payload(self, item: GlpiOutbound, *, for_update: bool) -> dict[str, Any]:
+    def _ticket_payload(
+        self,
+        item: GlpiOutbound,
+        *,
+        for_update: bool,
+        current: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         body = _outbound_body(item, for_update=for_update)
         category_id = self._resolve_category_id(item.category)
+        if category_id is None and for_update and current:
+            category_id = _field_id(current.get("category") or current.get("itilcategories_id"))
+        requester_id = self._resolve_user_id_any(item.requester, *item.requester_hints)
+        assignee_id = self._resolve_user_id_any(item.assignee, *item.assignee_hints)
         if self.mode == "legacy":
             if category_id is not None:
                 body["itilcategories_id"] = category_id
-            requester_id = self._resolve_user_id(item.requester)
             if requester_id is not None:
                 body["_users_id_requester"] = requester_id
-            assignee_id = self._resolve_user_id(item.assignee)
             if assignee_id is not None:
                 body["_users_id_assign"] = assignee_id
             return body
-        # HL: category nested; актёры — TeamMember после create/update.
+        # HL PATCH без category/team затирает их. На UPDATE шлём id, не {name: …}.
         if category_id is not None:
             body["category"] = {"id": category_id}
-        elif (item.category or "").strip():
+        elif (item.category or "").strip() and not for_update:
             body["category"] = {"name": (item.category or "").strip()[:255]}
+        if for_update:
+            if requester_id is not None:
+                body["requester"] = [{"id": requester_id, "type": "User"}]
+            if assignee_id is not None:
+                body["assigned"] = [{"id": assignee_id, "type": "User"}]
         return body
+
+    def _read_ticket(self, ticket_id: int) -> dict[str, Any] | None:
+        attempts: list[tuple[str, dict[str, str]]] = []
+        if self.mode != "legacy":
+            attempts.append((f"{self.base}/api.php/Assistance/Ticket/{ticket_id}", self._v2_headers()))
+        headers = self._legacy_headers() if self.mode == "legacy" else self._asset_headers()
+        attempts.append((f"{self.base}/apirest.php/Ticket/{ticket_id}", headers))
+        for url, hdrs in attempts:
+            try:
+                payload = self._parse(
+                    self._http.get(url, headers=hdrs),
+                    empty_on=(401, 403, 404),
+                )
+            except GlpiClientError:
+                continue
+            row: object = payload
+            if isinstance(payload, dict):
+                nested = payload.get("data") or payload.get("item")
+                if "id" not in payload and isinstance(nested, dict):
+                    row = nested
+            if isinstance(row, dict) and _as_int(row.get("id")) is not None:
+                return row
+        return None
 
     def _resolve_category_id(self, name: str | None) -> int | None:
         cleaned = (name or "").strip()
@@ -983,6 +1067,13 @@ class _Session:
         except GlpiClientError:
             return None
 
+    def _resolve_user_id_any(self, *names: str | None) -> int | None:
+        for candidate in _user_lookup_names(*names):
+            found = self._resolve_user_id(candidate)
+            if found is not None:
+                return found
+        return None
+
     def _resolve_user_id(self, name: str | None) -> int | None:
         cleaned = (name or "").strip()
         if not cleaned:
@@ -1003,16 +1094,55 @@ class _Session:
                     self._name_ids[cache_key] = found
                     return found
         rows = list(self._search_named("User", cleaned))
-        # HL filter name==login не находит ФИО — добираем список и матчим на клиенте.
-        if self.mode != "legacy" and not rows:
-            rows = self._hl_list_users()
         found = self._match_user_row(rows, needle)
+        if found is not None:
+            self._name_ids[cache_key] = found
+            return found
+        # HL filter name==login не находит ФИО — добираем список и матчим на клиенте.
+        if self.mode != "legacy":
+            found = self._match_user_row(self._hl_list_users(), needle)
+            if found is not None:
+                self._name_ids[cache_key] = found
+                return found
+        found = self._match_user_row(self._search_users_legacy(cleaned), needle)
         if found is not None:
             self._name_ids[cache_key] = found
             return found
         return None
 
-    def _hl_list_users(self, *, limit: int = 500) -> list[dict[str, Any]]:
+    def _search_users_legacy(self, name: str) -> list[dict[str, Any]]:
+        collected: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        headers = self._legacy_headers() if self.mode == "legacy" else self._asset_headers()
+        for param in (
+            {"searchText[name]": name},
+            {"searchText[realname]": name},
+            {"searchText": name},
+        ):
+            try:
+                payload = self._parse(
+                    self._http.get(
+                        f"{self.base}/apirest.php/User",
+                        params={**param, "range": "0-49"},
+                        headers={**headers, "Range": "items=0-49"},
+                    ),
+                    empty_on=(401, 403, 404),
+                )
+            except GlpiClientError:
+                continue
+            for row in _as_list(payload):
+                if not isinstance(row, dict):
+                    continue
+                uid = _as_int(row.get("id"))
+                if uid is None or uid in seen:
+                    continue
+                seen.add(uid)
+                collected.append(row)
+            if collected:
+                break
+        return collected
+
+    def _hl_list_users(self, *, limit: int = 2000) -> list[dict[str, Any]]:
         url = f"{self.base}/api.php/Administration/User"
         collected: list[dict[str, Any]] = []
         start = 0
@@ -1037,6 +1167,7 @@ class _Session:
                 _as_text(row.get("name")),
                 _as_text(row.get("realname")),
                 _as_text(row.get("firstname")),
+                _as_text(row.get("email")),
                 " ".join(
                     part
                     for part in (_as_text(row.get("firstname")), _as_text(row.get("realname")))
@@ -1062,6 +1193,7 @@ class _Session:
                         _as_text(row.get("name")),
                         _as_text(row.get("firstname")),
                         _as_text(row.get("realname")),
+                        _as_text(row.get("email")),
                     )
                     if part
                 ).casefold()
@@ -1077,6 +1209,7 @@ class _Session:
                         _as_text(row.get("name")),
                         _as_text(row.get("firstname")),
                         _as_text(row.get("realname")),
+                        _as_text(row.get("email")),
                     )
                     if part
                 ).casefold()
@@ -1090,38 +1223,56 @@ class _Session:
         """Инициатор / ответственный / категория — и для закрытых заявок тоже.
 
         Пустые значения из CORAX не затирают уже заполненные поля в GLPI.
+        Отдельный PATCH только категории в GLPI 11 сбрасывает команду — не делаем его.
         """
         category_id = self._resolve_category_id(item.category)
-        if category_id is not None:
-            try:
-                if self.mode == "legacy":
-                    self._request(
-                        "PUT",
-                        f"{self.base}/apirest.php/Ticket/{ticket_id}",
-                        headers=self._legacy_headers(),
-                        json={"input": {"itilcategories_id": category_id}},
-                    )
-                else:
-                    self._request(
-                        "PATCH",
-                        f"{self.base}/api.php/Assistance/Ticket/{ticket_id}",
-                        headers=self._v2_headers(),
-                        json={"category": {"id": category_id}},
-                    )
-            except GlpiClientError:
-                pass
-        requester_id = self._resolve_user_id(item.requester)
+        requester_id = self._resolve_user_id_any(item.requester, *item.requester_hints)
+        assignee_id = self._resolve_user_id_any(item.assignee, *item.assignee_hints)
+        if self.mode != "legacy":
+            self._legacy_put_ticket_fields(
+                ticket_id,
+                category_id=category_id,
+                requester_id=requester_id,
+                assignee_id=assignee_id,
+            )
         if requester_id is not None:
             self._ensure_ticket_actor(ticket_id, requester_id, actor_type=1)
-        assignee_id = self._resolve_user_id(item.assignee)
         if assignee_id is not None:
             self._ensure_ticket_actor(ticket_id, assignee_id, actor_type=2)
+
+    def _legacy_put_ticket_fields(
+        self,
+        ticket_id: int,
+        *,
+        category_id: int | None,
+        requester_id: int | None,
+        assignee_id: int | None,
+    ) -> None:
+        body: dict[str, Any] = {}
+        if category_id is not None:
+            body["itilcategories_id"] = category_id
+        if requester_id is not None:
+            body["_users_id_requester"] = requester_id
+        if assignee_id is not None:
+            body["_users_id_assign"] = assignee_id
+        if not body:
+            return
+        headers = self._legacy_headers() if self.mode == "legacy" else self._asset_headers()
+        try:
+            self._request(
+                "PUT",
+                f"{self.base}/apirest.php/Ticket/{ticket_id}",
+                headers=headers,
+                json={"input": body},
+            )
+        except GlpiClientError:
+            return
 
     def _ensure_ticket_actor(self, ticket_id: int, user_id: int, *, actor_type: int) -> None:
         """type 1 = инициатор (requester), 2 = ответственный (assign)."""
         if self.mode != "legacy":
-            self._ensure_ticket_actor_hl(ticket_id, user_id, actor_type=actor_type)
-            return
+            if self._ensure_ticket_actor_hl(ticket_id, user_id, actor_type=actor_type):
+                return
         try:
             rows = self._legacy_page(
                 f"{self.base}/apirest.php/Ticket/{ticket_id}/Ticket_User",
@@ -1142,7 +1293,7 @@ class _Session:
                     self._request(
                         "PUT",
                         f"{self.base}/apirest.php/Ticket_User/{link_id}",
-                        headers=self._legacy_headers(),
+                        headers=self._asset_headers(),
                         json={"input": {"users_id": user_id, "type": actor_type}},
                     )
                     return
@@ -1152,7 +1303,7 @@ class _Session:
             self._request(
                 "POST",
                 f"{self.base}/apirest.php/Ticket_User",
-                headers=self._legacy_headers(),
+                headers=self._asset_headers(),
                 json={
                     "input": {
                         "tickets_id": ticket_id,
@@ -1165,7 +1316,7 @@ class _Session:
         except GlpiClientError:
             return
 
-    def _ensure_ticket_actor_hl(self, ticket_id: int, user_id: int, *, actor_type: int) -> None:
+    def _ensure_ticket_actor_hl(self, ticket_id: int, user_id: int, *, actor_type: int) -> bool:
         """GLPI 11 HL: POST /Assistance/Ticket/{id}/TeamMember."""
         role_text = "requester" if actor_type == 1 else "assigned"
         rows = self._hl_all(f"{self.base}/api.php/Assistance/Ticket/{ticket_id}/TeamMember")
@@ -1184,7 +1335,7 @@ class _Session:
                 if nested is not None:
                     member_id = nested
             if member_id == user_id:
-                return
+                return True
         url = f"{self.base}/api.php/Assistance/Ticket/{ticket_id}/TeamMember"
         # Сначала текстовая роль (GLPI ≥ PR #21633), иначе числовая.
         for role in (role_text, actor_type):
@@ -1195,12 +1346,13 @@ class _Session:
                     headers=self._v2_headers(),
                     json={"type": "User", "id": user_id, "role": role},
                 )
-                return
+                return True
             except GlpiClientError:
                 continue
+        return False
 
     def find_ticket_id_by_title(self, title: str) -> int | None:
-        """Точное совпадение названия (без учёта регистра и лишних пробелов)."""
+        """Совпадение темы: точное или то же название без хвоста CORAX#id."""
         needle = " ".join((title or "").split())
         if not needle:
             return None
@@ -1208,24 +1360,71 @@ class _Session:
             if not isinstance(raw, dict):
                 continue
             name = _clip(raw.get("name") or raw.get("title"), 255)
-            if _titles_match(name, needle):
+            if _titles_related(name, needle):
                 found = _as_int(raw.get("id"))
                 if found is not None:
                     return found
         return None
 
     def find_ticket_id_by_marker(self, corax_id: int) -> int | None:
-        """Заявка GLPI, в названии которой уже есть хвост CORAX#15."""
+        """Старая или новая заявка GLPI: CORAX#id в теме или [CORAX #id] в тексте."""
         marker = _corax_marker(corax_id)
-        for raw in self._search_tickets_by_name(marker):
-            if not isinstance(raw, dict):
-                continue
-            name = _clip(raw.get("name") or raw.get("title"), 255)
-            if _title_has_marker(name, corax_id):
+        content_mark = _content_marker(corax_id)
+        seen: set[int] = set()
+        for needle in (marker, content_mark, f"CORAX #{int(corax_id)}"):
+            for raw in self._search_tickets_loose(needle):
+                if not isinstance(raw, dict):
+                    continue
                 found = _as_int(raw.get("id"))
-                if found is not None:
+                if found is None or found in seen:
+                    continue
+                seen.add(found)
+                name = _clip(raw.get("name") or raw.get("title"), 255) or ""
+                content = _as_text(raw.get("content")) or ""
+                if (
+                    _title_has_marker(name, corax_id)
+                    or content_mark in content
+                    or marker.casefold() in content.casefold()
+                ):
                     return found
         return None
+
+    def _search_tickets_loose(self, needle: str) -> list[object]:
+        merged: list[object] = []
+        seen: set[int] = set()
+        for rows in (self._search_tickets_by_name(needle), self._search_tickets_by_content(needle)):
+            for raw in rows:
+                if not isinstance(raw, dict):
+                    continue
+                found = _as_int(raw.get("id"))
+                if found is not None and found in seen:
+                    continue
+                if found is not None:
+                    seen.add(found)
+                merged.append(raw)
+        return merged
+
+    def _search_tickets_by_content(self, needle: str) -> list[object]:
+        return self._search_tickets_text("content", needle)
+
+    def _search_tickets_text(self, field: str, needle: str) -> list[object]:
+        cleaned = (needle or "").strip()[:255]
+        if not cleaned:
+            return []
+        headers = self._legacy_headers() if self.mode == "legacy" else self._asset_headers()
+        payload = self._parse(
+            self._http.get(
+                f"{self.base}/apirest.php/Ticket",
+                params={
+                    f"searchText[{field}]": cleaned,
+                    "range": "0-49",
+                    "expand_dropdowns": "true",
+                },
+                headers={**headers, "Range": "items=0-49"},
+            ),
+            empty_on=(401, 403, 404),
+        )
+        return _as_list(payload) if payload else []
 
     def _search_tickets_by_name(self, name: str) -> list[object]:
         cleaned = name[:255]
@@ -2145,7 +2344,7 @@ class _Session:
                         return rows
             except GlpiClientError:
                 pass
-        limit = 500 if itemtype == "User" else 200
+        limit = 2000 if itemtype == "User" else 200
         collected: list[dict[str, Any]] = []
         start = 0
         page_size = min(200, limit)

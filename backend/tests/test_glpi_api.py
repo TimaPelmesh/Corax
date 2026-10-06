@@ -464,6 +464,165 @@ def test_upsert_updates_ticket_found_by_corax_marker():
     assert "CORAX#15" in patched[0]
 
 
+def test_v2_update_keeps_category_requester_assignee():
+    patched: list[dict] = []
+    team: list[dict] = []
+    legacy_puts: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        method = request.method
+        if path.endswith("/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if method == "GET" and path.endswith("/Assistance/Ticket/88"):
+            return httpx.Response(
+                200,
+                json={"id": 88, "name": "Старая · CORAX#15", "category": {"id": 9, "name": "Сеть"}},
+            )
+        if "Dropdowns/ITILCategory" in path and method == "GET":
+            return httpx.Response(200, json=[{"id": 9, "name": "Сеть", "completename": "Сеть"}])
+        if path.endswith("/Administration/User") and method == "GET":
+            filt = request.url.params.get("filter") or ""
+            if filt:
+                return httpx.Response(200, json=[])
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": 3, "name": "ivan", "realname": "Иванов", "firstname": "Иван"},
+                    {"id": 4, "name": "petr", "realname": "Петров", "firstname": "Пётр"},
+                ],
+            )
+        if method == "PATCH" and path.endswith("/Assistance/Ticket/88"):
+            patched.append(json.loads(request.content.decode()))
+            return httpx.Response(200, json={"id": 88})
+        if method == "PUT" and path.endswith("/apirest.php/Ticket/88"):
+            legacy_puts.append(json.loads(request.content.decode()))
+            return httpx.Response(200, json={"id": 88})
+        if path.endswith("/Ticket/88/TeamMember") and method == "GET":
+            return httpx.Response(200, json=[])
+        if path.endswith("/Ticket/88/TeamMember") and method == "POST":
+            team.append(json.loads(request.content.decode()))
+            return httpx.Response(201, json={"id": 1})
+        return httpx.Response(404, json={"message": f"{method} {path}"})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=15,
+                glpi_id=88,
+                title="Старая",
+                content="обновлено",
+                status="in_progress",
+                priority="high",
+                requester="Иван Иванов",
+                assignee="Пётр Петров",
+                category="Сеть",
+                force_create=False,
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "updated", results[0].error
+    assert patched
+    assert patched[0]["category"] == {"id": 9}
+    assert patched[0]["requester"] == [{"id": 3, "type": "User"}]
+    assert patched[0]["assigned"] == [{"id": 4, "type": "User"}]
+    assert {"type": "User", "id": 3, "role": "requester"} in team
+    assert {"type": "User", "id": 4, "role": "assigned"} in team
+    assert legacy_puts
+    assert legacy_puts[0]["input"]["itilcategories_id"] == 9
+    assert legacy_puts[0]["input"]["_users_id_requester"] == 3
+    assert legacy_puts[0]["input"]["_users_id_assign"] == 4
+
+
+def test_upsert_updates_old_ticket_by_content_marker():
+    patched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        params = request.url.params
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if request.method == "GET" and path.endswith("/apirest.php/Ticket"):
+            content_q = params.get("searchText[content]") or ""
+            if "[CORAX #7]" in content_q or "CORAX#7" in content_q:
+                return httpx.Response(
+                    200,
+                    json=[{"id": 44, "name": "Старый принтер", "content": "замятие\n\n[CORAX #7]"}],
+                )
+            return httpx.Response(200, json=[])
+        if request.method == "GET" and "Assistance/Ticket" in path and request.method == "GET":
+            return httpx.Response(200, json=[])
+        if request.method == "PATCH" and path.endswith("/Assistance/Ticket/44"):
+            patched.append(request.content.decode())
+            return httpx.Response(200, json={"id": 44})
+        if request.method == "POST" and path.endswith("/Assistance/Ticket"):
+            return httpx.Response(500, json={"message": "must not create"})
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=7,
+                glpi_id=None,
+                title="Старый принтер",
+                content="замятие",
+                status="open",
+                priority="normal",
+                force_create=False,
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "updated", results[0].error
+    assert results[0].glpi_id == 44
+    assert patched
+
+
+def test_upsert_updates_old_ticket_by_exact_title():
+    patched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        params = request.url.params
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if request.method == "GET" and path.endswith("/apirest.php/Ticket"):
+            name_q = params.get("searchText[name]") or ""
+            if "Старый принтер" in name_q:
+                return httpx.Response(200, json=[{"id": 44, "name": "Старый принтер"}])
+            return httpx.Response(200, json=[])
+        if request.method == "GET" and "Assistance/Ticket" in path:
+            return httpx.Response(200, json=[])
+        if request.method == "PATCH" and path.endswith("/Assistance/Ticket/44"):
+            patched.append(request.content.decode())
+            return httpx.Response(200, json={"id": 44})
+        if request.method == "POST" and path.endswith("/Assistance/Ticket"):
+            return httpx.Response(500, json={"message": "must not create"})
+        return httpx.Response(404, json={"message": f"{request.method} {path}"})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=7,
+                glpi_id=None,
+                title="Старый принтер",
+                content="замятие",
+                status="open",
+                priority="normal",
+                force_create=False,
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "updated", results[0].error
+    assert results[0].glpi_id == 44
+    assert patched
+
+
 def test_outbound_body_maps_corax_statuses_for_glpi():
     from app.glpi_client import GlpiOutbound, _outbound_body, glpi_priority_id, glpi_status_id
 

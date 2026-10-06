@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,13 +89,32 @@ def _display_user(user: User | None) -> str | None:
     return name or None
 
 
+def _user_hints(user: User | None) -> list[str]:
+    if user is None:
+        return []
+    keys: list[str] = []
+    for value in (user.username, user.full_name, user.email):
+        text = (value or "").strip()
+        if text and text not in keys:
+            keys.append(text)
+    label = _display_user(user)
+    if label and label not in keys:
+        keys.append(label)
+    return keys
+
+
 async def _ticket_people_map(
     db: AsyncSession,
     rows: list[ServiceRequest],
-) -> dict[int, dict[str, str | None]]:
+) -> dict[int, dict[str, Any]]:
     """Инициатор и первый ответственный для выгрузки в GLPI (в т.ч. закрытых)."""
-    out: dict[int, dict[str, str | None]] = {
-        row.id: {"requester": (row.requester_name or "").strip() or None, "assignee": None}
+    out: dict[int, dict[str, Any]] = {
+        row.id: {
+            "requester": (row.requester_name or "").strip() or None,
+            "assignee": None,
+            "requester_hints": [],
+            "assignee_hints": [],
+        }
         for row in rows
     }
     creator_ids = {row.created_by_id for row in rows if row.created_by_id}
@@ -102,9 +123,13 @@ async def _ticket_people_map(
         result = await db.execute(select(User).where(User.id.in_(creator_ids)))
         creators = {user.id: user for user in result.scalars().all()}
     for row in rows:
-        if out[row.id]["requester"]:
-            continue
-        out[row.id]["requester"] = _display_user(creators.get(row.created_by_id))
+        creator = creators.get(row.created_by_id)
+        hints = _user_hints(creator)
+        if not out[row.id]["requester"]:
+            out[row.id]["requester"] = _display_user(creator)
+        out[row.id]["requester_hints"] = [
+            item for item in hints if item != out[row.id]["requester"]
+        ]
 
     request_ids = [row.id for row in rows]
     if not request_ids:
@@ -116,13 +141,23 @@ async def _ticket_people_map(
         .order_by(service_request_assignees.c.request_id, User.id)
     )
     seen: set[int] = set()
+    extra: dict[int, list[str]] = {row.id: [] for row in rows}
     for request_id, user in assign_q.all():
         rid = int(request_id)
-        if rid in seen:
+        if rid not in out:
             continue
-        seen.add(rid)
-        if rid in out:
+        hints = _user_hints(user)
+        if rid not in seen:
+            seen.add(rid)
             out[rid]["assignee"] = _display_user(user)
+            out[rid]["assignee_hints"] = [item for item in hints if item != out[rid]["assignee"]]
+        else:
+            extra[rid].extend(item for item in hints if item not in extra[rid])
+    for rid, more in extra.items():
+        if more:
+            existing = list(out[rid]["assignee_hints"])
+            existing.extend(item for item in more if item not in existing)
+            out[rid]["assignee_hints"] = existing
     return out
 
 
@@ -221,6 +256,8 @@ async def export_glpi_tickets(
             assignee=people[row.id]["assignee"],
             category=(row.category or "").strip() or None,
             force_create=force_create,
+            requester_hints=tuple(people[row.id].get("requester_hints") or ()),
+            assignee_hints=tuple(people[row.id].get("assignee_hints") or ()),
         )
         for row in rows
     ]

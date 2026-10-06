@@ -121,16 +121,20 @@ export function GlpiApiPanel() {
     return value.startsWith('http://') || (value.length > 0 && !value.startsWith('https://'))
   }, [baseUrl])
 
-  const pickerRows = useMemo(() => {
+    const pickerRows = useMemo(() => {
     const q = pickerQuery.trim().toLowerCase()
     if (!q) return ticketPickRows
     return ticketPickRows.filter((row) => {
       const marker = `corax#${row.id}`
+      const assignees = (row.assignee_usernames || []).join(' ')
       return (
         String(row.id).includes(q) ||
         (row.glpi_id != null && String(row.glpi_id).includes(q)) ||
         row.title.toLowerCase().includes(q) ||
-        marker.includes(q)
+        marker.includes(q) ||
+        (row.requester_name || '').toLowerCase().includes(q) ||
+        (row.category || '').toLowerCase().includes(q) ||
+        assignees.toLowerCase().includes(q)
       )
     })
   }, [pickerQuery, ticketPickRows])
@@ -266,7 +270,7 @@ export function GlpiApiPanel() {
   async function loadTicketPicker() {
     setTicketPickLoading(true)
     try {
-      const result = await api.serviceRequests({ limit: Math.min(500, Math.max(1, Math.round(limit) || 50)) })
+      const result = await api.serviceRequestsAll()
       setTicketPickRows(result.items)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('settingsGlpi.syncFailed'))
@@ -927,6 +931,7 @@ export function GlpiApiPanel() {
         <TicketPickerDialog
           intent={pickerOpen}
           rows={pickerRows}
+          loadedCount={ticketPickRows.length}
           loading={ticketPickLoading}
           picked={ticketPicked}
           query={pickerQuery}
@@ -951,6 +956,7 @@ export function GlpiApiPanel() {
 function TicketPickerDialog({
   intent,
   rows,
+  loadedCount,
   loading,
   picked,
   query,
@@ -964,6 +970,7 @@ function TicketPickerDialog({
 }: {
   intent: PickerIntent
   rows: ServiceRequestRow[]
+  loadedCount: number
   loading: boolean
   picked: number[]
   query: string
@@ -1064,6 +1071,15 @@ function TicketPickerDialog({
                       <p className="mt-0.5 truncate text-sm text-[var(--color-fg)]" title={row.title}>
                         {row.title}
                       </p>
+                      <p className="mt-0.5 truncate text-[11px] text-[var(--color-fg-muted)]">
+                        {[
+                          row.category,
+                          row.requester_name,
+                          (row.assignee_usernames || []).join(', ') || null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || t('settingsGlpi.pickerNoMeta')}
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -1082,7 +1098,9 @@ function TicketPickerDialog({
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] px-4 py-3">
           <span className="text-[12px] text-[var(--color-fg-muted)]">
-            {t('settingsGlpi.pickerSelected', { n: picked.length })}
+            {t('settingsGlpi.pickerLoaded', { n: loadedCount })}
+            {query.trim() ? ` · ${t('settingsGlpi.pickerFiltered', { n: rows.length })}` : ''}
+            {` · ${t('settingsGlpi.pickerSelected', { n: picked.length })}`}
           </span>
           <button
             type="button"
