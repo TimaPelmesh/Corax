@@ -34,11 +34,25 @@ export function networkMapLiveWebSocketUrl(sceneId: number): string {
   return liveWebSocketUrl(`${API_PREFIX}/network/map-scenes/${sceneId}/live`)
 }
 
+export type WikiRagProgress = {
+  stage?: string
+  label?: string
+  query?: string
+  title?: string
+  url?: string
+  index?: number
+  total?: number
+  found?: number
+  pages?: number
+  titles?: string[]
+}
+
 async function streamWikiRagSse(
   path: string,
   body: object,
   callbacks: {
     onMeta?: (meta: WikiRagChatResponse['meta']) => void
+    onProgress?: (progress: WikiRagProgress) => void
     onDelta: (text: string) => void
     onDone: (response: WikiRagChatResponse) => void
   },
@@ -74,6 +88,7 @@ async function streamWikiRagSse(
         return
       }
       if (event === 'meta') callbacks.onMeta?.((data as { meta?: WikiRagChatResponse['meta'] }).meta ?? (data as WikiRagChatResponse['meta']))
+      if (event === 'progress') callbacks.onProgress?.(data as WikiRagProgress)
       if (event === 'delta' && typeof data.text === 'string') callbacks.onDelta(data.text)
       if (event === 'done') callbacks.onDone(data as WikiRagChatResponse)
       if (event === 'error') throw new Error(typeof data.error === 'string' ? data.error : 'Ошибка потока модели')
@@ -109,6 +124,7 @@ export function streamWikiRagChat(
   },
   callbacks: {
     onMeta?: (meta: WikiRagChatResponse['meta']) => void
+    onProgress?: (progress: WikiRagProgress) => void
     onDelta: (text: string) => void
     onDone: (response: WikiRagChatResponse) => void
   },
@@ -126,6 +142,7 @@ export function streamWikiRagResearch(
   },
   callbacks: {
     onMeta?: (meta: WikiRagChatResponse['meta']) => void
+    onProgress?: (progress: WikiRagProgress) => void
     onDelta: (text: string) => void
     onDone: (response: WikiRagChatResponse) => void
   },

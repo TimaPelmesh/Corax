@@ -1127,7 +1127,7 @@ class WikiRagResearchRequest(BaseModel):
     """Публичный поиск инструкций. Полей базы CORAX здесь нет."""
 
     message: str = Field(min_length=1, max_length=2000)
-    history: list[WikiRagChatMessage] = Field(default_factory=list, max_length=4)
+    history: list[WikiRagChatMessage] = Field(default_factory=list, max_length=8)
     lm_base_url: str | None = Field(default=None, max_length=512)
     lm_model: str | None = Field(default=None, max_length=256)
 

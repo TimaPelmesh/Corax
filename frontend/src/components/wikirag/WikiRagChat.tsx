@@ -14,7 +14,7 @@ import {
 } from '../../lib/wikiragChatStore'
 import { cleanAssistantText, streamDisplayText } from '../../lib/wikiragStreamDisplay'
 import { IconClose, IconFolder, IconMenu, IconSend } from '../icons'
-import { WikiRagMarkdown } from './WikiRagMarkdown'
+import { WikiRagStreamAnswer } from './WikiRagStreamAnswer'
 
 const EMPTY_ANSWER_MARKERS = new Set(['(пустой ответ)'])
 
@@ -25,15 +25,6 @@ function assistantRawText(t: WikiRagChatTurn): string {
     if (!fromParsed.includes('"answer"')) return fromParsed
   }
   return t.content
-}
-
-function StreamCaret() {
-  return (
-    <span
-      className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[2px] animate-pulse rounded-sm bg-[var(--color-primary)] align-text-bottom"
-      aria-hidden
-    />
-  )
 }
 
 function WikiRagSources({
@@ -434,10 +425,7 @@ export function WikiRagChat({
                           {t('wikirag.chat.thinking')}
                         </p>
                       ) : (
-                        <>
-                          {display ? <WikiRagMarkdown text={display} /> : null}
-                          {streamingThis ? <StreamCaret /> : null}
-                        </>
+                        <WikiRagStreamAnswer text={display} streaming={streamingThis} />
                       )}
                     </div>
                   )}

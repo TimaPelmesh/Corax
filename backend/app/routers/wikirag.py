@@ -97,7 +97,13 @@ from app.wikirag_options import (
     set_embed_model,
     set_lm_context_tokens,
 )
-from app.wikirag_research import build_research_messages, collect_public_pages, research_sources
+from app.wikirag_research import (
+    RESEARCH_EMPTY,
+    build_research_messages,
+    iterate_public_research,
+    research_parsed_answer,
+    research_sources,
+)
 from app.wikirag_tools import run_wikirag_tools
 from app.wikirag_lm import (
     build_messages,
@@ -1099,40 +1105,69 @@ async def wiki_rag_research_stream(
     q = body.message.strip()
     lm_base = _resolve_lm_base_url(body.lm_base_url)
     num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
-    history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])[-2:]
-    pages = await collect_public_pages(q)
-    messages = build_research_messages(q, pages, history)
-    sources = research_sources(pages)
-    meta: dict[str, Any] = {
-        "mode": "research",
-        "isolated": True,
-        "total_chars": messages_stats(messages)["total_chars"],
-        "documents": [],
-        "corax": {},
-        "sources": sources,
-        "pages": len(pages),
-        "lm_base_url": lm_base or settings.lm_studio_base_url,
-        "num_ctx": num_ctx,
-        "timings_ms": {"context": round((time.perf_counter() - started) * 1000)},
-    }
+    history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])[-6:]
 
     async def event_stream() -> AsyncIterator[str]:
         raw_parts: list[str] = []
         model: str | None = None
-        yield _sse("meta", meta)
+        pages: list[dict[str, str]] = []
+        sources: list[dict[str, Any]] = []
+        meta: dict[str, Any] = {
+            "mode": "research",
+            "isolated": True,
+            "total_chars": 0,
+            "documents": [],
+            "corax": {},
+            "sources": [],
+            "pages": 0,
+            "lm_base_url": lm_base or settings.lm_studio_base_url,
+            "num_ctx": num_ctx,
+            "timings_ms": {},
+        }
+        yield _sse(
+            "progress",
+            {"stage": "search", "label": "Ищет публичные источники…", "query": q[:120]},
+        )
         try:
+            async for kind, payload in iterate_public_research(q):
+                if kind == "progress":
+                    yield _sse("progress", payload)
+                elif kind == "pages":
+                    pages = payload or []
+            sources = research_sources(pages)
+            messages = build_research_messages(q, pages, history)
+            meta.update(
+                {
+                    "total_chars": messages_stats(messages)["total_chars"],
+                    "sources": sources,
+                    "pages": len(pages),
+                    "timings_ms": {"context": round((time.perf_counter() - started) * 1000)},
+                }
+            )
+            yield _sse("meta", meta)
+            yield _sse(
+                "progress",
+                {
+                    "stage": "generate",
+                    "label": "Готовит ответ по открытым страницам…",
+                    "pages": len(pages),
+                    "titles": [p.get("title") or p.get("url") or "" for p in pages[:6]],
+                },
+            )
             async for delta, used_model in lm_studio_chat_stream(
                 messages,
                 base_url=lm_base,
                 model=body.lm_model,
                 mode="rag",
-                response_mode="fast",
+                response_mode="detailed",
             ):
                 raw_parts.append(delta)
                 model = used_model or model
                 yield _sse("delta", {"text": delta})
             raw = "".join(raw_parts)
-            parsed = _attach_rag_sources(coerce_parsed(raw), sources)
+            parsed = _attach_rag_sources(research_parsed_answer(raw, pages), sources)
+            if not str(parsed.get("answer") or "").strip():
+                parsed["answer"] = RESEARCH_EMPTY
             meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
             yield _sse("done", {"raw": raw, "parsed": parsed, "model": model, "meta": meta})
         except Exception as e:
