@@ -41,6 +41,17 @@ class AssistHub:
     def _host_key(self, hostname: str) -> str:
         return (hostname or "").strip().lower()
 
+    def _aliases(self, hostname: str) -> set[str]:
+        key = self._host_key(hostname)
+        if not key:
+            return set()
+        names = {key, key.split(".", 1)[0]}
+        names.discard("")
+        return names
+
+    def hosts_match(self, left: str, right: str) -> bool:
+        return bool(self._aliases(left) & self._aliases(right))
+
     def _wake_for(self, host_key: str) -> asyncio.Event:
         ev = self._wake.get(host_key)
         if ev is None:
@@ -68,7 +79,7 @@ class AssistHub:
         async with self._lock:
             self._purge_locked(now)
             for sess in self._sessions.values():
-                if sess.hostname == key and sess.status in {"offered", "accepted", "live"}:
+                if self.hosts_match(sess.hostname, key) and sess.status in {"offered", "accepted", "live"}:
                     if sess.status == "live" or sess.status == "accepted":
                         raise RuntimeError("busy")
                     sess.status = "ended"
@@ -81,7 +92,8 @@ class AssistHub:
                 created=now,
             )
             self._sessions[sess.id] = sess
-            self._wake_for(key).set()
+            for alias in self._aliases(key):
+                self._wake_for(alias).set()
             return sess
 
     async def wait_offer(self, hostname: str, timeout: float = WAIT_OFFER_SEC) -> AssistSession | None:
@@ -94,7 +106,7 @@ class AssistHub:
             async with self._lock:
                 self._purge_locked(now)
                 for sess in self._sessions.values():
-                    if sess.hostname == key and sess.status == "offered":
+                    if sess.status == "offered" and self.hosts_match(sess.hostname, key):
                         return sess
                 remaining = deadline - now
                 if remaining <= 0:
@@ -115,7 +127,7 @@ class AssistHub:
         key = self._host_key(hostname)
         async with self._lock:
             sess = self._sessions.get(session_id)
-            if sess is None or sess.hostname != key:
+            if sess is None or not self.hosts_match(sess.hostname, key):
                 return None
             if sess.status not in {"offered", "accepted"}:
                 return None
@@ -160,7 +172,7 @@ class AssistHub:
         key = self._host_key(hostname)
         async with self._lock:
             sess = self._sessions.get(session_id)
-            if sess is None or sess.hostname != key:
+            if sess is None or not self.hosts_match(sess.hostname, key):
                 return []
             if sess.status not in {"accepted", "live"}:
                 return []

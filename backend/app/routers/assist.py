@@ -88,7 +88,7 @@ async def hangup_session_agent(
 ):
     await verify_agent_token(db, authorization, hostname)
     sess = await hub.get(session_id)
-    if sess is None or sess.hostname != hostname.strip().lower():
+    if sess is None or not hub.hosts_match(sess.hostname, hostname):
         raise HTTPException(status_code=404, detail="Сессия Assist не найдена")
     ended = await hub.end(session_id)
     return hub.public(ended) if ended else {"id": session_id, "status": "ended"}

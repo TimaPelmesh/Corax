@@ -38,6 +38,17 @@ async def test_offer_wait_answer_and_busy():
 
 
 @pytest.mark.asyncio
+async def test_short_hostname_matches_fqdn():
+    hub = AssistHub()
+    sess = await hub.create("pc-lab-01.office.lan", 1, "Анна")
+    pending = await hub.wait_offer("PC-LAB-01", timeout=0.2)
+    assert pending is not None
+    assert pending.id == sess.id
+    answered = await hub.answer(sess.id, "PC-LAB-01", True)
+    assert answered is not None
+
+
+@pytest.mark.asyncio
 async def test_idle_wait_times_out():
     hub = AssistHub()
     pending = await hub.wait_offer("nobody", timeout=0.15)

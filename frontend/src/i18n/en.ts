@@ -2154,9 +2154,10 @@ export const en: MessageTree = {
     rdpHint: 'Opens Remote Desktop on this PC for {host}. No agent needed.',
     rdpStarted: 'Opening Remote Desktop on this PC to {host}',
     assist: 'Corax Assist',
-    assistByName: 'Shared desktop on {host}. The employee sees you and must allow it.',
+    assistByName: 'Shared desktop on {host}. Needs the blue “Download EXE” agent, not the employee client.',
     assistWaiting: 'Waiting for consent on {host}…',
-    assistNoTray: 'The tray agent on {host} did not answer. It must be running on the employee PC.',
+    assistNoTray:
+      'The inventory tray on {host} did not answer. Use the blue “Download EXE” agent, not “Employee client”. Run it on that PC again.',
     assistEnd: 'End',
     assistFail: 'Could not start Assist',
     assistSoon: 'Shared desktop: the employee sees what the admin does',
@@ -3009,7 +3010,7 @@ export const en: MessageTree = {
     downloadExe: 'Download EXE',
     downloadClient: 'Employee client',
     downloadClientHint:
-      'Installer for Windows 10 and 11. After it starts, enter the server, port, and token on that PC.',
+      'Ticket window only. Assist and inventory come from the blue “Download EXE”, which puts the agent in the tray.',
     downloadClientBusy: 'Preparing the client…',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',

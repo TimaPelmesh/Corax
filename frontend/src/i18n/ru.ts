@@ -2152,9 +2152,10 @@ export const ru = {
     rdpHint: 'У вас откроется окно RDP для {host}. Агент не нужен.',
     rdpStarted: 'На этом компьютере открывается окно RDP к {host}',
     assist: 'Corax Assist',
-    assistByName: 'Общий стол на {host}. Сотрудник увидит работу и должен разрешить.',
+    assistByName: 'Общий стол на {host}. Нужен агент с синей «Скачать EXE», не клиент сотрудника.',
     assistWaiting: 'Ждём согласие на {host}…',
-    assistNoTray: 'Трей агента на {host} не ответил. Он должен быть запущен у сотрудника.',
+    assistNoTray:
+      'На {host} не ответил трей инвентаризации. Нужен EXE с синей кнопки «Скачать EXE», не «Клиент для сотрудников». Запустите его на том ПК ещё раз.',
     assistEnd: 'Завершить',
     assistFail: 'Не удалось начать Assist',
     assistSoon: 'Общий стол: сотрудник видит, что делает админ',
@@ -3007,7 +3008,7 @@ export const ru = {
     downloadExe: 'Скачать EXE',
     downloadClient: 'Клиент для сотрудников',
     downloadClientHint:
-      'Установщик для Windows 10 и 11. После запуска на компьютере введите сервер, порт и токен.',
+      'Окно заявок. Assist и инвентаризация — это синяя «Скачать EXE»: она ставит агент в трей.',
     downloadClientBusy: 'Готовим клиент…',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
