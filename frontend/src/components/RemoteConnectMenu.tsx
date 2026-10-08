@@ -35,9 +35,10 @@ export function RemoteConnectMenu({
   }, [open])
 
   if (!target) return null
+  const host = target
 
   function launchRdp() {
-    const result = downloadRdpFile(target)
+    const result = downloadRdpFile(host)
     setOpen(false)
     if (!result.ok) {
       toast.error(t('remoteConnect.invalidTarget'))
