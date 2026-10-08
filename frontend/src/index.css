@@ -23,9 +23,9 @@
   --space-2: 0.5rem;    /* 8px */
   --space-3: 0.75rem;   /* 12px */
   --space-4: 1rem;      /* 16px */
-  --radius-sm: 0.5rem;  /* 8px */
-  --radius-md: 0.75rem; /* 12px */
-  --radius-lg: 1rem;    /* 16px */
+  --radius-sm: 0.25rem;  /* 4px */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: 1rem;     /* 16px — cards / glass */
   --pad-panel: 1.25rem;
   --pad-panel-sm: 1rem;
   --color-fg: #111827;
@@ -595,8 +595,16 @@ body {
     background: color-mix(in srgb, var(--color-error-fg) 12%, var(--color-error-bg));
   }
 
+  .app-table-shell {
+    border-radius: var(--radius-md);
+  }
+
+  .app-card.app-table-shell {
+    border-radius: var(--radius-md);
+  }
+
   .app-table-head {
-    @apply border-b px-3 py-2.5 text-[13px] font-semibold;
+    @apply border-b px-3 text-[12px] font-semibold;
     border-color: var(--color-border);
     background: var(--color-surface-muted);
     color: var(--color-fg-muted);
@@ -618,7 +626,7 @@ body {
   }
 
   .app-table-cell {
-    padding: 0.625rem 1rem;
+    padding: 0.375rem 0.75rem;
     color: var(--color-fg);
   }
 
@@ -721,7 +729,21 @@ body {
 
   .app-table-row td,
   .app-table-row th {
-    padding: 0.625rem 0.75rem;
+    padding: 0.375rem 0.75rem;
+  }
+
+  /* Tailwind py-3 on cells otherwise beats these rules and keeps ~44px rows. */
+  .app-table thead th,
+  .app-table tbody td:not([colspan]),
+  thead.app-table-head th,
+  tr.app-table-head th,
+  .app-table-head th,
+  tr.app-table-row td,
+  tr.app-table-row th {
+    padding-top: 0.375rem !important;
+    padding-bottom: 0.375rem !important;
+    min-height: 2rem;
+    vertical-align: middle;
   }
 
   .app-table-row {

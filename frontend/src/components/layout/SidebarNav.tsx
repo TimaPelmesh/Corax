@@ -204,7 +204,9 @@ export function SidebarSectionList({
     <>
       {sections.map((section) => {
         const sectionTitle = t(section.titleKey)
-        const open = section.collapsible === false || openGroups[section.titleKey] !== false
+        const open =
+          section.collapsible === false ||
+          (openGroups[section.titleKey] ?? !section.defaultCollapsed)
         const sectionBadge = section.badgeKey ? navCounts?.[section.badgeKey as NavBadgeKey] : undefined
         if (section.flyout) {
           const flyoutOpen = openGroups[section.titleKey] === true

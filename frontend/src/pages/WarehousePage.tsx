@@ -650,7 +650,7 @@ export function WarehousePage() {
             return (
               <article
                 key={section.key}
-                className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+                className="app-table-shell overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]"
               >
                 <header className={`flex flex-wrap items-center gap-2 px-3 py-2.5 ${look.head}`}>
                   <span className="text-[15px] font-semibold text-[var(--color-fg)]">{section.label}</span>
@@ -665,7 +665,7 @@ export function WarehousePage() {
                   </span>
                 </header>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
+                  <table className="app-table min-w-full text-left text-sm">
                     <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                       <tr>
                         <th className="px-3 py-2">{t('warehouse.columns.name')}</th>
@@ -1015,8 +1015,8 @@ export function WarehousePage() {
                 {t('warehouse.historyEmpty')}
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-                <table className="min-w-full text-left text-sm">
+              <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
+                <table className="app-table min-w-full text-left text-sm">
                   <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                     <tr>
                       <th className="px-3 py-2.5">{t('warehouse.columns.updated')}</th>

@@ -508,10 +508,10 @@ export function ComputersPage() {
 
       <div
         key={`pcs-${pingFilter}-${debouncedHostSearch}-${filterTagIds.join(',')}-${sort.key}-${sort.dir}`}
-        className="app-card app-fade-swap flex min-h-0 flex-1 flex-col overflow-hidden p-0"
+        className="app-card app-table-shell app-fade-swap flex min-h-0 flex-1 flex-col overflow-hidden p-0"
       >
         <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
-        <table className="min-w-[720px] w-full max-sm:min-w-[28rem] text-left text-sm">
+        <table className="app-table min-w-[720px] w-full max-sm:min-w-[28rem] text-left text-sm">
           <thead className="app-table-head">
             <tr>
               <th className="app-table-sticky-col px-4 py-3">

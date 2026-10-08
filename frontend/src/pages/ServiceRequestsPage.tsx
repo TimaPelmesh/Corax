@@ -2243,11 +2243,11 @@ export function ServiceRequestsPage() {
                 ) : null}
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+              <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
                 <div>
-                  <table className="min-w-[980px] w-full max-sm:min-w-[36rem] border-collapse text-left text-sm">
-                    <thead className="bg-[var(--color-surface-muted)]">
-                      <tr className="border-b border-[var(--color-border)] text-[13px] font-semibold text-[var(--color-fg-muted)]">
+                  <table className="app-table min-w-[980px] w-full max-sm:min-w-[36rem] border-collapse text-left text-sm">
+                    <thead className="app-table-head">
+                      <tr>
                         <th
                           className="app-table-sticky-col cursor-pointer px-3 py-2.5"
                           onClick={() => setSortKey((prev) => (prev === 'id_asc' ? 'id_desc' : 'id_asc'))}
@@ -2276,7 +2276,7 @@ export function ServiceRequestsPage() {
                         <tr
                           key={row.id}
                           data-request-id={row.id}
-                          className="cursor-pointer border-b border-[var(--color-border)]/80 bg-[var(--color-surface)] align-top transition hover:bg-[var(--color-surface-muted)]"
+                          className="app-table-row cursor-pointer border-b border-[var(--color-border)]/80 bg-[var(--color-surface)] transition"
                           onClick={() => openRequestForEdit(row)}
                           role="button"
                           title={t('requests.database.table.editTitle')}
@@ -2827,12 +2827,12 @@ export function ServiceRequestsPage() {
               ) : null}
 
               {statsAssigneeDetail.length > 0 ? (
-                <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-7">
+                <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-7">
                   <div className="border-b border-[var(--color-border)] px-4 py-3">
                     <h3 className="text-sm font-semibold text-[var(--color-fg)]">{t('requests.stats.assigneeBoard')}</h3>
                   </div>
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
+                  <table className="app-table min-w-full text-left text-sm">
+                    <thead className="app-table-head">
                       <tr>
                         <th className="px-3 py-2.5">{t('requests.stats.assigneeName')}</th>
                         <th className="px-3 py-2.5 text-right">{t('requests.stats.assigneeTickets')}</th>
@@ -2865,7 +2865,7 @@ export function ServiceRequestsPage() {
                 </div>
               ) : null}
 
-              <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-12">
+              <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-12">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
                   <h3 className="text-sm font-semibold text-[var(--color-fg)]">{t('requests.stats.requestsForPeriod')}</h3>
                   <div className="flex flex-wrap items-center gap-2">
@@ -2890,8 +2890,8 @@ export function ServiceRequestsPage() {
                     {t('requests.stats.noRequestsForPeriod')}
                   </p>
                 ) : (
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
+                  <table className="app-table min-w-full text-left text-sm">
+                    <thead className="app-table-head">
                       <tr>
                         <th className="px-3 py-2.5">ID</th>
                         <th className="px-3 py-2.5">{t('requests.database.table.title')}</th>

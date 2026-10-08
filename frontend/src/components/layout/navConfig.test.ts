@@ -2,39 +2,47 @@ import { describe, expect, it } from 'vitest'
 import { buildNavSections, prefsNavItems } from './navConfig'
 
 describe('buildNavSections', () => {
-  it('hides the inventory heading and puts Settings last as a flyout', () => {
+  it('shows Inventory above tickets and keeps Settings last as a flyout', () => {
     const sections = buildNavSections({ is_superuser: true, role: 'admin' })
+    const keys = sections.map((s) => s.titleKey)
+    expect(keys).toEqual(['nav.overview', 'nav.inventory', 'nav.requests', 'nav.knowledge', 'nav.settings'])
     const inventory = sections.find((s) => s.titleKey === 'nav.inventory')
     const settings = sections[sections.length - 1]
-    expect(inventory?.hideTitle).toBe(true)
+    expect(inventory?.hideTitle).toBeFalsy()
     expect(settings?.titleKey).toBe('nav.settings')
     expect(settings?.flyout).toBe(true)
     expect(settings?.items[0]?.to).toBe('/settings/llm')
     expect(settings?.items.at(-1)?.to).toBe('/settings/https')
   })
 
-  it('puts the floor map and Zabbix with inventory, next to risks and the network map', () => {
+  it('keeps dashboard and risks unlabeled above the asset list', () => {
     const sections = buildNavSections({ is_superuser: true })
+    const overview = sections.find((s) => s.titleKey === 'nav.overview')
     const inventory = (sections.find((s) => s.titleKey === 'nav.inventory')?.items ?? []).map((i) => i.to)
+    expect(overview?.hideTitle).toBe(true)
+    expect((overview?.items ?? []).map((i) => i.to)).toEqual(['/', '/risks'])
     expect(inventory).toEqual([
-      '/',
-      '/risks',
-      '/knowledge-base/zabbix',
       '/computers',
       '/software',
       '/printers',
       '/network',
       '/network-map',
-      '/knowledge-base/sitemap',
       '/warehouse',
     ])
   })
 
-  it('keeps knowledge as WikiRAG, the guide, and notes', () => {
+  it('puts Wiki, notes, the floor map and Zabbix under knowledge, collapsed by default', () => {
     const sections = buildNavSections({ is_superuser: true })
     const kb = sections.find((s) => s.titleKey === 'nav.knowledge')
     const paths = (kb?.items ?? []).map((i) => i.to)
-    expect(paths).toEqual(['/knowledge-base/wikirag', '/knowledge-base/guide', '/knowledge-base/notes'])
+    expect(kb?.defaultCollapsed).toBe(true)
+    expect(paths).toEqual([
+      '/knowledge-base/wikirag',
+      '/knowledge-base/guide',
+      '/knowledge-base/notes',
+      '/knowledge-base/sitemap',
+      '/knowledge-base/zabbix',
+    ])
   })
 
   it('puts tickets as list, templates, and stats — create is a button, not a tab', () => {

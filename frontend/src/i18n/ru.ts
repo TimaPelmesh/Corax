@@ -44,6 +44,7 @@ export const ru = {
   },
   nav: {
     inventory: 'Инвентарь',
+    overview: 'Обзор',
     sidebarBlurb: 'Парк, заявки и база знаний',
     dashboard: 'Дашборд',
     risks: 'Центр рисков',

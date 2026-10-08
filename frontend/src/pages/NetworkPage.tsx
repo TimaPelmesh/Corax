@@ -421,8 +421,8 @@ export function NetworkPage() {
             ) : null}
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-            <table className="min-w-full text-left text-sm">
+          <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <table className="app-table min-w-full text-left text-sm">
               <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                 <tr>
                   {canEdit ? <th className="w-10 px-3 py-2.5" /> : null}

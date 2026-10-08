@@ -25,5 +25,7 @@ export type NavSectionDef = {
   flyout?: boolean
   /** Hide the section heading in the main sidebar. */
   hideTitle?: boolean
+  /** Collapsible groups default open unless this is set. */
+  defaultCollapsed?: boolean
   items: NavItemDef[]
 }

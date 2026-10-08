@@ -867,10 +867,10 @@ export function PrintersPage() {
 
       <div
         key={`printers-${filter}`}
-        className="app-card app-fade-swap overflow-hidden p-0 shadow-[0_4px_24px_-8px_rgb(15_23_42_/_0.12)]"
+        className="app-card app-table-shell app-fade-swap overflow-hidden p-0 shadow-[0_4px_24px_-8px_rgb(15_23_42_/_0.12)]"
       >
         <div className="-mx-0 overflow-x-auto overscroll-x-contain">
-          <table className="min-w-[720px] w-full max-sm:min-w-[32rem] text-left text-sm">
+          <table className="app-table min-w-[720px] w-full max-sm:min-w-[32rem] text-left text-sm">
             <thead className="app-table-head">
               <tr>
                 {canEdit ? (

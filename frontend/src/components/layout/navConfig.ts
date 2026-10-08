@@ -82,8 +82,8 @@ export function prefsNavItems(user: { is_superuser?: boolean; role?: string } | 
 export function buildNavSections(user: { is_superuser?: boolean; role?: string } | null): NavSectionDef[] {
   const sections: NavSectionDef[] = [
     {
-      titleKey: 'nav.inventory',
-      icon: IconPcs,
+      titleKey: 'nav.overview',
+      icon: IconDashboard,
       collapsible: false,
       hideTitle: true,
       items: [
@@ -94,12 +94,13 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           labelKey: 'nav.risks',
           keywords: ['risk', 'риски', 'security', 'безопасность', 'ai', 'ии'],
         },
-        {
-          to: '/knowledge-base/zabbix',
-          icon: IconZabbix,
-          labelKey: 'nav.zabbixData',
-          keywords: ['zabbix', 'мониторинг', 'алерты', 'problems', 'hosts'],
-        },
+      ],
+    },
+    {
+      titleKey: 'nav.inventory',
+      icon: IconPcs,
+      collapsible: false,
+      items: [
         {
           to: '/computers',
           icon: IconPcs,
@@ -134,13 +135,6 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           keywords: ['карта сети', 'topology', 'packet tracer', 'серверная', 'схема', 'lldp'],
         },
         {
-          to: '/knowledge-base/sitemap',
-          end: true,
-          icon: IconRoom,
-          labelKey: 'nav.sitemap',
-          keywords: ['карта знаний', 'sitemap', 'этаж', 'floor', 'здание', 'план'],
-        },
-        {
           to: '/warehouse',
           icon: IconWarehouse,
           labelKey: 'nav.warehouse',
@@ -170,6 +164,7 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
       titleKey: 'nav.knowledge',
       icon: IconBook,
       collapsible: true,
+      defaultCollapsed: true,
       items: [
         {
           to: '/knowledge-base/wikirag',
@@ -189,6 +184,19 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           labelKey: 'nav.notes',
           keywords: ['заметки', 'проекты', 'notes', 'plans', 'документы'],
           badgeKey: 'notes',
+        },
+        {
+          to: '/knowledge-base/sitemap',
+          end: true,
+          icon: IconRoom,
+          labelKey: 'nav.sitemap',
+          keywords: ['карта знаний', 'sitemap', 'этаж', 'floor', 'здание', 'план'],
+        },
+        {
+          to: '/knowledge-base/zabbix',
+          icon: IconZabbix,
+          labelKey: 'nav.zabbixData',
+          keywords: ['zabbix', 'мониторинг', 'алерты', 'problems', 'hosts'],
         },
       ],
     },

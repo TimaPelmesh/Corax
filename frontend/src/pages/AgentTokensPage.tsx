@@ -134,9 +134,9 @@ export function AgentTokensPage() {
           <TableSkeleton rows={6} cols={5} />
         </div>
       ) : (
-        <div className="app-card overflow-hidden p-0">
+        <div className="app-card app-table-shell overflow-hidden p-0">
           <div className="overflow-x-auto overscroll-x-contain">
-          <table className="min-w-full text-left text-sm">
+          <table className="app-table min-w-full text-left text-sm">
             <thead>
               <tr className="app-table-head">
                 <th className="px-4 py-3">{t('agentTokens.tableId')}</th>

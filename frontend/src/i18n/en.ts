@@ -46,6 +46,7 @@ export const en: MessageTree = {
   },
   nav: {
     inventory: 'Inventory',
+    overview: 'Overview',
     sidebarBlurb: 'Fleet, tickets, and knowledge',
     dashboard: 'Dashboard',
     risks: 'Risk center',

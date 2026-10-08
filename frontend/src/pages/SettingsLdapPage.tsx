@@ -432,14 +432,14 @@ export function SettingsLdapPage() {
         {loading ? <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p> : null}
       </form>
 
-      <div className="app-card w-full overflow-hidden p-0">
+      <div className="app-card app-table-shell w-full overflow-hidden p-0">
         <div className="border-b border-[var(--color-border)] px-5 py-3.5">
           <h2 className="text-sm font-semibold text-[var(--color-fg)]">
             {t('settingsLdap.ldapUsersTitle')}
           </h2>
         </div>
         <div className="overflow-x-auto overscroll-x-contain">
-          <table className="min-w-[560px] w-full text-left text-sm">
+          <table className="app-table min-w-[560px] w-full text-left text-sm">
             <thead className="app-table-head">
               <tr>
                 <th className="px-4 py-3">{t('settingsLdap.tableId')}</th>

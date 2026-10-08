@@ -237,8 +237,8 @@ export function SoftwarePage() {
       ) : null}
 
       <div key={`sw-${kind}`} className="grid min-h-0 flex-1 items-stretch gap-4 overflow-hidden lg:grid-cols-5">
-        <div className="min-h-0 overflow-auto overscroll-contain rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-3">
-          <table className="min-w-full text-left text-sm">
+        <div className="app-table-shell min-h-0 overflow-auto overscroll-contain rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-3">
+          <table className="app-table min-w-full text-left text-sm">
             <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
               <tr>
                 <th className="px-3 py-2.5">{nameColumnLabel}</th>

@@ -154,8 +154,8 @@ export function KnowledgeZabbixPage() {
           </div>
 
           {tab === 'problems' ? (
-            <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-              <table className="w-full min-w-[40rem] border-collapse text-left text-sm">
+            <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)]">
+              <table className="app-table w-full min-w-[40rem] border-collapse text-left text-sm">
                 <thead className="bg-[var(--color-bg-muted)] text-[13px] font-medium text-[var(--color-fg-subtle)]">
                   <tr>
                     <th className="px-3 py-2 font-semibold">{t('zabbixUi.colSeverity')}</th>
@@ -192,8 +192,8 @@ export function KnowledgeZabbixPage() {
               </table>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-[var(--color-border)]">
-              <table className="w-full min-w-[36rem] border-collapse text-left text-sm">
+            <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)]">
+              <table className="app-table w-full min-w-[36rem] border-collapse text-left text-sm">
                 <thead className="bg-[var(--color-bg-muted)] text-[13px] font-medium text-[var(--color-fg-subtle)]">
                   <tr>
                     <th className="px-3 py-2 font-semibold">{t('zabbixUi.colName')}</th>

@@ -525,7 +525,7 @@ export function UsersPage() {
             )}
           </div>
 
-          <div className="app-card mt-4 overflow-hidden p-0">
+          <div className="app-card app-table-shell mt-4 overflow-hidden p-0">
             <div className="border-b border-[var(--color-border)] px-4 py-3">
               <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
                 {t('users.coraxAccounts')}
@@ -533,7 +533,7 @@ export function UsersPage() {
               <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.coraxAccountsHint')}</p>
             </div>
             <div className="overflow-x-auto overscroll-x-contain">
-              <table className="min-w-[860px] w-full text-left text-sm">
+              <table className="app-table min-w-[860px] w-full text-left text-sm">
                 <thead className="app-table-head">
                   <tr>
                     <th className="app-table-sticky-col px-4 py-3">{t('users.username')}</th>
@@ -654,7 +654,7 @@ export function UsersPage() {
       ) : null}
 
       {section === 'directory' ? (
-        <div className="app-card overflow-hidden p-0">
+        <div className="app-card app-table-shell overflow-hidden p-0">
           <div className="border-b border-[var(--color-border)] px-4 py-3">
             <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('users.directoryTitle')}
@@ -662,7 +662,7 @@ export function UsersPage() {
             <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.directoryHint')}</p>
           </div>
           <div className="overflow-x-auto overscroll-x-contain">
-            <table className="min-w-[720px] w-full text-left text-sm">
+            <table className="app-table min-w-[720px] w-full text-left text-sm">
               <thead className="app-table-head">
                 <tr>
                   <th className="app-table-sticky-col px-4 py-3">{t('users.username')}</th>
