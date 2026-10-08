@@ -2,6 +2,7 @@
 
 #include "../resources/resource.h"
 #include "config.hpp"
+#include "install.hpp"
 #include "poll.hpp"
 #include "util.hpp"
 
@@ -112,6 +113,7 @@ void launch_tray_process(const std::string& install_dir) {
 
 int run_tray() {
   if (FindWindowW(kClass, nullptr)) return 0;
+  ensure_rdp_protocol();
   SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
   WNDCLASSW wc{};
   wc.lpfnWndProc = tray_wnd;

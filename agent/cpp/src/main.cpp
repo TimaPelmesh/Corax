@@ -34,6 +34,7 @@ struct RunOpts {
   bool poll = false;
   bool install = false;
   bool tray = false;
+  std::string rdp_spec;
   std::string dump_path;
 };
 
@@ -90,6 +91,8 @@ RunOpts parse_args(int argc, char** argv) {
     else if (a == "--poll") o.poll = true;
     else if (a == "--install") o.install = true;
     else if (a == "--tray") o.tray = true;
+    else if (a == "--rdp" && i + 1 < argc) o.rdp_spec = argv[++i] ? argv[i] : "";
+    else if (a.rfind("corax-rdp:", 0) == 0) o.rdp_spec = a;
     else if (a == "--dump" && i + 1 < argc) {
       o.dump_path = argv[++i] ? argv[i] : "corax-payload.json";
     }
@@ -193,6 +196,10 @@ int main(int argc, char** argv) {
   install_seh_translator();
 
   RunOpts opt = parse_args(argc, argv);
+  if (!opt.rdp_spec.empty()) {
+    ensure_rdp_protocol();
+    return launch_rdp_from_spec(opt.rdp_spec);
+  }
   AgentConfig cfg = load_agent_config();
 
   if (opt.tray) {

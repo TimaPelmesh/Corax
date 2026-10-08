@@ -41,45 +41,25 @@ export function rdpTargetFor(hostname?: string | null, ip?: string | null): stri
   return sanitizeRdpTarget(hostname || '') || sanitizeRdpTarget(ip || '')
 }
 
-/** Standard .rdp file: address only. Windows prompts for credentials. */
-export function buildRdpFile(target: string): string {
+export const RDP_PROTOCOL = 'corax-rdp'
+
+export function rdpLaunchUri(target: string): string | null {
   const host = sanitizeRdpTarget(target)
-  if (!host) throw new Error('invalid-rdp-target')
-  return [
-    'full address:s:' + host,
-    'prompt for credentials:i:1',
-    'authentication level:i:2',
-    'negotiate security layer:i:1',
-    'enablecredsspsupport:i:1',
-    'promptcredentialonce:i:0',
-    'redirectclipboard:i:1',
-    'redirectdrives:i:0',
-    'redirectprinters:i:0',
-    'redirectcomports:i:0',
-    'redirectsmartcards:i:0',
-    'displayconnectionbar:i:1',
-    'screen mode id:i:2',
-    '',
-  ].join('\r\n')
+  if (!host) return null
+  return `${RDP_PROTOCOL}:${host}`
 }
 
-export function rdpFileName(target: string): string {
-  const host = sanitizeRdpTarget(target) || 'pc'
-  return `corax-${host.replace(/[^A-Za-z0-9._-]/g, '_')}.rdp`
-}
-
-export function downloadRdpFile(target: string): { ok: true; target: string } | { ok: false } {
+/** Opens the Windows Remote Desktop window with the PC name filled in. Does not ping. */
+export function launchRdpSession(target: string): { ok: true; target: string } | { ok: false } {
+  const uri = rdpLaunchUri(target)
   const host = sanitizeRdpTarget(target)
-  if (!host) return { ok: false }
-  const blob = new Blob([buildRdpFile(host)], { type: 'application/x-rdp' })
-  const url = URL.createObjectURL(blob)
+  if (!uri || !host) return { ok: false }
   const a = document.createElement('a')
-  a.href = url
-  a.download = rdpFileName(host)
+  a.href = uri
   a.rel = 'noopener'
+  a.style.display = 'none'
   document.body.appendChild(a)
   a.click()
   a.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 2000)
   return { ok: true, target: host }
 }

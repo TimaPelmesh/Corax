@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace Corax.Client;
@@ -30,6 +31,62 @@ public static class MachineInstall
         Directory.CreateDirectory(startMenu);
         CreateShortcut(Path.Combine(startMenu, "Corax.lnk"), dest);
         SetAutostart(autostart, dest);
+        EnsureRdpProtocol(dest);
+    }
+
+    public static void EnsureRdpProtocol(string? exe = null)
+    {
+        var target = exe ?? Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(target)) return;
+        using var key = Registry.CurrentUser.CreateSubKey(@"Software\Classes\corax-rdp");
+        key?.SetValue("", "URL:CORAX Remote Desktop");
+        key?.SetValue("URL Protocol", "");
+        using var cmd = Registry.CurrentUser.CreateSubKey(@"Software\Classes\corax-rdp\shell\open\command");
+        cmd?.SetValue("", $"\"{target}\" --rdp \"%1\"");
+    }
+
+    public static bool TryLaunchRdp(string[] args)
+    {
+        string? spec = null;
+        for (var i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+            if (a.Equals("--rdp", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                spec = args[++i];
+                break;
+            }
+            if (a.StartsWith("corax-rdp:", StringComparison.OrdinalIgnoreCase))
+            {
+                spec = a;
+                break;
+            }
+        }
+        if (spec == null) return false;
+        var host = RdpHostFromSpec(spec);
+        if (host == null) return true;
+        Process.Start(new ProcessStartInfo("mstsc.exe", "/v:" + host) { UseShellExecute = true });
+        return true;
+    }
+
+    static string? RdpHostFromSpec(string spec)
+    {
+        var value = spec.Trim().Trim('"');
+        const string prefix = "corax-rdp:";
+        if (value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            value = Uri.UnescapeDataString(value[prefix.Length..]);
+        value = value.Trim().Trim('/');
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 255) return null;
+        if (value.Contains("..", StringComparison.Ordinal) || Regex.IsMatch(value, @"[\s\\/""'`;|$&<>]"))
+            return null;
+        if (Regex.IsMatch(value, @"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$"))
+        {
+            var parts = value.Split('.').Select(int.Parse).ToArray();
+            if (parts[0] is <= 0 or 127 or >= 224) return null;
+            if (parts.Any(n => n is < 0 or > 255)) return null;
+            return string.Join('.', parts);
+        }
+        return Regex.IsMatch(value, @"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,253}[A-Za-z0-9])?$") ? value : null;
     }
 
     public static void SetAutostart(bool enabled, string? exe = null)

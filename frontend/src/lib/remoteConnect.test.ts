@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRdpFile, rdpFileName, rdpTargetFor, sanitizeRdpTarget } from './remoteConnect'
+import { rdpLaunchUri, rdpTargetFor, sanitizeRdpTarget } from './remoteConnect'
 
 describe('remoteConnect', () => {
   it('accepts a PC name and a LAN IP', () => {
@@ -19,12 +19,8 @@ describe('remoteConnect', () => {
     expect(sanitizeRdpTarget('user:pass@pc')).toBeNull()
   })
 
-  it('builds an rdp file without credentials', () => {
-    const body = buildRdpFile('PC-LAB-01')
-    expect(body).toContain('full address:s:PC-LAB-01')
-    expect(body).toContain('prompt for credentials:i:1')
-    expect(body.toLowerCase()).not.toContain('password')
-    expect(body.toLowerCase()).not.toContain('username')
-    expect(rdpFileName('PC-LAB-01')).toBe('corax-PC-LAB-01.rdp')
+  it('builds a protocol URI for mstsc, not a file', () => {
+    expect(rdpLaunchUri('PC-LAB-01')).toBe('corax-rdp:PC-LAB-01')
+    expect(rdpLaunchUri('pc; calc')).toBeNull()
   })
 })

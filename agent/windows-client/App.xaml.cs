@@ -28,6 +28,12 @@ public partial class App : System.Windows.Application
 
     void Start(StartupEventArgs e)
     {
+        MachineInstall.EnsureRdpProtocol();
+        if (MachineInstall.TryLaunchRdp(e.Args))
+        {
+            Shutdown();
+            return;
+        }
         var settings = ClientSettings.Load();
         ApplyTheme(settings.Dark);
         var forceApp = e.Args.Any(a => a.Equals("--app", StringComparison.OrdinalIgnoreCase));

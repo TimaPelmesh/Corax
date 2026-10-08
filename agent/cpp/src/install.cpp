@@ -2,7 +2,10 @@
 #include "util.hpp"
 
 #include <windows.h>
+#include <shellapi.h>
 
+#include <cctype>
+#include <cstdio>
 #include <string>
 
 namespace {
@@ -129,7 +132,99 @@ bool ensure_dir(const std::wstring& path) {
   return GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
+std::string percent_decode(const std::string& raw) {
+  std::string out;
+  for (size_t i = 0; i < raw.size(); ++i) {
+    if (raw[i] == '%' && i + 2 < raw.size() && std::isxdigit(static_cast<unsigned char>(raw[i + 1])) &&
+        std::isxdigit(static_cast<unsigned char>(raw[i + 2]))) {
+      auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return 0;
+      };
+      out.push_back(static_cast<char>((hex(raw[i + 1]) << 4) | hex(raw[i + 2])));
+      i += 2;
+    } else {
+      out.push_back(raw[i]);
+    }
+  }
+  return out;
+}
+
+bool valid_rdp_host(const std::string& value) {
+  if (value.empty() || value.size() > 255) return false;
+  if (value.find("..") != std::string::npos) return false;
+  for (unsigned char c : value) {
+    if (c == ' ' || c == '\\' || c == '/' || c == '"' || c == '\'' || c == '`' || c == ';' || c == '|' ||
+        c == '$' || c == '&' || c == '<' || c == '>') {
+      return false;
+    }
+  }
+  int o1 = 0, o2 = 0, o3 = 0, o4 = 0;
+  char extra = 0;
+  if (sscanf_s(value.c_str(), "%d.%d.%d.%d%c", &o1, &o2, &o3, &o4, &extra, 1) == 4) {
+    if (o1 <= 0 || o1 == 127 || o1 >= 224) return false;
+    return o1 <= 255 && o2 >= 0 && o2 <= 255 && o3 >= 0 && o3 <= 255 && o4 >= 0 && o4 <= 255;
+  }
+  if (!std::isalnum(static_cast<unsigned char>(value.front())) ||
+      !std::isalnum(static_cast<unsigned char>(value.back()))) {
+    return false;
+  }
+  for (unsigned char c : value) {
+    if (!std::isalnum(c) && c != '.' && c != '_' && c != '-') return false;
+  }
+  return true;
+}
+
+std::string rdp_host_from_spec(std::string spec) {
+  spec = util::trim(spec);
+  if (spec.size() >= 2 && spec.front() == '"' && spec.back() == '"') spec = spec.substr(1, spec.size() - 2);
+  if (spec.size() >= 10 && util::to_lower(spec.substr(0, 10)) == "corax-rdp:") spec = spec.substr(10);
+  while (!spec.empty() && spec.front() == '/') spec.erase(spec.begin());
+  if (!spec.empty() && spec.back() == '/') spec.pop_back();
+  spec = percent_decode(spec);
+  return valid_rdp_host(spec) ? spec : "";
+}
+
+void register_rdp_protocol_key(HKEY root, const std::wstring& dest_exe, REGSAM extra) {
+  HKEY key = nullptr;
+  if (RegCreateKeyExW(root, L"Software\\Classes\\corax-rdp", 0, nullptr, 0, KEY_SET_VALUE | extra, nullptr, &key,
+                      nullptr) != ERROR_SUCCESS) {
+    return;
+  }
+  const wchar_t* desc = L"URL:CORAX Remote Desktop";
+  RegSetValueExW(key, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(desc),
+                 static_cast<DWORD>((wcslen(desc) + 1) * sizeof(wchar_t)));
+  const wchar_t empty[] = L"";
+  RegSetValueExW(key, L"URL Protocol", 0, REG_SZ, reinterpret_cast<const BYTE*>(empty), sizeof(wchar_t));
+  RegCloseKey(key);
+  key = nullptr;
+  if (RegCreateKeyExW(root, L"Software\\Classes\\corax-rdp\\shell\\open\\command", 0, nullptr, 0, KEY_SET_VALUE | extra,
+                      nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    return;
+  }
+  std::wstring cmd = L"\"" + dest_exe + L"\" --rdp \"%1\"";
+  RegSetValueExW(key, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(cmd.c_str()),
+                 static_cast<DWORD>((cmd.size() + 1) * sizeof(wchar_t)));
+  RegCloseKey(key);
+}
+
 }  // namespace
+
+void ensure_rdp_protocol() {
+  std::wstring self = exe_path_w();
+  if (self.empty()) return;
+  register_rdp_protocol_key(HKEY_CURRENT_USER, self, 0);
+}
+
+int launch_rdp_from_spec(const std::string& spec) {
+  const std::string host = rdp_host_from_spec(spec);
+  if (host.empty()) return 1;
+  std::wstring args = L"/v:" + util::widen(host);
+  HINSTANCE n = ShellExecuteW(nullptr, L"open", L"mstsc.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+  return reinterpret_cast<INT_PTR>(n) > 32 ? 0 : 1;
+}
 
 std::string generation_path_for(const std::string& dir) { return dir + "\\agent.seen"; }
 
@@ -183,6 +278,7 @@ InstallResult install_agent() {
 
   // Current user always gets a logon start, even without administrator rights.
   register_run_key(HKEY_CURRENT_USER, dest_exe, 0);
+  register_rdp_protocol_key(HKEY_CURRENT_USER, dest_exe, 0);
 
   if (util::is_elevated()) {
     register_task(L"CORAX Agent", L"corax-poll-task.xml", task_xml(dest_exe, L"--poll --silent", false, true));

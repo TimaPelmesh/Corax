@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useT } from '../i18n/LocaleContext'
-import { downloadRdpFile, sanitizeRdpTarget } from '../lib/remoteConnect'
+import { launchRdpSession, sanitizeRdpTarget } from '../lib/remoteConnect'
 import { useToast } from '../ToastContext'
 
 type MenuPos = { top: number; left: number; width: number }
@@ -69,7 +69,7 @@ export function RemoteConnectMenu({
   if (!hasTarget) return null
 
   function launchRdp(target: string) {
-    const result = downloadRdpFile(target)
+    const result = launchRdpSession(target)
     setOpen(false)
     if (!result.ok) {
       toast.error(t('remoteConnect.invalidTarget'))
