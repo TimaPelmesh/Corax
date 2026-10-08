@@ -5,7 +5,7 @@ describe('buildNavSections', () => {
   it('hides the Inventory heading and keeps Settings last as a flyout', () => {
     const sections = buildNavSections({ is_superuser: true, role: 'admin' })
     const keys = sections.map((s) => s.titleKey)
-    expect(keys).toEqual(['nav.overview', 'nav.inventory', 'nav.requests', 'nav.knowledge', 'nav.settings'])
+    expect(keys).toEqual(['nav.inventory', 'nav.requests', 'nav.knowledge', 'nav.settings'])
     const inventory = sections.find((s) => s.titleKey === 'nav.inventory')
     const settings = sections[sections.length - 1]
     expect(inventory?.hideTitle).toBe(true)
@@ -15,13 +15,12 @@ describe('buildNavSections', () => {
     expect(settings?.items.at(-1)?.to).toBe('/settings/https')
   })
 
-  it('keeps dashboard and risks unlabeled above the asset list', () => {
+  it('keeps dashboard, risks and assets in one unlabeled list so there is no gap', () => {
     const sections = buildNavSections({ is_superuser: true })
-    const overview = sections.find((s) => s.titleKey === 'nav.overview')
     const inventory = (sections.find((s) => s.titleKey === 'nav.inventory')?.items ?? []).map((i) => i.to)
-    expect(overview?.hideTitle).toBe(true)
-    expect((overview?.items ?? []).map((i) => i.to)).toEqual(['/', '/risks'])
     expect(inventory).toEqual([
+      '/',
+      '/risks',
       '/computers',
       '/software',
       '/printers',

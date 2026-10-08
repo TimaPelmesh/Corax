@@ -82,8 +82,8 @@ export function prefsNavItems(user: { is_superuser?: boolean; role?: string } | 
 export function buildNavSections(user: { is_superuser?: boolean; role?: string } | null): NavSectionDef[] {
   const sections: NavSectionDef[] = [
     {
-      titleKey: 'nav.overview',
-      icon: IconDashboard,
+      titleKey: 'nav.inventory',
+      icon: IconPcs,
       collapsible: false,
       hideTitle: true,
       items: [
@@ -94,14 +94,6 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           labelKey: 'nav.risks',
           keywords: ['risk', 'риски', 'security', 'безопасность', 'ai', 'ии'],
         },
-      ],
-    },
-    {
-      titleKey: 'nav.inventory',
-      icon: IconPcs,
-      collapsible: false,
-      hideTitle: true,
-      items: [
         {
           to: '/computers',
           icon: IconPcs,
