@@ -75,51 +75,49 @@ public partial class App : System.Windows.Application
 
         if (dark)
         {
-            Paint("Bg", "#070B12");
-            Paint("Surface", "#0A0A0A");
-            Paint("SurfaceMuted", "#141414");
-            Paint("Fg", "#F4F4F5");
-            Paint("Muted", "#A1A1AA");
-            Paint("Border", "#1C1C1C");
+            Paint("Bg", "#202020");
+            Paint("Pane", "#CC202020");
+            Paint("Surface", "#E62C2C2C");
+            Paint("SurfaceMuted", "#14FFFFFF");
+            Paint("Fg", "#F3F3F3");
+            Paint("Muted", "#C5C5C5");
+            Paint("Border", "#15FFFFFF");
             Paint("Primary", "#60A5FA");
-            Paint("PrimarySoft", "#243044");
+            Paint("PrimarySoft", "#332563EB");
             Paint("OnPrimary", "#0A0A0A");
             Paint("Danger", "#FECACA");
             Paint("DangerBg", "#3F1D1D");
-            Paint("GlowA", "#1A2563EB");
-            Paint("GlowB", "#0D38BDF8");
-            Paint("FgSubtle", "#A1A1AA");
-            Paint("BorderStrong", "#2A2A2A");
+            Paint("FgSubtle", "#9A9A9A");
+            Paint("BorderStrong", "#28FFFFFF");
             Paint("PrimaryHover", "#93C5FD");
+            Paint("InfoBg", "#332563EB");
+            Paint("InfoFg", "#BFDBFE");
+            Paint("CaptionHover", "#18FFFFFF");
+            Paint("CaptionCloseBg", "#C42B1C");
         }
         else
         {
-            Paint("Bg", "#F3F6FB");
-            Paint("Surface", "#FFFFFF");
-            Paint("SurfaceMuted", "#F4F6F9");
-            Paint("Fg", "#111827");
-            Paint("Muted", "#4B5563");
-            Paint("Border", "#E8EBF0");
+            Paint("Bg", "#F3F3F3");
+            Paint("Pane", "#B3FFFFFF");
+            Paint("Surface", "#E6FFFFFF");
+            Paint("SurfaceMuted", "#0A000000");
+            Paint("Fg", "#1A1A1A");
+            Paint("Muted", "#5C5C5C");
+            Paint("Border", "#0F000000");
             Paint("Primary", "#2563EB");
             Paint("PrimarySoft", "#EFF6FF");
             Paint("OnPrimary", "#FFFFFF");
             Paint("Danger", "#991B1B");
             Paint("DangerBg", "#FEF2F2");
-            Paint("GlowA", "#102563EB");
-            Paint("GlowB", "#0A38BDF8");
-            Paint("FgSubtle", "#6B7280");
-            Paint("BorderStrong", "#D5DAE3");
+            Paint("FgSubtle", "#6B6B6B");
+            Paint("BorderStrong", "#1A000000");
             Paint("PrimaryHover", "#1D4ED8");
+            Paint("InfoBg", "#EFF6FF");
+            Paint("InfoFg", "#1E40AF");
+            Paint("CaptionHover", "#0F000000");
+            Paint("CaptionCloseBg", "#C42B1C");
         }
 
-        var shadow = Current.Resources["CardShadow"] as Media.Effects.DropShadowEffect;
-        var fresh = shadow == null || shadow.IsFrozen;
-        if (fresh) shadow = new Media.Effects.DropShadowEffect();
-        shadow!.Color = (Media.Color)Media.ColorConverter.ConvertFromString(dark ? "#000000" : "#2563EB");
-        shadow.BlurRadius = dark ? 16 : 18;
-        shadow.ShadowDepth = dark ? 0 : 6;
-        shadow.Direction = 270;
-        shadow.Opacity = dark ? 0 : 0.07;
-        if (fresh) Current.Resources["CardShadow"] = shadow;
+        WindowBackdrop.RefreshOpenWindows();
     }
 }

@@ -1,22 +1,27 @@
 <Window x:Class="Corax.Client.ShellWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chrome="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Corax"
-        Width="1040" Height="700"
-        MinWidth="860" MinHeight="560"
+        Width="980" Height="640"
+        MinWidth="800" MinHeight="520"
         WindowStyle="None"
-        AllowsTransparency="True"
+        ResizeMode="CanResize"
         Background="Transparent"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+  <chrome:WindowChrome.WindowChrome>
+    <chrome:WindowChrome CaptionHeight="40"
+                         ResizeBorderThickness="6"
+                         GlassFrameThickness="-1"
+                         CornerRadius="0"
+                         UseAeroCaptionButtons="False"/>
+  </chrome:WindowChrome.WindowChrome>
   <Window.Resources>
-    <!--
-      Selection reads as a 2px accent bar plus full-strength text, not a filled
-      pill: quieter in the sidebar and it keeps hover and selected visually
-      distinct. Weight stays constant so the label never reflows on click.
-    -->
     <Style x:Key="NavButton" TargetType="RadioButton">
       <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
-      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontSize" Value="13"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
       <Setter Property="Margin" Value="0,1"/>
@@ -24,16 +29,8 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="RadioButton">
-            <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="8" SnapsToDevicePixels="True">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="2"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border x:Name="Marker" Grid.Column="0" Background="Transparent" CornerRadius="1" Margin="0,8"/>
-                <ContentPresenter Grid.Column="1" Margin="12,8,10,8" VerticalAlignment="Center"/>
-              </Grid>
+            <Border x:Name="Row" Background="Transparent" CornerRadius="6" Padding="10,7" SnapsToDevicePixels="True">
+              <ContentPresenter VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
@@ -42,169 +39,187 @@
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="Row" Property="Background" Value="{DynamicResource SurfaceMuted}"/>
-                <Setter TargetName="Marker" Property="Background" Value="{DynamicResource Primary}"/>
                 <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
-              </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Primary}"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
-
     <Style x:Key="SectionTitle" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontSize" Value="12"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+      <Setter Property="Foreground" Value="{DynamicResource FgSubtle}"/>
     </Style>
   </Window.Resources>
-  <Border x:Name="Root" CornerRadius="14" Background="{DynamicResource Bg}" BorderBrush="{DynamicResource Border}" BorderThickness="1" ClipToBounds="True">
-    <Grid>
-      <Canvas IsHitTestVisible="False">
-        <Ellipse x:Name="OrbA" Width="420" Height="420" Canvas.Left="-100" Canvas.Top="-140" Fill="{DynamicResource GlowA}"/>
-        <Ellipse x:Name="OrbB" Width="320" Height="320" Canvas.Left="740" Canvas.Top="-60" Fill="{DynamicResource GlowB}"/>
-      </Canvas>
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="208"/>
-          <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <Border Grid.Column="0" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0" Padding="12,16">
-          <DockPanel>
-            <!-- Brand text sits at the same inset as nav labels: 2px marker + 12px content margin + 1px border. -->
-            <StackPanel DockPanel.Dock="Top" MouseLeftButtonDown="Drag">
-              <TextBlock Text="Corax" Margin="15,0,0,0" FontFamily="Segoe UI Variable Display, Segoe UI"
-                         FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Fg}"/>
-              <Border Height="1" Margin="0,14,0,14" Background="{DynamicResource Border}"/>
-            </StackPanel>
-            <StackPanel DockPanel.Dock="Bottom" Margin="15,12,0,0">
-              <TextBlock x:Name="HostLabel" Foreground="{DynamicResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
-            <StackPanel>
-              <RadioButton x:Name="NavHome" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Заявки" IsChecked="True" Checked="Nav_Checked"/>
-              <StackPanel x:Name="ExtraNav"/>
-              <RadioButton x:Name="NavBook" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Справочник" Checked="Nav_Checked"/>
-              <RadioButton x:Name="NavPc" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Этот компьютер" Checked="Nav_Checked"/>
-              <RadioButton x:Name="NavSettings" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Настройки" Checked="Nav_Checked"/>
-            </StackPanel>
-          </DockPanel>
-        </Border>
 
-        <Grid Grid.Column="1" Margin="26,14,20,18">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-          </Grid.RowDefinitions>
-          <DockPanel Grid.Row="0" Margin="0,0,0,14" MouseLeftButtonDown="Drag">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
-              <Button Content="—" Click="Min_Click" Style="{StaticResource ChromeButton}"/>
-              <Button Content="×" Margin="4,0,0,0" Click="Close_Click" Style="{StaticResource ChromeButton}"/>
-            </StackPanel>
-            <StackPanel>
-              <TextBlock x:Name="PageTitle" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" Text="Заявки"/>
-              <TextBlock x:Name="PageLead" Margin="0,3,0,0" FontSize="13" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Text="Коротко, что случилось. Заявка уйдёт с этого компьютера."/>
-            </StackPanel>
-          </DockPanel>
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="196"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
 
-          <Grid Grid.Row="1">
-            <Grid x:Name="PageHome">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-              </Grid.RowDefinitions>
-              <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                      CornerRadius="{StaticResource CardRadius}" Padding="16,14" Effect="{DynamicResource CardShadow}">
-                <StackPanel>
-                  <TextBlock Text="Тема" Style="{StaticResource FieldLabel}"/>
-                  <TextBox x:Name="TitleBox" Style="{StaticResource Field}" Tag="Коротко, в одну строку"/>
-                  <TextBlock Text="Описание" Style="{StaticResource FieldLabel}" Margin="0,14,0,6"/>
-                  <TextBox x:Name="BodyBox" Style="{StaticResource FieldNote}" Tag="Что случилось"/>
-                  <DockPanel Margin="0,14,0,0">
-                    <Button x:Name="SendButton" DockPanel.Dock="Right" HorizontalAlignment="Right" Content="Отправить" Style="{StaticResource PrimaryButton}" MinWidth="132" Click="Send_Click"/>
-                    <TextBlock x:Name="FormNote" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{DynamicResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                  </DockPanel>
-                </StackPanel>
-              </Border>
-              <DockPanel Grid.Row="1" Margin="0,18,0,0">
-                <TextBlock DockPanel.Dock="Top" Margin="0,0,0,10" Style="{StaticResource SectionTitle}" Text="Мои заявки"/>
-                <TextBlock x:Name="EmptyTickets" DockPanel.Dock="Top" Margin="0,0,0,8" FontSize="13" Foreground="{DynamicResource Muted}" Text="С этого компьютера заявок пока нет." Visibility="Collapsed"/>
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                  <ItemsControl x:Name="TicketList" Margin="0,0,4,0"/>
-                </ScrollViewer>
-              </DockPanel>
-            </Grid>
+    <Border Grid.Column="0" Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
+      <DockPanel Margin="10,12,10,12">
+        <StackPanel DockPanel.Dock="Top" Margin="6,4,6,16">
+          <TextBlock Text="Corax" FontFamily="Segoe UI Variable Display, Segoe UI"
+                     FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource Fg}"/>
+          <TextBlock x:Name="HostLabel" Margin="0,2,0,0" Foreground="{DynamicResource FgSubtle}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+          <RadioButton x:Name="NavPc" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Этот компьютер" Checked="Nav_Checked"/>
+          <RadioButton x:Name="NavSettings" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Настройки" Checked="Nav_Checked"/>
+        </StackPanel>
+        <DockPanel>
+          <RadioButton x:Name="NavHome" DockPanel.Dock="Top" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Заявки" IsChecked="True" Checked="Nav_Checked"/>
+          <RadioButton x:Name="NavBook" DockPanel.Dock="Bottom" GroupName="MainNav" Style="{StaticResource NavButton}" Content="Справочник" Checked="Nav_Checked"/>
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,4">
+            <StackPanel x:Name="ExtraNav"/>
+          </ScrollViewer>
+        </DockPanel>
+      </DockPanel>
+    </Border>
 
-            <Grid x:Name="PageBook" Visibility="Collapsed">
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-              </Grid.RowDefinitions>
-              <TextBox x:Name="SearchBox" Style="{StaticResource Field}" MaxWidth="340" HorizontalAlignment="Left" Tag="Имя, телефон, почта" TextChanged="Search_Changed"/>
-              <TextBlock x:Name="EmptyPeople" Grid.Row="1" Margin="0,18,0,0" FontSize="13" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Text="Справочник пуст. Телефоны появляются после синхронизации LDAP." Visibility="Collapsed"/>
-              <ScrollViewer Grid.Row="1" Margin="0,14,0,0" VerticalScrollBarVisibility="Auto">
-                <ItemsControl x:Name="PeopleList" Margin="0,0,4,0"/>
-              </ScrollViewer>
-            </Grid>
+    <Grid Grid.Column="1">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="40"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
 
-            <StackPanel x:Name="PagePc" Visibility="Collapsed">
-              <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                      CornerRadius="{StaticResource CardRadius}" Padding="16,14" MaxWidth="560" HorizontalAlignment="Left" Effect="{DynamicResource CardShadow}">
-                <StackPanel>
-                  <TextBlock Text="Компьютер" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
-                  <TextBlock x:Name="PcName" Margin="0,0,0,14" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis"/>
-                  <TextBlock Text="Кто сейчас в системе" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
-                  <TextBlock x:Name="PcUser" Margin="0,0,0,14" Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis"/>
-                  <TextBlock Text="Адрес" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
-                  <TextBlock x:Name="PcAddress" Margin="0,0,0,14" Foreground="{DynamicResource Fg}"/>
-                  <TextBlock Text="Как панель видит заявки" Style="{StaticResource FieldLabel}" Margin="0,0,0,3"/>
-                  <TextBlock x:Name="PcRequester" TextWrapping="Wrap" Foreground="{DynamicResource Fg}"/>
-                </StackPanel>
-              </Border>
-              <Button x:Name="CollectButton" Margin="0,16,0,0" HorizontalAlignment="Left" Content="Снять инвентаризацию" Style="{StaticResource PrimaryButton}" Click="Collect_Click"/>
-              <TextBlock x:Name="CollectNote" Margin="0,10,0,0" MaxWidth="560" HorizontalAlignment="Left" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" FontSize="12"/>
-            </StackPanel>
+      <DockPanel Grid.Row="0">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button Style="{StaticResource CaptionButton}" Click="Min_Click"
+                  chrome:WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Свернуть">
+            <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1"
+                  Data="M 0,0.5 H 10" Width="10" Height="1" Stretch="None"/>
+          </Button>
+          <Button x:Name="MaxButton" Style="{StaticResource CaptionButton}" Click="Max_Click"
+                  chrome:WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Развернуть">
+            <Path x:Name="MaxGlyph" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                  StrokeThickness="1" Fill="Transparent" Data="M 0.5,0.5 H 9.5 V 9.5 H 0.5 Z" Width="10" Height="10" Stretch="None"/>
+          </Button>
+          <Button Style="{StaticResource CaptionClose}" Click="Close_Click"
+                  chrome:WindowChrome.IsHitTestVisibleInChrome="True" ToolTip="Скрыть">
+            <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1"
+                  Data="M 0,0 L 10,10 M 10,0 L 0,10" Width="10" Height="10" Stretch="None"/>
+          </Button>
+        </StackPanel>
+      </DockPanel>
 
-            <Grid x:Name="PagePortal" Visibility="Collapsed">
+      <Grid Grid.Row="1" Margin="24,8,24,20">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+          <TextBlock x:Name="PageTitle" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" Text="Заявки"/>
+          <TextBlock x:Name="PageLead" Margin="0,4,0,0" FontSize="12" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Text="Коротко, что случилось. Уйдёт с этого компьютера."/>
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+          <Grid x:Name="PageHome">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{StaticResource CardRadius}" Padding="16,14">
+              <StackPanel>
+                <TextBox x:Name="TitleBox" Style="{StaticResource Field}" Tag="Тема"/>
+                <TextBox x:Name="BodyBox" Style="{StaticResource FieldNote}" Margin="0,8,0,0" Tag="Что случилось"/>
+                <DockPanel Margin="0,12,0,0">
+                  <Button x:Name="SendButton" DockPanel.Dock="Right" HorizontalAlignment="Right" Content="Отправить" Style="{StaticResource PrimaryButton}" MinWidth="120" Click="Send_Click"/>
+                  <TextBlock x:Name="FormNote" VerticalAlignment="Center" Margin="0,0,12,0" Foreground="{DynamicResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+              </StackPanel>
+            </Border>
+            <DockPanel Grid.Row="1" Margin="0,16,0,0">
+              <TextBlock DockPanel.Dock="Top" Margin="2,0,0,8" Style="{StaticResource SectionTitle}" Text="Мои заявки"/>
+              <TextBlock x:Name="EmptyTickets" DockPanel.Dock="Top" Margin="2,0,0,8" FontSize="13" Foreground="{DynamicResource Muted}" Text="С этого компьютера заявок пока нет." Visibility="Collapsed"/>
               <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                  <TextBlock x:Name="PortalBody" TextWrapping="Wrap" FontSize="14" LineHeight="22" Foreground="{DynamicResource Fg}"/>
-                  <Border x:Name="PortalTableWrap" Visibility="Collapsed" Margin="0,4,0,0"
-                          Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                          CornerRadius="{StaticResource CardRadius}" Padding="0" Effect="{DynamicResource CardShadow}">
-                    <Grid x:Name="PortalGrid" Margin="10"/>
-                  </Border>
-                </StackPanel>
+                <ItemsControl x:Name="TicketList"/>
               </ScrollViewer>
-            </Grid>
-
-            <StackPanel x:Name="PageSettings" Visibility="Collapsed">
-              <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
-                      CornerRadius="{StaticResource CardRadius}" Padding="16,14" MaxWidth="440" HorizontalAlignment="Left" Effect="{DynamicResource CardShadow}">
-                <StackPanel>
-                  <TextBlock Text="Адрес панели" Style="{StaticResource FieldLabel}"/>
-                  <TextBox x:Name="ServerBox" Style="{StaticResource Field}" Tag="http://panel:3000"/>
-                  <TextBlock Text="Ключ обработчика" Style="{StaticResource FieldLabel}" Margin="0,14,0,6"/>
-                  <PasswordBox x:Name="SecretBox" Style="{StaticResource Secret}"/>
-                </StackPanel>
-              </Border>
-              <CheckBox x:Name="ThemeBox" Content="Тёмная тема" Margin="0,18,0,0" Checked="Theme_Changed" Unchecked="Theme_Changed"/>
-              <CheckBox x:Name="AutoBox" Content="Запускать вместе с Windows" Margin="0,12,0,0"/>
-              <Button Content="Сохранить" Margin="0,20,0,0" HorizontalAlignment="Left" MinWidth="120" Style="{StaticResource PrimaryButton}" Click="Save_Click"/>
-            </StackPanel>
+            </DockPanel>
           </Grid>
+
+          <Grid x:Name="PageBook" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBox x:Name="SearchBox" Style="{StaticResource Field}" MaxWidth="280" HorizontalAlignment="Left" Tag="Имя, телефон, почта" TextChanged="Search_Changed"/>
+            <TextBlock x:Name="EmptyPeople" Grid.Row="1" Margin="2,14,0,0" FontSize="13" Foreground="{DynamicResource Muted}" TextWrapping="Wrap" Text="Справочник пуст. Телефоны появляются после синхронизации LDAP." Visibility="Collapsed"/>
+            <ScrollViewer Grid.Row="1" Margin="0,12,0,0" VerticalScrollBarVisibility="Auto">
+              <ItemsControl x:Name="PeopleList"/>
+            </ScrollViewer>
+          </Grid>
+
+          <StackPanel x:Name="PagePc" Visibility="Collapsed">
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{StaticResource CardRadius}" Padding="16,14" MaxWidth="440" HorizontalAlignment="Left">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="140"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Style="{StaticResource FieldLabel}" Text="Компьютер" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="PcName" FontWeight="SemiBold" Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="1" Style="{StaticResource FieldLabel}" Text="Пользователь" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" x:Name="PcUser" Foreground="{DynamicResource Fg}" TextTrimming="CharacterEllipsis" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="2" Style="{StaticResource FieldLabel}" Text="Адрес" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="PcAddress" Foreground="{DynamicResource Fg}" Margin="0,0,0,10"/>
+                <TextBlock Grid.Row="3" Style="{StaticResource FieldLabel}" Text="Заявки" Margin="0"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="PcRequester" TextWrapping="Wrap" Foreground="{DynamicResource Fg}"/>
+              </Grid>
+            </Border>
+            <Button x:Name="CollectButton" Margin="0,14,0,0" HorizontalAlignment="Left" Content="Снять инвентаризацию" Style="{StaticResource GhostButton}" Click="Collect_Click"/>
+            <TextBlock x:Name="CollectNote" Margin="0,8,0,0" MaxWidth="440" HorizontalAlignment="Left" TextWrapping="Wrap" Foreground="{DynamicResource FgSubtle}" FontSize="12"/>
+          </StackPanel>
+
+          <Grid x:Name="PagePortal" Visibility="Collapsed">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <StackPanel>
+                <TextBlock x:Name="PortalBody" TextWrapping="Wrap" FontSize="14" LineHeight="22" Foreground="{DynamicResource Fg}"/>
+                <Border x:Name="PortalTableWrap" Visibility="Collapsed" Margin="0,4,0,0"
+                        Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource CardRadius}">
+                  <Grid x:Name="PortalGrid" Margin="12,10"/>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+
+          <StackPanel x:Name="PageSettings" Visibility="Collapsed">
+            <Border Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Border}" BorderThickness="1"
+                    CornerRadius="{StaticResource CardRadius}" Padding="16,14" MaxWidth="400" HorizontalAlignment="Left">
+              <StackPanel>
+                <TextBlock Text="Адрес панели" Style="{StaticResource FieldLabel}"/>
+                <TextBox x:Name="ServerBox" Style="{StaticResource Field}" Tag="http://panel:3000"/>
+                <TextBlock Text="Ключ обработчика" Style="{StaticResource FieldLabel}" Margin="0,12,0,6"/>
+                <PasswordBox x:Name="SecretBox" Style="{StaticResource Secret}"/>
+              </StackPanel>
+            </Border>
+            <CheckBox x:Name="ThemeBox" Content="Тёмная тема" Margin="2,16,0,0" Checked="Theme_Changed" Unchecked="Theme_Changed"/>
+            <CheckBox x:Name="AutoBox" Content="Запускать вместе с Windows" Margin="2,10,0,0"/>
+            <Button Content="Сохранить" Margin="0,16,0,0" HorizontalAlignment="Left" MinWidth="108" Style="{StaticResource PrimaryButton}" Click="Save_Click"/>
+          </StackPanel>
         </Grid>
       </Grid>
-
-      <Border x:Name="Toast" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,22"
-              Background="{DynamicResource DangerBg}" BorderBrush="{DynamicResource Danger}" BorderThickness="1"
-              CornerRadius="{StaticResource ControlRadius}" Padding="14,10">
-        <DockPanel>
-          <Button DockPanel.Dock="Right" Content="×" Margin="12,0,0,0" Style="{StaticResource GhostButton}" MinHeight="24" Padding="6,0" VerticalAlignment="Top" Click="DismissToast"/>
-          <TextBlock x:Name="ToastText" Foreground="{DynamicResource Danger}" FontSize="13" TextWrapping="Wrap" MaxWidth="420"/>
-        </DockPanel>
-      </Border>
     </Grid>
-  </Border>
+
+    <Border x:Name="Toast" Grid.ColumnSpan="2" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,20"
+            Background="{DynamicResource DangerBg}" BorderBrush="{DynamicResource Danger}" BorderThickness="1"
+            CornerRadius="{StaticResource ControlRadius}" Padding="14,10">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="×" Margin="12,0,0,0" Style="{StaticResource GhostButton}" MinHeight="24" Padding="6,0" VerticalAlignment="Top" Click="DismissToast"/>
+        <TextBlock x:Name="ToastText" Foreground="{DynamicResource Danger}" FontSize="13" TextWrapping="Wrap" MaxWidth="420"/>
+      </DockPanel>
+    </Border>
+  </Grid>
 </Window>

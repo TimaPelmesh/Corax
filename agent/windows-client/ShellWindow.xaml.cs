@@ -4,9 +4,10 @@ using System.Net.Sockets;
 using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Brush = System.Windows.Media.Brush;
+using Geometry = System.Windows.Media.Geometry;
+using RadioButton = System.Windows.Controls.RadioButton;
 
 namespace Corax.Client;
 
@@ -29,19 +30,14 @@ public partial class ShellWindow : Window
         ThemeBox.IsChecked = _settings.Dark;
         AutoBox.IsChecked = _settings.Autostart;
         Opacity = 0;
+        WindowBackdrop.Attach(this);
+        StateChanged += (_, _) => SyncMaxGlyph();
         _tray = new TrayHost(this);
         Loaded += async (_, _) =>
         {
-            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-            BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(480)) { EasingFunction = ease });
-            Rise(Root, 0.975);
-            Drift(OrbA, Canvas.LeftProperty, -120, -16, 16);
-            Drift(OrbA, Canvas.TopProperty, -160, -70, 19);
-            Drift(OrbB, Canvas.LeftProperty, 680, 800, 22);
-            Drift(OrbB, Canvas.TopProperty, -80, 30, 17);
-            Breathe(OrbA, 0.78, 1, 8);
-            Breathe(OrbB, 0.6, 1, 11);
-            ShowPage(PageHome, "Заявки", "Коротко, что случилось. Заявка уйдёт с этого компьютера.");
+            BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(180)));
+            ShowPage(PageHome, "Заявки", "Коротко, что случилось. Уйдёт с этого компьютера.");
+            TitleBox.Focus();
             await RefreshAsync();
             FillPc();
         };
@@ -69,53 +65,29 @@ public partial class ShellWindow : Window
         base.OnClosing(e);
     }
 
-    void Drag(object sender, MouseButtonEventArgs e)
+    void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    void Max_Click(object sender, RoutedEventArgs e)
     {
-        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     }
 
-    void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    void SyncMaxGlyph()
+    {
+        var max = WindowState == WindowState.Maximized;
+        MaxButton.ToolTip = max ? "Свернуть в окно" : "Развернуть";
+        MaxGlyph.Data = Geometry.Parse(max ? "M 2.5,3.5 H 9.5 V 10.5 H 2.5 Z M 0.5,0.5 H 7.5 V 2.5" : "M 0.5,0.5 H 9.5 V 9.5 H 0.5 Z");
+    }
 
     void Close_Click(object sender, RoutedEventArgs e) => Hide();
 
     void Nav_Checked(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
-        if (ReferenceEquals(sender, NavHome)) ShowPage(PageHome, "Заявки", "Коротко, что случилось. Заявка уйдёт с этого компьютера.");
+        if (ReferenceEquals(sender, NavHome)) ShowPage(PageHome, "Заявки", "Коротко, что случилось. Уйдёт с этого компьютера.");
         else if (ReferenceEquals(sender, NavBook)) ShowPage(PageBook, "Справочник", "Люди из каталога панели.");
         else if (ReferenceEquals(sender, NavPc)) ShowPage(PagePc, "Этот компьютер", "Кому уйдёт заявка и как снять инвентаризацию.");
         else if (ReferenceEquals(sender, NavSettings)) ShowPage(PageSettings, "Настройки", "Адрес панели и запуск вместе с Windows.");
-    }
-
-    static void Drift(UIElement target, DependencyProperty property, double from, double to, double seconds)
-    {
-        target.BeginAnimation(property, new DoubleAnimation(from, to, TimeSpan.FromSeconds(seconds))
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
-        });
-    }
-
-    static void Breathe(UIElement target, double from, double to, double seconds)
-    {
-        target.BeginAnimation(OpacityProperty, new DoubleAnimation(from, to, TimeSpan.FromSeconds(seconds))
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
-        });
-    }
-
-    static void Rise(FrameworkElement root, double from)
-    {
-        root.RenderTransformOrigin = new System.Windows.Point(0.5, 0.42);
-        var scale = new ScaleTransform(from, from);
-        root.RenderTransform = scale;
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var duration = TimeSpan.FromMilliseconds(520);
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(from, 1, duration) { EasingFunction = ease });
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(from, 1, duration) { EasingFunction = ease });
     }
 
     void ShowPage(UIElement page, string title, string lead)
@@ -124,13 +96,8 @@ public partial class ShellWindow : Window
             item.Visibility = ReferenceEquals(item, page) ? Visibility.Visible : Visibility.Collapsed;
         PageTitle.Text = title;
         PageLead.Text = lead;
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        page.RenderTransformOrigin = new System.Windows.Point(0, 0);
-        var shift = new TranslateTransform(0, 14);
-        page.RenderTransform = shift;
-        page.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(340)) { EasingFunction = ease });
-        shift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(460)) { EasingFunction = ease });
-        PageTitle.BeginAnimation(OpacityProperty, new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(280)) { EasingFunction = ease });
+        PageLead.Visibility = string.IsNullOrWhiteSpace(lead) ? Visibility.Collapsed : Visibility.Visible;
+        page.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140)));
     }
 
     async Task RefreshAsync()
@@ -366,30 +333,70 @@ public partial class ShellWindow : Window
 
     static Border TicketCard(TicketItem item)
     {
-        var title = new TextBlock { Text = item.Title, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
+        var title = new TextBlock { Text = item.Title, FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis };
         title.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        var meta = new TextBlock { Text = string.Join("  ·  ", new[] { item.Number, item.StatusLabel, item.When }.Where(s => s.Length > 0)), Margin = new Thickness(0, 3, 0, 0), FontSize = 12 };
+        var meta = new TextBlock
+        {
+            Text = string.Join("  ·  ", new[] { item.Number, item.When }.Where(s => s.Length > 0)),
+            Margin = new Thickness(0, 2, 0, 0),
+            FontSize = 11,
+        };
         meta.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
-        var stack = new StackPanel();
-        stack.Children.Add(title);
-        stack.Children.Add(meta);
-        var card = new Border { CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 10, 12, 10), Margin = new Thickness(0, 0, 0, 8), BorderThickness = new Thickness(1), Child = stack };
+        var text = new StackPanel { VerticalAlignment = System.Windows.VerticalAlignment.Center };
+        text.Children.Add(title);
+        text.Children.Add(meta);
+        var chip = new Border
+        {
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 3, 8, 3),
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            Child = new TextBlock { Text = item.StatusLabel, FontSize = 11 },
+        };
+        var chipText = (TextBlock)chip.Child;
+        if (item.Status == "in_progress")
+        {
+            chip.SetResourceReference(Border.BackgroundProperty, "InfoBg");
+            chipText.SetResourceReference(TextBlock.ForegroundProperty, "InfoFg");
+        }
+        else
+        {
+            chip.SetResourceReference(Border.BackgroundProperty, "SurfaceMuted");
+            chipText.SetResourceReference(TextBlock.ForegroundProperty, item.Status == "cancelled" ? "Muted" : "Fg");
+        }
+        var row = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(chip, Dock.Right);
+        row.Children.Add(chip);
+        row.Children.Add(text);
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(12, 10, 12, 10),
+            Margin = new Thickness(0, 0, 0, 6),
+            BorderThickness = new Thickness(1),
+            Child = row,
+        };
         card.SetResourceReference(Border.BackgroundProperty, "Surface");
         card.SetResourceReference(Border.BorderBrushProperty, "Border");
-        card.SetResourceReference(Border.EffectProperty, "CardShadow");
         return card;
     }
 
     static Border PersonCard(DirectoryPerson person)
     {
-        var mark = new Border { Width = 36, Height = 36, CornerRadius = new CornerRadius(8), Margin = new Thickness(0, 0, 12, 0) };
+        var mark = new Border { Width = 28, Height = 28, CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 0, 10, 0) };
         mark.SetResourceReference(Border.BackgroundProperty, "PrimarySoft");
-        var initials = new TextBlock { Text = person.Initials, FontWeight = FontWeights.SemiBold, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = System.Windows.VerticalAlignment.Center };
+        var initials = new TextBlock
+        {
+            Text = person.Initials,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+        };
         initials.SetResourceReference(TextBlock.ForegroundProperty, "Primary");
         mark.Child = initials;
-        var name = new TextBlock { Text = person.Name, FontWeight = FontWeights.SemiBold };
+        var name = new TextBlock { Text = person.Name, FontSize = 13, FontWeight = FontWeights.SemiBold };
         name.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        var line = new TextBlock { Text = person.Line, Margin = new Thickness(0, 2, 0, 0), FontSize = 12 };
+        var line = new TextBlock { Text = person.Line, Margin = new Thickness(0, 1, 0, 0), FontSize = 11 };
         line.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
         var text = new StackPanel { VerticalAlignment = System.Windows.VerticalAlignment.Center };
         text.Children.Add(name);
@@ -398,10 +405,13 @@ public partial class ShellWindow : Window
         DockPanel.SetDock(mark, Dock.Left);
         row.Children.Add(mark);
         row.Children.Add(text);
-        var card = new Border { CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 8), BorderThickness = new Thickness(1), Child = row };
-        card.SetResourceReference(Border.BackgroundProperty, "Surface");
+        var card = new Border
+        {
+            Padding = new Thickness(8, 8, 8, 8),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = row,
+        };
         card.SetResourceReference(Border.BorderBrushProperty, "Border");
-        card.SetResourceReference(Border.EffectProperty, "CardShadow");
         return card;
     }
 }

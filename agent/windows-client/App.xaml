@@ -4,27 +4,29 @@
              xmlns:options="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
              ShutdownMode="OnMainWindowClose">
   <Application.Resources>
-    <SolidColorBrush x:Key="Bg" Color="#070B12" options:Freeze="False"/>
-    <SolidColorBrush x:Key="Surface" Color="#0A0A0A" options:Freeze="False"/>
-    <SolidColorBrush x:Key="SurfaceMuted" Color="#141414" options:Freeze="False"/>
-    <SolidColorBrush x:Key="Fg" Color="#F4F4F5" options:Freeze="False"/>
-    <SolidColorBrush x:Key="Muted" Color="#A1A1AA" options:Freeze="False"/>
-    <SolidColorBrush x:Key="Border" Color="#1C1C1C" options:Freeze="False"/>
+    <SolidColorBrush x:Key="Bg" Color="#202020" options:Freeze="False"/>
+    <SolidColorBrush x:Key="Pane" Color="#CC202020" options:Freeze="False"/>
+    <SolidColorBrush x:Key="Surface" Color="#E62C2C2C" options:Freeze="False"/>
+    <SolidColorBrush x:Key="SurfaceMuted" Color="#14FFFFFF" options:Freeze="False"/>
+    <SolidColorBrush x:Key="Fg" Color="#F3F3F3" options:Freeze="False"/>
+    <SolidColorBrush x:Key="Muted" Color="#C5C5C5" options:Freeze="False"/>
+    <SolidColorBrush x:Key="Border" Color="#15FFFFFF" options:Freeze="False"/>
     <SolidColorBrush x:Key="Primary" Color="#60A5FA" options:Freeze="False"/>
-    <SolidColorBrush x:Key="PrimarySoft" Color="#243044" options:Freeze="False"/>
+    <SolidColorBrush x:Key="PrimarySoft" Color="#332563EB" options:Freeze="False"/>
     <SolidColorBrush x:Key="OnPrimary" Color="#0A0A0A" options:Freeze="False"/>
     <SolidColorBrush x:Key="Danger" Color="#FECACA" options:Freeze="False"/>
     <SolidColorBrush x:Key="DangerBg" Color="#3F1D1D" options:Freeze="False"/>
-    <SolidColorBrush x:Key="GlowA" Color="#1A2563EB" options:Freeze="False"/>
-    <SolidColorBrush x:Key="GlowB" Color="#0D38BDF8" options:Freeze="False"/>
-    <SolidColorBrush x:Key="FgSubtle" Color="#A1A1AA" options:Freeze="False"/>
-    <SolidColorBrush x:Key="BorderStrong" Color="#2A2A2A" options:Freeze="False"/>
+    <SolidColorBrush x:Key="FgSubtle" Color="#9A9A9A" options:Freeze="False"/>
+    <SolidColorBrush x:Key="BorderStrong" Color="#28FFFFFF" options:Freeze="False"/>
     <SolidColorBrush x:Key="PrimaryHover" Color="#93C5FD" options:Freeze="False"/>
-    <DropShadowEffect x:Key="CardShadow" BlurRadius="18" ShadowDepth="6" Direction="270" Opacity="0" Color="#2563EB" options:Freeze="False"/>
+    <SolidColorBrush x:Key="InfoBg" Color="#332563EB" options:Freeze="False"/>
+    <SolidColorBrush x:Key="InfoFg" Color="#BFDBFE" options:Freeze="False"/>
+    <SolidColorBrush x:Key="CaptionHover" Color="#18FFFFFF" options:Freeze="False"/>
+    <SolidColorBrush x:Key="CaptionCloseBg" Color="#C42B1C" options:Freeze="False"/>
+    <DropShadowEffect x:Key="CardShadow" BlurRadius="0" ShadowDepth="0" Opacity="0" Color="#000000" options:Freeze="False"/>
 
-    <!-- One radius scale for the whole client: 8 for controls, 12 for cards, 14 for windows. -->
-    <CornerRadius x:Key="ControlRadius">8</CornerRadius>
-    <CornerRadius x:Key="CardRadius">12</CornerRadius>
+    <CornerRadius x:Key="ControlRadius">4</CornerRadius>
+    <CornerRadius x:Key="CardRadius">8</CornerRadius>
 
     <Style TargetType="Window">
       <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI"/>
@@ -244,11 +246,56 @@
     </Style>
 
     <Style x:Key="ChromeButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
-      <Setter Property="Width" Value="28"/>
-      <Setter Property="Height" Value="28"/>
-      <Setter Property="MinHeight" Value="28"/>
+      <Setter Property="Width" Value="40"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="MinHeight" Value="40"/>
       <Setter Property="Padding" Value="0"/>
       <Setter Property="FontSize" Value="14"/>
+    </Style>
+
+    <Style x:Key="CaptionButton" TargetType="Button">
+      <Setter Property="Width" Value="46"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource Fg}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionHover}"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="CaptionClose" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="Transparent">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CaptionCloseBg}"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style TargetType="CheckBox">
