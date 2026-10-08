@@ -8,7 +8,8 @@
 namespace {
 
 HttpResult http_request_impl(const std::string& method, const std::string& base_url, const std::string& path,
-                             const std::string& bearer_token, const std::string& json_body);
+                             const std::string& bearer_token, const std::string& content_type,
+                             const void* body_data, size_t body_size);
 
 bool parse_url(const std::string& url, bool& https, std::wstring& host, INTERNET_PORT& port,
                std::wstring& path) {
@@ -33,13 +34,14 @@ bool parse_url(const std::string& url, bool& https, std::wstring& host, INTERNET
 }  // namespace
 
 HttpResult http_exchange(const std::string& method, const std::string& base_url, const std::string& path,
-                         const std::string& bearer_token, const std::string& json_body) {
+                         const std::string& bearer_token, const std::string& content_type,
+                         const void* body_data, size_t body_size) {
   // WinHTTP → schannel occasionally raises SEH on certain proxy chains and
   // captive-portal responses. `_set_se_translator` (installed in worker
   // threads) makes those surface as std::runtime_error; catch here so the
   // splash reports a readable "Отправка не удалась" instead of vanishing.
   try {
-    return http_request_impl(method, base_url, path, bearer_token, json_body);
+    return http_request_impl(method, base_url, path, bearer_token, content_type, body_data, body_size);
   } catch (const std::exception& e) {
     HttpResult r;
     r.ok = false;
@@ -55,16 +57,24 @@ HttpResult http_exchange(const std::string& method, const std::string& base_url,
 
 HttpResult http_post_json(const std::string& base_url, const std::string& path,
                           const std::string& bearer_token, const std::string& json_body) {
-  return http_exchange("POST", base_url, path, bearer_token, json_body);
+  return http_exchange("POST", base_url, path, bearer_token, "application/json", json_body.data(),
+                       json_body.size());
+}
+
+HttpResult http_post_bytes(const std::string& base_url, const std::string& path,
+                           const std::string& bearer_token, const std::string& content_type,
+                           const void* data, size_t size) {
+  return http_exchange("POST", base_url, path, bearer_token, content_type, data, size);
 }
 
 HttpResult http_get(const std::string& base_url, const std::string& path, const std::string& bearer_token) {
-  return http_exchange("GET", base_url, path, bearer_token, "");
+  return http_exchange("GET", base_url, path, bearer_token, "application/json", nullptr, 0);
 }
 
 namespace {
 HttpResult http_request_impl(const std::string& method, const std::string& base_url, const std::string& path,
-                             const std::string& bearer_token, const std::string& json_body) {
+                             const std::string& bearer_token, const std::string& content_type,
+                             const void* body_data, size_t body_size) {
   HttpResult r;
   bool https = false;
   std::wstring host, url_path;
@@ -119,15 +129,17 @@ HttpResult http_request_impl(const std::string& method, const std::string& base_
   DWORD redirect_off = WINHTTP_DISABLE_REDIRECTS;
   WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &redirect_off, sizeof(redirect_off));
 
-  std::wstring headers = L"Content-Type: application/json\r\n";
+  std::wstring headers = L"Content-Type: ";
+  headers += util::widen(content_type.empty() ? "application/json" : content_type);
+  headers += L"\r\n";
   if (!bearer_token.empty()) {
     headers += L"Authorization: Bearer ";
     headers += util::widen(bearer_token);
     headers += L"\r\n";
   }
 
-  void* body_ptr = json_body.empty() ? WINHTTP_NO_REQUEST_DATA : (void*)json_body.data();
-  DWORD body_len = json_body.empty() ? 0 : (DWORD)json_body.size();
+  void* body_ptr = (body_data && body_size) ? const_cast<void*>(body_data) : WINHTTP_NO_REQUEST_DATA;
+  DWORD body_len = (body_data && body_size) ? (DWORD)body_size : 0;
   BOOL ok = WinHttpSendRequest(request, headers.c_str(), (DWORD)headers.size(), body_ptr, body_len, body_len, 0);
   if (!headers.empty()) SecureZeroMemory(headers.data(), headers.size() * sizeof(wchar_t));
   if (!ok) {

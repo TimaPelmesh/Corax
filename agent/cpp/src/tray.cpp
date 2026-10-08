@@ -1,6 +1,7 @@
 #include "tray.hpp"
 
 #include "../resources/resource.h"
+#include "assist.hpp"
 #include "config.hpp"
 #include "install.hpp"
 #include "poll.hpp"
@@ -62,6 +63,10 @@ void poll_tick() {
 }
 
 LRESULT CALLBACK tray_wnd(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  if (msg == WM_APP + 40 || msg == WM_APP + 41) {
+    assist_tray_handle(hwnd, msg, wp);
+    return 0;
+  }
   if (msg == kTrayMsg) {
     if (lp == WM_RBUTTONUP) {
       HMENU menu = CreatePopupMenu();
@@ -83,6 +88,7 @@ LRESULT CALLBACK tray_wnd(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return 0;
   }
   if (msg == WM_DESTROY) {
+    assist_tray_stop();
     remove_icon(hwnd);
     if (g_icon && g_icon_owned) DestroyIcon(g_icon);
     g_icon = nullptr;
@@ -123,6 +129,7 @@ int run_tray() {
   g_hwnd = CreateWindowExW(0, kClass, L"CORAX", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, wc.hInstance, nullptr);
   if (!g_hwnd) return 1;
   add_icon(g_hwnd);
+  assist_tray_start(g_hwnd);
   SetTimer(g_hwnd, kPollTimer, kPollMs, nullptr);
   poll_tick();
   MSG msg{};

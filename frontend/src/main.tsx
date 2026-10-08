@@ -5,6 +5,7 @@ import { AuthProvider } from './AuthContext'
 import { ErrorBoundary } from './ErrorBoundary'
 import { LocaleProvider } from './i18n/LocaleContext'
 import { ThemeProvider } from './ThemeContext'
+import { AssistProvider } from './AssistContext'
 import { ToastProvider } from './ToastContext'
 import './index.css'
 import App from './App.tsx'
@@ -17,7 +18,9 @@ createRoot(document.getElementById('root')!).render(
           <BrowserRouter>
             <AuthProvider>
               <ToastProvider>
-                <App />
+                <AssistProvider>
+                  <App />
+                </AssistProvider>
               </ToastProvider>
             </AuthProvider>
           </BrowserRouter>

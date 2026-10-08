@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useT } from '../i18n/LocaleContext'
+import { useAssist } from '../AssistContext'
 import { rdpLaunchUri, sanitizeRdpTarget } from '../lib/remoteConnect'
 import { useToast } from '../ToastContext'
 
@@ -17,6 +18,7 @@ export function RemoteConnectMenu({
 }) {
   const t = useT()
   const toast = useToast()
+  const assist = useAssist()
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<MenuPos | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -88,6 +90,20 @@ export function RemoteConnectMenu({
           <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
             {t('remoteConnect.how')}
           </p>
+          {byName ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-[var(--color-bg-muted)]"
+              onClick={() => {
+                setOpen(false)
+                void assist.start(byName)
+              }}
+            >
+              <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.assist')}</span>
+              <span className="text-[11px] text-[var(--color-fg-muted)]">{t('remoteConnect.assistByName', { host: byName })}</span>
+            </button>
+          ) : null}
           {byName && rdpLaunchUri(byName) ? (
             <a
               role="menuitem"
@@ -117,10 +133,6 @@ export function RemoteConnectMenu({
           <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
             {t('remoteConnect.later')}
           </p>
-          <div role="menuitem" aria-disabled="true" className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left opacity-55">
-            <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.assist')}</span>
-            <span className="text-[11px] text-[var(--color-fg-muted)]">{t('remoteConnect.assistSoon')}</span>
-          </div>
           <div role="menuitem" aria-disabled="true" className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left opacity-55">
             <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.dameware')}</span>
             <span className="text-[11px] text-[var(--color-fg-muted)]">{t('remoteConnect.damewareSoon')}</span>

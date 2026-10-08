@@ -8,8 +8,8 @@ export type RemoteConnectMethod = {
 }
 
 export const REMOTE_CONNECT_METHODS: readonly RemoteConnectMethod[] = [
+  { id: 'assist', available: true },
   { id: 'rdp', available: true },
-  { id: 'assist', available: false },
   { id: 'dameware', available: false },
 ]
 

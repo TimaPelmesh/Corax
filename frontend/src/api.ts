@@ -34,6 +34,17 @@ export function networkMapLiveWebSocketUrl(sceneId: number): string {
   return liveWebSocketUrl(`${API_PREFIX}/network/map-scenes/${sceneId}/live`)
 }
 
+export type AssistSession = {
+  id: string
+  hostname: string
+  admin_name: string
+  status: string
+}
+
+export function assistLiveWebSocketUrl(sessionId: string): string {
+  return liveWebSocketUrl(`${API_PREFIX}/assist/sessions/${sessionId}/live`)
+}
+
 export type WikiRagProgress = {
   stage?: string
   label?: string
@@ -2354,6 +2365,15 @@ export const api = {
       method: 'POST',
       json: { hostname: hostname ?? null },
     }),
+
+  assistStart: (hostname: string) =>
+    request<AssistSession>(`${API_PREFIX}/assist/sessions`, {
+      method: 'POST',
+      json: { hostname },
+    }),
+
+  assistEnd: (sessionId: string) =>
+    request<AssistSession>(`${API_PREFIX}/assist/sessions/${sessionId}/end`, { method: 'POST' }),
 
   agentBundleLanIp: async (): Promise<AgentBundleLanIp> => {
     try {

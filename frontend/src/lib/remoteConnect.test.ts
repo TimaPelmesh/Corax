@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { rdpLaunchUri, rdpTargetFor, sanitizeRdpTarget } from './remoteConnect'
+import { REMOTE_CONNECT_METHODS, rdpLaunchUri, rdpTargetFor, sanitizeRdpTarget } from './remoteConnect'
 
 describe('remoteConnect', () => {
   it('accepts a PC name and a LAN IP', () => {
@@ -22,5 +22,11 @@ describe('remoteConnect', () => {
   it('builds a protocol URI for mstsc, not a file', () => {
     expect(rdpLaunchUri('PC-LAB-01')).toBe('corax-rdp:PC-LAB-01')
     expect(rdpLaunchUri('pc; calc')).toBeNull()
+  })
+
+  it('offers Assist and RDP now, DameWare later', () => {
+    expect(REMOTE_CONNECT_METHODS.find((m) => m.id === 'assist')?.available).toBe(true)
+    expect(REMOTE_CONNECT_METHODS.find((m) => m.id === 'rdp')?.available).toBe(true)
+    expect(REMOTE_CONNECT_METHODS.find((m) => m.id === 'dameware')?.available).toBe(false)
   })
 })

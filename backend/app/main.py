@@ -32,6 +32,7 @@ from app.routers import (
     agent_pair,
     agent_tokens,
     agent_bundles,
+    assist,
     auth,
     bitrix24,
     bitrix24_bot_handler,
@@ -467,6 +468,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(search.router, prefix=base)
     app.include_router(self_service.router, prefix=base)
     app.include_router(agent.router, prefix=base)
+    app.include_router(assist.router, prefix=base)
     app.include_router(agent_pair.router, prefix=base)
     app.include_router(agent_pair.admin_router, prefix=base)
     app.include_router(service_requests.router, prefix=base)

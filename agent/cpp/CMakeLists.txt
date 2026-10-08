@@ -39,6 +39,8 @@ add_executable(CORAX-Agent
   src/pair_lan.cpp
   src/poll.cpp
   src/tray.cpp
+  src/assist.cpp
+  src/assist_ui.cpp
   resources/CORAX-Agent.rc
 )
 
