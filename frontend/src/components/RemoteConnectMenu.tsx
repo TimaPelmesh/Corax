@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useT } from '../i18n/LocaleContext'
-import { launchRdpSession, sanitizeRdpTarget } from '../lib/remoteConnect'
+import { rdpLaunchUri, sanitizeRdpTarget } from '../lib/remoteConnect'
 import { useToast } from '../ToastContext'
 
 type MenuPos = { top: number; left: number; width: number }
@@ -68,14 +68,9 @@ export function RemoteConnectMenu({
 
   if (!hasTarget) return null
 
-  function launchRdp(target: string) {
-    const result = launchRdpSession(target)
+  function onRdpClick(host: string) {
     setOpen(false)
-    if (!result.ok) {
-      toast.error(t('remoteConnect.invalidTarget'))
-      return
-    }
-    toast.ok(t('remoteConnect.rdpStarted', { host: result.target }))
+    toast.ok(t('remoteConnect.rdpStarted', { host }))
   }
 
   const menu = open
@@ -93,31 +88,31 @@ export function RemoteConnectMenu({
           <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
             {t('remoteConnect.how')}
           </p>
-          {byName ? (
-            <button
-              type="button"
+          {byName && rdpLaunchUri(byName) ? (
+            <a
               role="menuitem"
-              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-[var(--color-bg-muted)]"
-              onClick={() => launchRdp(byName)}
+              href={rdpLaunchUri(byName)!}
+              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left no-underline hover:bg-[var(--color-bg-muted)]"
+              onClick={() => onRdpClick(byName)}
             >
               <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.rdp')}</span>
               <span className="text-[11px] text-[var(--color-fg-muted)]">
                 {t('remoteConnect.rdpByName', { host: byName })}
               </span>
-            </button>
+            </a>
           ) : null}
-          {byIp && byIp !== byName ? (
-            <button
-              type="button"
+          {byIp && byIp !== byName && rdpLaunchUri(byIp) ? (
+            <a
               role="menuitem"
-              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-[var(--color-bg-muted)]"
-              onClick={() => launchRdp(byIp)}
+              href={rdpLaunchUri(byIp)!}
+              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left no-underline hover:bg-[var(--color-bg-muted)]"
+              onClick={() => onRdpClick(byIp)}
             >
               <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.rdp')}</span>
               <span className="text-[11px] text-[var(--color-fg-muted)]">
                 {t('remoteConnect.rdpByIp', { ip: byIp })}
               </span>
-            </button>
+            </a>
           ) : null}
           <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
             {t('remoteConnect.later')}

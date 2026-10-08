@@ -50,16 +50,10 @@ export function rdpLaunchUri(target: string): string | null {
 }
 
 /** Opens the Windows Remote Desktop window with the PC name filled in. Does not ping. */
-export function launchRdpSession(target: string): { ok: true; target: string } | { ok: false } {
+export function launchRdpSession(target: string): { ok: true; target: string; uri: string } | { ok: false } {
   const uri = rdpLaunchUri(target)
   const host = sanitizeRdpTarget(target)
   if (!uri || !host) return { ok: false }
-  const a = document.createElement('a')
-  a.href = uri
-  a.rel = 'noopener'
-  a.style.display = 'none'
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  return { ok: true, target: host }
+  window.location.assign(uri)
+  return { ok: true, target: host, uri }
 }

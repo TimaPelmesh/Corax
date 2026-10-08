@@ -187,7 +187,66 @@ std::string rdp_host_from_spec(std::string spec) {
   return valid_rdp_host(spec) ? spec : "";
 }
 
-void register_rdp_protocol_key(HKEY root, const std::wstring& dest_exe, REGSAM extra) {
+void write_rdp_helper(const std::wstring& path) {
+  static const char kBody[] = R"vbs(Option Explicit
+Dim spec, host, sh, i, ch, decoded, ok
+If WScript.Arguments.Count < 1 Then WScript.Quit 1
+spec = Trim(WScript.Arguments(0))
+If Len(spec) >= 2 Then
+  If Left(spec, 1) = Chr(34) And Right(spec, 1) = Chr(34) Then spec = Mid(spec, 2, Len(spec) - 2)
+End If
+If LCase(Left(spec, 10)) = "corax-rdp:" Then spec = Mid(spec, 11)
+Do While Left(spec, 1) = "/"
+  spec = Mid(spec, 2)
+Loop
+If Right(spec, 1) = "/" Then spec = Left(spec, Len(spec) - 1)
+
+decoded = ""
+i = 1
+Do While i <= Len(spec)
+  ch = Mid(spec, i, 1)
+  If ch = "%" And i + 2 <= Len(spec) Then
+    On Error Resume Next
+    decoded = decoded & Chr(CLng("&H" & Mid(spec, i + 1, 2)))
+    If Err.Number <> 0 Then
+      Err.Clear
+      decoded = decoded & ch
+      i = i + 1
+    Else
+      i = i + 3
+    End If
+    On Error GoTo 0
+  Else
+    decoded = decoded & ch
+    i = i + 1
+  End If
+Loop
+
+host = Trim(decoded)
+If host = "" Or Len(host) > 255 Then WScript.Quit 1
+If InStr(host, "..") > 0 Then WScript.Quit 1
+ok = True
+For i = 1 To Len(host)
+  ch = Mid(host, i, 1)
+  If InStr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-", ch) = 0 Then ok = False
+Next
+If Not ok Then WScript.Quit 1
+ch = Left(host, 1)
+If InStr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", ch) = 0 Then WScript.Quit 1
+ch = Right(host, 1)
+If InStr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", ch) = 0 Then WScript.Quit 1
+
+Set sh = CreateObject("WScript.Shell")
+sh.Run "mstsc.exe /v:" & host, 1, False
+)vbs";
+  HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (h == INVALID_HANDLE_VALUE) return;
+  DWORD wr = 0;
+  WriteFile(h, kBody, static_cast<DWORD>(sizeof(kBody) - 1), &wr, nullptr);
+  CloseHandle(h);
+}
+
+void register_rdp_protocol_key(HKEY root, const std::wstring& helper, REGSAM extra) {
   HKEY key = nullptr;
   if (RegCreateKeyExW(root, L"Software\\Classes\\corax-rdp", 0, nullptr, 0, KEY_SET_VALUE | extra, nullptr, &key,
                       nullptr) != ERROR_SUCCESS) {
@@ -204,7 +263,7 @@ void register_rdp_protocol_key(HKEY root, const std::wstring& dest_exe, REGSAM e
                       nullptr, &key, nullptr) != ERROR_SUCCESS) {
     return;
   }
-  std::wstring cmd = L"\"" + dest_exe + L"\" --rdp \"%1\"";
+  std::wstring cmd = L"wscript.exe //B //Nologo \"" + helper + L"\" \"%1\"";
   RegSetValueExW(key, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(cmd.c_str()),
                  static_cast<DWORD>((cmd.size() + 1) * sizeof(wchar_t)));
   RegCloseKey(key);
@@ -213,9 +272,13 @@ void register_rdp_protocol_key(HKEY root, const std::wstring& dest_exe, REGSAM e
 }  // namespace
 
 void ensure_rdp_protocol() {
-  std::wstring self = exe_path_w();
-  if (self.empty()) return;
-  register_rdp_protocol_key(HKEY_CURRENT_USER, self, 0);
+  const wchar_t* local_app = _wgetenv(L"LOCALAPPDATA");
+  if (!local_app || !*local_app) return;
+  std::wstring dir = std::wstring(local_app) + L"\\CORAX";
+  if (!ensure_dir(dir)) return;
+  std::wstring helper = dir + L"\\open-rdp.vbs";
+  write_rdp_helper(helper);
+  register_rdp_protocol_key(HKEY_CURRENT_USER, helper, 0);
 }
 
 int launch_rdp_from_spec(const std::string& spec) {
@@ -278,7 +341,7 @@ InstallResult install_agent() {
 
   // Current user always gets a logon start, even without administrator rights.
   register_run_key(HKEY_CURRENT_USER, dest_exe, 0);
-  register_rdp_protocol_key(HKEY_CURRENT_USER, dest_exe, 0);
+  ensure_rdp_protocol();
 
   if (util::is_elevated()) {
     register_task(L"CORAX Agent", L"corax-poll-task.xml", task_xml(dest_exe, L"--poll --silent", false, true));
