@@ -16,6 +16,7 @@ public partial class ShellWindow : Window
     readonly CoraxApi _api;
     readonly TrayHost _tray;
     IReadOnlyList<DirectoryPerson> _people = Array.Empty<DirectoryPerson>();
+    IReadOnlyList<PortalTab> _tabs = Array.Empty<PortalTab>();
     bool _allowExit;
 
     public ShellWindow()
@@ -83,7 +84,7 @@ public partial class ShellWindow : Window
         if (ReferenceEquals(sender, NavHome)) ShowPage(PageHome, "Заявки", "Коротко, что случилось. Заявка уйдёт с этого компьютера.");
         else if (ReferenceEquals(sender, NavBook)) ShowPage(PageBook, "Справочник", "Люди из каталога панели.");
         else if (ReferenceEquals(sender, NavPc)) ShowPage(PagePc, "Этот компьютер", "Кому уйдёт заявка и как снять инвентаризацию.");
-        else ShowPage(PageSettings, "Настройки", "Адрес панели и запуск вместе с Windows.");
+        else if (ReferenceEquals(sender, NavSettings)) ShowPage(PageSettings, "Настройки", "Адрес панели и запуск вместе с Windows.");
     }
 
     static void Drift(UIElement target, DependencyProperty property, double from, double to, double seconds)
@@ -119,7 +120,7 @@ public partial class ShellWindow : Window
 
     void ShowPage(UIElement page, string title, string lead)
     {
-        foreach (var item in new UIElement[] { PageHome, PageBook, PagePc, PageSettings })
+        foreach (var item in new UIElement[] { PageHome, PageBook, PagePc, PageSettings, PagePortal })
             item.Visibility = ReferenceEquals(item, page) ? Visibility.Visible : Visibility.Collapsed;
         PageTitle.Text = title;
         PageLead.Text = lead;
@@ -146,6 +147,8 @@ public partial class ShellWindow : Window
             EmptyTickets.Visibility = tickets.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             _people = await _api.DirectoryAsync();
             ApplyPeople();
+            _tabs = await _api.TabsAsync();
+            RenderPortalNav();
             Toast.Visibility = Visibility.Collapsed;
         }
         catch (Exception ex)
@@ -169,6 +172,92 @@ public partial class ShellWindow : Window
     }
 
     void Search_Changed(object sender, TextChangedEventArgs e) => ApplyPeople();
+
+    void RenderPortalNav()
+    {
+        ExtraNav.Children.Clear();
+        foreach (var tab in _tabs)
+        {
+            var btn = new RadioButton
+            {
+                Content = tab.Title,
+                GroupName = "MainNav",
+                Tag = tab,
+                Style = (Style)FindResource("NavButton"),
+            };
+            btn.Checked += PortalNav_Checked;
+            ExtraNav.Children.Add(btn);
+        }
+    }
+
+    void PortalNav_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded) return;
+        if (sender is RadioButton { Tag: PortalTab tab }) ShowPortal(tab);
+    }
+
+    void ShowPortal(PortalTab tab)
+    {
+        ShowPage(PagePortal, tab.Title, "");
+        var isText = tab.Kind != "table";
+        PortalBody.Text = isText
+            ? (string.IsNullOrWhiteSpace(tab.Body)
+                ? "Пока нет текста. Администратор заполнит вкладку в настройках агента."
+                : tab.Body)
+            : "";
+        PortalBody.Visibility = isText ? Visibility.Visible : Visibility.Collapsed;
+        FillPortalGrid(tab);
+    }
+
+    void FillPortalGrid(PortalTab tab)
+    {
+        PortalGrid.Children.Clear();
+        PortalGrid.RowDefinitions.Clear();
+        PortalGrid.ColumnDefinitions.Clear();
+        if (tab.Kind != "table")
+        {
+            PortalTableWrap.Visibility = Visibility.Collapsed;
+            return;
+        }
+        PortalTableWrap.Visibility = Visibility.Visible;
+        var cols = tab.Columns.Count == 0 ? new List<string> { " " } : tab.Columns.ToList();
+        foreach (var _ in cols)
+            PortalGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        PortalGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var c = 0; c < cols.Count; c++)
+        {
+            var head = new TextBlock
+            {
+                Text = cols[c],
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                Margin = new Thickness(6, 4, 6, 8),
+                Foreground = (Brush)FindResource("Muted"),
+            };
+            Grid.SetRow(head, 0);
+            Grid.SetColumn(head, c);
+            PortalGrid.Children.Add(head);
+        }
+        for (var r = 0; r < tab.Rows.Count; r++)
+        {
+            PortalGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (var c = 0; c < cols.Count; c++)
+            {
+                var cell = c < tab.Rows[r].Count ? tab.Rows[r][c] : "";
+                var block = new TextBlock
+                {
+                    Text = cell.Length > 0 ? cell : "—",
+                    FontSize = 13,
+                    Margin = new Thickness(6, 3, 6, 3),
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Brush)FindResource("Fg"),
+                };
+                Grid.SetRow(block, r + 1);
+                Grid.SetColumn(block, c);
+                PortalGrid.Children.Add(block);
+            }
+        }
+    }
 
     async void Send_Click(object sender, RoutedEventArgs e)
     {

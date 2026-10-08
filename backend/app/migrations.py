@@ -1153,6 +1153,19 @@ def _migrate_ticket_handler_tables(sync_conn) -> None:
         )
 
 
+def _migrate_ticket_handler_employee_tabs(sync_conn) -> None:
+    if "ticket_handler_config" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "ticket_handler_config")
+    if "employee_tabs_json" in cols:
+        return
+    is_sqlite = sync_conn.dialect.name == "sqlite"
+    if is_sqlite:
+        sync_conn.execute(text("ALTER TABLE ticket_handler_config ADD COLUMN employee_tabs_json TEXT NOT NULL DEFAULT '[]'"))
+    else:
+        sync_conn.execute(text("ALTER TABLE ticket_handler_config ADD COLUMN employee_tabs_json TEXT NOT NULL DEFAULT '[]'"))
+
+
 def _migrate_ticket_handler_enable_by_default(sync_conn) -> None:
     """Enable /h intake. It shipped off, and the admin page was not routed in the panel."""
     if "ticket_handler_config" not in _table_names(sync_conn):
@@ -1778,6 +1791,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-30_glpi_identity", _migrate_glpi_identity),
     ("2026-09-30_glpi_computer_network_ids", _migrate_glpi_computer_network_ids),
     ("2026-10-02_users_phone", _migrate_users_phone),
+    ("2026-10-08_ticket_handler_employee_tabs", _migrate_ticket_handler_employee_tabs),
 ]
 
 

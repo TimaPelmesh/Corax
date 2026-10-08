@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { api, type TicketHandlerIntakeResult, type TicketHandlerPublicContext, type TicketHandlerPublicTicket } from '../api'
+import {
+  api,
+  type EmployeePortalTab,
+  type TicketHandlerIntakeResult,
+  type TicketHandlerPublicContext,
+  type TicketHandlerPublicTicket,
+} from '../api'
 import { CoraxLogo } from '../components/CoraxLogo'
 import { titleForPath } from '../documentTitle'
 import { useLocale, type MessageKey } from '../i18n/LocaleContext'
@@ -98,6 +104,8 @@ export function TicketHandlerClientPage() {
   const [unread, setUnread] = useState(0)
   const [alertIds, setAlertIds] = useState<number[]>([])
   const [formNotices, setFormNotices] = useState<FormNotice[]>([])
+  const [portalTabs, setPortalTabs] = useState<EmployeePortalTab[]>([])
+  const [portalId, setPortalId] = useState<string | null>(null)
   const prevSnaps = useRef<HelpTicketPhaseSnap[] | null>(null)
   const blinkOn = useRef(true)
 
@@ -155,6 +163,22 @@ export function TicketHandlerClientPage() {
       cancelled = true
     }
   }, [hintedHost, secret, t])
+
+  useEffect(() => {
+    if (!hostname && !secret) return
+    let cancelled = false
+    void api
+      .ticketHandlerPublicTabs(hostname, secret)
+      .then((out) => {
+        if (!cancelled) setPortalTabs(out.items || [])
+      })
+      .catch(() => {
+        if (!cancelled) setPortalTabs([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hostname, secret])
 
   useEffect(() => {
     void loadTickets()
@@ -230,7 +254,8 @@ export function TicketHandlerClientPage() {
   const place = (context?.location || '').trim()
   const blocked = Boolean(error && !context)
   const hello = helpGreeting(person, t(dayPartGreetingKey()))
-  const showTickets = !blocked
+  const activePortal = portalTabs.find((tab) => tab.id === portalId) ?? null
+  const showTickets = !blocked && !activePortal
   const selectedTicket = tickets.find((row) => row.id === selectedId) ?? null
   const closeModal = useCallback(() => setSelectedId(null), [])
 
@@ -253,7 +278,11 @@ export function TicketHandlerClientPage() {
         <span className="help-glow help-glow-a" />
         <span className="help-glow help-glow-b" />
       </div>
-      <div className={`help-shell${showTickets ? ' has-tickets' : ''}`}>
+      <div
+        className={`help-shell${showTickets ? ' has-tickets' : ''}${portalTabs.length ? ' has-portal' : ''}${
+          activePortal?.kind === 'table' ? ' has-wide' : ''
+        }`}
+      >
         <section className="help-card">
           <header className="help-card-head">
             <div className="help-lang login-seg" role="group" aria-label={t('prefs.language')}>
@@ -289,6 +318,28 @@ export function TicketHandlerClientPage() {
               </p>
             ) : null}
           </header>
+
+          {portalTabs.length > 0 && !blocked ? (
+            <nav className="help-tabs" aria-label={t('agentBundle.portalTabs.title')}>
+              <button
+                type="button"
+                className={`help-tab${activePortal ? '' : ' is-on'}`}
+                onClick={() => setPortalId(null)}
+              >
+                {t('ticketHandler.helpForm.tabTicket')}
+              </button>
+              {portalTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`help-tab${activePortal?.id === tab.id ? ' is-on' : ''}`}
+                  onClick={() => setPortalId(tab.id)}
+                >
+                  {tab.title}
+                </button>
+              ))}
+            </nav>
+          ) : null}
 
           <div className="help-card-body">
             {blocked ? (
@@ -329,7 +380,46 @@ export function TicketHandlerClientPage() {
               </div>
             ) : null}
 
-            {!blocked ? (
+            {!blocked && activePortal ? (
+              <div className="help-portal">
+                {activePortal.kind === 'table' ? (
+                  <div className="help-portal-table-wrap">
+                    <table className="help-portal-table">
+                      <thead>
+                        <tr>
+                          {activePortal.columns.map((col, ci) => (
+                            <th key={ci}>{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activePortal.rows.length === 0 ? (
+                          <tr>
+                            <td colSpan={Math.max(1, activePortal.columns.length)}>
+                              {t('ticketHandler.helpForm.tabEmpty')}
+                            </td>
+                          </tr>
+                        ) : (
+                          activePortal.rows.map((row, ri) => (
+                            <tr key={ri}>
+                              {activePortal.columns.map((_, ci) => (
+                                <td key={ci}>{row[ci] || '—'}</td>
+                              ))}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="help-portal-text">
+                    {activePortal.body.trim() || t('ticketHandler.helpForm.tabEmpty')}
+                  </p>
+                )}
+              </div>
+            ) : null}
+
+            {!blocked && !activePortal ? (
               <form className="help-form" onSubmit={submit}>
                 {error && context ? (
                   <div className="help-alert help-alert-soft" role="alert">

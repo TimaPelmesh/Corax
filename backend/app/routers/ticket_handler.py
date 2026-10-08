@@ -11,7 +11,14 @@ from app.auth import get_current_editor_or_superuser, get_current_user
 from app.config import settings
 from app.database import get_db
 from app.models import TicketHandlerConfig, TicketHandlerRun, User
+from app.employee_portal_tabs import (
+    normalize_employee_tabs,
+    parse_employee_tabs_json,
+    public_employee_tabs,
+    tabs_to_json,
+)
 from app.schemas import (
+    EmployeePortalTab,
     TicketHandlerConfigOut,
     TicketHandlerDirectoryItem,
     TicketHandlerDirectoryOut,
@@ -20,6 +27,7 @@ from app.schemas import (
     TicketHandlerIntakeResponse,
     TicketHandlerPipelineStep,
     TicketHandlerPublicContextOut,
+    TicketHandlerPublicTabsOut,
     TicketHandlerPublicTicketOut,
     TicketHandlerPublicTicketsOut,
     TicketHandlerRunOut,
@@ -134,6 +142,10 @@ def _row_to_out(row: TicketHandlerConfig, *, reveal_secret: bool = True) -> Tick
         default_status=(row.default_status or "open").strip() or "open",
         system_prompt=(row.system_prompt or "").strip() or DEFAULT_SYSTEM_PROMPT,
         pipeline=_parse_pipeline(row.pipeline_json),
+        employee_tabs=[
+            EmployeePortalTab.model_validate(tab)
+            for tab in parse_employee_tabs_json(getattr(row, "employee_tabs_json", None))
+        ],
         updated_at=row.updated_at,
     )
 
@@ -298,6 +310,12 @@ async def update_ticket_handler_config(
         if errs:
             raise HTTPException(status_code=400, detail="; ".join(errs))
         row.pipeline_json = _pipeline_to_json(steps)
+    if "employee_tabs" in patch and patch["employee_tabs"] is not None:
+        raw_tabs = [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in patch["employee_tabs"]
+        ]
+        row.employee_tabs_json = tabs_to_json(normalize_employee_tabs(raw_tabs))
 
     await db.commit()
     await db.refresh(row)
@@ -564,6 +582,21 @@ async def public_directory(
             )
             for row in rows
         ]
+    )
+
+
+@router.get("/public/tabs", response_model=TicketHandlerPublicTabsOut)
+async def public_tabs(
+    request: Request,
+    hostname: str | None = Query(default=None, max_length=255),
+    secret: str | None = Query(default=None, max_length=255),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reference tabs for /h and the desktop client. Same LAN gate as tickets."""
+    cfg = await _get_or_create_config(db)
+    await _require_intake_access(cfg, request, secret, db, hostname)
+    return TicketHandlerPublicTabsOut(
+        items=[EmployeePortalTab.model_validate(tab) for tab in public_employee_tabs(cfg.employee_tabs_json)]
     )
 
 

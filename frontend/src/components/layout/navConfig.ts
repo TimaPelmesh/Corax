@@ -100,6 +100,7 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
       titleKey: 'nav.inventory',
       icon: IconPcs,
       collapsible: false,
+      hideTitle: true,
       items: [
         {
           to: '/computers',
@@ -145,7 +146,7 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
     {
       titleKey: 'nav.requests',
       icon: IconTicket,
-      collapsible: true,
+      collapsible: false,
       badgeKey: 'requestsActive',
       items: [
         {
@@ -163,8 +164,7 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
     {
       titleKey: 'nav.knowledge',
       icon: IconBook,
-      collapsible: true,
-      defaultCollapsed: true,
+      collapsible: false,
       items: [
         {
           to: '/knowledge-base/wikirag',

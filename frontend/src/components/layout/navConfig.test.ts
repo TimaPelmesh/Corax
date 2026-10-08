@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { buildNavSections, prefsNavItems } from './navConfig'
 
 describe('buildNavSections', () => {
-  it('shows Inventory above tickets and keeps Settings last as a flyout', () => {
+  it('hides the Inventory heading and keeps Settings last as a flyout', () => {
     const sections = buildNavSections({ is_superuser: true, role: 'admin' })
     const keys = sections.map((s) => s.titleKey)
     expect(keys).toEqual(['nav.overview', 'nav.inventory', 'nav.requests', 'nav.knowledge', 'nav.settings'])
     const inventory = sections.find((s) => s.titleKey === 'nav.inventory')
     const settings = sections[sections.length - 1]
-    expect(inventory?.hideTitle).toBeFalsy()
+    expect(inventory?.hideTitle).toBe(true)
     expect(settings?.titleKey).toBe('nav.settings')
     expect(settings?.flyout).toBe(true)
     expect(settings?.items[0]?.to).toBe('/settings/llm')
@@ -31,11 +31,13 @@ describe('buildNavSections', () => {
     ])
   })
 
-  it('puts Wiki, notes, the floor map and Zabbix under knowledge, collapsed by default', () => {
+  it('puts Wiki, notes, the floor map and Zabbix under knowledge as an open labeled list', () => {
     const sections = buildNavSections({ is_superuser: true })
     const kb = sections.find((s) => s.titleKey === 'nav.knowledge')
+    const tickets = sections.find((s) => s.titleKey === 'nav.requests')
     const paths = (kb?.items ?? []).map((i) => i.to)
-    expect(kb?.defaultCollapsed).toBe(true)
+    expect(kb?.collapsible).toBe(false)
+    expect(tickets?.collapsible).toBe(false)
     expect(paths).toEqual([
       '/knowledge-base/wikirag',
       '/knowledge-base/guide',

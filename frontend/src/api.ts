@@ -1016,6 +1016,16 @@ export type TicketHandlerPipelineStep = {
   params: Record<string, unknown>
 }
 
+export type EmployeePortalTab = {
+  id: string
+  title: string
+  kind: 'text' | 'table' | string
+  body: string
+  columns: string[]
+  rows: string[][]
+  enabled: boolean
+}
+
 export type TicketHandlerConfig = {
   enabled: boolean
   processor_mode: 'local' | 'remote' | string
@@ -1032,6 +1042,7 @@ export type TicketHandlerConfig = {
   default_status: string
   system_prompt: string
   pipeline: TicketHandlerPipelineStep[]
+  employee_tabs?: EmployeePortalTab[]
   updated_at?: string | null
 }
 
@@ -2163,6 +2174,16 @@ export const api = {
     const qs = q.toString()
     return request<{ items: TicketHandlerPublicTicket[] }>(
       `${API_PREFIX}/ticket-handler/public/tickets${qs ? `?${qs}` : ''}`,
+    )
+  },
+
+  ticketHandlerPublicTabs: (hostname?: string, secret?: string) => {
+    const q = new URLSearchParams()
+    if (hostname?.trim()) q.set('hostname', hostname.trim())
+    if (secret) q.set('secret', secret)
+    const qs = q.toString()
+    return request<{ items: EmployeePortalTab[] }>(
+      `${API_PREFIX}/ticket-handler/public/tabs${qs ? `?${qs}` : ''}`,
     )
   },
 

@@ -31,6 +31,16 @@ public sealed class DeskContext
     public string? Requester { get; init; }
 }
 
+public sealed class PortalTab
+{
+    public string Id { get; init; } = "";
+    public string Title { get; init; } = "";
+    public string Kind { get; init; } = "text";
+    public string Body { get; init; } = "";
+    public IReadOnlyList<string> Columns { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<IReadOnlyList<string>> Rows { get; init; } = Array.Empty<IReadOnlyList<string>>();
+}
+
 public sealed class CoraxApi : IDisposable
 {
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(20) };
@@ -95,6 +105,46 @@ public sealed class CoraxApi : IDisposable
                 Email = email,
                 Initials = Initials(shown),
                 Line = string.Join("  ·  ", bits),
+            });
+        }
+        return list;
+    }
+
+    public async Task<IReadOnlyList<PortalTab>> TabsAsync(CancellationToken cancel = default)
+    {
+        using var doc = await GetAsync("ticket-handler/public/tabs", cancel);
+        if (!doc.RootElement.TryGetProperty("items", out var items)) return Array.Empty<PortalTab>();
+        var list = new List<PortalTab>();
+        foreach (var row in items.EnumerateArray())
+        {
+            var columns = new List<string>();
+            if (row.TryGetProperty("columns", out var cols) && cols.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var col in cols.EnumerateArray())
+                    columns.Add(col.GetString() ?? "");
+            }
+            var rows = new List<IReadOnlyList<string>>();
+            if (row.TryGetProperty("rows", out var rawRows) && rawRows.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var line in rawRows.EnumerateArray())
+                {
+                    var cells = new List<string>();
+                    if (line.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var cell in line.EnumerateArray())
+                            cells.Add(cell.GetString() ?? "");
+                    }
+                    rows.Add(cells);
+                }
+            }
+            list.Add(new PortalTab
+            {
+                Id = Text(row, "id"),
+                Title = Text(row, "title"),
+                Kind = Text(row, "kind") is { Length: > 0 } kind ? kind : "text",
+                Body = Text(row, "body"),
+                Columns = columns,
+                Rows = rows,
             });
         }
         return list;

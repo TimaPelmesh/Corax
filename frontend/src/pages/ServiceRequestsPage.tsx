@@ -6,14 +6,12 @@ import {
   type Computer,
   type DashboardSummary,
   type RequestCategoryTreeNode,
-  type RiskAiInsight,
   type ServiceRequestRow,
   type ServiceRequestTemplateRow,
   type UserDirectoryItem,
 } from '../api'
 import { useAuth } from '../AuthContext'
-import { IconAssistant, IconCheckBadge, IconPencil } from '../components/icons'
-import { loadWikiRagLmSettings } from '../lib/wikiragLmSettings'
+import { IconCheckBadge, IconPencil } from '../components/icons'
 import { collectCategoryPaths } from '../requestCategories'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -180,8 +178,6 @@ export function ServiceRequestsPage() {
   const [statsTopN, setStatsTopN] = useState(8)
   const [statsOnlyWithPlanned, setStatsOnlyWithPlanned] = useState(false)
   const [statsOnlyOverdue, setStatsOnlyOverdue] = useState(false)
-  const [statsAi, setStatsAi] = useState<RiskAiInsight | null>(null)
-  const [statsAiBusy, setStatsAiBusy] = useState(false)
   const [execReportTitle, setExecReportTitle] = useState(t('requests.reportDefaults.title'))
   const [execReportAudience, setExecReportAudience] = useState(t('requests.reportDefaults.audience'))
   const [execReportAuthor, setExecReportAuthor] = useState('')
@@ -243,7 +239,6 @@ export function ServiceRequestsPage() {
     statsStatusItems,
     statsKpi,
     statsPeriodLabel,
-    statsExtra,
   } = useRequestStats(rows, {
     from: statsFrom,
     to: statsTo,
@@ -252,44 +247,6 @@ export function ServiceRequestsPage() {
     onlyWithPlanned: statsOnlyWithPlanned,
     onlyOverdue: statsOnlyOverdue,
   })
-
-  async function runStatsAi(force: boolean) {
-    setStatsAiBusy(true)
-    try {
-      const settings = loadWikiRagLmSettings()
-      const result = await api.serviceRequestAiInsights({
-        base_url: settings.baseUrl,
-        model: settings.model || undefined,
-        response_mode: settings.responseMode,
-        force,
-        summary: {
-          period: statsPeriodLabel,
-          total: statsKpi.total,
-          done: statsKpi.done,
-          cancelled: statsKpi.cancelled,
-          active: statsKpi.active,
-          overdue: statsKpi.overdue,
-          overdue_rate: statsKpi.overdueRate,
-          completion_rate: statsKpi.completionRate,
-          sla_hit_rate: statsKpi.slaHitRate,
-          avg_close_hours: statsKpi.avgCloseHours,
-          median_close_hours: statsKpi.medianCloseHours,
-          high_share: statsKpi.highShare,
-          per_day: statsExtra.perDay,
-          top_category: statsExtra.topCat,
-          top_assignee: statsExtra.topAsg
-            ? { name: statsExtra.topAsg.name, count: statsExtra.topAsg.count, share: statsExtra.topShare }
-            : null,
-          trend: statsSeries.items.slice(-14).map((x) => ({ key: x.key, total: x.total })),
-        },
-      })
-      setStatsAi(result)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('requests.errors.generic'))
-    } finally {
-      setStatsAiBusy(false)
-    }
-  }
 
   const statsLineChart = useMemo(() => {
     const labels = statsSeries.items.map((x) => x.key)
@@ -1044,10 +1001,6 @@ export function ServiceRequestsPage() {
         </table>
       </section>`
           : ''
-      const distGrid = [statusDonut, priorityDonut, categoryDonut, requesterDonut].filter(Boolean)
-      const distHtml = distGrid.length
-        ? `<section class="grid2">${distGrid.join('')}</section>`
-        : `<p class="muted">${escapeHtml(t('requests.stats.noDataForPeriod'))}</p>`
       const chartHtml =
         execIncludeChart && chartImage
           ? `<div class="chart"><img src="${chartImage}" alt=""/></div>`
@@ -1072,6 +1025,17 @@ export function ServiceRequestsPage() {
       const perDay = (statsKpi.total / daySpan).toFixed(1)
       const topAsg = assigneeTop.find((i) => i.count > 0)
       const asgShare = topAsg && assigneeTotal > 0 ? Math.round((topAsg.count / assigneeTotal) * 100) : 0
+      const trendRows = statsSeries.items.slice(-12)
+      const trendTable = trendRows.length
+        ? `<table class="tbl compact">
+        <thead><tr><th>${escapeHtml(t('requests.stats.pdfColPeriod'))}</th><th class="num">${escapeHtml(t('requests.stats.pdfColCount'))}</th></tr></thead>
+        <tbody>${trendRows
+          .map((row) => `<tr><td>${escapeHtml(row.key)}</td><td class="num">${row.total}</td></tr>`)
+          .join('')}</tbody>
+      </table>`
+        : ''
+      const mixSecond = [categoryDonut, requesterDonut].filter(Boolean).join('')
+      const peopleBlock = `${assigneeBars ? `<section class="sec">${assigneeBars}</section>` : ''}${assigneeTable}`
 
       const html = `<!doctype html>
 <html lang="${locale === 'en' ? 'en' : 'ru'}">
@@ -1079,48 +1043,50 @@ export function ServiceRequestsPage() {
     <meta charset="utf-8" />
     <title>${escapeHtml(title)}</title>
     <style>
-      @page { size: A4 portrait; margin: 12mm 12mm 14mm; }
+      @page { size: A4 portrait; margin: 10mm 10mm 12mm; }
       * { box-sizing: border-box; }
       body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: #0f172a; background: #fff; }
-      .sheet { min-height: 262mm; page-break-after: always; break-after: page; padding-bottom: 8mm; }
+      .sheet { min-height: 268mm; page-break-after: always; break-after: page; padding-bottom: 6mm; }
       .sheet:last-child { page-break-after: auto; break-after: auto; }
-      .cover { background: #0f172a; color: #f8fafc; padding: 22px 24px 20px; border-radius: 10px; }
+      .cover { background: #0f172a; color: #f8fafc; padding: 16px 18px 14px; border-radius: 6px; }
       .cover-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
-      .brand-mark { font-size: 12px; letter-spacing: 0.38em; font-weight: 700; }
-      .cover-date { font-size: 11px; color: #94a3b8; }
-      .cover h1 { margin: 14px 0 0; font-size: 26px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; color: #fff; }
-      .kind { margin: 6px 0 0; font-size: 12px; color: #93c5fd; letter-spacing: 0.04em; }
-      .dates { margin: 14px 0 0; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
-      .meta { margin: 8px 0 0; font-size: 11.5px; color: #cbd5e1; line-height: 1.55; }
-      .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
-      .kpi { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
-      .kpi .value { font-size: 22px; font-weight: 650; letter-spacing: -0.04em; line-height: 1; }
-      .kpi .label { margin-top: 5px; font-size: 10.5px; color: #64748b; }
-      .kpi .sub { margin-top: 2px; font-size: 10px; color: #94a3b8; }
-      .page-title { margin: 0 0 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #1e3a5f; }
-      .sec h2, .chart-card h2 { margin: 0 0 10px; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #1e3a5f; }
-      .narrative { margin: 14px 0 0; padding: 0; list-style: none; font-size: 12.5px; line-height: 1.65; color: #334155; }
-      .narrative li + li { margin-top: 4px; }
-      .chart img { width: 100%; height: auto; display: block; border: 1px solid #e2e8f0; border-radius: 8px; }
-      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-      .chart-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 12px 10px; page-break-inside: avoid; }
-      .donut-row { display: flex; align-items: center; gap: 12px; }
+      .brand-mark { font-size: 11px; letter-spacing: 0.38em; font-weight: 700; }
+      .cover-date { font-size: 10px; color: #94a3b8; }
+      .cover h1 { margin: 8px 0 0; font-size: 22px; font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; color: #fff; }
+      .kind { margin: 4px 0 0; font-size: 11px; color: #93c5fd; letter-spacing: 0.04em; }
+      .dates { margin: 8px 0 0; font-size: 14px; font-weight: 600; letter-spacing: -0.02em; }
+      .meta { margin: 6px 0 0; font-size: 11px; color: #cbd5e1; line-height: 1.5; }
+      .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+      .kpi { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
+      .kpi .value { font-size: 20px; font-weight: 650; letter-spacing: -0.04em; line-height: 1; }
+      .kpi .label { margin-top: 4px; font-size: 10px; color: #64748b; }
+      .kpi .sub { margin-top: 2px; font-size: 9.5px; color: #94a3b8; }
+      .page-title { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #1e3a5f; }
+      .sec h2, .chart-card h2 { margin: 0 0 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #1e3a5f; }
+      .narrative { margin: 10px 0 0; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; color: #334155; }
+      .narrative li + li { margin-top: 3px; }
+      .pair { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 12px; align-items: start; margin-top: 10px; }
+      .chart img { width: 100%; max-height: 86mm; object-fit: contain; display: block; border: 1px solid #e2e8f0; border-radius: 6px; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+      .chart-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; page-break-inside: avoid; }
+      .donut-row { display: flex; align-items: center; gap: 10px; }
       .legend { flex: 1; min-width: 0; }
-      .leg { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 0 0 5px; }
+      .leg { display: flex; align-items: center; gap: 6px; font-size: 10.5px; margin: 0 0 4px; }
       .dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
       .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .nmr { color: #64748b; white-space: nowrap; }
-      .row { margin: 0 0 8px; }
-      .row-top { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; }
+      .row { margin: 0 0 6px; }
+      .row-top { display: flex; justify-content: space-between; gap: 12px; font-size: 11px; }
       .row-top span:last-child { color: #64748b; white-space: nowrap; }
-      .bar { margin-top: 4px; height: 6px; background: #f1f5f9; border-radius: 99px; overflow: hidden; }
+      .bar { margin-top: 3px; height: 5px; background: #f1f5f9; border-radius: 99px; overflow: hidden; }
       .bar i { display: block; height: 100%; border-radius: 99px; }
-      .tbl { width: 100%; border-collapse: collapse; font-size: 11px; }
-      .tbl th { text-align: left; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; border-bottom: 1.5px solid #0f172a; padding: 6px 8px; }
-      .tbl td { border-bottom: 1px solid #e2e8f0; padding: 7px 8px; }
+      .tbl { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px; }
+      .tbl.compact { font-size: 10.5px; margin-top: 0; }
+      .tbl th { text-align: left; font-size: 9.5px; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; border-bottom: 1.5px solid #0f172a; padding: 5px 6px; }
+      .tbl td { border-bottom: 1px solid #e2e8f0; padding: 5px 6px; }
       .tbl .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
       .muted { color: #64748b; font-size: 12px; }
-      .foot { margin-top: 22px; font-size: 10px; color: #94a3b8; letter-spacing: 0.22em; text-transform: uppercase; }
+      .foot { margin-top: 14px; font-size: 9.5px; color: #94a3b8; letter-spacing: 0.22em; text-transform: uppercase; }
     </style>
   </head>
   <body>
@@ -1151,9 +1117,7 @@ export function ServiceRequestsPage() {
         <div class="kpi"><div class="value">${escapeHtml(perDay)}</div><div class="label">${escapeHtml(t('requests.stats.pdfTicketsPerDay'))}</div></div>
       </div>
       ${narrativeHtml}
-    </section>
-    <section class="sheet">
-      <h2 class="page-title">${escapeHtml(t('requests.stats.pdfPageKpi'))}</h2>
+      <h2 class="page-title" style="margin-top:14px">${escapeHtml(t('requests.stats.pdfBusinessLead'))}</h2>
       <table class="tbl">
         <thead><tr><th>${escapeHtml(t('requests.stats.pdfBusinessLead'))}</th><th class="num">${escapeHtml(t('requests.stats.pdfColCount'))}</th></tr></thead>
         <tbody>
@@ -1164,20 +1128,23 @@ export function ServiceRequestsPage() {
           <tr><td>${escapeHtml(t('requests.stats.pdfConcentration'))}</td><td class="num">${asgShare}%</td></tr>
         </tbody>
       </table>
-      ${statusDonut || priorityDonut ? `<div class="grid2" style="margin-top:18px">${statusDonut}${priorityDonut}</div>` : ''}
     </section>
     <section class="sheet">
       <h2 class="page-title">${escapeHtml(t('requests.stats.pdfPageDynamics'))}</h2>
-      ${chartHtml}
+      <div class="pair">
+        <div>${chartHtml}</div>
+        <div>
+          <h2 class="page-title">${escapeHtml(t('requests.stats.pdfTrend'))}</h2>
+          ${trendTable || `<p class="muted">${escapeHtml(t('requests.stats.noDataForPeriod'))}</p>`}
+        </div>
+      </div>
+      ${statusDonut || priorityDonut ? `<div class="grid2">${statusDonut}${priorityDonut}</div>` : ''}
     </section>
     <section class="sheet">
       <h2 class="page-title">${escapeHtml(t('requests.stats.pdfPageMix'))}</h2>
-      ${execIncludeDistributions ? distHtml : `<p class="muted">${escapeHtml(t('requests.stats.includeDistributions'))}</p>`}
-    </section>
-    <section class="sheet">
-      <h2 class="page-title">${escapeHtml(t('requests.stats.pdfPagePeople'))}</h2>
-      ${assigneeBars ? `<section class="sec">${assigneeBars}</section>` : ''}
-      ${assigneeTable}
+      ${mixSecond ? `<section class="grid2">${mixSecond}</section>` : ''}
+      <h2 class="page-title" style="margin-top:16px">${escapeHtml(t('requests.stats.pdfPagePeople'))}</h2>
+      ${peopleBlock}
       <div class="foot">Corax</div>
     </section>
   </body>
@@ -2457,119 +2424,6 @@ export function ServiceRequestsPage() {
                 >
                   {t('requests.stats.tablePdf')}
                 </button>
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-[1.75rem] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
-              <div className="grid sm:grid-cols-2 xl:grid-cols-4">
-                {(
-                  [
-                    [t('requests.stats.inPeriod'), String(statsKpi.total), t('requests.stats.perDay'), String(statsExtra.perDay)],
-                    [t('requests.stats.done'), String(statsKpi.done), t('requests.stats.cancelled'), String(statsKpi.cancelled)],
-                    [t('requests.stats.overdue'), String(statsKpi.overdue), `${statsKpi.overdueRate}%`, ''],
-                    [t('requests.stats.slaHit'), `${statsKpi.slaHitRate}%`, t('requests.stats.medianClose'), statsKpi.medianCloseHours != null ? t('requests.stats.pdfHours', { h: statsKpi.medianCloseHours }) : '—'],
-                  ] as const
-                ).map(([label, value, subLabel, sub], index) => (
-                  <div
-                    key={label}
-                    className={`min-w-0 px-5 py-5 ${index < 3 ? 'xl:border-r' : ''} ${index % 2 === 0 ? 'sm:border-r' : ''} border-[var(--color-border)] ${index < 2 ? 'border-b xl:border-b-0' : ''} ${index === 2 ? 'border-b sm:border-b-0 xl:border-b-0' : ''}`}
-                  >
-                    <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
-                      {label}
-                    </div>
-                    <div className="mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold tabular-nums tracking-tight text-[var(--color-fg)]">
-                      {value}
-                      {index === 2 && subLabel ? (
-                        <span className="ml-2 text-base font-medium text-[var(--color-fg-muted)]">{subLabel}</span>
-                      ) : null}
-                    </div>
-                    {index !== 2 ? (
-                      <div className="mt-2 flex items-baseline justify-between gap-2 text-xs text-[var(--color-fg-muted)]">
-                        <span>{subLabel}</span>
-                        <span className="tabular-nums font-medium text-[var(--color-fg)]">{sub}</span>
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-xs text-[var(--color-fg-muted)]">{t('requests.stats.highShare')}: {statsKpi.highShare}%</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {(
-                [
-                  [t('requests.stats.openNow'), String(statsKpi.openN)],
-                  [t('requests.stats.progressNow'), String(statsKpi.progressN)],
-                  [t('requests.stats.avgClose'), statsKpi.avgCloseHours != null ? t('requests.stats.pdfHours', { h: statsKpi.avgCloseHours }) : '—'],
-                  [t('requests.stats.highShare'), `${statsKpi.highShare}%`],
-                ] as const
-              ).map(([label, value]) => (
-                <div
-                  key={label}
-                  className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 shadow-sm"
-                >
-                  <span className="text-xs font-medium text-[var(--color-fg-muted)]">{label}</span>
-                  <span className="truncate text-sm font-semibold tabular-nums text-[var(--color-fg)]" title={value}>
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-12">
-              <div className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm xl:col-span-5">
-                <h3 className="font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-fg)]">
-                  {t('requests.stats.insightsTitle')}
-                </h3>
-                {statsExtra.bullets.length > 0 ? (
-                  <ul className="mt-4 space-y-3">
-                    {statsExtra.bullets.map((item) => (
-                      <li key={item} className="flex gap-3 text-sm leading-6 text-[var(--color-fg)]">
-                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" aria-hidden />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-4 text-sm text-[var(--color-fg-muted)]">{t('requests.stats.noDataForPeriod')}</p>
-                )}
-              </div>
-              <div className="rounded-[1.5rem] border border-[var(--color-border)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--color-primary)_8%,var(--color-surface)),var(--color-surface)_42%)] p-5 shadow-sm xl:col-span-7">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <IconAssistant className="h-5 w-5 text-[var(--color-primary)]" />
-                      <h3 className="font-[family-name:var(--font-display)] text-base font-semibold text-[var(--color-fg)]">
-                        {t('requests.stats.aiTitle')}
-                      </h3>
-                    </div>
-                    <p className="mt-2 text-xs leading-relaxed text-[var(--color-fg-muted)]">
-                      {t('requests.stats.aiHint')} {!canManageRequests ? t('requests.stats.aiPermission') : ''}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={statsAiBusy || !canManageRequests || statsKpi.total === 0}
-                    onClick={() => void runStatsAi(Boolean(statsAi))}
-                    className="shrink-0 rounded-xl bg-[var(--color-primary)] px-3.5 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
-                  >
-                    {statsAiBusy ? t('requests.stats.aiBusy') : statsAi ? t('requests.stats.aiRefresh') : t('requests.stats.aiRun')}
-                  </button>
-                </div>
-                <div className="mt-4 min-h-40 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm leading-7 text-[var(--color-fg)]">
-                  {statsAi ? (
-                    <div className="whitespace-pre-wrap">{statsAi.text}</div>
-                  ) : (
-                    <div className="flex min-h-28 items-center text-[var(--color-fg-muted)]">{t('requests.stats.aiEmpty')}</div>
-                  )}
-                  {statsAi?.model ? (
-                    <div className="mt-3 border-t border-[var(--color-border)] pt-2 text-[10px] text-[var(--color-fg-subtle)]">
-                      {statsAi.model}
-                      {statsAi.cached ? ' · cache' : ''}
-                    </div>
-                  ) : null}
-                </div>
               </div>
             </div>
 

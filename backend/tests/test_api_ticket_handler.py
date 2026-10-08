@@ -36,6 +36,42 @@ def test_ticket_handler_public_context_and_intake(client: TestClient, agent_head
     assert directory.status_code == 200, directory.text
     assert isinstance(directory.json().get("items"), list)
 
+    tabs = client.get("/api/v1/ticket-handler/public/tabs", params={"hostname": hostname})
+    assert tabs.status_code == 200, tabs.text
+    assert tabs.json().get("items") == []
+
+    login = client.post(
+        "/api/v1/auth/login/json",
+        json={"username": "admin", "password": "admin123", "return_token": True},
+    )
+    assert login.status_code == 200, login.text
+    token = login.json()["access_token"]
+    saved = client.put(
+        "/api/v1/ticket-handler/config",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "employee_tabs": [
+                {
+                    "title": "Телефоны",
+                    "kind": "table",
+                    "columns": ["Кто", "Номер"],
+                    "rows": [["IT", "100"]],
+                    "enabled": True,
+                },
+                {"title": "Черновик", "kind": "text", "body": "скрыто", "enabled": False},
+            ]
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    stored = saved.json().get("employee_tabs") or []
+    assert [row["title"] for row in stored] == ["Телефоны", "Черновик"]
+
+    public = client.get("/api/v1/ticket-handler/public/tabs", params={"hostname": hostname})
+    assert public.status_code == 200, public.text
+    visible = public.json().get("items") or []
+    assert [row["title"] for row in visible] == ["Телефоны"]
+    assert visible[0]["rows"] == [["IT", "100"]]
+
 
 def test_ticket_handler_lan_without_hostname_is_rejected(client: TestClient):
     response = client.post(

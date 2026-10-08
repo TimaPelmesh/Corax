@@ -691,6 +691,7 @@ class TicketHandlerConfig(Base):
     default_status: Mapped[str] = mapped_column(String(64), default="new")
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     pipeline_json: Mapped[str] = mapped_column(Text, default="[]")
+    employee_tabs_json: Mapped[str] = mapped_column(Text, default="[]")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

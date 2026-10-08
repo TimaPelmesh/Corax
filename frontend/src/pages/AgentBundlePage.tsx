@@ -8,6 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { buildAgentServerUrl, schemeFromTls, type AgentUrlScheme } from '../lib/agentServerUrl'
 import { useToast } from '../ToastContext'
+import { EmployeePortalTabsPanel } from './EmployeePortalTabsPanel'
 
 const MODULE_KEYS = [
   'patches',
@@ -716,6 +717,8 @@ export function AgentBundlePage() {
           </div>
         </div>
       </form>
+
+      <EmployeePortalTabsPanel />
     </div>
   )
 }

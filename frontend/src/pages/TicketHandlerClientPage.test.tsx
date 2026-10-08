@@ -5,6 +5,7 @@ import { LocaleProvider } from '../i18n/LocaleContext'
 const apiMock = vi.hoisted(() => ({
   ticketHandlerPublicContext: vi.fn(),
   ticketHandlerPublicTickets: vi.fn(),
+  ticketHandlerPublicTabs: vi.fn(),
   ticketHandlerIntake: vi.fn(),
 }))
 
@@ -25,6 +26,7 @@ describe('TicketHandlerClientPage', () => {
       location: '214',
       requester_hint: 'Иван Петров (ivanov)',
     })
+    apiMock.ticketHandlerPublicTabs.mockResolvedValue({ items: [] })
     apiMock.ticketHandlerPublicTickets.mockResolvedValue({
       items: [
         {

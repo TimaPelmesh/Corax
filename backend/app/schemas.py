@@ -1246,6 +1246,16 @@ class TicketHandlerPipelineStep(BaseModel):
     params: dict = Field(default_factory=dict)
 
 
+class EmployeePortalTab(BaseModel):
+    id: str
+    title: str
+    kind: str = "text"
+    body: str = ""
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[str]] = Field(default_factory=list)
+    enabled: bool = True
+
+
 class TicketHandlerConfigOut(BaseModel):
     enabled: bool
     processor_mode: str
@@ -1262,6 +1272,7 @@ class TicketHandlerConfigOut(BaseModel):
     default_status: str
     system_prompt: str
     pipeline: list[TicketHandlerPipelineStep]
+    employee_tabs: list[EmployeePortalTab] = Field(default_factory=list)
     updated_at: datetime | None = None
 
 
@@ -1281,6 +1292,7 @@ class TicketHandlerConfigUpdate(BaseModel):
     default_status: str | None = None
     system_prompt: str | None = None
     pipeline: list[TicketHandlerPipelineStep] | None = None
+    employee_tabs: list[EmployeePortalTab] | None = None
 
 
 class TicketHandlerRunOut(BaseModel):
@@ -1347,6 +1359,10 @@ class TicketHandlerDirectoryItem(BaseModel):
 
 class TicketHandlerDirectoryOut(BaseModel):
     items: list[TicketHandlerDirectoryItem] = Field(default_factory=list)
+
+
+class TicketHandlerPublicTabsOut(BaseModel):
+    items: list[EmployeePortalTab] = Field(default_factory=list)
 
 
 class TicketHandlerIntakeRequest(BaseModel):
