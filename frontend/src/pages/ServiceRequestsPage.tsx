@@ -1081,7 +1081,7 @@ export function ServiceRequestsPage() {
     <style>
       @page { size: A4 portrait; margin: 12mm 12mm 14mm; }
       * { box-sizing: border-box; }
-      body { margin: 0; font-family: "Segoe UI", Inter, Arial, sans-serif; color: #0f172a; background: #fff; }
+      body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: #0f172a; background: #fff; }
       .sheet { min-height: 262mm; page-break-after: always; break-after: page; padding-bottom: 8mm; }
       .sheet:last-child { page-break-after: auto; break-after: auto; }
       .cover { background: #0f172a; color: #f8fafc; padding: 22px 24px 20px; border-radius: 10px; }

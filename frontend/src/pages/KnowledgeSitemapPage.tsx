@@ -1038,7 +1038,7 @@ export function KnowledgeSitemapPage() {
 
       // Keep font rendering in exported PNG the same as in app UI.
       exportSvg.querySelectorAll('text').forEach((textNode) => {
-        textNode.setAttribute('font-family', 'Inter, system-ui, Segoe UI, Arial, sans-serif')
+        textNode.setAttribute('font-family', '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif')
       })
 
       // Embed floor background as data URL so PNG export never loses it.
@@ -1743,7 +1743,7 @@ export function KnowledgeSitemapPage() {
                             paintOrder: 'stroke',
                             stroke: 'rgba(255,255,255,0.82)',
                             strokeWidth: 5,
-                            fontFamily: 'Inter, system-ui, Segoe UI, Arial, sans-serif',
+                            fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif',
                             fontSize: 18,
                             fontWeight: 700,
                           }}
@@ -1769,7 +1769,7 @@ export function KnowledgeSitemapPage() {
                                 paintOrder: 'stroke',
                                 stroke: 'rgba(255,255,255,0.86)',
                                 strokeWidth: 4,
-                                fontFamily: 'Inter, system-ui, Segoe UI, Arial, sans-serif',
+                                fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif',
                                 fontSize: 12,
                                 fontWeight: 600,
                               }}
@@ -1819,7 +1819,7 @@ export function KnowledgeSitemapPage() {
                 })}
                 {hoveredMarker && hoveredDisplayPos && showHoverCard ? (() => {
                   const hoverTransform = `translate(${hoveredDisplayPos.x + 28} ${hoveredDisplayPos.y - 64})`
-                  const textFamily = 'Inter, system-ui, Segoe UI, Arial, sans-serif'
+                  const textFamily = '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif'
 
                   if (hoveredMarker.kind === 'pc') {
                     const eth = (hoveredMarker.meta?.ethernet_outlet ?? '').trim() || '—'
