@@ -2384,6 +2384,14 @@ body {
   .help-page .login-logo-mark {
     animation: none !important;
   }
+
+  .help-shell,
+  .help-shell.has-tickets .help-card,
+  .help-swap-pane,
+  .help-tickets-slot,
+  .help-tab {
+    transition: none !important;
+  }
 }
 
 /* Public /h ticket form */
@@ -2483,17 +2491,21 @@ body {
   align-items: stretch;
   gap: 1rem;
   margin: auto 0;
+  transition:
+    max-width 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    gap 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .help-shell.has-tickets {
   max-width: 32rem;
 }
 
-.help-shell.has-portal {
+.help-shell.is-ref {
+  gap: 0;
   max-width: 40rem;
 }
 
-.help-shell.has-wide {
+.help-shell.is-ref.has-wide {
   max-width: 52rem;
 }
 
@@ -2551,6 +2563,10 @@ body {
   color: #64748b;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    font-weight 0.2s ease;
 }
 
 .help-tab.is-on {
@@ -2707,6 +2723,51 @@ body {
   padding: 1.45rem 1.4rem 1.7rem;
 }
 
+.help-swap {
+  position: relative;
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.help-form-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.help-swap-pane {
+  grid-area: 1 / 1;
+  min-width: 0;
+  transition:
+    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.help-swap-pane.is-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  z-index: 1;
+}
+
+.help-swap-pane.is-out {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.help-form-pane.is-out {
+  transform: translateY(-14px) scale(0.985);
+}
+
+.help-portal-pane.is-out {
+  transform: translateY(16px) scale(0.985);
+}
+
+.help-portal-pane.is-in {
+  transform: translateY(0) scale(1);
+}
+
 .help-form {
   display: grid;
   gap: 1.25rem;
@@ -2820,6 +2881,28 @@ body {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.help-tickets-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-width: 0;
+  transition:
+    grid-template-rows 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.help-tickets-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.help-shell.is-ref .help-tickets-slot {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(1.1rem);
+  pointer-events: none;
 }
 
 .help-tickets {
@@ -3104,6 +3187,15 @@ body {
     gap: 1.15rem;
   }
 
+  .help-shell.has-tickets.is-ref {
+    gap: 0;
+    max-width: 40rem;
+  }
+
+  .help-shell.has-tickets.is-ref.has-wide {
+    max-width: 52rem;
+  }
+
   .help-shell.has-tickets .help-card {
     display: flex;
     flex-direction: column;
@@ -3112,16 +3204,50 @@ body {
     max-width: 32rem;
     min-width: 0;
     min-height: 40rem;
+    transition:
+      flex-basis 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+      width 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+      max-width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .help-shell.has-tickets .help-tickets {
+  .help-shell.has-tickets.is-ref .help-card {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .help-tickets-slot {
+    display: block;
     flex: 0 0 24rem;
     width: 24rem;
+    max-width: 24rem;
     position: sticky;
     top: 1.25rem;
     align-self: flex-start;
     max-height: calc(100dvh - 2.5rem);
+    overflow: hidden;
+    transition:
+      flex-basis 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+      width 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+      max-width 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .help-tickets-slot > .help-tickets-clip > .help-tickets {
+    width: 24rem;
+    max-height: calc(100dvh - 2.5rem);
     overflow: auto;
+  }
+
+  .help-shell.is-ref .help-tickets-slot {
+    flex-basis: 0;
+    width: 0;
+    max-width: 0;
+    grid-template-rows: none;
+    opacity: 0;
+    transform: translateX(1.35rem);
+    pointer-events: none;
   }
 
   .help-modal-layer {

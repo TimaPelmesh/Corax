@@ -255,7 +255,8 @@ export function TicketHandlerClientPage() {
   const blocked = Boolean(error && !context)
   const hello = helpGreeting(person, t(dayPartGreetingKey()))
   const activePortal = portalTabs.find((tab) => tab.id === portalId) ?? null
-  const showTickets = !blocked && !activePortal
+  const showTicketPane = !blocked
+  const isRef = Boolean(activePortal)
   const selectedTicket = tickets.find((row) => row.id === selectedId) ?? null
   const closeModal = useCallback(() => setSelectedId(null), [])
 
@@ -279,7 +280,7 @@ export function TicketHandlerClientPage() {
         <span className="help-glow help-glow-b" />
       </div>
       <div
-        className={`help-shell${showTickets ? ' has-tickets' : ''}${portalTabs.length ? ' has-portal' : ''}${
+        className={`help-shell${showTicketPane ? ' has-tickets' : ''}${isRef ? ' is-ref' : ''}${
           activePortal?.kind === 'table' ? ' has-wide' : ''
         }`}
       >
@@ -348,134 +349,155 @@ export function TicketHandlerClientPage() {
               </div>
             ) : null}
 
-            {formNotices.length > 0 && !blocked ? (
-              <ul className="help-notices" aria-live="polite">
-                {formNotices.map((notice) => (
-                  <li key={notice.id} className={`help-notice is-${notice.to}`}>
-                    <button type="button" className="help-notice-body" onClick={() => openTicket(notice.id)}>
-                      <p className="help-notice-title">{noticeForChange(notice.to, notice.ticketNo, t)}</p>
-                      <p className="help-notice-text">{noticeHint(notice.to, t)}</p>
+            {!blocked ? (
+              <div className="help-swap">
+                <div
+                  className={`help-swap-pane help-form-pane${isRef ? ' is-out' : ' is-in'}`}
+                  aria-hidden={isRef}
+                  {...(isRef ? { inert: true } : {})}
+                >
+                  {formNotices.length > 0 ? (
+                    <ul className="help-notices" aria-live="polite">
+                      {formNotices.map((notice) => (
+                        <li key={notice.id} className={`help-notice is-${notice.to}`}>
+                          <button type="button" className="help-notice-body" onClick={() => openTicket(notice.id)}>
+                            <p className="help-notice-title">{noticeForChange(notice.to, notice.ticketNo, t)}</p>
+                            <p className="help-notice-text">{noticeHint(notice.to, t)}</p>
+                          </button>
+                          <button
+                            type="button"
+                            className="help-notice-dismiss"
+                            aria-label={t('common.close')}
+                            onClick={() => dismissNotice(notice.id)}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+
+                  {result ? (
+                    <div className="help-success help-success-banner" role="status">
+                      <p className="help-success-title">
+                        {ticketLabel
+                          ? t('ticketHandler.helpForm.acceptedWithNo', { ticket: ticketLabel })
+                          : t('ticketHandler.helpForm.accepted')}
+                      </p>
+                      <p className="help-success-text">{t('ticketHandler.helpForm.acceptedHint')}</p>
+                    </div>
+                  ) : null}
+
+                  <form className="help-form" onSubmit={submit}>
+                    {error && context ? (
+                      <div className="help-alert help-alert-soft" role="alert">
+                        {error}
+                      </div>
+                    ) : null}
+
+                    <label className="help-field">
+                      <span>{t('ticketHandler.helpForm.titleLabel')}</span>
+                      <input
+                        required
+                        minLength={3}
+                        name="title"
+                        value={titleDraft}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        placeholder={t('ticketHandler.helpForm.titlePlaceholder')}
+                        autoComplete="off"
+                        autoFocus
+                      />
+                    </label>
+
+                    <label className="help-field help-field-quiet">
+                      <span>
+                        {t('ticketHandler.helpForm.detailsLabel')}{' '}
+                        <em>{t('ticketHandler.helpForm.detailsOptional')}</em>
+                      </span>
+                      <textarea
+                        name="description"
+                        placeholder={t('ticketHandler.helpForm.detailsPlaceholder')}
+                        rows={6}
+                      />
+                    </label>
+
+                    <button type="submit" className="help-submit" disabled={sending}>
+                      {sending ? (
+                        <>
+                          <span className="help-spinner" aria-hidden />
+                          {t('ticketHandler.helpForm.sending')}
+                        </>
+                      ) : (
+                        t('ticketHandler.helpForm.submit')
+                      )}
                     </button>
-                    <button
-                      type="button"
-                      className="help-notice-dismiss"
-                      aria-label={t('common.close')}
-                      onClick={() => dismissNotice(notice.id)}
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-
-            {result && !blocked ? (
-              <div className="help-success help-success-banner" role="status">
-                <p className="help-success-title">
-                  {ticketLabel
-                    ? t('ticketHandler.helpForm.acceptedWithNo', { ticket: ticketLabel })
-                    : t('ticketHandler.helpForm.accepted')}
-                </p>
-                <p className="help-success-text">{t('ticketHandler.helpForm.acceptedHint')}</p>
+                  </form>
+                </div>
+                <div
+                  className={`help-swap-pane help-portal-pane${isRef ? ' is-in' : ' is-out'}`}
+                  aria-hidden={!isRef}
+                  {...(!isRef ? { inert: true } : {})}
+                >
+                  {activePortal ? (
+                    <div className="help-portal">
+                      {activePortal.kind === 'table' ? (
+                        <div className="help-portal-table-wrap">
+                          <table className="help-portal-table">
+                            <thead>
+                              <tr>
+                                {activePortal.columns.map((col, ci) => (
+                                  <th key={ci}>{col}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {activePortal.rows.length === 0 ? (
+                                <tr>
+                                  <td colSpan={Math.max(1, activePortal.columns.length)}>
+                                    {t('ticketHandler.helpForm.tabEmpty')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                activePortal.rows.map((row, ri) => (
+                                  <tr key={ri}>
+                                    {activePortal.columns.map((_, ci) => (
+                                      <td key={ci}>{row[ci] || '—'}</td>
+                                    ))}
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="help-portal-text">
+                          {activePortal.body.trim() || t('ticketHandler.helpForm.tabEmpty')}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            ) : null}
-
-            {!blocked && activePortal ? (
-              <div className="help-portal">
-                {activePortal.kind === 'table' ? (
-                  <div className="help-portal-table-wrap">
-                    <table className="help-portal-table">
-                      <thead>
-                        <tr>
-                          {activePortal.columns.map((col, ci) => (
-                            <th key={ci}>{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activePortal.rows.length === 0 ? (
-                          <tr>
-                            <td colSpan={Math.max(1, activePortal.columns.length)}>
-                              {t('ticketHandler.helpForm.tabEmpty')}
-                            </td>
-                          </tr>
-                        ) : (
-                          activePortal.rows.map((row, ri) => (
-                            <tr key={ri}>
-                              {activePortal.columns.map((_, ci) => (
-                                <td key={ci}>{row[ci] || '—'}</td>
-                              ))}
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="help-portal-text">
-                    {activePortal.body.trim() || t('ticketHandler.helpForm.tabEmpty')}
-                  </p>
-                )}
-              </div>
-            ) : null}
-
-            {!blocked && !activePortal ? (
-              <form className="help-form" onSubmit={submit}>
-                {error && context ? (
-                  <div className="help-alert help-alert-soft" role="alert">
-                    {error}
-                  </div>
-                ) : null}
-
-                <label className="help-field">
-                  <span>{t('ticketHandler.helpForm.titleLabel')}</span>
-                  <input
-                    required
-                    minLength={3}
-                    name="title"
-                    value={titleDraft}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    placeholder={t('ticketHandler.helpForm.titlePlaceholder')}
-                    autoComplete="off"
-                    autoFocus
-                  />
-                </label>
-
-                <label className="help-field help-field-quiet">
-                  <span>
-                    {t('ticketHandler.helpForm.detailsLabel')}{' '}
-                    <em>{t('ticketHandler.helpForm.detailsOptional')}</em>
-                  </span>
-                  <textarea
-                    name="description"
-                    placeholder={t('ticketHandler.helpForm.detailsPlaceholder')}
-                    rows={6}
-                  />
-                </label>
-
-                <button type="submit" className="help-submit" disabled={sending}>
-                  {sending ? (
-                    <>
-                      <span className="help-spinner" aria-hidden />
-                      {t('ticketHandler.helpForm.sending')}
-                    </>
-                  ) : (
-                    t('ticketHandler.helpForm.submit')
-                  )}
-                </button>
-              </form>
             ) : null}
           </div>
         </section>
 
-        {showTickets ? (
-          <HelpTicketList
-            tickets={tickets}
-            selectedId={selectedId}
-            highlightId={result?.request_id ?? null}
-            alertIds={alertIds}
-            onSelect={openTicket}
-          />
+        {showTicketPane ? (
+          <div
+            className="help-tickets-slot"
+            aria-hidden={isRef}
+            {...(isRef ? { inert: true } : {})}
+          >
+            <div className="help-tickets-clip">
+              <HelpTicketList
+                tickets={tickets}
+                selectedId={selectedId}
+                highlightId={result?.request_id ?? null}
+                alertIds={alertIds}
+                onSelect={openTicket}
+              />
+            </div>
+          </div>
         ) : null}
       </div>
       {selectedTicket ? (

@@ -221,4 +221,36 @@ describe('TicketHandlerClientPage', () => {
     expect(await screen.findByText(/Заявка принята, №9/)).toBeInTheDocument()
     expect(await screen.findByText('Замена картриджа')).toBeInTheDocument()
   })
+
+  it('keeps the form and tickets mounted when opening a reference tab', async () => {
+    apiMock.ticketHandlerPublicTabs.mockResolvedValue({
+      items: [
+        {
+          id: 'phones',
+          title: 'Справочная информация',
+          kind: 'text',
+          body: 'IT 100',
+          columns: [],
+          rows: [],
+          enabled: true,
+        },
+      ],
+    })
+    render(
+      <LocaleProvider>
+        <TicketHandlerClientPage />
+      </LocaleProvider>,
+    )
+    const refTab = await screen.findByRole('button', { name: 'Справочная информация' })
+    expect(document.querySelector('.help-shell.is-ref')).not.toBeInTheDocument()
+    fireEvent.click(refTab)
+    expect(document.querySelector('.help-shell.is-ref')).toBeTruthy()
+    expect(document.querySelector('.help-form-pane.is-out')).toBeTruthy()
+    expect(document.querySelector('.help-tickets-slot')).toBeTruthy()
+    expect(screen.getByText('IT 100')).toBeInTheDocument()
+    expect(screen.getByText('Ваши заявки')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Заявка' }))
+    expect(document.querySelector('.help-shell.is-ref')).not.toBeInTheDocument()
+    expect(document.querySelector('.help-form-pane.is-in')).toBeTruthy()
+  })
 })
