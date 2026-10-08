@@ -2141,6 +2141,18 @@ export const ru = {
       unknown: '—',
     },
   },
+  remoteConnect: {
+    title: 'Удалённо подключиться',
+    short: 'RDP',
+    rdp: 'Remote Desktop (RDP)',
+    rdpHint: 'Откроет клиент Windows для {host}. Пароль CORAX не передаётся.',
+    rdpStarted: 'Открываю RDP к {host}',
+    assist: 'Corax Assist',
+    assistSoon: 'Общий стол с согласием сотрудника — позже',
+    dameware: 'DameWare',
+    damewareSoon: 'Внешний клиент — заложено на потом',
+    invalidTarget: 'Некорректное имя ПК для RDP',
+  },
   computerDetail: {
     panelSource: 'панель',
     agentSource: 'агент',

@@ -17,6 +17,7 @@ import { groupPeripheralsForDisplay } from '../peripheralDisplay'
 import { useToast } from '../ToastContext'
 import { IconClose } from './icons'
 import { ComputerZabbixStatus } from './ComputerZabbixStatus'
+import { RemoteConnectMenu } from './RemoteConnectMenu'
 
 export function fmtDate(iso: string | null, locale: 'ru' | 'en') {
   if (!iso) return '—'
@@ -1078,6 +1079,9 @@ export function ComputerDetailModal({
                 >
                   {pingBusy ? t('computerDetail.pingChecking') : t('computerDetail.pingCheck')}
                 </button>
+                {user?.is_superuser || user?.role === 'editor' ? (
+                  <RemoteConnectMenu hostname={detail.hostname} ip={pingResult?.ip_address || detail.ip_address} />
+                ) : null}
                 {wolStatus?.user_may_wake && wolStatus.force_disabled ? (
                   <span className="text-xs text-amber-800">{t('computerDetail.wolForceOff')}</span>
                 ) : null}

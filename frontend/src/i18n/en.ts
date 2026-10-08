@@ -2143,6 +2143,18 @@ export const en: MessageTree = {
       unknown: '—',
     },
   },
+  remoteConnect: {
+    title: 'Remote connect',
+    short: 'RDP',
+    rdp: 'Remote Desktop (RDP)',
+    rdpHint: 'Opens the Windows client for {host}. The CORAX password is not sent.',
+    rdpStarted: 'Opening RDP to {host}',
+    assist: 'Corax Assist',
+    assistSoon: 'Shared desktop with employee consent — later',
+    dameware: 'DameWare',
+    damewareSoon: 'External client — reserved for later',
+    invalidTarget: 'Invalid PC name for RDP',
+  },
   computerDetail: {
     panelSource: 'panel',
     agentSource: 'agent',

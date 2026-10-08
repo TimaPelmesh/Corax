@@ -12,6 +12,7 @@ import {
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconCheckBadge, IconPencil } from '../components/icons'
+import { RemoteConnectMenu } from '../components/RemoteConnectMenu'
 import { collectCategoryPaths } from '../requestCategories'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -1388,6 +1389,14 @@ export function ServiceRequestsPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    {canManageRequests ? (
+                      <RemoteConnectMenu
+                        hostname={
+                          pcList.find((c) => String(c.id) === computerId)?.hostname ||
+                          rows.find((r) => r.id === editingRequestId)?.computer_hostname
+                        }
+                      />
+                    ) : null}
                     <button
                       type="button"
                       disabled={saving || editDeleting}
@@ -2317,6 +2326,9 @@ export function ServiceRequestsPage() {
                               </td>
                               <td className="whitespace-nowrap px-3 py-3 print:hidden" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center gap-1">
+                                  {canManageRequests && row.computer_hostname ? (
+                                    <RemoteConnectMenu hostname={row.computer_hostname} compact />
+                                  ) : null}
                                   <button
                                     type="button"
                                     className="app-btn app-btn-secondary !min-h-0 !px-1.5 !py-1"
