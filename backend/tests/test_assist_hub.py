@@ -22,7 +22,7 @@ async def test_offer_wait_answer_and_busy():
     with pytest.raises(RuntimeError):
         await hub.create("pc-lab-01", 8, "Пётр")
 
-    events = await hub.push_frame(sess.id, "PC-LAB-01", b"jpeg-bytes")
+    events = await hub.push_frame(sess.id, "PC-LAB-01", b"jpeg-bytes", {"mon": 0, "mc": 1})
     assert events == []
     live = await hub.get(sess.id)
     assert live is not None

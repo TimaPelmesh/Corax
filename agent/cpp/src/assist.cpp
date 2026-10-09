@@ -9,6 +9,7 @@
 #include <objidl.h>
 #include <gdiplus.h>
 
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <string>
@@ -26,9 +27,29 @@ struct State {
   HANDLE waiter = nullptr;
   std::atomic<bool> stop{false};
   std::atomic<bool> live{false};
+  std::atomic<int> monitor{0};
+  std::atomic<int> quality{72};
   std::mutex mu;
   std::string session_id;
   std::string admin;
+};
+
+struct MonitorRec {
+  RECT rect{};
+  bool primary = false;
+};
+
+struct FrameInfo {
+  int mon = 0;
+  int mc = 1;
+  int sw = 0;
+  int sh = 0;
+  int dw = 0;
+  int dh = 0;
+  double cx = 0;
+  double cy = 0;
+  int cv = 0;
+  std::string screens;
 };
 
 State g;
@@ -116,24 +137,79 @@ bool jpeg_clsid(CLSID* id) {
   return false;
 }
 
-bool grab_jpeg(std::string& out, int& sw, int& sh) {
+BOOL CALLBACK enum_monitors(HMONITOR monitor, HDC, LPRECT, LPARAM ctx) {
+  auto* out = reinterpret_cast<std::vector<MonitorRec>*>(ctx);
+  MONITORINFO info{};
+  info.cbSize = sizeof(info);
+  if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+  MonitorRec rec;
+  rec.rect = info.rcMonitor;
+  rec.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+  out->push_back(rec);
+  return TRUE;
+}
+
+std::vector<MonitorRec> list_monitors() {
+  std::vector<MonitorRec> mons;
+  EnumDisplayMonitors(nullptr, nullptr, enum_monitors, reinterpret_cast<LPARAM>(&mons));
+  if (mons.empty()) {
+    MonitorRec rec;
+    rec.rect = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+    rec.primary = true;
+    mons.push_back(rec);
+  }
+  std::stable_partition(mons.begin(), mons.end(), [](const MonitorRec& item) { return item.primary; });
+  return mons;
+}
+
+void paint_cursor(HDC dc, const RECT& mon, int dw, int dh) {
+  CURSORINFO info{};
+  info.cbSize = sizeof(info);
+  if (!GetCursorInfo(&info) || !(info.flags & CURSOR_SHOWING) || !info.hCursor) return;
+  ICONINFO icon{};
+  int hot_x = 0;
+  int hot_y = 0;
+  if (GetIconInfo(info.hCursor, &icon)) {
+    hot_x = static_cast<int>(icon.xHotspot);
+    hot_y = static_cast<int>(icon.yHotspot);
+    if (icon.hbmMask) DeleteObject(icon.hbmMask);
+    if (icon.hbmColor) DeleteObject(icon.hbmColor);
+  }
+  const int sw = mon.right - mon.left;
+  const int sh = mon.bottom - mon.top;
+  if (sw <= 0 || sh <= 0) return;
+  const int x = (info.ptScreenPos.x - mon.left - hot_x) * dw / sw;
+  const int y = (info.ptScreenPos.y - mon.top - hot_y) * dh / sh;
+  DrawIconEx(dc, x, y, info.hCursor, 0, 0, 0, nullptr, DI_NORMAL | DI_DEFAULTSIZE);
+}
+
+bool grab_jpeg(std::string& out, FrameInfo& info) {
   ensure_gdiplus();
   if (!g_gdiplus_ok) return false;
-  sw = GetSystemMetrics(SM_CXSCREEN);
-  sh = GetSystemMetrics(SM_CYSCREEN);
+  const auto mons = list_monitors();
+  int index = g.monitor.load();
+  if (index < 0 || index >= static_cast<int>(mons.size())) index = 0;
+  const RECT mon = mons[index].rect;
+  const int sw = mon.right - mon.left;
+  const int sh = mon.bottom - mon.top;
   if (sw <= 0 || sh <= 0) return false;
   int dw = sw;
   int dh = sh;
-  if (dw > 1280) {
-    dh = dh * 1280 / dw;
-    dw = 1280;
+  if (dw > 1600) {
+    dh = dh * 1600 / dw;
+    dw = 1600;
   }
   HDC screen = GetDC(nullptr);
   HDC mem = CreateCompatibleDC(screen);
   HBITMAP bmp = CreateCompatibleBitmap(screen, dw, dh);
   HGDIOBJ old = SelectObject(mem, bmp);
-  SetStretchBltMode(mem, HALFTONE);
-  StretchBlt(mem, 0, 0, dw, dh, screen, 0, 0, sw, sh, SRCCOPY | CAPTUREBLT);
+  if (dw == sw && dh == sh) {
+    BitBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, SRCCOPY | CAPTUREBLT);
+  } else {
+    SetStretchBltMode(mem, COLORONCOLOR);
+    StretchBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, sw, sh, SRCCOPY | CAPTUREBLT);
+  }
+  paint_cursor(mem, mon, dw, dh);
   SelectObject(mem, old);
 
   Gdiplus::Bitmap image(bmp, nullptr);
@@ -153,16 +229,17 @@ bool grab_jpeg(std::string& out, int& sw, int& sh) {
   }
   Gdiplus::EncoderParameters params;
   params.Count = 1;
-  ULONG quality = 52;
+  ULONG quality = static_cast<ULONG>(std::max(40, std::min(90, g.quality.load())));
   params.Parameter[0].Guid = Gdiplus::EncoderQuality;
   params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
   params.Parameter[0].NumberOfValues = 1;
   params.Parameter[0].Value = &quality;
-  if (image.Save(stream, &jpeg, &params) != Gdiplus::Ok) {
+  const bool saved = image.Save(stream, &jpeg, &params) == Gdiplus::Ok;
+  DeleteObject(bmp);
+  DeleteDC(mem);
+  ReleaseDC(nullptr, screen);
+  if (!saved) {
     stream->Release();
-    DeleteObject(bmp);
-    DeleteDC(mem);
-    ReleaseDC(nullptr, screen);
     return false;
   }
   STATSTG stat{};
@@ -174,17 +251,46 @@ bool grab_jpeg(std::string& out, int& sw, int& sh) {
   if (data && len) out.assign(static_cast<const char*>(data), len);
   if (data) GlobalUnlock(hg);
   stream->Release();
-  DeleteObject(bmp);
-  DeleteDC(mem);
-  ReleaseDC(nullptr, screen);
+
+  POINT cursor{};
+  GetCursorPos(&cursor);
+  info.mon = index;
+  info.mc = static_cast<int>(mons.size());
+  info.sw = sw;
+  info.sh = sh;
+  info.dw = dw;
+  info.dh = dh;
+  info.cx = sw > 0 ? std::clamp((cursor.x - mon.left) / static_cast<double>(sw), 0.0, 1.0) : 0;
+  info.cy = sh > 0 ? std::clamp((cursor.y - mon.top) / static_cast<double>(sh), 0.0, 1.0) : 0;
+  CURSORINFO shown{};
+  shown.cbSize = sizeof(shown);
+  info.cv = (GetCursorInfo(&shown) && (shown.flags & CURSOR_SHOWING)) ? 1 : 0;
+  info.screens.clear();
+  for (size_t i = 0; i < mons.size(); ++i) {
+    const int mw = mons[i].rect.right - mons[i].rect.left;
+    const int mh = mons[i].rect.bottom - mons[i].rect.top;
+    if (i) info.screens += ",";
+    info.screens += std::to_string(mw) + "x" + std::to_string(mh);
+    if (mons[i].primary) info.screens += "p";
+  }
   return !out.empty();
 }
 
 void apply_mouse(double nx, double ny, int button, int down) {
+  const auto mons = list_monitors();
+  int index = g.monitor.load();
+  if (index < 0 || index >= static_cast<int>(mons.size())) index = 0;
+  const RECT mon = mons[index].rect;
+  const int virt_l = GetSystemMetrics(SM_XVIRTUALSCREEN);
+  const int virt_t = GetSystemMetrics(SM_YVIRTUALSCREEN);
+  const int virt_w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+  const int virt_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+  const double x = mon.left + std::clamp(nx, 0.0, 1.0) * (mon.right - mon.left);
+  const double y = mon.top + std::clamp(ny, 0.0, 1.0) * (mon.bottom - mon.top);
   INPUT in{};
   in.type = INPUT_MOUSE;
-  in.mi.dx = static_cast<LONG>(nx * 65535.0);
-  in.mi.dy = static_cast<LONG>(ny * 65535.0);
+  in.mi.dx = virt_w > 1 ? static_cast<LONG>((x - virt_l) * 65535.0 / (virt_w - 1)) : 0;
+  in.mi.dy = virt_h > 1 ? static_cast<LONG>((y - virt_t) * 65535.0 / (virt_h - 1)) : 0;
   in.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
   if (down == 1) {
     if (button == 0) in.mi.dwFlags |= MOUSEEVENTF_LEFTDOWN;
@@ -237,6 +343,10 @@ void apply_events(const std::string& body) {
       apply_key(json_int_near(slice, "vk", 0), json_int_near(slice, "d", 1));
     } else if (t == "w") {
       apply_wheel(json_int_near(slice, "d", 0));
+    } else if (t == "s") {
+      g.monitor.store(std::max(0, json_int_near(slice, "i", 0)));
+    } else if (t == "q") {
+      g.quality.store(std::max(40, std::min(90, json_int_near(slice, "v", 72))));
     }
     cur = close + 1;
   }
@@ -253,16 +363,24 @@ void capture_loop() {
   g.live = true;
   while (!g.stop && g.live) {
     std::string jpeg;
-    int sw = 0, sh = 0;
-    if (!grab_jpeg(jpeg, sw, sh)) {
-      Sleep(200);
+    FrameInfo info;
+    if (!grab_jpeg(jpeg, info)) {
+      Sleep(120);
       continue;
     }
-    const std::string path = "/api/v1/assist/sessions/" + sid + "/frame?hostname=" + query_escape(host);
+    if (jpeg.size() > 820000 && g.quality.load() > 48) {
+      g.quality.store(std::max(48, g.quality.load() - 10));
+    }
+    const std::string path = "/api/v1/assist/sessions/" + sid + "/frame?hostname=" + query_escape(host) +
+                             "&mon=" + std::to_string(info.mon) + "&mc=" + std::to_string(info.mc) +
+                             "&cx=" + std::to_string(info.cx) + "&cy=" + std::to_string(info.cy) +
+                             "&cv=" + std::to_string(info.cv) + "&w=" + std::to_string(info.dw) +
+                             "&h=" + std::to_string(info.dh) + "&mw=" + std::to_string(info.sw) +
+                             "&mh=" + std::to_string(info.sh) + "&screens=" + query_escape(info.screens);
     HttpResult sent = http_post_bytes(cfg.server_url, path, cfg.agent_token, "image/jpeg", jpeg.data(), jpeg.size());
     if (sent.status == 410 || sent.status == 404) break;
     if (sent.ok) apply_events(sent.body);
-    Sleep(110);
+    Sleep(48);
   }
   g.live = false;
 }

@@ -6,6 +6,7 @@ Video stays on the LAN server. The employee tray must accept before frames flow.
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 import time
 from collections import deque
@@ -15,7 +16,7 @@ from fastapi import WebSocket
 
 OFFER_TTL_SEC = 90
 SESSION_TTL_SEC = 20 * 60
-MAX_FRAME_BYTES = 400_000
+MAX_FRAME_BYTES = 900_000
 MAX_INPUT_QUEUE = 64
 WAIT_OFFER_SEC = 25.0
 
@@ -166,7 +167,9 @@ class AssistHub:
                 return
             sess.admins = [item for item in sess.admins if item is not ws]
 
-    async def push_frame(self, session_id: str, hostname: str, frame: bytes) -> list[dict]:
+    async def push_frame(
+        self, session_id: str, hostname: str, frame: bytes, meta: dict | None = None
+    ) -> list[dict]:
         if not frame or len(frame) > MAX_FRAME_BYTES:
             return []
         key = self._host_key(hostname)
@@ -181,8 +184,13 @@ class AssistHub:
             events = list(sess.inputs)
             sess.inputs.clear()
         stale: list[WebSocket] = []
+        packet = None
+        if meta:
+            packet = json.dumps({"type": "meta", **meta}, ensure_ascii=False)
         for ws in admins:
             try:
+                if packet:
+                    await ws.send_text(packet)
                 await ws.send_bytes(frame)
             except Exception:
                 stale.append(ws)

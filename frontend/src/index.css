@@ -4355,6 +4355,16 @@ html.theme-fade body {
   backdrop-filter: blur(18px) saturate(1.2);
   animation: assist-backdrop-in 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
+.assist-shell:fullscreen,
+.assist-shell:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+.assist-shell:fullscreen .assist-canvas,
+.assist-shell:-webkit-full-screen .assist-canvas {
+  max-height: calc(100vh - 112px);
+}
 .assist-shell {
   display: flex;
   width: min(1180px, 100%);
@@ -4374,8 +4384,9 @@ html.theme-fade body {
 .assist-bar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 18px;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid rgb(255 255 255 / 0.06);
 }
 .assist-identity {
@@ -4399,6 +4410,68 @@ html.theme-fade body {
   font-weight: 600;
   letter-spacing: -0.02em;
   color: #f8fafc;
+}
+.assist-size {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.assist-monitors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.assist-mon {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 36px;
+  padding: 5px 10px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.03);
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 600;
+}
+.assist-mon span {
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+.assist-mon-on {
+  border-color: rgb(96 165 250 / 0.45);
+  background: rgb(59 130 246 / 0.18);
+  color: #dbeafe;
+}
+.assist-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+.assist-fps {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+}
+.assist-tool {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.04);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.assist-tool:hover,
+.assist-tool-on {
+  border-color: rgb(148 163 184 / 0.35);
+  background: rgb(255 255 255 / 0.08);
 }
 .assist-pill {
   display: inline-flex;
@@ -4516,11 +4589,24 @@ html.theme-fade body {
   background: linear-gradient(90deg, transparent, #60a5fa, transparent);
   animation: assist-bar 1.4s ease-in-out infinite;
 }
-.assist-canvas {
-  display: block;
+.assist-frame {
+  display: grid;
+  place-items: center;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  padding: 10px;
+}
+.assist-surface {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+}
+.assist-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 180px);
+  width: auto;
+  height: auto;
   cursor: none;
   opacity: 0;
   transform: scale(1.015);
@@ -4528,7 +4614,30 @@ html.theme-fade body {
 }
 .assist-stage-live .assist-canvas {
   opacity: 1;
-  transform: scale(1);
+  transform: none;
+  max-height: min(100%, calc(100vh - 180px));
+}
+.assist-cursor {
+  position: absolute;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+  transform: translate(-2px, -2px);
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.45));
+}
+.assist-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 16px 10px;
+  border-top: 1px solid rgb(255 255 255 / 0.06);
+  font-size: 11px;
+  color: #64748b;
+}
+.assist-foot-on {
+  color: #bbf7d0;
 }
 
 @keyframes assist-backdrop-in {

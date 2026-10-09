@@ -30,6 +30,49 @@ def _display_name(user: User) -> str:
     return name or (user.username or "").strip() or "администратор"
 
 
+def _frame_meta(request: Request) -> dict:
+    q = request.query_params
+
+    def _num(name: str, cast, default):
+        raw = (q.get(name) or "").strip()
+        if not raw:
+            return default
+        try:
+            return cast(raw)
+        except (TypeError, ValueError):
+            return default
+
+    screens: list[dict] = []
+    raw_screens = (q.get("screens") or "").strip()
+    for i, item in enumerate(raw_screens.split(",")):
+        part = item.strip()
+        if not part:
+            continue
+        primary = part.endswith("p")
+        if primary:
+            part = part[:-1]
+        if "x" not in part:
+            continue
+        w_s, h_s = part.split("x", 1)
+        try:
+            screens.append({"i": i, "w": int(w_s), "h": int(h_s), "p": primary})
+        except ValueError:
+            continue
+    meta = {
+        "mon": _num("mon", int, 0),
+        "mc": _num("mc", int, len(screens) or 1),
+        "cx": _num("cx", float, 0.0),
+        "cy": _num("cy", float, 0.0),
+        "cv": _num("cv", int, 0),
+        "w": _num("w", int, 0),
+        "h": _num("h", int, 0),
+        "mw": _num("mw", int, 0),
+        "mh": _num("mh", int, 0),
+        "screens": screens,
+    }
+    return meta
+
+
 @router.post("/sessions")
 async def start_session(body: AssistStartBody, current: User = Depends(get_current_editor_or_superuser)):
     try:
@@ -109,7 +152,7 @@ async def push_frame(
     sess = await hub.get(session_id)
     if sess is None:
         raise HTTPException(status_code=410, detail="Сессия Assist закрыта")
-    events = await hub.push_frame(session_id, hostname, body)
+    events = await hub.push_frame(session_id, hostname, body, _frame_meta(request))
     return {"ok": True, "events": events}
 
 
