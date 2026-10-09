@@ -37,6 +37,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const [waiting, setWaiting] = useState(true)
+  const [late, setLate] = useState(false)
   const [hint, setHint] = useState(t('remoteConnect.assistWaiting', { host: session.hostname }))
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     ws.binaryType = 'blob'
     wsRef.current = ws
     const waitTimer = window.setTimeout(() => {
+      setLate(true)
       setHint(t('remoteConnect.assistNoTray', { host: session.hostname }))
     }, 28000)
     ws.onmessage = async (event) => {
@@ -61,6 +63,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
       ctx?.drawImage(bmp, 0, 0)
       bmp.close()
       setWaiting(false)
+      setLate(false)
       window.clearTimeout(waitTimer)
     }
     ws.onclose = () => {
@@ -104,16 +107,31 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     <div className="assist-root" role="dialog" aria-modal="true" aria-label={t('remoteConnect.assist')}>
       <div className="assist-shell">
         <header className="assist-bar">
-          <div>
+          <div className="assist-identity">
             <p className="assist-kicker">Corax Assist</p>
             <p className="assist-host">{session.hostname}</p>
           </div>
-          <button type="button" className="app-btn app-btn-secondary !min-h-0 text-sm" onClick={() => void hangup()}>
+          <div className={`assist-pill${waiting ? '' : ' assist-pill-live'}`}>
+            <span className="assist-pill-dot" />
+            {waiting ? t('remoteConnect.assistConnecting') : t('remoteConnect.assistLive')}
+          </div>
+          <button type="button" className="assist-hangup" onClick={() => void hangup()}>
             {t('remoteConnect.assistEnd')}
           </button>
         </header>
-        <div className="assist-stage">
-          {waiting ? <p className="assist-wait">{hint}</p> : null}
+        <div className={`assist-stage${waiting ? '' : ' assist-stage-live'}`}>
+          {waiting ? (
+            <div className="assist-wait">
+              <div className="assist-rings" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
+              <p className="assist-wait-title">{t('remoteConnect.assistConnecting')}</p>
+              <p className="assist-wait-copy">{hint}</p>
+              {late ? null : <div className="assist-wait-bar" />}
+            </div>
+          ) : null}
           <canvas
             ref={canvasRef}
             className="assist-canvas"

@@ -199,7 +199,7 @@ export function AgentBundlePage() {
             server_url: server,
             target: platform,
             profile: showExtended ? level : 'full',
-            create_token: true,
+            create_token: platform === 'linux',
             token_label: label,
             modules: showModules ? modules : undefined,
             schedule:

@@ -1,4 +1,4 @@
-"""LAN-only installer pairing. The EXE announces and receives a token immediately."""
+"""LAN-only installer pairing. The EXE waits in the tray until an admin approves it."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import ipaddress
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -46,28 +46,14 @@ def _lan_only(request: Request) -> None:
 
 
 def pairing_announce_kind(status: str, stored_host: str, announced_host: str, has_token: bool) -> str:
-    """fresh — выдать токен сразу, reuse — вернуть уже выданный. Панель ничего не подтверждает."""
-    del status
+    """fresh — другой ПК, wait — ждём одобрения, reuse — админ уже выдал токен."""
     stored = (stored_host or "").strip().casefold()
     announced = (announced_host or "").strip().casefold()
     if stored and announced and stored != announced:
         return "fresh"
-    if not has_token:
-        return "fresh"
-    return "reuse"
-
-
-def _ensure_pairing_token(row: AgentPairing) -> tuple[str, AgentToken | None]:
-    """Return a usable token now. Pending rows are not left waiting for an admin."""
-    if row.token_once:
-        if row.status == "pending":
-            row.status = "approved"
-        return row.token_once, None
-    token, issued = _mint_agent_token(row.hostname)
-    row.token_once = token
-    if row.status == "pending":
-        row.status = "approved"
-    return token, issued
+    if status == "approved" and has_token:
+        return "reuse"
+    return "wait"
 
 
 def _mint_agent_token(hostname: str) -> tuple[str, AgentToken]:
@@ -106,6 +92,10 @@ async def discover_server(request: Request):
     return {"product": "corax"}
 
 
+def _pending_payload(hostname: str) -> dict[str, str]:
+    return {"status": "pending", "hostname": hostname}
+
+
 @router.post("/pair/announce")
 async def announce_pairing(body: PairAnnounce, request: Request, db: AsyncSession = Depends(get_db)):
     _lan_only(request)
@@ -115,25 +105,22 @@ async def announce_pairing(body: PairAnnounce, request: Request, db: AsyncSessio
         await db.execute(select(AgentPairing).where(AgentPairing.public_id == public_id))
     ).scalar_one_or_none()
     if row is None:
-        row = AgentPairing(public_id=public_id, hostname=hostname, status="approved")
+        row = AgentPairing(public_id=public_id, hostname=hostname, status="pending")
         db.add(row)
-        await db.flush()
+        await db.commit()
+        await db.refresh(row)
+        return _pending_payload(row.hostname or hostname)
     stored_host = row.hostname or ""
     kind = pairing_announce_kind(row.status, stored_host, hostname, bool(row.token_once))
-    if kind == "fresh" and stored_host.strip().casefold() != (hostname or "").strip().casefold():
-        # Тот же файл установщика открыли на другом ПК: прежний токен остаётся у первого,
-        # этому компьютеру выдаём свой.
-        row.token_once = None
-        row.hostname = hostname or row.hostname
-    elif row.status != "claimed":
-        row.hostname = hostname or row.hostname
-    token, issued = _ensure_pairing_token(row)
-    if issued is not None:
-        db.add(issued)
-    row.status = "approved"
+    if kind == "reuse":
+        await db.commit()
+        return {"status": "approved", "agent_token": row.token_once}
+    row.token_once = None
+    row.hostname = hostname or row.hostname
+    row.status = "pending"
     await db.commit()
     await db.refresh(row)
-    return {"status": "approved", "agent_token": token}
+    return _pending_payload(row.hostname or hostname)
 
 
 @router.post("/pair/claim")
@@ -144,13 +131,17 @@ async def claim_pairing(body: PairClaim, request: Request, db: AsyncSession = De
     ).scalar_one_or_none()
     if row is None:
         return {"status": "unknown"}
-    token, issued = _ensure_pairing_token(row)
-    if issued is not None:
-        db.add(issued)
-    row.token_once = None
-    row.status = "claimed"
-    await db.commit()
-    return {"status": "claimed", "agent_token": token}
+    if row.status == "pending":
+        return _pending_payload(row.hostname or "")
+    if row.status == "rejected":
+        return {"status": "rejected"}
+    if row.status == "approved" and row.token_once:
+        token = row.token_once
+        row.token_once = None
+        row.status = "claimed"
+        await db.commit()
+        return {"status": "claimed", "agent_token": token}
+    return {"status": row.status}
 
 
 @admin_router.get("/pair/pending", response_model=list[PairingOut])
@@ -185,6 +176,22 @@ async def approve_pairing(
         db.add(issued)
         row.token_once = token
     row.status = "approved"
+    await db.commit()
+    await db.refresh(row)
+    return PairingOut(id=row.id, hostname=row.hostname or "—", status=row.status, created_at=row.created_at)
+
+
+@admin_router.post("/pair/{pairing_id}/reject", response_model=PairingOut)
+async def reject_pairing(
+    pairing_id: int,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(AgentPairing, pairing_id)
+    if row is None or row.status != "pending":
+        raise HTTPException(status_code=404, detail="Установщик не найден")
+    row.token_once = None
+    row.status = "rejected"
     await db.commit()
     await db.refresh(row)
     return PairingOut(id=row.id, hostname=row.hostname or "—", status=row.status, created_at=row.created_at)

@@ -4,7 +4,9 @@
 #include "assist.hpp"
 #include "config.hpp"
 #include "install.hpp"
+#include "pair_lan.hpp"
 #include "poll.hpp"
+#include "secure_config.hpp"
 #include "util.hpp"
 
 #include <windows.h>
@@ -24,7 +26,9 @@ HWND g_hwnd = nullptr;
 HICON g_icon = nullptr;
 
 constexpr UINT kPollMs = 15000;
+constexpr UINT kPendingMs = 4000;
 bool g_icon_owned = false;
+bool g_assist_started = false;
 
 HICON tray_icon() {
   const int cx = std::max(GetSystemMetrics(SM_CXSMICON), 16);
@@ -55,10 +59,46 @@ void remove_icon(HWND hwnd) {
   Shell_NotifyIconW(NIM_DELETE, &nid);
 }
 
+void set_tip(HWND hwnd, const wchar_t* text) {
+  NOTIFYICONDATAW nid{};
+  nid.cbSize = sizeof(nid);
+  nid.hWnd = hwnd;
+  nid.uID = 1;
+  nid.uFlags = NIF_TIP;
+  wcscpy_s(nid.szTip, text);
+  Shell_NotifyIconW(NIM_MODIFY, &nid);
+}
+
+void set_poll_ms(HWND hwnd, UINT ms) {
+  SetTimer(hwnd, kPollTimer, ms, nullptr);
+}
+
 void poll_tick() {
   AgentConfig cfg = load_agent_config();
-  if (cfg.server_url.empty() || cfg.agent_token.empty()) return;
-  poll_and_maybe_collect(cfg);
+  if (cfg.server_url.empty()) return;
+  if (cfg.agent_token.empty()) {
+    set_tip(g_hwnd, L"Corax — ждёт одобрения в панели");
+    set_poll_ms(g_hwnd, kPendingMs);
+    enroll_on_lan([](const std::string&) {}, cfg.server_url, 0);
+    cfg = load_agent_config();
+    if (cfg.agent_token.empty()) return;
+  }
+  set_tip(g_hwnd, L"Corax — инвентаризация");
+  set_poll_ms(g_hwnd, kPollMs);
+  if (!g_assist_started && g_hwnd) {
+    assist_tray_start(g_hwnd);
+    g_assist_started = true;
+  }
+  const int next = poll_and_maybe_collect(cfg);
+  if (next == kPollAuthRejected) {
+    forget_agent_token(util::exe_dir());
+    if (g_assist_started) {
+      assist_tray_stop();
+      g_assist_started = false;
+    }
+    set_tip(g_hwnd, L"Corax — ждёт одобрения в панели");
+    set_poll_ms(g_hwnd, kPendingMs);
+  }
   if (!cfg.agent_token.empty()) SecureZeroMemory(cfg.agent_token.data(), cfg.agent_token.size());
 }
 
@@ -129,8 +169,8 @@ int run_tray() {
   g_hwnd = CreateWindowExW(0, kClass, L"CORAX", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, wc.hInstance, nullptr);
   if (!g_hwnd) return 1;
   add_icon(g_hwnd);
-  assist_tray_start(g_hwnd);
-  SetTimer(g_hwnd, kPollTimer, kPollMs, nullptr);
+  g_assist_started = false;
+  SetTimer(g_hwnd, kPollTimer, kPendingMs, nullptr);
   poll_tick();
   MSG msg{};
   while (GetMessageW(&msg, nullptr, 0, 0) > 0) {

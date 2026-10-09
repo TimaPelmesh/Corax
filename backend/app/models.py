@@ -733,7 +733,7 @@ class RiskSnapshot(Base):
 
 
 class AgentPairing(Base):
-    """LAN installer identity. A token is issued on announce; the panel does not approve it."""
+    """LAN installer identity. A token is issued only after an admin approves the PC."""
 
     __tablename__ = "agent_pairings"
 

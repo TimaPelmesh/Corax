@@ -681,7 +681,7 @@ class AgentBundleCreate(BaseModel):
     target: str = Field(default="windows", pattern="^(windows|linux|cpp|win10)$")
     profile: str = Field(default="full", pattern="^(full|custom|basic|standard)$")
     modules: AgentBundleModules | None = None
-    create_token: bool = True
+    create_token: bool = False
     token_label: str | None = Field(default=None, max_length=128)
     allowed_hostname: str | None = Field(default=None, max_length=128)
     existing_token: str | None = Field(default=None, max_length=512)

@@ -232,7 +232,7 @@ export const en: MessageTree = {
     bitrixSubtitle: 'Bitrix24 integration',
     zabbixSubtitle: 'Zabbix API connection (read-only)',
     zabbixDataSubtitle: 'Hosts and problems from Zabbix (read-only).',
-    agentTokensSubtitle: 'Tokens for inventory agents',
+    agentTokensSubtitle: 'Approve PCs and revoke agent tokens',
     agentBundleSubtitle: 'Windows: one EXE with the token inside. Linux: bash ZIP.',
     wolSubtitle:
       'Who may wake PCs for maintenance. The button is on the PC card and only appears when the host is offline.',
@@ -250,7 +250,7 @@ export const en: MessageTree = {
     zabbix: 'Monitoring connection. The panel only reads data.',
     database: 'Postgres backups and maintenance.',
     glpi: 'Import from GLPI and check that the link works.',
-    agentTokens: 'Keys agents use when they report inventory.',
+    agentTokens: 'Approve PCs and the keys agents use to report inventory.',
     agentBundle: 'Build and download the Windows or Linux agent.',
     wol: 'Who may remotely power on machines that are off.',
     https: 'Certificate so admins can sign in from other LAN PCs.',
@@ -2156,6 +2156,8 @@ export const en: MessageTree = {
     assist: 'Corax Assist',
     assistByName: 'Shared desktop on {host}. Needs the blue “Download EXE” agent, not the employee client.',
     assistWaiting: 'Waiting for consent on {host}…',
+    assistConnecting: 'Opening a shared desktop',
+    assistLive: 'Live',
     assistNoTray:
       'The inventory tray on {host} did not answer. Use the blue “Download EXE” agent, not “Employee client”. Run it on that PC again.',
     assistEnd: 'End',
@@ -2867,11 +2869,17 @@ export const en: MessageTree = {
     revokedOn: 'revoked {date}',
     revokeAction: 'Revoke',
     emptyState: 'No tokens yet',
-    pendingTitle: 'Connection',
-    pendingHint: 'Do not approve the computer in the panel. The agent receives a token on its own and sends a report immediately.',
-    pendingEmpty: 'No approval step',
+    pendingTitle: 'Waiting for approval',
+    pendingHint:
+      'The blue-button EXE does not carry a working token. A PC shows up here after launch — inventory stays off until you click Connect.',
+    pendingEmpty: 'No computers waiting',
     connect: 'Connect',
-    connected: 'Token issued. The agent sends the report on its own.',
+    reject: 'Decline',
+    connected: 'PC approved. The tray agent will receive a token and start reporting.',
+    revokeAll: 'Revoke all tokens',
+    revokeAllConfirm:
+      'Revoke every agent token? Installer copies will stop sending inventory until you approve each PC again.',
+    revokeAllDone: 'Tokens revoked: {count}',
   },
   agentBundle: {
     modules: {
@@ -2944,7 +2952,7 @@ export const en: MessageTree = {
     win7Notice:
       'Base profile: WMI, software registry, PnP peripherals. Extended modules (patches, BitLocker, Docker, etc.) are available only in the Windows 10/11 build.',
     windowsZipNotice:
-      'One EXE for any Windows PC that runs it. The server address and token are already inside. Drop the file on a share, run it on the PC — it installs itself, sends a report, and stays in the tray. The window is small and can be minimized.',
+      'One EXE for any Windows PC. Only the server address is inside — there is no working token. Drop the file on a share, run it: the agent sits in the tray and waits for approval under',
     collectionLevel: 'Collection level',
     levelFull: 'Full',
     levelFullHint: 'All modules: network, patches, security, Office, Docker/WSL, and more.',

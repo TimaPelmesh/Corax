@@ -93,12 +93,9 @@ def _hmac_secret(secret: str) -> str:
 
 
 async def _resolve_agent_token(db: AsyncSession, body: AgentBundleCreate) -> tuple[str, bool]:
-    """Return (token, created_new)."""
+    """Return (token, created_new). Empty token means the EXE must pair and wait for approval."""
     if not body.create_token:
-        token = (body.existing_token or "").strip()
-        if token:
-            return token, False
-        # A new package must not carry the fleet-wide AGENT_TOKEN. Mint a machine token instead.
+        return (body.existing_token or "").strip(), False
 
     if (body.existing_token or "").strip():
         return body.existing_token.strip(), False  # type: ignore[union-attr]
@@ -238,6 +235,8 @@ async def build_agent_bundle_zip(db: AsyncSession, body: AgentBundleCreate) -> t
 
     if body.target == "linux":
         token, _ = await _resolve_agent_token(db, body)
+        if not token:
+            raise ValueError("Linux-агенту нужен токен: включите create_token или передайте existing_token")
         return _build_linux_zip(body, server, token)
 
     from app.agent_cpp_build import build_cpp_agent_exe

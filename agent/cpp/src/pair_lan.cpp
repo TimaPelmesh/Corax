@@ -152,16 +152,18 @@ bool write_pair_files(const std::string& server, const std::string& token) {
   return wrote_config && util::write_file_utf8(dir + "\\agent.provision.json", provision);
 }
 
-std::string extract_token(const std::string& body) {
-  const std::string key = "\"agent_token\"";
-  size_t pos = body.find(key);
+std::string extract_json_string(const std::string& body, const std::string& key) {
+  const std::string needle = "\"" + key + "\"";
+  size_t pos = body.find(needle);
   if (pos == std::string::npos) return "";
-  pos = body.find('"', pos + key.size());
+  pos = body.find('"', pos + needle.size());
   if (pos == std::string::npos) return "";
   size_t end = body.find('"', pos + 1);
   if (end == std::string::npos) return "";
   return body.substr(pos + 1, end - pos - 1);
 }
+
+std::string extract_token(const std::string& body) { return extract_json_string(body, "agent_token"); }
 
 std::string machine_public_id() {
   // MachineGuid is unique per Windows install, so a shared installer file
@@ -220,9 +222,10 @@ std::string load_or_create_public_id() {
 
 }  // namespace
 
-bool enroll_on_lan(
+EnrollResult enroll_on_lan(
     const std::function<void(const std::string&)>& status,
-    const std::string& known_server) {
+    const std::string& known_server,
+    int wait_ms) {
   std::string server = trim_server(known_server);
   if (!server.empty()) {
     status("Сервер инвентаризации: " + server);
@@ -231,26 +234,48 @@ bool enroll_on_lan(
   }
   if (server.empty()) {
     status("Сервер CORAX в этой сети не найден.");
-    return false;
+    return EnrollResult::Failed;
   }
   std::string public_id = load_or_create_public_id();
-  if (public_id.empty()) return false;
+  if (public_id.empty()) return EnrollResult::Failed;
   std::string hostname = util::computer_hostname();
   std::string announce = "{\"public_id\":\"" + public_id + "\",\"hostname\":\"" + json_escape(hostname) + "\"}";
-  status("Запрашиваем токен у сервера…");
-  std::string announced = http_exchange(L"POST", server + "/api/v1/agent/pair/announce", announce, 8000);
-  std::string token = extract_token(announced);
   std::string claim_body = "{\"public_id\":\"" + public_id + "\"}";
-  if (token.empty()) {
-    if (announced.empty()) status("Сервер CORAX не ответил и токен не выдал.");
-    else status("Сервер CORAX не выдал токен.");
-    return false;
+  const ULONGLONG deadline = GetTickCount64() + (wait_ms > 0 ? (ULONGLONG)wait_ms : 0);
+  for (;;) {
+    status("Ждём одобрения в панели CORAX…");
+    std::string announced = http_exchange(L"POST", server + "/api/v1/agent/pair/announce", announce, 8000);
+    std::string token = extract_token(announced);
+    std::string st = extract_json_string(announced, "status");
+    if (token.empty()) {
+      std::string claimed = http_exchange(L"POST", server + "/api/v1/agent/pair/claim", claim_body, 4000);
+      token = extract_token(claimed);
+      if (st.empty()) st = extract_json_string(claimed, "status");
+    }
+    if (st == "rejected") {
+      status("Подключение отклонено в панели CORAX.");
+      return EnrollResult::Failed;
+    }
+    if (!token.empty()) {
+      if (!write_pair_files(server, token)) {
+        status("Токен получен, но не удалось записать его рядом с агентом.");
+        return EnrollResult::Failed;
+      }
+      http_exchange(L"POST", server + "/api/v1/agent/pair/claim", claim_body, 4000);
+      status("Сервер одобрил этот компьютер.");
+      return EnrollResult::Enrolled;
+    }
+    if (wait_ms <= 0 || GetTickCount64() >= deadline) {
+      if (announced.empty() && st.empty()) {
+        status("Сервер CORAX не ответил.");
+        return EnrollResult::Failed;
+      }
+      return EnrollResult::Pending;
+    }
+    const ULONGLONG next = GetTickCount64() + 2000;
+    while (GetTickCount64() < next && GetTickCount64() < deadline) {
+      status("Ждём одобрения в панели CORAX…");
+      Sleep(200);
+    }
   }
-  if (!write_pair_files(server, token)) {
-    status("Токен получен, но не удалось записать его рядом с агентом.");
-    return false;
-  }
-  http_exchange(L"POST", server + "/api/v1/agent/pair/claim", claim_body, 4000);
-  status("Сервер выдал токен и записал его у себя.");
-  return true;
 }

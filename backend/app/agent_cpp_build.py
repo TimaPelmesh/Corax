@@ -322,17 +322,16 @@ def _cpp_public_config(body: AgentBundleCreate, server: str) -> dict:
 
 
 def build_cpp_agent_exe(body: AgentBundleCreate, token: str) -> tuple[bytes, str]:
-    """One personal Windows EXE. Server URL and token are stamped into the binary."""
+    """One Windows EXE. Server URL is stamped; a token is optional until the panel approves the PC."""
     server = body.server_url.strip().rstrip("/")
     if not server.lower().startswith(("http://", "https://")):
         raise ValueError("server_url должен начинаться с http:// или https://")
     secret = (token or "").strip()
-    if not secret:
-        raise ValueError("Не удалось выпустить токен агента")
 
     embed = _cpp_public_config(body, server)
     embed["agent_version"] = "5.1.0"
-    embed["agent_token"] = secret
+    if secret:
+        embed["agent_token"] = secret
 
     template = ensure_cpp_template_exe()
     exe = patch_config_slot(

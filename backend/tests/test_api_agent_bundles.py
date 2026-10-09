@@ -44,6 +44,28 @@ def test_create_agent_bundle_zip(client: TestClient, auth_headers: dict[str, str
     _assert_personal_exe(r, "http://192.168.1.10:3001", token)
 
 
+def test_windows_exe_without_token_does_not_mint_one(client: TestClient, auth_headers: dict[str, str]):
+    before = client.get("/api/v1/agent-tokens", headers=auth_headers)
+    assert before.status_code == 200
+    count = len(before.json())
+    r = client.post(
+        "/api/v1/agent-bundles",
+        headers=auth_headers,
+        json={
+            "server_url": "http://192.168.1.10:3001",
+            "create_token": False,
+            "target": "windows",
+            "profile": "full",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.content[:2] == b"MZ"
+    assert b"http://192.168.1.10:3001" in r.content
+    after = client.get("/api/v1/agent-tokens", headers=auth_headers)
+    assert after.status_code == 200
+    assert len(after.json()) == count
+
+
 def test_create_native_agent_is_portable_zip_with_unmodified_exe(
     client: TestClient, auth_headers: dict[str, str]
 ):

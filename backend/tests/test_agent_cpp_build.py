@@ -69,6 +69,47 @@ def test_build_cpp_agent_exe_embeds_token_and_server():
     assert b"agent.json" not in data[:200]
 
 
+def test_build_cpp_agent_exe_can_omit_token():
+    from app.agent_cpp_build import build_cpp_agent_exe
+    from app.schemas import AgentBundleCreate
+
+    prebuilt = (
+        Path(__file__).resolve().parent.parent.parent
+        / "agent"
+        / "cpp"
+        / "prebuilt"
+        / "CORAX-Agent.template.exe"
+    )
+    if not prebuilt.is_file():
+        pytest.skip("prebuilt template not in tree")
+    body = AgentBundleCreate(
+        server_url="http://192.168.1.10:3001",
+        target="windows",
+        profile="full",
+        create_token=False,
+    )
+    data, name = build_cpp_agent_exe(body, "")
+    assert name == "CORAX-Agent.exe"
+    assert data[:2] == b"MZ"
+    begin = b"<<<CORAX_CFG_BEGIN>>>"
+    end = b"<<<CORAX_CFG_END>>>"
+    pairs: list[tuple[int, int]] = []
+    start = 0
+    while True:
+        left = data.find(begin, start)
+        if left < 0:
+            break
+        right = data.find(end, left + len(begin))
+        if right < 0:
+            break
+        pairs.append((left, right))
+        start = left + 1
+    slot_left, slot_right = max(pairs, key=lambda item: item[1] - item[0])
+    chunk = data[slot_left + len(begin) : slot_right]
+    assert b"http://192.168.1.10:3001" in chunk
+    assert b"agent_token" not in chunk.split(b"\0", 1)[0]
+
+
 def test_ensure_cpp_template_uses_prebuilt():
     """Linux/Docker path: stamp-only from shipped template (no MSVC)."""
     prebuilt = (

@@ -1,6 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { api, type AgentTokenCreated, type AgentTokenRow } from '../api'
+import { api, type AgentPairingRow, type AgentTokenCreated, type AgentTokenRow } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
@@ -13,6 +13,7 @@ export function AgentTokensPage() {
   const toast = useToast()
   const { user } = useAuth()
   const [rows, setRows] = useState<AgentTokenRow[]>([])
+  const [pending, setPending] = useState<AgentPairingRow[]>([])
   const [loading, setLoading] = useState(true)
   const [label, setLabel] = useState('')
   const [allowedHostname, setAllowedHostname] = useState('')
@@ -20,8 +21,9 @@ export function AgentTokensPage() {
 
   const load = useCallback(async () => {
     try {
-      const data = await api.agentTokens()
-      setRows(data)
+      const [tokens, pairings] = await Promise.all([api.agentTokens(), api.agentPairings()])
+      setRows(tokens)
+      setPending(pairings)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
@@ -32,6 +34,13 @@ export function AgentTokensPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void api.agentPairings().then(setPending).catch(() => undefined)
+    }, 4000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   if (!user?.is_superuser) {
     return <Navigate to="/" replace />
@@ -65,6 +74,37 @@ export function AgentTokensPage() {
     }
   }
 
+  async function onRevokeAll() {
+    if (!confirm(t('agentTokens.revokeAllConfirm'))) return
+    try {
+      const result = await api.revokeAllAgentTokens()
+      setCreatedOnce(null)
+      toast.ok(t('agentTokens.revokeAllDone', { count: result.revoked }))
+      void load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    }
+  }
+
+  async function onApprove(id: number) {
+    try {
+      await api.approveAgentPairing(id)
+      toast.ok(t('agentTokens.connected'))
+      void load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    }
+  }
+
+  async function onReject(id: number) {
+    try {
+      await api.rejectAgentPairing(id)
+      void load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('common.error'))
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -72,6 +112,41 @@ export function AgentTokensPage() {
         title={t('titles.agentTokens')}
         subtitle={t('pages.agentTokensSubtitle')}
       />
+
+      <section className="app-card mb-8 p-6 sm:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+              {t('agentTokens.pendingTitle')}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('agentTokens.pendingHint')}</p>
+          </div>
+        </div>
+        {pending.length === 0 ? (
+          <p className="mt-4 text-sm text-[var(--color-fg-muted)]">{t('agentTokens.pendingEmpty')}</p>
+        ) : (
+          <ul className="mt-4 divide-y divide-[var(--color-border)]">
+            {pending.map((row) => (
+              <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
+                <div>
+                  <div className="font-medium text-[var(--color-fg)]">{row.hostname}</div>
+                  <div className="text-xs text-[var(--color-fg-muted)]">
+                    {new Date(row.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" className="app-btn app-btn-primary !min-h-0 text-sm" onClick={() => void onApprove(row.id)}>
+                    {t('agentTokens.connect')}
+                  </button>
+                  <button type="button" className="app-btn app-btn-secondary !min-h-0 text-sm" onClick={() => void onReject(row.id)}>
+                    {t('agentTokens.reject')}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {createdOnce ? (
         <div className="app-alert app-alert-warning mb-6 text-sm">
@@ -128,7 +203,16 @@ export function AgentTokensPage() {
         </div>
       </form>
 
-      <h2 className="mb-3 text-sm font-semibold text-[var(--color-fg)]">{t('agentTokens.allTokensTitle')}</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('agentTokens.allTokensTitle')}</h2>
+        <button
+          type="button"
+          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+          onClick={() => void onRevokeAll()}
+        >
+          {t('agentTokens.revokeAll')}
+        </button>
+      </div>
       {loading ? (
         <div className="app-card overflow-hidden p-0">
           <TableSkeleton rows={6} cols={5} />

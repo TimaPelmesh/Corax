@@ -2,8 +2,10 @@
 #include <functional>
 #include <string>
 
-// Asks the inventory server for a token and writes it next to the EXE.
-// The server issues the token immediately. There is no panel approval step.
-bool enroll_on_lan(
+enum class EnrollResult { Failed, Pending, Enrolled };
+
+// Announces this PC. A token is written only after an admin approves it in CORAX.
+EnrollResult enroll_on_lan(
     const std::function<void(const std::string&)>& status,
-    const std::string& known_server = "");
+    const std::string& known_server = "",
+    int wait_ms = 0);

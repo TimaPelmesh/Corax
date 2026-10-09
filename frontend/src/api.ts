@@ -2349,10 +2349,16 @@ export const api = {
   revokeAgentToken: (id: number) =>
     request<void>(`${API_PREFIX}/agent-tokens/${id}`, { method: 'DELETE' }),
 
+  revokeAllAgentTokens: () =>
+    request<{ revoked: number }>(`${API_PREFIX}/agent-tokens/revoke-all`, { method: 'POST' }),
+
   agentPairings: () => request<AgentPairingRow[]>(`${API_PREFIX}/agent-tokens/pair/pending`),
 
   approveAgentPairing: (id: number) =>
     request<AgentPairingRow>(`${API_PREFIX}/agent-tokens/pair/${id}/approve`, { method: 'POST' }),
+
+  rejectAgentPairing: (id: number) =>
+    request<AgentPairingRow>(`${API_PREFIX}/agent-tokens/pair/${id}/reject`, { method: 'POST' }),
 
   agentCollectPolicy: () =>
     request<AgentCollectPolicy>(`${API_PREFIX}/settings/agent-policy`),

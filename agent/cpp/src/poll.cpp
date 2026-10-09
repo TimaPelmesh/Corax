@@ -62,7 +62,7 @@ int poll_and_maybe_collect(const AgentConfig& cfg) {
   const std::string path = "/api/v1/agent/directive?hostname=" + query_escape(hostname) +
                            "&seen_generation=" + std::to_string(seen);
   HttpResult directive = http_get(cfg.server_url, path, cfg.agent_token);
-  if (!directive.ok) return 5;
+  if (!directive.ok) return directive.status == 403 ? kPollAuthRejected : 5;
   const int minutes = std::max(1, json_int_field(directive.body, "poll_minutes", 5));
   if (!json_bool_field(directive.body, "collect")) return minutes;
 
@@ -75,6 +75,7 @@ int poll_and_maybe_collect(const AgentConfig& cfg) {
   }
   if (payload.empty()) payload = build_minimal_inventory_payload(cfg, os, "empty payload");
   HttpResult sent = http_post_json(cfg.server_url, "/api/v1/agent/inventory", cfg.agent_token, payload);
+  if (!sent.ok && sent.status == 403) return kPollAuthRejected;
   if (sent.ok) {
     const int generation = json_int_field(directive.body, "generation", seen);
     write_seen_generation(util::exe_dir(), generation);

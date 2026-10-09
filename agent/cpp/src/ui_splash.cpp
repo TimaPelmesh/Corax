@@ -376,16 +376,20 @@ void AgentSplash::pump() {
   }
 }
 
-void AgentSplash::finish_ok(const std::string&) {
+void AgentSplash::finish_ok(const std::string& detail) {
   if (!g.hwnd) return;
   g.busy = false;
   g.visual = VisualState::Success;
   g.progress = 100;
   g.displayed_progress = 100;
-  g.status = L"Отчёт отправлен";
+  std::string line = detail.empty() ? "Отчёт отправлен" : detail;
+  const size_t nl = line.find('\n');
+  if (nl != std::string::npos) line = line.substr(0, nl);
+  if (line.size() > 72) line = line.substr(0, 69) + "...";
+  g.status = util::widen(line);
   if (!g.hidden) {
     present();
-    wait_with_animation(*this, 700);
+    wait_with_animation(*this, detail.empty() ? 700 : 1400);
   }
   close();
 }

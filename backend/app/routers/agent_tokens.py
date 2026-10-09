@@ -64,6 +64,23 @@ async def create_agent_token(
     )
 
 
+@router.post("/revoke-all")
+async def revoke_all_agent_tokens(
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = list(
+        (
+            await db.execute(select(AgentToken).where(AgentToken.revoked_at.is_(None)))
+        ).scalars().all()
+    )
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        row.revoked_at = now
+    await db.commit()
+    return {"revoked": len(rows)}
+
+
 @router.delete("/{token_id}", status_code=204)
 async def revoke_agent_token(
     token_id: int,

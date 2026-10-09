@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
   AgentConfig cfg = load_agent_config();
 
   if (opt.tray) {
-    if (cfg.server_url.empty() || cfg.agent_token.empty()) return 2;
+    if (cfg.server_url.empty()) return 2;
     if (!cfg.agent_token.empty()) SecureZeroMemory(cfg.agent_token.data(), cfg.agent_token.size());
     return run_tray();
   }
@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
       }
       say(text, console_out);
     };
-    if (!enroll_on_lan(status, cfg.server_url)) return false;
+    if (enroll_on_lan(status, cfg.server_url, 0) != EnrollResult::Enrolled) return false;
     cfg = load_agent_config();
     if (cfg.agent_token.empty()) return false;
     install_agent();
@@ -284,7 +284,8 @@ int main(int argc, char** argv) {
       }
       say(text, console_out);
     };
-    if (enroll_on_lan(status, cfg.server_url)) cfg = load_agent_config();
+    enroll_on_lan(status, cfg.server_url, 8000);
+    cfg = load_agent_config();
   }
 
   say("server=" + cfg.server_url, console_out);
@@ -313,18 +314,27 @@ int main(int argc, char** argv) {
     if (use_splash) splash.set_status("Отправка отчёта…");
   }
 
-  if (cfg.server_url.empty() || cfg.agent_token.empty()) {
+  if (cfg.server_url.empty()) {
     const std::string msg =
-        "Сервер CORAX не выдал токен этому компьютеру.\n\n"
-        "Проверьте, что адрес сервера в установщике открывается с этого ПК. "
-        "Как только агент до него дойдёт, токен появится в панели → Токены агентов.\n\n"
-        "Лог: " +
+        "В установщике нет адреса сервера CORAX.\n\n"
+        "Скачайте EXE с синей кнопки в панели и запустите его снова.\n\nЛог: " +
         log_path();
-    say("ERROR: server did not issue an agent token", true);
-    if (silent_mode && !cfg.server_url.empty()) return 0;
+    say("ERROR: installer has no server URL", true);
     if (use_splash) splash.finish_error(msg);
     else if (do_pause) wait_enter("\nНажмите Enter… ");
     return 2;
+  }
+
+  if (cfg.agent_token.empty()) {
+    say("ожидает одобрения в панели CORAX → Токены агентов", console_out);
+    if (use_splash) {
+      splash.set_progress(100);
+      splash.finish_ok("Ждём одобрения в CORAX");
+    } else if (do_pause) {
+      wait_enter("\nЖдём одобрения в панели CORAX. Enter — свернуть в трей… ");
+    }
+    if (!tray_dir.empty()) launch_tray_process(tray_dir);
+    return 0;
   }
 
   int ack_generation = -1;
@@ -384,9 +394,16 @@ int main(int argc, char** argv) {
     return 4;
   }
 
-  if (!res.ok && res.status == 403 && reissue_token()) {
-    say("403: сервер выдал токен этому компьютеру, повторяем отчёт", console_out);
-    res = http_post_json(cfg.server_url, "/api/v1/agent/inventory", cfg.agent_token, payload);
+  if (!res.ok && res.status == 403) {
+    if (reissue_token()) {
+      say("403: сервер выдал токен этому компьютеру, повторяем отчёт", console_out);
+      res = http_post_json(cfg.server_url, "/api/v1/agent/inventory", cfg.agent_token, payload);
+    } else {
+      say("403: ждём одобрения этого компьютера в панели CORAX", console_out);
+      if (use_splash) splash.finish_ok("Ждём одобрения в CORAX");
+      if (!tray_dir.empty()) launch_tray_process(tray_dir);
+      return 0;
+    }
   }
 
   if (!res.ok) {
