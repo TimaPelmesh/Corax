@@ -17,8 +17,55 @@ from fastapi import WebSocket
 OFFER_TTL_SEC = 90
 SESSION_TTL_SEC = 20 * 60
 MAX_FRAME_BYTES = 900_000
-MAX_INPUT_QUEUE = 64
+MAX_INPUT_QUEUE = 256
 WAIT_OFFER_SEC = 25.0
+
+
+def _as_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_int(value, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def sanitize_input(item: dict) -> dict | None:
+    kind = item.get("t")
+    if kind == "m":
+        return {
+            "t": "m",
+            "x": max(0.0, min(1.0, _as_float(item.get("x")))),
+            "y": max(0.0, min(1.0, _as_float(item.get("y")))),
+            "b": max(0, min(2, _as_int(item.get("b")))),
+            "d": max(0, min(2, _as_int(item.get("d"), 2))),
+        }
+    if kind == "k":
+        vk = _as_int(item.get("vk"))
+        if vk <= 0 or vk > 254:
+            return None
+        return {"t": "k", "vk": vk, "d": 1 if _as_int(item.get("d"), 1) else 0}
+    if kind == "w":
+        delta = _as_int(item.get("d"))
+        if delta == 0:
+            return None
+        return {"t": "w", "d": max(-360, min(360, delta))}
+    if kind == "s":
+        return {"t": "s", "i": max(0, min(15, _as_int(item.get("i"))))}
+    if kind == "q":
+        return {"t": "q", "v": max(40, min(90, _as_int(item.get("v"), 72)))}
+    return None
+
+
+def _is_move(item: dict) -> bool:
+    return item.get("t") == "m" and item.get("d") == 2
 
 
 @dataclass
@@ -207,10 +254,35 @@ class AssistHub:
             if sess is None or sess.status not in {"accepted", "live"}:
                 return False
             for item in events:
+                clean = sanitize_input(item) if isinstance(item, dict) else None
+                if clean is None:
+                    continue
+                if _is_move(clean) and sess.inputs and _is_move(sess.inputs[-1]):
+                    sess.inputs[-1] = clean
+                    continue
                 if len(sess.inputs) >= MAX_INPUT_QUEUE:
-                    sess.inputs.popleft()
-                sess.inputs.append(item)
+                    dropped = False
+                    for idx, old in enumerate(sess.inputs):
+                        if _is_move(old):
+                            del sess.inputs[idx]
+                            dropped = True
+                            break
+                    if not dropped:
+                        sess.inputs.popleft()
+                sess.inputs.append(clean)
             return True
+
+    async def pull_input(self, session_id: str, hostname: str) -> list[dict] | None:
+        key = self._host_key(hostname)
+        async with self._lock:
+            sess = self._sessions.get(session_id)
+            if sess is None or not self.hosts_match(sess.hostname, key):
+                return None
+            if sess.status not in {"accepted", "live"}:
+                return []
+            events = list(sess.inputs)
+            sess.inputs.clear()
+            return events
 
     def public(self, sess: AssistSession) -> dict:
         return {

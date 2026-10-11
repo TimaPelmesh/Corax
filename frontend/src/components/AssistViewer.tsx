@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { api, assistLiveWebSocketUrl, type AssistSession } from '../api'
 import { useT } from '../i18n/LocaleContext'
@@ -60,6 +60,8 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     y: 0.5,
     visible: false,
   })
+  const controllingRef = useRef(false)
+  const lastMoveAt = useRef(0)
 
   useEffect(() => {
     const ws = new WebSocket(assistLiveWebSocketUrl(session.id))
@@ -74,7 +76,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
           const packet = JSON.parse(event.data) as AssistMeta & { type?: string }
           if (packet.type === 'meta') {
             setMeta(packet)
-            if (packet.cv) {
+            if (packet.cv && !controllingRef.current) {
               setCursor((prev) => ({
                 x: typeof packet.cx === 'number' ? packet.cx : prev.x,
                 y: typeof packet.cy === 'number' ? packet.cy : prev.y,
@@ -123,20 +125,27 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     ws.send(JSON.stringify({ type: 'input', events }))
   }
 
-  function pos(event: MouseEvent<HTMLCanvasElement>) {
+  function pos(event: { clientX: number; clientY: number }) {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
+    if (!rect.width || !rect.height) return { x: 0, y: 0 }
     return {
       x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
       y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
     }
   }
 
-  function onMove(event: MouseEvent<HTMLCanvasElement>) {
+  function sendPointer(event: PointerEvent<HTMLCanvasElement>, button: number, down: number, force = false) {
     const p = pos(event)
+    controllingRef.current = true
     setCursor({ x: p.x, y: p.y, visible: true })
-    send([{ t: 'm', x: p.x, y: p.y, b: 0, d: 2 }])
+    if (!force && down === 2) {
+      const now = performance.now()
+      if (now - lastMoveAt.current < 16) return
+      lastMoveAt.current = now
+    }
+    send([{ t: 'm', x: p.x, y: p.y, b: button, d: down }])
   }
 
   async function hangup() {
@@ -202,19 +211,29 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
                 className="assist-canvas"
                 tabIndex={0}
                 onContextMenu={(event) => event.preventDefault()}
-                onMouseEnter={() => canvasRef.current?.focus()}
-                onMouseLeave={() => setCursor((prev) => ({ ...prev, visible: false }))}
-                onMouseMove={onMove}
-                onMouseDown={(event) => {
-                  event.preventDefault()
+                onPointerEnter={() => {
+                  controllingRef.current = true
                   canvasRef.current?.focus()
-                  const p = pos(event)
-                  setCursor({ x: p.x, y: p.y, visible: true })
-                  send([{ t: 'm', x: p.x, y: p.y, b: event.button, d: 1 }])
                 }}
-                onMouseUp={(event) => {
-                  const p = pos(event)
-                  send([{ t: 'm', x: p.x, y: p.y, b: event.button, d: 0 }])
+                onPointerLeave={(event) => {
+                  const canvas = canvasRef.current
+                  if (canvas?.hasPointerCapture(event.pointerId)) return
+                  controllingRef.current = false
+                }}
+                onPointerMove={(event) => sendPointer(event, 0, 2)}
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  const canvas = canvasRef.current
+                  canvas?.focus()
+                  canvas?.setPointerCapture(event.pointerId)
+                  sendPointer(event, event.button, 1, true)
+                }}
+                onPointerUp={(event) => {
+                  sendPointer(event, event.button, 0, true)
+                  const canvas = canvasRef.current
+                  if (canvas?.hasPointerCapture(event.pointerId)) {
+                    canvas.releasePointerCapture(event.pointerId)
+                  }
                 }}
                 onWheel={(event) => {
                   event.preventDefault()

@@ -13,14 +13,14 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import httpx
 
-RESEARCH_SYSTEM = """Ты изолированный поиск по открытым страницам.
-Тебе дают вопрос и выдержки с публичных сайтов. Базы CORAX, инвентаря и внутренних сетей у тебя нет.
+RESEARCH_SYSTEM = """Ты публичный исследователь. Тебе дают вопрос и выдержки с открытых сайтов.
+Базы CORAX, инвентаря, документов WikiRAG и внутренних сетей у тебя нет и быть не должно.
 Правила:
-- Ответь по существу: что это за объект, как устроен, как настроить — только факты из выдержек.
-- Пиши связный текст по-русски: кратко суть, затем детали, списки и команды как в источнике.
-- Не выдумывай то, чего нет в выдержках, и не дополняй общей памятью модели.
-- Не упоминай внутренние сети, инвентарь, хосты, пользователей, токены и базу CORAX.
-- Если выдержек нет или в них нет ответа — скажи, что публичная инструкция не найдена.
+- Сложи готовую инструкцию: кратко суть, затем нумерованные шаги, команды и настройки — как в источниках.
+- Пиши по-русски, связно, без воды.
+- Не выдумывай шаги, которых нет в выдержках.
+- Не упоминай CORAX, инвентарь, хосты, пользователей, токены и локальную базу.
+- Если страниц нет или в них нет ответа — скажи, что публичная инструкция не найдена, и перечисли, какие запросы уже ушли в поиск.
 - В конце перечисли URL, на которые опирался.
 """
 
@@ -84,6 +84,23 @@ _SNIPPET_RE = re.compile(
 )
 _TAG_RE = re.compile(r"<[^>]+>")
 _SKIP_HOST_SUFFIXES = (".local", ".internal", ".lan", ".home", ".corp", ".localdomain")
+_TRUSTED_PUBLIC_SUFFIXES = (
+    "wikipedia.org",
+    "wikimedia.org",
+    "duckduckgo.com",
+    "github.com",
+    "microsoft.com",
+    "learn.microsoft.com",
+    "stackoverflow.com",
+    "stackexchange.com",
+    "gnu.org",
+    "python.org",
+)
+_LITE_SEARCH_URL = "https://lite.duckduckgo.com/lite/"
+_LITE_LINK_RE = re.compile(
+    r'<a[^>]+href="(https?://[^"]+|//[^"]+|/l/\?[^"]+)"[^>]*>(.*?)</a>',
+    re.IGNORECASE | re.DOTALL,
+)
 _PAGE_CHARS = 3600
 _TOTAL_CHARS = 12000
 _FETCH_LIMIT = 8
@@ -103,6 +120,8 @@ def host_is_public(host: str) -> bool:
         return False
     if name.endswith(_SKIP_HOST_SUFFIXES):
         return False
+    if any(name == suffix or name.endswith("." + suffix) for suffix in _TRUSTED_PUBLIC_SUFFIXES):
+        return True
     try:
         ipaddress.ip_address(name)
         return _ip_is_public(name)
@@ -187,6 +206,26 @@ def html_to_text(raw: str, *, limit: int = _PAGE_CHARS) -> str:
     return text[:limit]
 
 
+def parse_lite_results(html: str, *, limit: int = 4) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for href, title_html in _LITE_LINK_RE.findall(html or ""):
+        url = unwrap_search_href(href)
+        if url.startswith("//"):
+            url = "https:" + url
+        host = (urlparse(url).hostname or "").lower()
+        if host.endswith("duckduckgo.com") or "duckduckgo.com" in host:
+            continue
+        if not url.startswith("http") or url in seen or not public_url_allowed(url):
+            continue
+        seen.add(url)
+        title = _strip_tags(title_html)[:180] or url
+        out.append({"title": title, "url": url, "snippet": ""})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def parse_search_results(html: str, *, limit: int = 4) -> list[dict[str, str]]:
     links = _RESULT_RE.findall(html or "")
     snippets = _SNIPPET_RE.findall(html or "")
@@ -215,16 +254,19 @@ def _tokens(text: str) -> list[str]:
 
 
 def research_queries(question: str) -> list[str]:
-    """Несколько публичных запросов вокруг объекта вопроса, без внутренних данных."""
+    """Публичные запросы вокруг вопроса. Внутренних данных нет."""
     raw = " ".join((question or "").split())[:240]
     if len(raw) < 3:
         return []
+    ru = bool(re.search(r"[а-яё]", raw.lower()))
     queries = [raw]
     core = " ".join(_tokens(raw)[:8]).strip()
     if core and core.lower() != raw.lower():
         queries.append(core)
     if core:
-        queries.append(f"{core} wikipedia")
+        queries.append(f"{core} инструкция" if ru else f"{core} how to")
+        queries.append(f"{core} настройка" if ru else f"{core} setup guide")
+        queries.append(f"{core} site:wikipedia.org")
     seen: set[str] = set()
     out: list[str] = []
     for item in queries:
@@ -233,7 +275,7 @@ def research_queries(question: str) -> list[str]:
             continue
         seen.add(key)
         out.append(item)
-    return out[:3]
+    return out[:6]
 
 
 def page_relevance(question: str, page: dict[str, str]) -> int:
@@ -461,8 +503,9 @@ async def iterate_public_research(question: str, *, limit: int = 6):
         yield (
             "progress",
             {
-                "stage": "search",
-                "label": "Ищет публичные источники…",
+                "stage": "queries",
+                "label": "Запросы к публичному поиску",
+                "queries": queries,
                 "query": queries[0],
             },
         )
@@ -475,8 +518,10 @@ async def iterate_public_research(question: str, *, limit: int = 6):
                     "stage": "search",
                     "label": f"Ищет: {query}",
                     "query": query,
+                    "queries": queries,
                 },
             )
+            html = ""
             try:
                 found = await client.post(
                     _SEARCH_URL,
@@ -485,7 +530,15 @@ async def iterate_public_research(question: str, *, limit: int = 6):
                 html = found.text if found.status_code == 200 else ""
             except httpx.HTTPError:
                 html = ""
-            for hit in parse_search_results(html, limit=limit):
+            hits = parse_search_results(html, limit=limit)
+            if not hits:
+                try:
+                    lite = await client.post(_LITE_SEARCH_URL, data={"q": query})
+                    lite_html = lite.text if lite.status_code == 200 else ""
+                except httpx.HTTPError:
+                    lite_html = ""
+                hits = parse_lite_results(lite_html, limit=limit)
+            for hit in hits:
                 if hit["url"] in seen:
                     continue
                 ddg_hits.append(hit)
@@ -504,6 +557,7 @@ async def iterate_public_research(question: str, *, limit: int = 6):
                 "stage": "found",
                 "label": f"Нашёл {len(hits)} источников" if hits else "Публичные страницы не нашлись",
                 "found": len(hits),
+                "queries": queries,
             },
         )
         for index, hit in enumerate(hits, start=1):

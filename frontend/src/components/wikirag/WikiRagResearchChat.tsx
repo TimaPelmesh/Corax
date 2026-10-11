@@ -307,6 +307,23 @@ export function WikiRagResearchChat() {
                               {copy.detail ? (
                                 <p className="text-[11px] text-[var(--color-fg-subtle)]">{copy.detail}</p>
                               ) : null}
+                              {turn.queries?.length ? (
+                                <div className="space-y-1">
+                                  <p className="text-[11px] font-semibold text-[var(--color-fg-subtle)]">
+                                    {t('wikirag.research.queries')}
+                                  </p>
+                                  <ul className="space-y-1">
+                                    {turn.queries.map((query) => (
+                                      <li
+                                        key={query}
+                                        className="rounded-md bg-[var(--color-surface)] px-2 py-1 font-mono text-[11px] text-[var(--color-fg)]"
+                                      >
+                                        {query}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
                               {turn.opened?.length ? (
                                 <ul className="space-y-1">
                                   {turn.opened.slice(-6).map((title) => (
@@ -322,6 +339,23 @@ export function WikiRagResearchChat() {
                           )}
                         </div>
                       )}
+                      {turn.role === 'assistant' && !showStatus && turn.queries?.length ? (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-[11px] font-semibold text-[var(--color-fg-subtle)]">
+                            {t('wikirag.research.queries')}
+                          </p>
+                          <ul className="space-y-1">
+                            {turn.queries.map((query) => (
+                              <li
+                                key={query}
+                                className="rounded-md border border-[var(--color-border)] px-2 py-1 font-mono text-[11px] text-[var(--color-fg-muted)]"
+                              >
+                                {query}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                       {sources.length ? (
                         <ul className="mt-2 space-y-1.5">
                           {sources.slice(0, 8).map((source) => {

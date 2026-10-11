@@ -32,6 +32,32 @@ async def test_offer_wait_answer_and_busy():
     queued = await hub.push_frame(sess.id, "PC-LAB-01", b"next")
     assert queued == [{"t": "m", "x": 0.5, "y": 0.5, "b": 0, "d": 2}]
 
+
+@pytest.mark.asyncio
+async def test_input_coalesces_moves_and_keeps_clicks():
+    hub = AssistHub()
+    sess = await hub.create("PC-LAB-02", 1, "Анна")
+    await hub.answer(sess.id, "PC-LAB-02", True)
+    await hub.push_frame(sess.id, "PC-LAB-02", b"jpeg")
+    await hub.push_input(
+        sess.id,
+        [
+            {"t": "m", "x": 0.1, "y": 0.1, "b": 0, "d": 2},
+            {"t": "m", "x": 0.2, "y": 0.2, "b": 0, "d": 2},
+            {"t": "m", "x": 0.3, "y": 0.3, "b": 0, "d": 1},
+            {"t": "m", "x": 0.3, "y": 0.3, "b": 0, "d": 0},
+        ],
+    )
+    events = await hub.pull_input(sess.id, "PC-LAB-02")
+    assert events == [
+        {"t": "m", "x": 0.2, "y": 0.2, "b": 0, "d": 2},
+        {"t": "m", "x": 0.3, "y": 0.3, "b": 0, "d": 1},
+        {"t": "m", "x": 0.3, "y": 0.3, "b": 0, "d": 0},
+    ]
+    empty = await hub.pull_input(sess.id, "PC-LAB-02")
+    assert empty == []
+    assert await hub.pull_input(sess.id, "OTHER-PC") is None
+
     await hub.end(sess.id)
     gone = await hub.get(sess.id)
     assert gone is None or gone.status == "ended"

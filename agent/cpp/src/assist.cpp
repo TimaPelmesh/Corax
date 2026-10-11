@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -276,36 +277,67 @@ bool grab_jpeg(std::string& out, FrameInfo& info) {
   return !out.empty();
 }
 
+void attach_input_desktop() {
+  HDESK desk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
+  if (!desk) desk = OpenInputDesktop(0, FALSE, MAXIMUM_ALLOWED);
+  if (!desk) return;
+  SetThreadDesktop(desk);
+  CloseDesktop(desk);
+  MSG pump{};
+  PeekMessageW(&pump, nullptr, 0, 0, PM_NOREMOVE);
+}
+
+void send_mouse_flags(DWORD flags, DWORD data = 0) {
+  INPUT in{};
+  in.type = INPUT_MOUSE;
+  in.mi.dwFlags = flags;
+  in.mi.mouseData = data;
+  if (SendInput(1, &in, sizeof(INPUT)) == 0) {
+    mouse_event(flags, 0, 0, data, 0);
+  }
+}
+
 void apply_mouse(double nx, double ny, int button, int down) {
+  attach_input_desktop();
   const auto mons = list_monitors();
   int index = g.monitor.load();
   if (index < 0 || index >= static_cast<int>(mons.size())) index = 0;
   const RECT mon = mons[index].rect;
+  const int sw = mon.right - mon.left;
+  const int sh = mon.bottom - mon.top;
+  const int sx = mon.left + static_cast<int>(std::lround(std::clamp(nx, 0.0, 1.0) * std::max(0, sw - 1)));
+  const int sy = mon.top + static_cast<int>(std::lround(std::clamp(ny, 0.0, 1.0) * std::max(0, sh - 1)));
+  HWND fg = GetForegroundWindow();
+  DWORD fg_pid = 0;
+  const DWORD fg_tid = fg ? GetWindowThreadProcessId(fg, &fg_pid) : 0;
+  const DWORD my_tid = GetCurrentThreadId();
+  const bool attached = fg_tid && fg_tid != my_tid && AttachThreadInput(my_tid, fg_tid, TRUE);
+  SetCursorPos(sx, sy);
   const int virt_l = GetSystemMetrics(SM_XVIRTUALSCREEN);
   const int virt_t = GetSystemMetrics(SM_YVIRTUALSCREEN);
   const int virt_w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
   const int virt_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-  const double x = mon.left + std::clamp(nx, 0.0, 1.0) * (mon.right - mon.left);
-  const double y = mon.top + std::clamp(ny, 0.0, 1.0) * (mon.bottom - mon.top);
-  INPUT in{};
-  in.type = INPUT_MOUSE;
-  in.mi.dx = virt_w > 1 ? static_cast<LONG>((x - virt_l) * 65535.0 / (virt_w - 1)) : 0;
-  in.mi.dy = virt_h > 1 ? static_cast<LONG>((y - virt_t) * 65535.0 / (virt_h - 1)) : 0;
-  in.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
+  INPUT move{};
+  move.type = INPUT_MOUSE;
+  move.mi.dx = virt_w > 1 ? static_cast<LONG>((sx - virt_l) * 65535.0 / (virt_w - 1)) : 0;
+  move.mi.dy = virt_h > 1 ? static_cast<LONG>((sy - virt_t) * 65535.0 / (virt_h - 1)) : 0;
+  move.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
+  SendInput(1, &move, sizeof(INPUT));
   if (down == 1) {
-    if (button == 0) in.mi.dwFlags |= MOUSEEVENTF_LEFTDOWN;
-    else if (button == 2) in.mi.dwFlags |= MOUSEEVENTF_RIGHTDOWN;
-    else if (button == 1) in.mi.dwFlags |= MOUSEEVENTF_MIDDLEDOWN;
+    if (button == 0) send_mouse_flags(MOUSEEVENTF_LEFTDOWN);
+    else if (button == 2) send_mouse_flags(MOUSEEVENTF_RIGHTDOWN);
+    else if (button == 1) send_mouse_flags(MOUSEEVENTF_MIDDLEDOWN);
   } else if (down == 0) {
-    if (button == 0) in.mi.dwFlags |= MOUSEEVENTF_LEFTUP;
-    else if (button == 2) in.mi.dwFlags |= MOUSEEVENTF_RIGHTUP;
-    else if (button == 1) in.mi.dwFlags |= MOUSEEVENTF_MIDDLEUP;
+    if (button == 0) send_mouse_flags(MOUSEEVENTF_LEFTUP);
+    else if (button == 2) send_mouse_flags(MOUSEEVENTF_RIGHTUP);
+    else if (button == 1) send_mouse_flags(MOUSEEVENTF_MIDDLEUP);
   }
-  SendInput(1, &in, sizeof(INPUT));
+  if (attached) AttachThreadInput(my_tid, fg_tid, FALSE);
 }
 
 void apply_key(int vk, int down) {
   if (vk <= 0 || vk > 254) return;
+  attach_input_desktop();
   INPUT in{};
   in.type = INPUT_KEYBOARD;
   in.ki.wVk = static_cast<WORD>(vk);
@@ -314,11 +346,8 @@ void apply_key(int vk, int down) {
 }
 
 void apply_wheel(int delta) {
-  INPUT in{};
-  in.type = INPUT_MOUSE;
-  in.mi.dwFlags = MOUSEEVENTF_WHEEL;
-  in.mi.mouseData = static_cast<DWORD>(delta);
-  SendInput(1, &in, sizeof(INPUT));
+  attach_input_desktop();
+  send_mouse_flags(MOUSEEVENTF_WHEEL, static_cast<DWORD>(delta));
 }
 
 void apply_events(const std::string& body) {
@@ -390,9 +419,38 @@ DWORD WINAPI capture_proc(LPVOID) {
   return 0;
 }
 
+void input_loop() {
+  AgentConfig cfg = load_agent_config();
+  const std::string host = util::computer_hostname();
+  attach_input_desktop();
+  while (!g.stop && g.live) {
+    std::string sid;
+    {
+      std::lock_guard<std::mutex> lock(g.mu);
+      sid = g.session_id;
+    }
+    if (sid.empty()) {
+      Sleep(40);
+      continue;
+    }
+    const std::string path = "/api/v1/assist/sessions/" + sid + "/events?hostname=" + query_escape(host);
+    HttpResult pulled = http_get(cfg.server_url, path, cfg.agent_token);
+    if (pulled.status == 410 || pulled.status == 404) break;
+    if (pulled.ok) apply_events(pulled.body);
+    Sleep(16);
+  }
+}
+
+DWORD WINAPI input_proc(LPVOID) {
+  input_loop();
+  return 0;
+}
+
 void start_capture() {
-  HANDLE th = CreateThread(nullptr, 0, capture_proc, nullptr, 0, nullptr);
-  if (th) CloseHandle(th);
+  HANDLE video = CreateThread(nullptr, 0, capture_proc, nullptr, 0, nullptr);
+  if (video) CloseHandle(video);
+  HANDLE input = CreateThread(nullptr, 0, input_proc, nullptr, 0, nullptr);
+  if (input) CloseHandle(input);
 }
 
 void post_answer(bool accept) {

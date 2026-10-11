@@ -555,7 +555,7 @@ async def public_directory(
     secret: str | None = Query(default=None, max_length=255),
     db: AsyncSession = Depends(get_db),
 ):
-    """Phone book for the desktop client. Same LAN gate as /h — no panel login."""
+    """Phone book for the employee web form. Same LAN gate as /h — no panel login."""
     cfg = await _get_or_create_config(db)
     await _require_intake_access(cfg, request, secret, db, hostname)
     rows = list(
@@ -592,7 +592,7 @@ async def public_tabs(
     secret: str | None = Query(default=None, max_length=255),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reference tabs for /h and the desktop client. Same LAN gate as tickets."""
+    """Reference tabs for the employee web form /h. Same LAN gate as tickets."""
     cfg = await _get_or_create_config(db)
     await _require_intake_access(cfg, request, secret, db, hostname)
     return TicketHandlerPublicTabsOut(

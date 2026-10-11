@@ -672,10 +672,6 @@ class AgentBundleLanIpOut(BaseModel):
     candidates: list[str] = []
 
 
-class DesktopClientCreate(BaseModel):
-    server_url: str = Field(default="", max_length=512)
-
-
 class AgentBundleCreate(BaseModel):
     server_url: str = Field(default="", max_length=512)
     target: str = Field(default="windows", pattern="^(windows|linux|cpp|win10)$")

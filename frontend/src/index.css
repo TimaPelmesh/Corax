@@ -4450,6 +4450,7 @@ html.theme-fade body {
   position: relative;
   max-width: 100%;
   max-height: 100%;
+  touch-action: none;
 }
 .assist-canvas {
   display: block;
@@ -4458,6 +4459,8 @@ html.theme-fade body {
   width: auto;
   height: auto;
   cursor: none;
+  touch-action: none;
+  user-select: none;
   opacity: 0;
 }
 .assist-stage-live .assist-canvas {

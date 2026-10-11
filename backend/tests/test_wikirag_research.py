@@ -71,6 +71,12 @@ def test_research_queries_keep_the_object():
     assert queries[0] == "как это такое баобабы"
     assert "баобабы" in blob
     assert "wikipedia" in blob
+    assert any("инструкция" in item for item in queries)
+
+
+def test_wikipedia_host_is_trusted_without_dns():
+    assert host_is_public("ru.wikipedia.org") is True
+    assert host_is_public("en.wikipedia.org") is True
 
 
 def test_page_relevance_prefers_the_asked_object():

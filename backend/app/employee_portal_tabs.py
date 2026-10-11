@@ -1,4 +1,4 @@
-"""Admin-managed reference tabs shown on /h and the employee desktop client."""
+"""Admin-managed reference tabs shown on the employee web form /h."""
 
 from __future__ import annotations
 

@@ -1645,7 +1645,8 @@ export const en: MessageTree = {
     research: {
       title: 'Research',
       badge: 'Isolated',
-      hint: 'Searches the public web for setup instructions. The request does not include the CORAX knowledge base, inventory, hosts, or tokens. The answer uses only the pages that were opened.',
+      hint: 'Public web only: builds instructions from your question. CORAX inventory and WikiRAG documents stay out of the request. Every search query is listed below.',
+      queries: 'Queries',
       placeholder: 'Topic: how to configure a model, BIOS, driver…',
       searching: 'Searching public sources…',
       searchingQuery: 'Searching: {query}',
@@ -2154,12 +2155,12 @@ export const en: MessageTree = {
     rdpHint: 'Opens Remote Desktop on this PC for {host}. No agent needed.',
     rdpStarted: 'Opening Remote Desktop on this PC to {host}',
     assist: 'Corax Assist',
-    assistByName: 'Shared desktop on {host}. Needs the blue “Download EXE” agent, not the employee client.',
+    assistByName: 'Shared desktop on {host}. Needs the blue “Download EXE” agent.',
     assistWaiting: 'Waiting for consent on {host}…',
     assistConnecting: 'Opening a shared desktop',
     assistLive: 'Live',
     assistNoTray:
-      'The inventory tray on {host} did not answer. Use the blue “Download EXE” agent, not “Employee client”. Run it on that PC again.',
+      'The inventory tray on {host} did not answer. Use the blue “Download EXE” agent. Run it on that PC again.',
     assistEnd: 'End',
     assistMonitors: 'Monitors',
     assistMonitor: 'Monitor {n}',
@@ -2169,7 +2170,7 @@ export const en: MessageTree = {
     assistQualitySmooth: 'Smoother',
     assistQualitySharp: 'Sharper',
     assistPointer: 'Mouse and keyboard go to the remote desktop',
-    assistHintDetail: 'Switch monitors at the top. The cursor is drawn in the picture and duplicated in this window.',
+    assistHintDetail: 'Click and move in this window to control the remote mouse. Keyboard follows too.',
     assistFail: 'Could not start Assist',
     assistSoon: 'Shared desktop: the employee sees what the admin does',
     dameware: 'DameWare',
@@ -3025,10 +3026,6 @@ export const en: MessageTree = {
     summaryArchiveWin10:
       'A single CORAX-Agent.exe. The token and server address are built in. Put the same file on a share and run it on any PC.',
     downloadExe: 'Download EXE',
-    downloadClient: 'Employee client',
-    downloadClientHint:
-      'Ticket window only. Assist and inventory come from the blue “Download EXE”, which puts the agent in the tray.',
-    downloadClientBusy: 'Preparing the client…',
     summaryArchiveWin7:
       'Inside the archive: inventory_send_win7.bat, agent_env.bat, PowerShell scripts.',
     summaryArchiveCpp:

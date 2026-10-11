@@ -14,6 +14,7 @@ export type WikiRagResearchTurn = {
   meta?: WikiRagChatResponse['meta']
   progress?: WikiRagProgress | null
   opened?: string[]
+  queries?: string[]
 }
 
 export type WikiRagResearchSession = {
@@ -220,6 +221,14 @@ export function sendWikiRagResearchMessage(opts: {
               const last = turns[turns.length - 1]
               if (!last || last.role !== 'assistant') return s
               const opened = [...(last.opened || [])]
+              const queries = [...(last.queries || [])]
+              for (const item of progress.queries || []) {
+                const q = item.trim()
+                if (q && !queries.includes(q)) queries.push(q)
+              }
+              if (progress.query?.trim() && !queries.includes(progress.query.trim())) {
+                queries.push(progress.query.trim())
+              }
               const title = (progress.title || '').trim()
               if (progress.stage === 'open' && title && !opened.includes(title)) opened.push(title)
               if (progress.titles?.length) {
@@ -242,6 +251,7 @@ export function sendWikiRagResearchMessage(opts: {
                 ...last,
                 progress,
                 opened,
+                queries,
                 parsed: sources.length ? { ...(last.parsed || {}), sources } : last.parsed,
               }
               return { ...s, turns }
@@ -282,6 +292,7 @@ export function sendWikiRagResearchMessage(opts: {
                 parsed,
                 meta: res.meta,
                 progress: null,
+                queries: last.queries,
               }
               return { ...s, turns }
             })

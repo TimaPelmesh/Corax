@@ -1643,7 +1643,8 @@ export const ru = {
     research: {
       title: 'Исследование',
       badge: 'Изолировано',
-      hint: 'Ищет публичные инструкции в интернете. В запрос не попадают база CORAX, инвентарь, хосты и токены. Ответ строится только по открытым страницам.',
+      hint: 'Только публичный интернет: по вашему вопросу собирает инструкции. База CORAX, инвентарь и документы WikiRAG в запрос не попадают. Ниже видны все поисковые запросы.',
+      queries: 'Запросы',
       placeholder: 'Тема: как настроить модель, BIOS, драйвер…',
       searching: 'Ищет публичные источники…',
       searchingQuery: 'Ищет: {query}',
@@ -2152,12 +2153,12 @@ export const ru = {
     rdpHint: 'У вас откроется окно RDP для {host}. Агент не нужен.',
     rdpStarted: 'На этом компьютере открывается окно RDP к {host}',
     assist: 'Corax Assist',
-    assistByName: 'Общий стол на {host}. Нужен агент с синей «Скачать EXE», не клиент сотрудника.',
+    assistByName: 'Общий стол на {host}. Нужен агент с синей «Скачать EXE».',
     assistWaiting: 'Ждём согласие на {host}…',
     assistConnecting: 'Соединяем защищённый стол',
     assistLive: 'В эфире',
     assistNoTray:
-      'На {host} не ответил трей инвентаризации. Нужен EXE с синей кнопки «Скачать EXE», не «Клиент для сотрудников». Запустите его на том ПК ещё раз.',
+      'На {host} не ответил трей инвентаризации. Нужен EXE с синей кнопки «Скачать EXE». Запустите его на том ПК ещё раз.',
     assistEnd: 'Завершить',
     assistMonitors: 'Мониторы',
     assistMonitor: 'Монитор {n}',
@@ -2167,7 +2168,7 @@ export const ru = {
     assistQualitySmooth: 'Плавнее',
     assistQualitySharp: 'Чётче',
     assistPointer: 'Мышь и клавиатура идут на удалённый стол',
-    assistHintDetail: 'Переключайте мониторы сверху. Курсор рисуется на картинке и дублируется в окне.',
+    assistHintDetail: 'Клик и движение в окне двигают мышь на том ПК. Клавиатура тоже идёт туда.',
     assistFail: 'Не удалось начать Assist',
     assistSoon: 'Общий стол: сотрудник видит, что делает админ',
     dameware: 'DameWare',
@@ -3023,10 +3024,6 @@ export const ru = {
     summaryArchiveWin10:
       'Один файл CORAX-Agent.exe. Токен и адрес сервера вшиты. Тот же файл можно положить на шару и запустить на любом ПК.',
     downloadExe: 'Скачать EXE',
-    downloadClient: 'Клиент для сотрудников',
-    downloadClientHint:
-      'Окно заявок. Assist и инвентаризация — это синяя «Скачать EXE»: она ставит агент в трей.',
-    downloadClientBusy: 'Готовим клиент…',
     summaryArchiveWin7:
       'В архиве: inventory_send_win7.bat, agent_env.bat, PowerShell-скрипты.',
     summaryArchiveCpp:

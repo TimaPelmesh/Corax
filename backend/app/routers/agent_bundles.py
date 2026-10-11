@@ -8,10 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_bundle import build_agent_bundle_zip
 from app.auth import get_current_superuser
 from app.database import get_db
-from app.desktop_client import build_desktop_client_exe
 from app.local_ip import advertise_lan_ipv4, list_lan_ipv4, pick_primary_lan_ipv4, _private_ipv4
 from app.models import User
-from app.schemas import AgentBundleCreate, AgentBundleLanIpOut, DesktopClientCreate
+from app.schemas import AgentBundleCreate, AgentBundleLanIpOut
 
 router = APIRouter(prefix="/agent-bundles", tags=["agent-bundles"])
 
@@ -44,31 +43,6 @@ async def agent_bundle_lan_ip(
         if ip and ip not in candidates:
             candidates.append(ip)
     return AgentBundleLanIpOut(ip=preferred, candidates=candidates)
-
-
-@router.post("/desktop")
-async def create_desktop_client(
-    body: DesktopClientCreate,
-    _: User = Depends(get_current_superuser),
-):
-    """Employee installer. Bytes are the template EXE, not a rewritten bundle."""
-    try:
-        data, filename = build_desktop_client_exe(body.server_url)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return Response(
-        content=data,
-        media_type="application/vnd.microsoft.portable-executable",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            # Starlette gzip would recompress the bundle and the saved file
-            # is no longer a PE. identity tells the middleware to leave it.
-            "Content-Encoding": "identity",
-            "Cache-Control": "no-store",
-        },
-    )
 
 
 @router.post("")

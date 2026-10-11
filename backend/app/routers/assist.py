@@ -156,6 +156,23 @@ async def push_frame(
     return {"ok": True, "events": events}
 
 
+@router.get("/sessions/{session_id}/events")
+async def pull_events(
+    session_id: str,
+    hostname: str = Query(min_length=1, max_length=255),
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    await verify_agent_token(db, authorization, hostname)
+    sess = await hub.get(session_id)
+    if sess is None:
+        raise HTTPException(status_code=410, detail="Сессия Assist закрыта")
+    events = await hub.pull_input(session_id, hostname)
+    if events is None:
+        raise HTTPException(status_code=404, detail="Сессия Assist не найдена")
+    return {"ok": True, "events": events}
+
+
 @router.websocket("/sessions/{session_id}/live")
 async def assist_live(websocket: WebSocket, session_id: str):
     await websocket.accept()
