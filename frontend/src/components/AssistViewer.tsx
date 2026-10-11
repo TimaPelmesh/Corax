@@ -47,20 +47,14 @@ function vkOf(event: KeyboardEvent): number {
   return 0
 }
 
-
 export function AssistViewer({ session, onClose }: { session: AssistSession; onClose: () => void }) {
   const t = useT()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const framesRef = useRef<number[]>([])
   const [waiting, setWaiting] = useState(true)
-  const [late, setLate] = useState(false)
   const [hint, setHint] = useState(t('remoteConnect.assistWaiting', { host: session.hostname }))
   const [meta, setMeta] = useState<AssistMeta>({})
-  const [fps, setFps] = useState(0)
-  const [quality, setQuality] = useState(72)
-  const [focused, setFocused] = useState(false)
   const [cursor, setCursor] = useState<{ x: number; y: number; visible: boolean }>({
     x: 0.5,
     y: 0.5,
@@ -72,7 +66,6 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     ws.binaryType = 'blob'
     wsRef.current = ws
     const waitTimer = window.setTimeout(() => {
-      setLate(true)
       setHint(t('remoteConnect.assistNoTray', { host: session.hostname }))
     }, 28000)
     ws.onmessage = async (event) => {
@@ -110,12 +103,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
         ctx.drawImage(bmp, 0, 0)
       }
       bmp.close()
-      const now = performance.now()
-      framesRef.current = framesRef.current.filter((stamp) => now - stamp < 1000)
-      framesRef.current.push(now)
-      setFps(framesRef.current.length)
       setWaiting(false)
-      setLate(false)
       window.clearTimeout(waitTimer)
     }
     ws.onclose = () => {
@@ -166,24 +154,10 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     setMeta((prev) => ({ ...prev, mon: index }))
   }
 
-  function setEncode(next: number) {
-    setQuality(next)
-    send([{ t: 'q', v: next }])
-  }
-
-  function toggleFullscreen() {
-    const node = shellRef.current
-    if (!node) return
-    if (document.fullscreenElement) void document.exitFullscreen()
-    else void node.requestFullscreen()
-  }
-
   const screens = meta.screens?.length
     ? meta.screens
     : Array.from({ length: Math.max(1, meta.mc || 1) }, (_, i) => ({ i, w: 0, h: 0 }))
   const activeMon = meta.mon ?? 0
-  const remoteW = meta.mw || meta.w || 0
-  const remoteH = meta.mh || meta.h || 0
   const cursorStyle = cursor.visible
     ? {
         left: `${cursor.x * 100}%`,
@@ -196,136 +170,83 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
       <div className="assist-shell" ref={shellRef}>
         <header className="assist-bar">
           <div className="assist-identity">
-            <p className="assist-kicker">Corax Assist</p>
+            <p className="assist-kicker">{t('remoteConnect.assist')}</p>
             <p className="assist-host">{session.hostname}</p>
-            {remoteW && remoteH ? (
-              <p className="assist-size">{t('remoteConnect.assistSize', { w: remoteW, h: remoteH })}</p>
-            ) : null}
           </div>
-          <div className="assist-monitors" role="tablist" aria-label={t('remoteConnect.assistMonitors')}>
-            {screens.map((screen, index) => (
-              <button
-                key={screen.i ?? index}
-                type="button"
-                role="tab"
-                aria-selected={activeMon === index}
-                className={`assist-mon${activeMon === index ? ' assist-mon-on' : ''}`}
-                onClick={() => selectMonitor(index)}
-              >
-                {t('remoteConnect.assistMonitor', { n: index + 1 })}
-                {screen.w && screen.h ? (
-                  <span>
-                    {screen.w}×{screen.h}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-          <div className="assist-tools">
-            <div className={`assist-pill${waiting ? '' : ' assist-pill-live'}`}>
-              <span className="assist-pill-dot" />
-              {waiting ? t('remoteConnect.assistConnecting') : t('remoteConnect.assistLive')}
-            </div>
-            {!waiting ? <span className="assist-fps">{t('remoteConnect.assistFps', { n: fps })}</span> : null}
-            <button
-              type="button"
-              className={`assist-tool${quality <= 64 ? ' assist-tool-on' : ''}`}
-              onClick={() => setEncode(58)}
-            >
-              {t('remoteConnect.assistQualitySmooth')}
-            </button>
-            <button
-              type="button"
-              className={`assist-tool${quality >= 78 ? ' assist-tool-on' : ''}`}
-              onClick={() => setEncode(82)}
-            >
-              {t('remoteConnect.assistQualitySharp')}
-            </button>
-            <button type="button" className="assist-tool" onClick={() => toggleFullscreen()}>
-              {t('remoteConnect.assistFullscreen')}
-            </button>
-            <button type="button" className="assist-hangup" onClick={() => void hangup()}>
-              {t('remoteConnect.assistEnd')}
-            </button>
-          </div>
-        </header>
-        <div className={`assist-stage${waiting ? '' : ' assist-stage-live'}`}>
-          {waiting ? (
-            <div className="assist-wait">
-              <div className="assist-rings" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
-              <p className="assist-wait-title">{t('remoteConnect.assistConnecting')}</p>
-              <p className="assist-wait-copy">{hint}</p>
-              {late ? null : <div className="assist-wait-bar" />}
+          {screens.length > 1 ? (
+            <div className="assist-monitors" role="tablist" aria-label={t('remoteConnect.assistMonitors')}>
+              {screens.map((screen, index) => (
+                <button
+                  key={screen.i ?? index}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMon === index}
+                  className={`assist-mon${activeMon === index ? ' assist-mon-on' : ''}`}
+                  onClick={() => selectMonitor(index)}
+                >
+                  {t('remoteConnect.assistMonitor', { n: index + 1 })}
+                </button>
+              ))}
             </div>
           ) : null}
+          <button type="button" className="app-btn app-btn-secondary assist-hangup" onClick={() => void hangup()}>
+            {t('remoteConnect.assistEnd')}
+          </button>
+        </header>
+        <div className={`assist-stage${waiting ? '' : ' assist-stage-live'}`}>
+          {waiting ? <p className="assist-wait">{hint}</p> : null}
           <div className="assist-frame">
             <div className="assist-surface">
-            <canvas
-              ref={canvasRef}
-              className="assist-canvas"
-              tabIndex={0}
-              onContextMenu={(event) => event.preventDefault()}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              onMouseEnter={() => {
-                setFocused(true)
-                canvasRef.current?.focus()
-              }}
-              onMouseLeave={() => setCursor((prev) => ({ ...prev, visible: false }))}
-              onMouseMove={onMove}
-              onMouseDown={(event) => {
-                event.preventDefault()
-                canvasRef.current?.focus()
-                setFocused(true)
-                const p = pos(event)
-                setCursor({ x: p.x, y: p.y, visible: true })
-                send([{ t: 'm', x: p.x, y: p.y, b: event.button, d: 1 }])
-              }}
-              onMouseUp={(event) => {
-                const p = pos(event)
-                send([{ t: 'm', x: p.x, y: p.y, b: event.button, d: 0 }])
-              }}
-              onWheel={(event) => {
-                event.preventDefault()
-                send([{ t: 'w', d: Math.sign(-event.deltaY) * 120 }])
-              }}
-              onKeyDown={(event) => {
-                event.preventDefault()
-                const vk = vkOf(event.nativeEvent)
-                if (vk) send([{ t: 'k', vk, d: 1 }])
-              }}
-              onKeyUp={(event) => {
-                event.preventDefault()
-                const vk = vkOf(event.nativeEvent)
-                if (vk) send([{ t: 'k', vk, d: 0 }])
-              }}
-            />
-            {cursor.visible && !waiting ? (
-              <div className="assist-cursor" style={cursorStyle} aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="22" height="22">
-                  <path
-                    d="M4.2 2.8 19 13.1l-7.2.3-3.6 7.6z"
-                    fill="#f8fafc"
-                    stroke="#0f172a"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-            ) : null}
+              <canvas
+                ref={canvasRef}
+                className="assist-canvas"
+                tabIndex={0}
+                onContextMenu={(event) => event.preventDefault()}
+                onMouseEnter={() => canvasRef.current?.focus()}
+                onMouseLeave={() => setCursor((prev) => ({ ...prev, visible: false }))}
+                onMouseMove={onMove}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  canvasRef.current?.focus()
+                  const p = pos(event)
+                  setCursor({ x: p.x, y: p.y, visible: true })
+                  send([{ t: 'm', x: p.x, y: p.y, b: event.button, d: 1 }])
+                }}
+                onMouseUp={(event) => {
+                  const p = pos(event)
+                  send([{ t: 'm', x: p.x, y: p.y, b: event.button, d: 0 }])
+                }}
+                onWheel={(event) => {
+                  event.preventDefault()
+                  send([{ t: 'w', d: Math.sign(-event.deltaY) * 120 }])
+                }}
+                onKeyDown={(event) => {
+                  event.preventDefault()
+                  const vk = vkOf(event.nativeEvent)
+                  if (vk) send([{ t: 'k', vk, d: 1 }])
+                }}
+                onKeyUp={(event) => {
+                  event.preventDefault()
+                  const vk = vkOf(event.nativeEvent)
+                  if (vk) send([{ t: 'k', vk, d: 0 }])
+                }}
+              />
+              {cursor.visible && !waiting ? (
+                <div className="assist-cursor" style={cursorStyle} aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="22" height="22">
+                    <path
+                      d="M4.2 2.8 19 13.1l-7.2.3-3.6 7.6z"
+                      fill="var(--color-surface)"
+                      stroke="var(--color-fg)"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
-        <footer className="assist-foot">
-          <span className={focused ? 'assist-foot-on' : undefined}>
-            {t('remoteConnect.assistPointer')}
-          </span>
-          <span>{t('remoteConnect.assistHintDetail')}</span>
-        </footer>
       </div>
     </div>,
     document.body,
