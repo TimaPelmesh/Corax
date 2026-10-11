@@ -72,7 +72,10 @@ _STOPWORDS = {
     "of",
 }
 
-_UA = "CORAX-Research/1.0"
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
 _SEARCH_URL = "https://html.duckduckgo.com/html/"
 _RESULT_RE = re.compile(
     r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
@@ -374,6 +377,35 @@ def research_sources(pages: list[dict[str, str]]) -> list[dict[str, str | int]]:
     return sources
 
 
+def research_http_kwargs() -> dict:
+    """Исходящий клиент как у LLM: без системного прокси и только IPv4.
+
+    HTTP(S)_PROXY на 127.0.0.1 внутри Docker даёт «All connection attempts failed».
+    AAAA-записи Wikipedia/DDG при сломанном IPv6 — то же самое.
+    """
+    return {
+        "timeout": httpx.Timeout(15.0, connect=8.0),
+        "headers": {
+            "User-Agent": _UA,
+            "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
+        "follow_redirects": False,
+        "trust_env": False,
+        "transport": httpx.AsyncHTTPTransport(retries=1, local_address="0.0.0.0"),
+    }
+
+
+async def _http_text(client: httpx.AsyncClient, method: str, url: str, **kwargs) -> str:
+    try:
+        response = await client.request(method, url, **kwargs)
+    except httpx.HTTPError:
+        return ""
+    if response.status_code != 200:
+        return ""
+    return response.text or ""
+
+
 async def _fetch_public(client: httpx.AsyncClient, url: str) -> str:
     current = url
     for _ in range(3):
@@ -421,26 +453,62 @@ async def _wikipedia_hits(client: httpx.AsyncClient, question: str, *, limit: in
                 },
             )
         except httpx.HTTPError:
+            response = None
+        data = None
+        if response is not None and response.status_code == 200:
+            try:
+                data = response.json()
+            except ValueError:
+                data = None
+        if isinstance(data, list) and len(data) >= 4:
+            titles = data[1] if isinstance(data[1], list) else []
+            snippets = data[2] if isinstance(data[2], list) else []
+            urls = data[3] if isinstance(data[3], list) else []
+            for index, url in enumerate(urls):
+                href = str(url or "").strip()
+                if not href or href in seen or not public_url_allowed(href):
+                    continue
+                seen.add(href)
+                title = str(titles[index] if index < len(titles) else href)
+                snippet = str(snippets[index] if index < len(snippets) else "")
+                hits.append({"title": title[:180] or href, "url": href, "snippet": snippet[:400]})
+                if len(hits) >= limit * 2:
+                    return hits
+        try:
+            search = await client.get(
+                api,
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": core,
+                    "srlimit": str(limit),
+                    "srprop": "snippet",
+                    "format": "json",
+                },
+            )
+        except httpx.HTTPError:
             continue
-        if response.status_code != 200:
+        if search.status_code != 200:
             continue
         try:
-            data = response.json()
+            payload = search.json()
         except ValueError:
             continue
-        if not isinstance(data, list) or len(data) < 4:
+        rows = (((payload or {}).get("query") or {}).get("search") or [])
+        if not isinstance(rows, list):
             continue
-        titles = data[1] if isinstance(data[1], list) else []
-        snippets = data[2] if isinstance(data[2], list) else []
-        urls = data[3] if isinstance(data[3], list) else []
-        for index, url in enumerate(urls):
-            href = str(url or "").strip()
-            if not href or href in seen or not public_url_allowed(href):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            title = str(row.get("title") or "").strip()
+            if not title:
+                continue
+            href = f"https://{lang}.wikipedia.org/wiki/{title.replace(' ', '_')}"
+            if href in seen or not public_url_allowed(href):
                 continue
             seen.add(href)
-            title = str(titles[index] if index < len(titles) else href)
-            snippet = str(snippets[index] if index < len(snippets) else "")
-            hits.append({"title": title[:180] or href, "url": href, "snippet": snippet[:400]})
+            snippet = _strip_tags(str(row.get("snippet") or ""))
+            hits.append({"title": title[:180], "url": href, "snippet": snippet[:400]})
             if len(hits) >= limit * 2:
                 return hits
     return hits
@@ -495,11 +563,9 @@ async def iterate_public_research(question: str, *, limit: int = 6):
     if not queries:
         yield ("pages", [])
         return
-    timeout = httpx.Timeout(12.0, connect=5.0)
-    headers = {"User-Agent": _UA, "Accept": "text/html,text/plain,application/json"}
     pages: list[dict[str, str]] = []
     seen: set[str] = set()
-    async with httpx.AsyncClient(timeout=timeout, headers=headers, follow_redirects=False) as client:
+    async with httpx.AsyncClient(**research_http_kwargs()) as client:
         yield (
             "progress",
             {
@@ -521,22 +587,20 @@ async def iterate_public_research(question: str, *, limit: int = 6):
                     "queries": queries,
                 },
             )
-            html = ""
-            try:
-                found = await client.post(
-                    _SEARCH_URL,
-                    data={"q": query, "kl": "ru-ru" if re.search(r"[а-яё]", query.lower()) else "wt-wt"},
-                )
-                html = found.text if found.status_code == 200 else ""
-            except httpx.HTTPError:
-                html = ""
+            region = "ru-ru" if re.search(r"[а-яё]", query.lower()) else "wt-wt"
+            html = await _http_text(
+                client,
+                "POST",
+                _SEARCH_URL,
+                data={"q": query, "kl": region},
+            )
+            if not html:
+                html = await _http_text(client, "GET", _SEARCH_URL, params={"q": query, "kl": region})
             hits = parse_search_results(html, limit=limit)
             if not hits:
-                try:
-                    lite = await client.post(_LITE_SEARCH_URL, data={"q": query})
-                    lite_html = lite.text if lite.status_code == 200 else ""
-                except httpx.HTTPError:
-                    lite_html = ""
+                lite_html = await _http_text(client, "POST", _LITE_SEARCH_URL, data={"q": query})
+                if not lite_html:
+                    lite_html = await _http_text(client, "GET", _LITE_SEARCH_URL, params={"q": query})
                 hits = parse_lite_results(lite_html, limit=limit)
             for hit in hits:
                 if hit["url"] in seen:

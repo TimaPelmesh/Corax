@@ -8,6 +8,7 @@ from app.wikirag_research import (
     page_relevance,
     parse_search_results,
     public_url_allowed,
+    research_http_kwargs,
     research_parsed_answer,
     research_queries,
     unwrap_search_href,
@@ -77,6 +78,12 @@ def test_research_queries_keep_the_object():
 def test_wikipedia_host_is_trusted_without_dns():
     assert host_is_public("ru.wikipedia.org") is True
     assert host_is_public("en.wikipedia.org") is True
+
+
+def test_research_http_ignores_proxy_and_binds_ipv4():
+    kwargs = research_http_kwargs()
+    assert kwargs["trust_env"] is False
+    assert kwargs["transport"]._pool._local_address == "0.0.0.0"
 
 
 def test_page_relevance_prefers_the_asked_object():

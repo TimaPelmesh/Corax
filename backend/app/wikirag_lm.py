@@ -1027,6 +1027,15 @@ async def lm_studio_chat_stream(
                         yield piece, used_model
         except httpx.ReadTimeout as e:
             raise RuntimeError(f"{label} не передал данные за {int(read_timeout)} с.") from e
+        except httpx.ConnectError as e:
+            hint = (
+                "Запустите Ollama (`ollama serve`) и проверьте URL."
+                if provider == "ollama"
+                else "Проверьте, что Local Server запущен."
+            )
+            raise RuntimeError(f"Нет соединения с {label} ({base}). {hint}") from e
+        except httpx.HTTPError as e:
+            raise RuntimeError(f"Нет связи с {label} ({base}): {e}") from e
 
 
 async def lm_studio_health(*, base_url: str | None = None, preferred_model: str | None = None) -> dict[str, Any]:

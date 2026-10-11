@@ -1170,9 +1170,27 @@ async def wiki_rag_research_stream(
                 parsed["answer"] = RESEARCH_EMPTY
             meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
             yield _sse("done", {"raw": raw, "parsed": parsed, "model": model, "meta": meta})
+        except httpx.ConnectError:
+            meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
+            yield _sse(
+                "error",
+                {
+                    "error": (
+                        "Сервер CORAX не достучался до публичного интернета "
+                        "(поиск и страницы). Прокси на 127.0.0.1 из Docker не используется."
+                    ),
+                    "meta": meta,
+                },
+            )
         except Exception as e:
             meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
-            yield _sse("error", {"error": str(e), "meta": meta})
+            text = str(e)
+            if "All connection attempts failed" in text:
+                text = (
+                    "Нет соединения: либо публичный поиск с сервера недоступен, "
+                    "либо локальная модель не отвечает."
+                )
+            yield _sse("error", {"error": text, "meta": meta})
 
     return StreamingResponse(
         event_stream(),
