@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
+import { lazyPage } from './lazyPage'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import { titleForPath } from './documentTitle'
@@ -6,92 +7,92 @@ import { useLocale } from './i18n/LocaleContext'
 import { legacySelfServiceLocation } from './lib/helpdeskRedirect'
 import { LoginPage } from './pages/LoginPage'
 
-const ForceChangePasswordPage = lazy(() =>
+const ForceChangePasswordPage = lazyPage(() =>
   import('./pages/ForceChangePasswordPage').then((module) => ({ default: module.ForceChangePasswordPage })),
 )
-const Layout = lazy(() => import('./pages/Layout').then((module) => ({ default: module.Layout })))
-const DashboardPage = lazy(() =>
+const Layout = lazyPage(() => import('./pages/Layout').then((module) => ({ default: module.Layout })))
+const DashboardPage = lazyPage(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
 )
-const RiskCenterPage = lazy(() =>
+const RiskCenterPage = lazyPage(() =>
   import('./pages/RiskCenterPage').then((module) => ({ default: module.RiskCenterPage })),
 )
-const ComputersPage = lazy(() =>
+const ComputersPage = lazyPage(() =>
   import('./pages/ComputersPage').then((module) => ({ default: module.ComputersPage })),
 )
-const SoftwarePage = lazy(() =>
+const SoftwarePage = lazyPage(() =>
   import('./pages/SoftwarePage').then((module) => ({ default: module.SoftwarePage })),
 )
-const AgentTokensPage = lazy(() =>
+const AgentTokensPage = lazyPage(() =>
   import('./pages/AgentTokensPage').then((module) => ({ default: module.AgentTokensPage })),
 )
-const AgentBundlePage = lazy(() =>
+const AgentBundlePage = lazyPage(() =>
   import('./pages/AgentBundlePage').then((module) => ({ default: module.AgentBundlePage })),
 )
-const SettingsIndexPage = lazy(() =>
+const SettingsIndexPage = lazyPage(() =>
   import('./pages/SettingsIndexPage').then((module) => ({ default: module.SettingsIndexPage })),
 )
-const SettingsLdapPage = lazy(() =>
+const SettingsLdapPage = lazyPage(() =>
   import('./pages/SettingsLdapPage').then((module) => ({ default: module.SettingsLdapPage })),
 )
-const SettingsWolPage = lazy(() =>
+const SettingsWolPage = lazyPage(() =>
   import('./pages/SettingsWolPage').then((module) => ({ default: module.SettingsWolPage })),
 )
-const SettingsHttpsPage = lazy(() =>
+const SettingsHttpsPage = lazyPage(() =>
   import('./pages/SettingsHttpsPage').then((module) => ({ default: module.SettingsHttpsPage })),
 )
-const SettingsTagsPage = lazy(() =>
+const SettingsTagsPage = lazyPage(() =>
   import('./pages/SettingsTagsPage').then((module) => ({ default: module.SettingsTagsPage })),
 )
-const SettingsCategoriesPage = lazy(() =>
+const SettingsCategoriesPage = lazyPage(() =>
   import('./pages/SettingsCategoriesPage').then((module) => ({ default: module.SettingsCategoriesPage })),
 )
-const ServiceRequestsPage = lazy(() =>
+const ServiceRequestsPage = lazyPage(() =>
   import('./pages/ServiceRequestsPage').then((module) => ({ default: module.ServiceRequestsPage })),
 )
-const UsersPage = lazy(() => import('./pages/UsersPage').then((module) => ({ default: module.UsersPage })))
-const SettingsBitrix24Page = lazy(() =>
+const UsersPage = lazyPage(() => import('./pages/UsersPage').then((module) => ({ default: module.UsersPage })))
+const SettingsBitrix24Page = lazyPage(() =>
   import('./pages/SettingsBitrix24Page').then((module) => ({ default: module.SettingsBitrix24Page })),
 )
-const SettingsZabbixPage = lazy(() =>
+const SettingsZabbixPage = lazyPage(() =>
   import('./pages/SettingsZabbixPage').then((module) => ({ default: module.SettingsZabbixPage })),
 )
-const SettingsDatabasePage = lazy(() =>
+const SettingsDatabasePage = lazyPage(() =>
   import('./pages/SettingsDatabasePage').then((module) => ({ default: module.SettingsDatabasePage })),
 )
-const SettingsGlpiPage = lazy(() =>
+const SettingsGlpiPage = lazyPage(() =>
   import('./pages/SettingsGlpiPage').then((module) => ({ default: module.SettingsGlpiPage })),
 )
-const SettingsLlmPage = lazy(() =>
+const SettingsLlmPage = lazyPage(() =>
   import('./pages/SettingsLlmPage').then((module) => ({ default: module.SettingsLlmPage })),
 )
-const KnowledgeSitemapPage = lazy(() =>
+const KnowledgeSitemapPage = lazyPage(() =>
   import('./pages/KnowledgeSitemapPage').then((module) => ({ default: module.KnowledgeSitemapPage })),
 )
-const WikiRagPage = lazy(() =>
+const WikiRagPage = lazyPage(() =>
   import('./pages/WikiRagPage').then((module) => ({ default: module.WikiRagPage })),
 )
-const NotesPage = lazy(() => import('./pages/NotesPage').then((module) => ({ default: module.NotesPage })))
-const KnowledgeZabbixPage = lazy(() =>
+const NotesPage = lazyPage(() => import('./pages/NotesPage').then((module) => ({ default: module.NotesPage })))
+const KnowledgeZabbixPage = lazyPage(() =>
   import('./pages/KnowledgeZabbixPage').then((module) => ({ default: module.KnowledgeZabbixPage })),
 )
-const WarehousePage = lazy(() =>
+const WarehousePage = lazyPage(() =>
   import('./pages/WarehousePage').then((module) => ({ default: module.WarehousePage })),
 )
-const PrintersPage = lazy(() =>
+const PrintersPage = lazyPage(() =>
   import('./pages/PrintersPage').then((module) => ({ default: module.PrintersPage })),
 )
-const NetworkPage = lazy(() =>
+const NetworkPage = lazyPage(() =>
   import('./pages/NetworkPage').then((module) => ({ default: module.NetworkPage })),
 )
-const NetworkMapPage = lazy(() =>
+const NetworkMapPage = lazyPage(() =>
   import('./pages/NetworkMapPage').then((module) => ({ default: module.NetworkMapPage })),
 )
-const TicketHandlerClientPage = lazy(() =>
+const TicketHandlerClientPage = lazyPage(() =>
   import('./pages/TicketHandlerClientPage').then((module) => ({ default: module.TicketHandlerClientPage })),
 )
-const GuidePage = lazy(() => import('./pages/GuidePage').then((module) => ({ default: module.GuidePage })))
-const AssistSessionPage = lazy(() =>
+const GuidePage = lazyPage(() => import('./pages/GuidePage').then((module) => ({ default: module.GuidePage })))
+const AssistSessionPage = lazyPage(() =>
   import('./pages/AssistSessionPage').then((module) => ({ default: module.AssistSessionPage })),
 )
 

@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import ipaddress
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -45,14 +45,23 @@ def _lan_only(request: Request) -> None:
     raise HTTPException(status_code=403, detail="Подключение агента доступно только в локальной сети")
 
 
+def _host_key(name: str) -> str:
+    raw = (name or "").strip().casefold().rstrip(".")
+    return raw.split(".", 1)[0]
+
+
 def pairing_announce_kind(status: str, stored_host: str, announced_host: str, has_token: bool) -> str:
-    """fresh — другой ПК, wait — ждём одобрения, reuse — админ уже выдал токен."""
-    stored = (stored_host or "").strip().casefold()
-    announced = (announced_host or "").strip().casefold()
+    """fresh — другой ПК, wait — ждём одобрения, reuse — токен ещё не забран, claimed — уже выдан."""
+    stored = _host_key(stored_host)
+    announced = _host_key(announced_host)
     if stored and announced and stored != announced:
         return "fresh"
     if status == "approved" and has_token:
         return "reuse"
+    if status == "claimed":
+        return "claimed"
+    if status == "rejected":
+        return "rejected"
     return "wait"
 
 
@@ -115,6 +124,18 @@ async def announce_pairing(body: PairAnnounce, request: Request, db: AsyncSessio
     if kind == "reuse":
         await db.commit()
         return {"status": "approved", "agent_token": row.token_once}
+    if kind == "rejected":
+        return {"status": "rejected", "hostname": row.hostname or hostname}
+    if kind == "claimed":
+        # The tray asks again every few seconds when it cannot see its token.
+        # Re-open the approval only after a long quiet period, not on each poll.
+        updated = row.updated_at
+        if updated is not None and updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        if updated is not None and datetime.now(timezone.utc) - updated < timedelta(hours=6):
+            return {"status": "claimed", "hostname": row.hostname or hostname}
+    if kind == "wait" and row.status == "pending":
+        return _pending_payload(row.hostname or hostname)
     row.token_once = None
     row.hostname = hostname or row.hostname
     row.status = "pending"

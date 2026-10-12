@@ -3021,12 +3021,13 @@ export const api = {
   printerSchedulerStatus: () =>
     request<PrinterSchedulerStatus>(`${API_PREFIX}/printers/scheduler-status`),
 
-  networkDevices: (params?: { q?: string; device_type?: string; role?: string; limit?: number }) => {
+  networkDevices: (params?: { q?: string; device_type?: string; role?: string; limit?: number; sync?: boolean }) => {
     const sp = new URLSearchParams()
     if (params?.q) sp.set('q', params.q)
     if (params?.device_type) sp.set('device_type', params.device_type)
     if (params?.role) sp.set('role', params.role)
     if (params?.limit != null) sp.set('limit', String(params.limit))
+    if (params?.sync === false) sp.set('sync', 'false')
     const qs = sp.toString()
     return request<NetworkDevice[]>(`${API_PREFIX}/network/devices${qs ? `?${qs}` : ''}`)
   },

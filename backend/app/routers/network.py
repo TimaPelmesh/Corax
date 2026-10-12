@@ -506,16 +506,18 @@ async def list_devices(
     device_type: str | None = Query(default=None),
     role: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
+    sync: bool = Query(default=True),
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     from app.network_snmp_discover import sync_fleet_into_network_devices
 
-    try:
-        await sync_fleet_into_network_devices(db)
-        await db.commit()
-    except Exception:
-        await db.rollback()
+    if sync:
+        try:
+            await sync_fleet_into_network_devices(db)
+            await db.commit()
+        except Exception:
+            await db.rollback()
     stmt = select(NetworkDevice).order_by(NetworkDevice.hostname.asc().nulls_last(), NetworkDevice.ip_address.asc())
     if device_type and device_type.strip() and device_type.strip() != "all":
         stmt = stmt.where(NetworkDevice.device_type == device_type.strip())
@@ -885,10 +887,14 @@ async def get_topology(
             elif typ == "printer":
                 needed_printers.add(oid)
 
-    comps = (await db.execute(select(Computer).order_by(Computer.id.asc()).limit(2500))).scalars().all()
+    comps = (
+        (
+            await db.execute(select(Computer).where(Computer.id.in_(needed_computers)))
+        ).scalars().all()
+        if needed_computers
+        else []
+    )
     for c in comps:
-        if c.id not in needed_computers:
-            continue
         nid = f"computer:{c.id}"
         nodes[nid] = TopologyNode(
             id=nid,
@@ -901,10 +907,14 @@ async def get_topology(
             snmp_status=c.ping_status,
         )
 
-    prns = (await db.execute(select(Printer).order_by(Printer.id.asc()).limit(800))).scalars().all()
+    prns = (
+        (
+            await db.execute(select(Printer).where(Printer.id.in_(needed_printers)))
+        ).scalars().all()
+        if needed_printers
+        else []
+    )
     for p in prns:
-        if p.id not in needed_printers:
-            continue
         nid = f"printer:{p.id}"
         nodes[nid] = TopologyNode(
             id=nid,

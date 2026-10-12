@@ -138,7 +138,7 @@ export function NetworkMapInspector({
         setBusy(true)
         try {
           if (tab === 'network') {
-            const devices = await api.networkDevices({ q: s || undefined, limit: 20 })
+            const devices = await api.networkDevices({ q: s || undefined, limit: 20, sync: false })
             const computers = s
               ? await api.computers({ q: s, limit: 6, view: 'list' })
               : { items: [] as Computer[] }

@@ -112,8 +112,10 @@ std::string primary_mac(WmiSession& wmi) {
 bool is_real_monitor_name(const std::string& name) {
   auto n = util::to_lower(name);
   if (n.empty()) return false;
+  if (n == "default monitor" || n.find("default monitor") != std::string::npos) return false;
   if (n.find("pnp") != std::string::npos) return false;
   if (n.find("generic") != std::string::npos && n.find("monitor") != std::string::npos) return false;
+  if (n.find("non-pnp") != std::string::npos || n.find("plug and play") != std::string::npos) return false;
   if (n.find("nvidia") != std::string::npos || n.find("radeon") != std::string::npos) return false;
   if (n.find("geforce") != std::string::npos || n.find("basic display") != std::string::npos) return false;
   if (n.find("remote display") != std::string::npos || n.find("mirror") != std::string::npos) return false;
@@ -172,6 +174,50 @@ std::string edid_monitor_name(const unsigned char* edid, size_t n) {
   return util::clean_wmi(out, 256);
 }
 
+std::wstring monitor_manufacturer(const std::wstring& id) {
+  size_t pos = id.find(L"DISPLAY\\");
+  if (pos == std::wstring::npos) pos = id.find(L"MONITOR\\");
+  if (pos == std::wstring::npos) return {};
+  std::wstring rest = id.substr(pos + 8);
+  size_t sep = rest.find(L'\\');
+  if (sep == std::wstring::npos || sep == 0 || sep > 32) return {};
+  return rest.substr(0, sep);
+}
+
+HKEY open_reg(const std::wstring& path) {
+  HKEY key = nullptr;
+  if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.c_str(), 0, KEY_READ | KEY_WOW64_64KEY, &key) == ERROR_SUCCESS)
+    return key;
+  if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.c_str(), 0, KEY_READ, &key) == ERROR_SUCCESS) return key;
+  return nullptr;
+}
+
+std::string edid_name_for_manufacturer(const std::wstring& mfr) {
+  if (mfr.empty()) return {};
+  const std::wstring base = L"SYSTEM\\CurrentControlSet\\Enum\\DISPLAY\\" + mfr;
+  HKEY key = open_reg(base);
+  if (!key) return {};
+  std::string best;
+  wchar_t sub[256];
+  for (DWORD i = 0; i < 32; ++i) {
+    DWORD n = 256;
+    if (RegEnumKeyExW(key, i, sub, &n, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+    HKEY dp = open_reg(base + L"\\" + sub + L"\\Device Parameters");
+    if (!dp) continue;
+    BYTE edid[256];
+    DWORD typ = 0, cb = sizeof(edid);
+    if (RegQueryValueExW(dp, L"EDID", nullptr, &typ, edid, &cb) == ERROR_SUCCESS && typ == REG_BINARY &&
+        cb >= 128) {
+      auto name = edid_monitor_name(edid, cb);
+      if (is_real_monitor_name(name)) best = name;
+    }
+    RegCloseKey(dp);
+    if (!best.empty()) break;
+  }
+  RegCloseKey(key);
+  return best;
+}
+
 void collect_monitors_from_edid_registry(const std::function<void(const std::string&, const std::string&)>& add) {
   // Only currently attached monitors (registry Enum DISPLAY keeps old ghosts forever).
   DISPLAY_DEVICEW adapter{};
@@ -185,30 +231,33 @@ void collect_monitors_from_edid_registry(const std::function<void(const std::str
           !(mon.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP))
         continue;
       std::string name = util::narrow(std::wstring(mon.DeviceString));
-      std::wstring id(mon.DeviceID);
-      size_t pos = id.find(L"DISPLAY\\");
-      if (pos == std::wstring::npos) pos = id.find(L"MONITOR\\");
-      if (pos != std::wstring::npos) {
-        std::wstring rest = id.substr(pos + 8);
-        size_t sep = rest.find(L'\\');
-        if (sep != std::wstring::npos) {
-          std::wstring mfr = rest.substr(0, sep);
-          std::wstring inst = rest.substr(sep + 1);
-          size_t hash = inst.find(L'#');
-          if (hash != std::wstring::npos) inst = inst.substr(0, hash);
-          std::wstring path =
-              L"SYSTEM\\CurrentControlSet\\Enum\\DISPLAY\\" + mfr + L"\\" + inst + L"\\Device Parameters";
-          HKEY dp = nullptr;
-          if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.c_str(), 0, KEY_READ, &dp) == ERROR_SUCCESS) {
-            BYTE edid[256];
-            DWORD typ = 0, cb = sizeof(edid);
-            if (RegQueryValueExW(dp, L"EDID", nullptr, &typ, edid, &cb) == ERROR_SUCCESS &&
-                typ == REG_BINARY && cb >= 128) {
-              auto edid_name = edid_monitor_name(edid, cb);
-              if (!edid_name.empty()) name = edid_name;
+      std::wstring mfr = monitor_manufacturer(mon.DeviceID);
+      if (!mfr.empty()) {
+        std::wstring inst(mon.DeviceID);
+        size_t pos = inst.find(mfr);
+        if (pos != std::wstring::npos) {
+          inst = inst.substr(pos + mfr.size());
+          if (!inst.empty() && (inst[0] == L'\\' || inst[0] == L'#')) inst.erase(inst.begin());
+          size_t cut = inst.find_first_of(L"\\#");
+          if (cut != std::wstring::npos) inst = inst.substr(0, cut);
+          if (!inst.empty()) {
+            HKEY dp = open_reg(L"SYSTEM\\CurrentControlSet\\Enum\\DISPLAY\\" + mfr + L"\\" + inst +
+                               L"\\Device Parameters");
+            if (dp) {
+              BYTE edid[256];
+              DWORD typ = 0, cb = sizeof(edid);
+              if (RegQueryValueExW(dp, L"EDID", nullptr, &typ, edid, &cb) == ERROR_SUCCESS &&
+                  typ == REG_BINARY && cb >= 128) {
+                auto edid_name = edid_monitor_name(edid, cb);
+                if (!edid_name.empty()) name = edid_name;
+              }
+              RegCloseKey(dp);
             }
-            RegCloseKey(dp);
           }
+        }
+        if (!is_real_monitor_name(name)) {
+          auto looked = edid_name_for_manufacturer(mfr);
+          if (!looked.empty()) name = looked;
         }
       }
       if (!name.empty() && is_real_monitor_name(name)) add("monitor", name);
@@ -440,13 +489,60 @@ std::string build_inventory_payload_full(const AgentConfig& cfg, const OsInfo& o
       add_periph(kind, name);
     }
 
-    // EDID from registry — reliable monitor model names
+    // Windows 7 has no PNPClass. The query above returns nothing, so read the
+    // classes that have existed since Vista.
+    if (pnp.empty()) {
+      auto take = [&](const wchar_t* wql, const char* kind) {
+        for (auto& row : wmi.query_cimv2(wql)) {
+          auto name = util::clean_wmi(row.get("Name"), 256);
+          if (name.empty()) name = util::clean_wmi(row.get("Description"), 256);
+          add_periph(kind, name);
+        }
+      };
+      take(L"SELECT Name,Description FROM Win32_Keyboard", "keyboard");
+      take(L"SELECT Name,Description FROM Win32_PointingDevice", "mouse");
+      auto legacy = wmi.query_cimv2(
+          L"SELECT Name,ClassGuid FROM Win32_PnPEntity WHERE "
+          L"ClassGuid='{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}' OR "
+          L"ClassGuid='{CA3E7AB9-B4C3-4AE6-8251-579EF933890F}' OR "
+          L"ClassGuid='{4D36E96C-E325-11CE-BFC1-08002BE10318}' OR "
+          L"ClassGuid='{4D36E979-E325-11CE-BFC1-08002BE10318}' OR "
+          L"ClassGuid='{E0CBF06C-CD8B-4647-BB8A-263B43F0F974}' OR "
+          L"ClassGuid='{53D29EF7-377C-4D14-864B-EB3A85769359}' OR "
+          L"ClassGuid='{4D36E972-E325-11CE-BFC1-08002BE10318}'");
+      for (auto& row : legacy) {
+        auto name = util::clean_wmi(row.get("Name"), 512);
+        auto guid = util::to_lower(util::clean_wmi(row.get("ClassGuid")));
+        if (name.empty() || guid.empty()) continue;
+        auto nl = util::to_lower(name);
+        std::string kind;
+        if (guid.find("6bdd1fc6") != std::string::npos || guid.find("ca3e7ab9") != std::string::npos)
+          kind = "camera";
+        else if (guid.find("4d36e96c") != std::string::npos) {
+          if (nl.find("high definition audio") != std::string::npos || nl.find("streaming") != std::string::npos)
+            continue;
+          kind = "audio";
+        } else if (guid.find("4d36e979") != std::string::npos)
+          kind = "printer";
+        else if (guid.find("e0cbf06c") != std::string::npos)
+          kind = "bluetooth";
+        else if (guid.find("53d29ef7") != std::string::npos)
+          kind = "biometric";
+        else if (guid.find("4d36e972") != std::string::npos) {
+          if (nl.find("wan miniport") != std::string::npos || nl.find("virtual") != std::string::npos ||
+              nl.find("hyper-v") != std::string::npos || nl.find("vpn") != std::string::npos ||
+              nl.find("kernel debug") != std::string::npos || nl.find("wi-fi direct") != std::string::npos)
+            continue;
+          kind = "net";
+        }
+        if (!kind.empty()) add_periph(kind, name);
+      }
+    }
+
+    // EDID from registry — reliable monitor model names, including Windows 7
+    // where the display instance in EnumDisplayDevices is not the registry key.
     collect_monitors_from_edid_registry(add_periph);
 
-    // WmiMonitorID fallback (when EDID parse empty)
-    auto mons = wmi.query(L"ROOT\\WMI",
-                          L"SELECT InstanceName FROM WmiMonitorID");
-    // If still no monitors, try DesktopMonitor
     bool have_mon = false;
     for (auto& k : seen_periph) {
       if (k.rfind("monitor|", 0) == 0) {
@@ -455,15 +551,18 @@ std::string build_inventory_payload_full(const AgentConfig& cfg, const OsInfo& o
       }
     }
     if (!have_mon) {
-      auto desk = wmi.query_cimv2(L"SELECT Name,MonitorManufacturer,MonitorType FROM Win32_DesktopMonitor");
-      for (auto& m : desk) {
-        auto name = util::clean_wmi(m.get("Name"), 256);
-        auto mf = util::clean_wmi(m.get("MonitorManufacturer"));
-        if (!mf.empty() && name.find(mf) == std::string::npos) name = mf + " " + name;
-        add_periph("monitor", util::clean_wmi(name, 512));
+      auto ids = wmi.query(L"ROOT\\WMI",
+                           L"SELECT UserFriendlyName,ManufacturerName,ProductCodeID FROM WmiMonitorID");
+      for (auto& m : ids) {
+        auto friendly = util::clean_wmi(m.get("UserFriendlyName"), 128);
+        auto mf = util::clean_wmi(m.get("ManufacturerName"), 64);
+        auto product = util::clean_wmi(m.get("ProductCodeID"), 32);
+        std::string name = friendly.empty() ? product : friendly;
+        if (!mf.empty() && (name.empty() || name.find(mf) == std::string::npos))
+          name = mf + (name.empty() ? std::string() : " " + name);
+        add_periph("monitor", util::clean_wmi(name, 256));
       }
     }
-    (void)mons;
   }
   j.end_array();
 

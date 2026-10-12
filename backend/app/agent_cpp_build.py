@@ -24,7 +24,7 @@ _CFG_END = b"<<<CORAX_CFG_END>>>"
 _SLOT_BYTES = 8192
 # Bump together with agent/cpp include/config.hpp. The tray updates itself
 # when this string is newer than the copy already running on the PC.
-AGENT_RELEASE_VERSION = "5.4.0"
+AGENT_RELEASE_VERSION = "5.4.1"
 
 
 def _cmake_exe() -> Path | None:

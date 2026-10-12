@@ -14,6 +14,40 @@ namespace {
 // this also catches WMI provider access violations, which happen in the
 // wild for BitLocker / SecurityCenter2 / MSFT_PhysicalDisk on some builds.
 std::vector<WmiRowMap> query_impl(bool ready, const std::wstring& ns, const std::wstring& wql);
+
+// WmiMonitorID names arrive as a short array of character codes, not a string.
+std::string variant_array_text(const VARIANT& vt) {
+  if ((vt.vt & VT_ARRAY) == 0 || vt.parray == nullptr) return {};
+  const VARTYPE elem = static_cast<VARTYPE>(vt.vt & ~VT_ARRAY & ~VT_BYREF);
+  if (elem != VT_UI1 && elem != VT_UI2 && elem != VT_I2 && elem != VT_I4) return {};
+  if (SafeArrayGetDim(vt.parray) != 1) return {};
+  LONG lb = 0;
+  LONG ub = -1;
+  if (FAILED(SafeArrayGetLBound(vt.parray, 1, &lb)) || FAILED(SafeArrayGetUBound(vt.parray, 1, &ub))) return {};
+  if (ub < lb || (ub - lb) > 80) return {};
+  std::string out;
+  out.reserve(static_cast<size_t>(ub - lb + 1));
+  for (LONG i = lb; i <= ub; ++i) {
+    long value = 0;
+    if (elem == VT_UI1) {
+      unsigned char c = 0;
+      if (FAILED(SafeArrayGetElement(vt.parray, &i, &c))) return {};
+      value = c;
+    } else if (elem == VT_UI2 || elem == VT_I2) {
+      unsigned short c = 0;
+      if (FAILED(SafeArrayGetElement(vt.parray, &i, &c))) return {};
+      value = c;
+    } else {
+      LONG c = 0;
+      if (FAILED(SafeArrayGetElement(vt.parray, &i, &c))) return {};
+      value = c;
+    }
+    if (value == 0) break;
+    if (value < 32 || value > 126) return {};
+    out.push_back(static_cast<char>(value));
+  }
+  return util::trim(out);
+}
 }  // namespace
 
 WmiSession::WmiSession() {
@@ -106,6 +140,9 @@ std::vector<WmiRowMap> query_impl(bool ready, const std::wstring& ns, const std:
             // skip
           } else if (vt.vt == VT_BSTR && vt.bstrVal) {
             row.fields[key] = util::narrow(vt.bstrVal);
+          } else if (vt.vt & VT_ARRAY) {
+            auto text = variant_array_text(vt);
+            if (!text.empty()) row.fields[key] = std::move(text);
           } else {
             VARIANT str;
             VariantInit(&str);

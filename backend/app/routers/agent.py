@@ -19,7 +19,7 @@ from app.gpu_normalize import resolve_gpu_name
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
 from app.peripheral_display import is_noise_peripheral
 from app.schemas import AgentInventoryReport
-from app.agent_policy import ack_hostname, build_directive
+from app.agent_policy import ack_hostname, build_directive, hostnames_match
 from app.agent_release import release_file, release_meta
 from app.search_index import sync_computer
 
@@ -231,7 +231,7 @@ async def verify_agent_token(db: AsyncSession, authorization: str | None, hostna
         allow = (row.allowed_hostname or "").strip()
         if host and host.lower() != "directive":
             if allow:
-                if host.lower() != allow.lower():
+                if not hostnames_match(host, allow):
                     raise HTTPException(status_code=403, detail="Токен агента не разрешён для этого хоста")
             else:
                 # First inventory from this install claims the token. A shared fleet token never reaches here.

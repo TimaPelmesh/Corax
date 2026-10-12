@@ -75,7 +75,11 @@ def _cached_index_html() -> Response | None:
     mtime = path.stat().st_mtime
     if _INDEX_HTML_CACHE is None or _INDEX_HTML_CACHE[0] != mtime:
         _INDEX_HTML_CACHE = (mtime, path.read_bytes())
-    return Response(content=_INDEX_HTML_CACHE[1], media_type="text/html; charset=utf-8")
+    return Response(
+        content=_INDEX_HTML_CACHE[1],
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 setup_logging(
     environment=settings.environment,
@@ -545,9 +549,12 @@ class _ImmutableStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):  # type: ignore[override]
         response = await super().get_response(path, scope)
         try:
-            response.headers.setdefault(
-                "Cache-Control", "public, max-age=31536000, immutable"
-            )
+            if getattr(response, "status_code", 200) == 200:
+                response.headers.setdefault(
+                    "Cache-Control", "public, max-age=31536000, immutable"
+                )
+            else:
+                response.headers["Cache-Control"] = "no-store"
         except Exception:
             pass
         return response

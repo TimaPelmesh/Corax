@@ -666,7 +666,7 @@ function NetworkMapEditor() {
   useEffect(() => {
     let cancelled = false
     void api
-      .networkDevices({ limit: 200 })
+      .networkDevices({ limit: 200, sync: false })
       .then((rows) => {
         if (!cancelled) setInventory(rows)
       })

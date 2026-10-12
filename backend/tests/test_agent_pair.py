@@ -10,7 +10,10 @@ def test_pairing_announce_kind_waits_until_approved():
     assert pairing_announce_kind("claimed", "pc-1", "pc-2", False) == "fresh"
     assert pairing_announce_kind("approved", "pc-1", "PC-2", True) == "fresh"
     assert pairing_announce_kind("approved", "pc-1", "pc-1", True) == "reuse"
-    assert pairing_announce_kind("claimed", "pc-1", "pc-1", False) == "wait"
+    assert pairing_announce_kind("claimed", "pc-1", "pc-1", False) == "claimed"
+    assert pairing_announce_kind("claimed", "pc-1.corp.local", "PC-1", False) == "claimed"
+    assert pairing_announce_kind("approved", "pc-1.corp.local", "PC-1", True) == "reuse"
+    assert pairing_announce_kind("rejected", "pc-1", "pc-1", False) == "rejected"
     assert pairing_announce_kind("pending", "pc-1", "pc-1", False) == "wait"
 
 
@@ -68,8 +71,11 @@ def test_announce_waits_for_panel_approval(client: TestClient, auth_headers: dic
         json={"public_id": public_id, "hostname": hostname},
     )
     assert after.status_code == 200, after.text
-    assert after.json()["status"] == "pending"
+    assert after.json()["status"] == "claimed"
     assert not after.json().get("agent_token")
+    still = client.get("/api/v1/agent-tokens/pair/pending", headers=auth_headers)
+    assert still.status_code == 200, still.text
+    assert not any(row["hostname"] == hostname for row in still.json())
 
 
 def test_reject_pairing(client: TestClient, auth_headers: dict[str, str]):
@@ -88,3 +94,11 @@ def test_reject_pairing(client: TestClient, auth_headers: dict[str, str]):
     claimed = client.post("/api/v1/agent/pair/claim", json={"public_id": public_id})
     assert claimed.json()["status"] == "rejected"
     assert not claimed.json().get("agent_token")
+    again = client.post(
+        "/api/v1/agent/pair/announce",
+        json={"public_id": public_id, "hostname": hostname},
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["status"] == "rejected"
+    pending_after = client.get("/api/v1/agent-tokens/pair/pending", headers=auth_headers)
+    assert not any(row["hostname"] == hostname for row in pending_after.json())
