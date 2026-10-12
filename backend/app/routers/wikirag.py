@@ -116,6 +116,7 @@ from app.wikirag_lm import (
     normalize_lm_base_url,
     ollama_num_ctx,
     rewrite_lm_base_url_for_runtime,
+    retrieval_question,
     sanitize_chat_history,
     lm_studio_chat,
     lm_studio_chat_stream,
@@ -815,7 +816,8 @@ async def _prepare_chat_messages(
         rows = rows[:80]
 
     mode = "simple" if is_small_talk(q) else "rag"
-    question_focus = classify_wikirag_question(q)
+    search_q = retrieval_question(q, history)
+    question_focus = classify_wikirag_question(search_q)
     corax_stats: dict[str, Any] = {"focus": question_focus, "path": "classic"}
     rag_sources: list[dict[str, Any]] = []
     doc_meta: list[dict[str, str | int]] = []
@@ -834,7 +836,7 @@ async def _prepare_chat_messages(
 
     # 6–10 чанков: окно локальной 7B, один компьютер уже упакован в чанк.
     ranked = (
-        await retrieve_relevant_chunks(db, q, docs_for_retrieve, top_k=retrieve_top_k())
+        await retrieve_relevant_chunks(db, search_q, docs_for_retrieve, top_k=retrieve_top_k())
         if docs_for_retrieve
         else []
     )

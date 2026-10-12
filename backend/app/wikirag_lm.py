@@ -14,13 +14,13 @@ from app.wikirag_context_budget import shrink_messages
 ChatMode = Literal["simple", "rag"]
 QuestionFocus = Literal["os_hardware", "software", "tickets", "network", "general"]
 
-WIKIRAG_SYSTEM_RAG = """Ты отвечаешь на вопросы по базе знаний CORAX.
+WIKIRAG_SYSTEM_RAG = """Ты аналитик парка CORAX. Отвечаешь по-русски по блоку «Контекст».
 Правила:
-- Бери факты только из блока «Контекст».
-- Ответ короткий: список или 2–6 предложений.
-- Не выдумывай hostname, IP, версии и числа.
-- Если факта нет в контексте — скажи это одним предложением.
-- Не пиши регламенты, планы файлов и инструкции, как пополнить базу.
+- Hostname, IP, версии, даты и количества бери только из контекста. Не выдумывай их.
+- «Кому ставить», «кого обновить», «одна лицензия», «что приоритетнее» — это расчёт, а не готовая фраза в базе. Сравни факты и назови конкретный выбор. Коротко покажи, что сравнил: ОС, железо, кто уже обновлён.
+- «В контексте нет информации» пиши только если нет самих данных для расчёта: нет ПК, версий или лицензий. Не отказывайся, когда вывод можно посчитать из уже данных цифр.
+- «Подумай», «сам реши», «ты исследователь», «ты следователь» — просьба сделать этот расчёт, а не искать сотрудника с такой должностью.
+- Сначала вывод, затем 2–5 строк расчёта. Без регламентов и без советов, как пополнить базу.
 """
 
 WIKIRAG_OS_GUIDANCE = ""
@@ -316,6 +316,50 @@ def _lm_client(*, read: float) -> httpx.AsyncClient:
     )
 
 
+_NUDGE_MARKERS = (
+    "подумай",
+    "подймай",
+    "подымай",
+    "сам реши",
+    "реши поставлен",
+    "ты же исслед",
+    "ты же след",
+    "исследоват",
+    "следовател",
+    "ты им явля",
+    "сам посчитай",
+    "ну так сам",
+    "сделай вывод",
+    "проанализир",
+    "рассчитай",
+    "посчитай",
+)
+
+
+def _is_nudge(text: str) -> bool:
+    low = (text or "").strip().lower()
+    return bool(low) and len(low) < 120 and any(marker in low for marker in _NUDGE_MARKERS)
+
+
+def retrieval_question(question: str, history: list[dict[str, str]] | None) -> str:
+    """«Подумай сам» не ищет следователя: к запросу добавляется исходная задача из истории."""
+    q = (question or "").strip()
+    if not _is_nudge(q):
+        return q
+    prior = ""
+    for item in reversed(history or []):
+        if (item.get("role") or "") != "user":
+            continue
+        content = (item.get("content") or "").strip()
+        if not content or content == q or _is_nudge(content):
+            continue
+        prior = content
+        break
+    if not prior:
+        return q
+    return f"{prior}\n{q}"
+
+
 def classify_wikirag_question(question: str) -> QuestionFocus:
     low = (question or "").strip().lower()
     # ПО раньше «установ*», иначе «у кого установлено Chrome» уходит в os_hardware.
@@ -570,7 +614,8 @@ def build_messages(
         if not joined:
             joined = "(контекст пуст — в индексе ничего не найдено)"
         user_body = (
-            "Ответь только по контексту. Если факта нет — скажи об этом.\n\n"
+            "Факты бери из контекста. Если вопрос про выбор или приоритет — сравни цифры и дай конкретный ответ с расчётом. "
+            "Не ищи в тексте готовую фразу «кому стоит».\n\n"
             f"Контекст:\n{joined}"
             f"{_rag_user_suffix(question, focus)}"
         )

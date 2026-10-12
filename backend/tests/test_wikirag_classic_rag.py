@@ -1,5 +1,5 @@
 from app.wikirag_index import recursive_character_split
-from app.wikirag_lm import build_messages, classify_wikirag_question, is_small_talk
+from app.wikirag_lm import build_messages, classify_wikirag_question, is_small_talk, retrieval_question
 
 
 def test_recursive_split_matches_script_defaults():
@@ -45,3 +45,21 @@ def test_classic_prompt_allows_reasoned_fallback():
     system = msgs[0]["content"]
     assert "контекст" in system.lower()
     assert "не выдумывай" in system.lower()
+    assert "расчёт" in system.lower()
+    assert "следователь" in system.lower()
+    assert "готовая фраза" not in user.lower() or "кому стоит" in user.lower()
+
+
+def test_nudge_keeps_the_original_task_for_search():
+    history = [
+        {
+            "role": "user",
+            "content": "есть одна лицензия и новое железо, кому стоит обновить",
+        },
+        {"role": "assistant", "content": "В контексте нет информации."},
+    ]
+    q = retrieval_question("ну так сам подумай ты же исследователь", history)
+    assert "лицензия" in q
+    assert "железо" in q
+    assert classify_wikirag_question(q) == "os_hardware"
+    assert retrieval_question("у кого Windows 7", history) == "у кого Windows 7"
