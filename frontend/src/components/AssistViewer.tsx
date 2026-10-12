@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
-import { createPortal } from 'react-dom'
 import { api, assistLiveWebSocketUrl, type AssistSession } from '../api'
 import { useT } from '../i18n/LocaleContext'
 
@@ -62,15 +61,33 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   })
   const controllingRef = useRef(false)
   const lastMoveAt = useRef(0)
+  const paintGen = useRef(0)
+  const endedRef = useRef(false)
+  const aliveRef = useRef(0)
+
+  function finishSession() {
+    if (endedRef.current) return
+    endedRef.current = true
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'end' }))
+      } catch {
+        /* already closed */
+      }
+    }
+    void api.assistEnd(session.id).catch(() => undefined)
+  }
 
   useEffect(() => {
+    const generation = ++aliveRef.current
     const ws = new WebSocket(assistLiveWebSocketUrl(session.id))
     ws.binaryType = 'blob'
     wsRef.current = ws
     const waitTimer = window.setTimeout(() => {
       setHint(t('remoteConnect.assistNoTray', { host: session.hostname }))
     }, 28000)
-    ws.onmessage = async (event) => {
+    ws.onmessage = (event) => {
       if (typeof event.data === 'string') {
         try {
           const packet = JSON.parse(event.data) as AssistMeta & { type?: string }
@@ -90,32 +107,47 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
         return
       }
       const blob = event.data as Blob
-      const bmp = await createImageBitmap(blob)
-      const canvas = canvasRef.current
-      if (!canvas) {
+      const gen = ++paintGen.current
+      void createImageBitmap(blob).then((bmp) => {
+        if (gen !== paintGen.current) {
+          bmp.close()
+          return
+        }
+        const canvas = canvasRef.current
+        if (!canvas) {
+          bmp.close()
+          return
+        }
+        if (canvas.width !== bmp.width) canvas.width = bmp.width
+        if (canvas.height !== bmp.height) canvas.height = bmp.height
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.imageSmoothingEnabled = false
+          ctx.drawImage(bmp, 0, 0)
+        }
         bmp.close()
-        return
-      }
-      if (canvas.width !== bmp.width) canvas.width = bmp.width
-      if (canvas.height !== bmp.height) canvas.height = bmp.height
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        ctx.drawImage(bmp, 0, 0)
-      }
-      bmp.close()
-      setWaiting(false)
-      window.clearTimeout(waitTimer)
+        setWaiting(false)
+        window.clearTimeout(waitTimer)
+        if (document.activeElement !== canvas) canvas.focus()
+      })
     }
     ws.onclose = () => {
       window.clearTimeout(waitTimer)
+      setWaiting((still) => {
+        if (still) setHint(t('remoteConnect.assistClosed'))
+        return still
+      })
     }
+    const onLeave = () => finishSession()
+    window.addEventListener('pagehide', onLeave)
     return () => {
       window.clearTimeout(waitTimer)
+      window.removeEventListener('pagehide', onLeave)
       ws.close()
-      wsRef.current = null
-      void api.assistEnd(session.id).catch(() => undefined)
+      if (wsRef.current === ws) wsRef.current = null
+      queueMicrotask(() => {
+        if (aliveRef.current === generation) finishSession()
+      })
     }
   }, [session.id, session.hostname, t])
 
@@ -148,13 +180,8 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     send([{ t: 'm', x: p.x, y: p.y, b: button, d: down }])
   }
 
-  async function hangup() {
-    try {
-      wsRef.current?.send(JSON.stringify({ type: 'end' }))
-    } catch {
-      /* already closed */
-    }
-    await api.assistEnd(session.id).catch(() => undefined)
+  function hangup() {
+    finishSession()
     onClose()
   }
 
@@ -174,8 +201,8 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
       }
     : undefined
 
-  return createPortal(
-    <div className="assist-root" role="dialog" aria-modal="true" aria-label={t('remoteConnect.assist')}>
+  return (
+    <div className="assist-page" role="application" aria-label={t('remoteConnect.assist')}>
       <div className="assist-shell" ref={shellRef}>
         <header className="assist-bar">
           <div className="assist-identity">
@@ -198,7 +225,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
               ))}
             </div>
           ) : null}
-          <button type="button" className="app-btn app-btn-secondary assist-hangup" onClick={() => void hangup()}>
+          <button type="button" className="app-btn app-btn-secondary assist-hangup" onClick={hangup}>
             {t('remoteConnect.assistEnd')}
           </button>
         </header>
@@ -267,7 +294,6 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
           </div>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   )
 }

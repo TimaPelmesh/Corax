@@ -91,14 +91,23 @@ const TicketHandlerClientPage = lazy(() =>
   import('./pages/TicketHandlerClientPage').then((module) => ({ default: module.TicketHandlerClientPage })),
 )
 const GuidePage = lazy(() => import('./pages/GuidePage').then((module) => ({ default: module.GuidePage })))
+const AssistSessionPage = lazy(() =>
+  import('./pages/AssistSessionPage').then((module) => ({ default: module.AssistSessionPage })),
+)
 
 function DocumentTitle() {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { locale } = useLocale()
   useEffect(() => {
     if (pathname === '/h' || pathname === '/r') return
-    document.title = titleForPath(pathname, locale)
-  }, [pathname, locale])
+    const base = titleForPath(pathname, locale)
+    if (pathname.startsWith('/assist')) {
+      const host = new URLSearchParams(search).get('host')
+      document.title = host ? `${base} · ${host}` : base
+      return
+    }
+    document.title = base
+  }, [pathname, search, locale])
   return null
 }
 
@@ -148,6 +157,14 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/r" element={<LegacySelfServiceRedirect />} />
       <Route path="/h" element={<TicketHandlerClientPage />} />
+      <Route
+        path="/assist/:sessionId"
+        element={
+          <Protected>
+            <AssistSessionPage />
+          </Protected>
+        }
+      />
       <Route
         path="/"
         element={

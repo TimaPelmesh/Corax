@@ -14,10 +14,10 @@ import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
 function filterBtnClass(active: boolean) {
-  return `rounded-full px-3 py-1 text-xs font-medium transition ${
+  return `w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
     active
       ? 'bg-[var(--color-primary)] text-white'
-      : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
+      : 'border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:border-[var(--color-primary)]/40'
   }`
 }
 
@@ -180,64 +180,67 @@ export function SoftwarePage() {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          id="sw-search"
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('software.searchPlaceholder')}
-          className="min-w-[12rem] flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm sm:max-w-xs"
-        />
-        <div className="flex flex-wrap gap-1">
-          {catalogSections.map((s) => (
-            <button
-              key={s.kind}
-              type="button"
-              onClick={() => setKind(s.kind)}
-              className={filterBtnClass(kind === s.kind)}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-        {loading ? (
-          <span className="text-xs text-[var(--color-fg-subtle)]">{t('software.refreshing')}</span>
-        ) : null}
-      </div>
-
-      {filters.length ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13px] font-medium text-[var(--color-fg-subtle)]">
-            {t('software.activeFilters')}
-          </span>
-          {filters.map((f) => (
-            <button
-              key={filterKey(f)}
-              type="button"
-              onClick={() => removeFilter(f)}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--color-primary)_35%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)] px-2.5 py-1 text-xs text-[var(--color-fg)] transition hover:bg-[color-mix(in_srgb,var(--color-primary)_18%,transparent)]"
-              title={t('software.removeFilter')}
-            >
-              <span className="shrink-0 text-[var(--color-fg-subtle)]">{kindLabel(f.kind)}</span>
-              <span className="min-w-0 truncate font-medium">{f.name}</span>
-              <span aria-hidden className="opacity-60">
-                ×
+      <div className="grid min-h-0 flex-1 items-stretch gap-4 overflow-hidden lg:grid-cols-[15.5rem_minmax(0,1fr)_minmax(17rem,22rem)]">
+        <aside className="flex min-h-0 flex-col gap-3 overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)] p-3">
+          <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-subtle)]">
+            {t('software.filtersRail')}
+          </p>
+          <nav className="flex flex-col gap-1" aria-label={t('software.filtersRail')}>
+            {catalogSections.map((s) => (
+              <button
+                key={s.kind}
+                type="button"
+                onClick={() => setKind(s.kind)}
+                className={filterBtnClass(kind === s.kind)}
+                aria-pressed={kind === s.kind}
+              >
+                {s.label}
+              </button>
+            ))}
+          </nav>
+          <input
+            id="sw-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('software.searchPlaceholder')}
+            className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+          />
+          {loading ? (
+            <span className="px-1 text-xs text-[var(--color-fg-subtle)]">{t('software.refreshing')}</span>
+          ) : null}
+          {filters.length ? (
+            <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
+              <span className="px-1 text-[13px] font-medium text-[var(--color-fg-subtle)]">
+                {t('software.activeFilters')}
               </span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setFilters([])}
-            className="rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]"
-          >
-            {t('software.clearFilters')}
-          </button>
-        </div>
-      ) : null}
+              {filters.map((f) => (
+                <button
+                  key={filterKey(f)}
+                  type="button"
+                  onClick={() => removeFilter(f)}
+                  className="flex w-full items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,var(--color-primary)_35%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-surface))] px-2.5 py-1.5 text-left text-xs text-[var(--color-fg)]"
+                  title={t('software.removeFilter')}
+                >
+                  <span className="shrink-0 text-[var(--color-fg-subtle)]">{kindLabel(f.kind)}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
+                  <span aria-hidden className="opacity-60">
+                    ×
+                  </span>
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setFilters([])}
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-bg)]"
+              >
+                {t('software.clearFilters')}
+              </button>
+            </div>
+          ) : null}
+        </aside>
 
-      <div key={`sw-${kind}`} className="grid min-h-0 flex-1 items-stretch gap-4 overflow-hidden lg:grid-cols-5">
-        <div className="app-table-shell min-h-0 overflow-auto overscroll-contain rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] lg:col-span-3">
+        <div key={`sw-${kind}`} className="app-table-shell min-h-0 overflow-auto overscroll-contain rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
           <table className="app-table min-w-full text-left text-sm">
             <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
               <tr>
@@ -301,7 +304,7 @@ export function SoftwarePage() {
 
         <div
           ref={hostsPanelRef}
-          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 lg:col-span-2"
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
         >
           <h2 className="text-[0.95rem] font-medium tracking-tight text-[var(--color-fg)]">
             {t('software.installedOnTitle')}

@@ -43,6 +43,8 @@ describe('titleForPath', () => {
   })
 
   it('strips trailing slash and falls back', () => {
+    expect(titleForPath('/assist/session-1', 'ru')).toMatch(/Assist/)
+    expect(titleForPath('/assist/session-1', 'en')).toMatch(/Assist/)
     expect(titleForPath('/computers/', 'en')).toMatch(/Computer/i)
     expect(titleForPath('/unknown-route-xyz', 'ru')).toBe('CORAX')
   })
