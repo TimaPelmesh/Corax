@@ -15,7 +15,16 @@ export function AssistProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(
     async (hostname: string) => {
-      const tab = window.open('', '_blank')
+      const width = Math.min(1680, Math.max(1100, window.screen.availWidth - 48))
+      const height = Math.min(1000, Math.max(700, window.screen.availHeight - 48))
+      const left = Math.max(0, (window.screen.availWidth - width) / 2)
+      const top = Math.max(0, (window.screen.availHeight - height) / 2)
+      const name = `corax-assist-${hostname.replace(/[^\w.-]+/g, '_')}`
+      const tab = window.open(
+        '',
+        name,
+        `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`,
+      )
       try {
         const next = await api.assistStart(hostname)
         const url = `/assist/${encodeURIComponent(next.id)}?host=${encodeURIComponent(next.hostname)}`
@@ -25,6 +34,7 @@ export function AssistProvider({ children }: { children: ReactNode }) {
           return
         }
         tab.location.replace(url)
+        tab.focus()
       } catch (ex) {
         tab?.close()
         toast.error(ex instanceof Error ? ex.message : t('remoteConnect.assistFail'))

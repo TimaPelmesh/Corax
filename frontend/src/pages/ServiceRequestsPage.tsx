@@ -590,7 +590,7 @@ export function ServiceRequestsPage() {
   useEffect(() => {
     if (tab !== 'templates' && !ticketFormOpen) return
     void loadTemplates()
-  }, [tab, loadTemplates])
+  }, [tab, ticketFormOpen, loadTemplates])
 
   // Hotkeys for fast duration planning (Alt+1..4)
   useEffect(() => {
@@ -1490,7 +1490,11 @@ export function ServiceRequestsPage() {
                           }}
                           className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]"
                         >
-                          {tplRows.length === 0 ? t('requests.create.noTemplates') : t('requests.create.manageTemplates')}
+                          {tplLoading && tplRows.length === 0
+                            ? t('requests.create.loadingTemplates')
+                            : tplRows.length === 0
+                              ? t('requests.create.noTemplates')
+                              : t('requests.create.manageTemplates')}
                         </button>
                       </div>
                     ) : null}

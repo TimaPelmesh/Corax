@@ -29,7 +29,7 @@ struct State {
   std::atomic<bool> stop{false};
   std::atomic<bool> live{false};
   std::atomic<int> monitor{0};
-  std::atomic<int> quality{72};
+  std::atomic<int> quality{88};
   std::mutex mu;
   std::string session_id;
   std::string admin;
@@ -196,9 +196,9 @@ bool grab_jpeg(std::string& out, FrameInfo& info) {
   if (sw <= 0 || sh <= 0) return false;
   int dw = sw;
   int dh = sh;
-  if (dw > 1600) {
-    dh = dh * 1600 / dw;
-    dw = 1600;
+  if (dw > 1920) {
+    dh = dh * 1920 / dw;
+    dw = 1920;
   }
   HDC screen = GetDC(nullptr);
   HDC mem = CreateCompatibleDC(screen);
@@ -207,7 +207,8 @@ bool grab_jpeg(std::string& out, FrameInfo& info) {
   if (dw == sw && dh == sh) {
     BitBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, SRCCOPY | CAPTUREBLT);
   } else {
-    SetStretchBltMode(mem, COLORONCOLOR);
+    SetStretchBltMode(mem, HALFTONE);
+    SetBrushOrgEx(mem, 0, 0, nullptr);
     StretchBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, sw, sh, SRCCOPY | CAPTUREBLT);
   }
   paint_cursor(mem, mon, dw, dh);
@@ -230,7 +231,7 @@ bool grab_jpeg(std::string& out, FrameInfo& info) {
   }
   Gdiplus::EncoderParameters params;
   params.Count = 1;
-  ULONG quality = static_cast<ULONG>(std::max(40, std::min(90, g.quality.load())));
+  ULONG quality = static_cast<ULONG>(std::max(74, std::min(92, g.quality.load())));
   params.Parameter[0].Guid = Gdiplus::EncoderQuality;
   params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
   params.Parameter[0].NumberOfValues = 1;
@@ -375,7 +376,7 @@ void apply_events(const std::string& body) {
     } else if (t == "s") {
       g.monitor.store(std::max(0, json_int_near(slice, "i", 0)));
     } else if (t == "q") {
-      g.quality.store(std::max(40, std::min(90, json_int_near(slice, "v", 72))));
+      g.quality.store(std::max(74, std::min(92, json_int_near(slice, "v", 88))));
     }
     cur = close + 1;
   }
@@ -397,8 +398,12 @@ void capture_loop() {
       Sleep(120);
       continue;
     }
-    if (jpeg.size() > 820000 && g.quality.load() > 48) {
-      g.quality.store(std::max(48, g.quality.load() - 10));
+    if (jpeg.size() > 1800000 && g.quality.load() > 74) {
+      g.quality.store(std::max(74, g.quality.load() - 6));
+    }
+    if (jpeg.size() > 2300000) {
+      Sleep(20);
+      continue;
     }
     const std::string path = "/api/v1/assist/sessions/" + sid + "/frame?hostname=" + query_escape(host) +
                              "&mon=" + std::to_string(info.mon) + "&mc=" + std::to_string(info.mc) +

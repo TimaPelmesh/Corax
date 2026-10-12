@@ -64,6 +64,19 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   const paintGen = useRef(0)
   const endedRef = useRef(false)
   const aliveRef = useRef(0)
+  const [ended, setEnded] = useState(false)
+
+  function markEnded() {
+    if (endedRef.current) return
+    endedRef.current = true
+    setEnded(true)
+    setWaiting(true)
+    setHint(t('remoteConnect.assistClosed'))
+    setCursor({ x: 0.5, y: 0.5, visible: false })
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
+  }
 
   function finishSession() {
     if (endedRef.current) return
@@ -91,6 +104,10 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
       if (typeof event.data === 'string') {
         try {
           const packet = JSON.parse(event.data) as AssistMeta & { type?: string }
+          if (packet.type === 'ended') {
+            markEnded()
+            return
+          }
           if (packet.type === 'meta') {
             setMeta(packet)
             if (packet.cv && !controllingRef.current) {
@@ -122,7 +139,8 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
         if (canvas.height !== bmp.height) canvas.height = bmp.height
         const ctx = canvas.getContext('2d')
         if (ctx) {
-          ctx.imageSmoothingEnabled = false
+          ctx.imageSmoothingEnabled = true
+          ctx.imageSmoothingQuality = 'high'
           ctx.drawImage(bmp, 0, 0)
         }
         bmp.close()
@@ -133,10 +151,8 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
     }
     ws.onclose = () => {
       window.clearTimeout(waitTimer)
-      setWaiting((still) => {
-        if (still) setHint(t('remoteConnect.assistClosed'))
-        return still
-      })
+      if (aliveRef.current !== generation) return
+      markEnded()
     }
     const onLeave = () => finishSession()
     window.addEventListener('pagehide', onLeave)
@@ -152,6 +168,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   }, [session.id, session.hostname, t])
 
   function send(events: object[]) {
+    if (endedRef.current) return
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(JSON.stringify({ type: 'input', events }))
@@ -183,6 +200,13 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   function hangup() {
     finishSession()
     onClose()
+  }
+
+  function toggleFullscreen() {
+    const shell = shellRef.current
+    if (!shell) return
+    if (document.fullscreenElement) void document.exitFullscreen()
+    else void shell.requestFullscreen()
   }
 
   function selectMonitor(index: number) {
@@ -225,11 +249,14 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
               ))}
             </div>
           ) : null}
-          <button type="button" className="app-btn app-btn-secondary assist-hangup" onClick={hangup}>
+          <button type="button" className="app-btn app-btn-secondary assist-hangup" onClick={toggleFullscreen}>
+            {t('remoteConnect.assistFullscreen')}
+          </button>
+          <button type="button" className="app-btn app-btn-secondary" onClick={hangup}>
             {t('remoteConnect.assistEnd')}
           </button>
         </header>
-        <div className={`assist-stage${waiting ? '' : ' assist-stage-live'}`}>
+        <div className={`assist-stage${waiting || ended ? '' : ' assist-stage-live'}`}>
           {waiting ? <p className="assist-wait">{hint}</p> : null}
           <div className="assist-frame">
             <div className="assist-surface">

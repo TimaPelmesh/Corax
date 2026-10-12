@@ -16,7 +16,7 @@ from fastapi import WebSocket
 
 OFFER_TTL_SEC = 90
 SESSION_TTL_SEC = 20 * 60
-MAX_FRAME_BYTES = 900_000
+MAX_FRAME_BYTES = 2_400_000
 MAX_INPUT_QUEUE = 256
 WAIT_OFFER_SEC = 25.0
 
@@ -192,7 +192,12 @@ class AssistHub:
             sess.status = "ended"
             admins = list(sess.admins)
             sess.admins.clear()
+        notice = json.dumps({"type": "ended"})
         for ws in admins:
+            try:
+                await ws.send_text(notice)
+            except Exception:
+                pass
             try:
                 await ws.close()
             except Exception:
