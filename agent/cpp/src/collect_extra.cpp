@@ -12,6 +12,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <ctime>
 #include <set>
 #include <string>
 #include <vector>
@@ -53,6 +55,47 @@ DWORD reg_dword(HKEY root, const wchar_t* path, const wchar_t* name, DWORD def =
 std::string wide_to_utf8(const wchar_t* w) {
   if (!w || !w[0]) return {};
   return util::narrow(std::wstring(w));
+}
+
+std::string dmtf_date(const std::string& raw) {
+  std::string digits;
+  for (char c : raw) {
+    if (c >= '0' && c <= '9') digits.push_back(c);
+    else if (!digits.empty()) break;
+  }
+  if (digits.size() >= 8)
+    return digits.substr(0, 4) + "-" + digits.substr(4, 2) + "-" + digits.substr(6, 2);
+  return util::clean_wmi(raw, 32);
+}
+
+std::string unix_date(DWORD sec) {
+  if (sec == 0) return {};
+  time_t t = static_cast<time_t>(sec);
+  struct tm tm{};
+  if (gmtime_s(&tm, &t) != 0) return {};
+  char buf[16];
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+  return buf;
+}
+
+bool looks_like_product_key(const std::string& raw) {
+  std::string s;
+  for (char c : raw) {
+    if (c == '-' || c == ' ') continue;
+    s.push_back(c);
+  }
+  if (s.size() != 25) return false;
+  for (char c : s) {
+    if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) return false;
+  }
+  return true;
+}
+
+const char* license_status_label(int status) {
+  if (status == 1) return "Licensed";
+  if (status == 2 || status == 3 || status == 5 || status == 6) return "Grace";
+  if (status == 4) return "Not genuine";
+  return "Not licensed";
 }
 
 std::string read_reg_sz(HKEY root, const wchar_t* path, const wchar_t* name) {
@@ -567,5 +610,236 @@ void collect_extended_extras(JsonWriter& j, WmiSession& wmi, const AgentConfig& 
     }
     j.end_array();
     mark(mods, "disk_health", "ok");
+  }
+
+  // Firmware identity. Serial stays on the root payload; the key is never read.
+  {
+    j.key("bios");
+    j.begin_object();
+    std::string vendor, version, release;
+    if (wmi.ok()) {
+      auto bios = wmi.query_cimv2(
+          L"SELECT Manufacturer,SMBIOSBIOSVersion,Version,ReleaseDate FROM Win32_BIOS");
+      if (!bios.empty()) {
+        vendor = util::clean_wmi(bios[0].get("Manufacturer"), 128);
+        version = util::clean_wmi(bios[0].get("SMBIOSBIOSVersion"), 128);
+        if (version.empty()) version = util::clean_wmi(bios[0].get("Version"), 128);
+        release = dmtf_date(bios[0].get("ReleaseDate"));
+      }
+    }
+    put_str(j, "vendor", vendor);
+    put_str(j, "version", version);
+    put_str(j, "release_date", release);
+    j.end_object();
+    mark(mods, "bios", version.empty() && vendor.empty() ? "degraded" : "ok");
+  }
+
+  // Windows edition and activation status. Product key fields are not selected and not written.
+  {
+    const wchar_t* cv = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+    std::string edition = read_reg_sz(HKEY_LOCAL_MACHINE, cv, L"EditionID");
+    std::string product = read_reg_sz(HKEY_LOCAL_MACHINE, cv, L"ProductName");
+    std::string display = read_reg_sz(HKEY_LOCAL_MACHINE, cv, L"DisplayVersion");
+    int license_status = -1;
+    if (wmi.ok()) {
+      auto rows = wmi.query_cimv2(
+          L"SELECT Name,LicenseStatus FROM SoftwareLicensingProduct "
+          L"WHERE ApplicationID='55c92734-d682-4d71-983e-d6ec3f16059f'");
+      for (auto& row : rows) {
+        // WMI returns every property, including the key, even when it is not selected.
+        row.fields.erase("PartialProductKey");
+        row.fields.erase("ProductKeyID");
+        row.fields.erase("ProductKeyID2");
+        row.fields.erase("OA3xOriginalProductKey");
+        row.fields.erase("DigitalProductId");
+        row.fields.erase("ProductKey");
+        int status = -1;
+        try {
+          status = std::stoi(row.get("LicenseStatus"));
+        } catch (...) {
+          continue;
+        }
+        if (status == 1) {
+          license_status = 1;
+          break;
+        }
+        if (status > license_status) license_status = status;
+      }
+    }
+    j.key("windows");
+    j.begin_object();
+    put_str(j, "edition", edition);
+    put_str(j, "product_name", product);
+    put_str(j, "display_version", display);
+    j.key("activated");
+    if (license_status < 0) j.null_value();
+    else j.value(license_status == 1);
+    j.key("license_status");
+    if (license_status < 0) j.null_value();
+    else j.value((int64_t)license_status);
+    j.end_object();
+    if (license_status >= 0) {
+      j.key("activation");
+      j.value(license_status_label(license_status));
+    }
+    mark(mods, "windows_license", license_status < 0 ? "degraded" : "ok");
+  }
+
+  // Non-display device drivers. Video adapters stay in gpus.
+  if (wmi.ok()) {
+    j.key("device_drivers");
+    j.begin_array();
+    auto rows = wmi.query_cimv2(
+        L"SELECT DeviceName,FriendlyName,DriverVersion,DriverDate,Manufacturer,DeviceClass "
+        L"FROM Win32_PnPSignedDriver");
+    std::set<std::string> seen;
+    int n = 0;
+    for (auto& row : rows) {
+      if (n >= 200) break;
+      auto cls = util::to_lower(util::clean_wmi(row.get("DeviceClass")));
+      if (cls == "display" || cls == "monitor") continue;
+      auto name = util::clean_wmi(row.get("DeviceName"), 256);
+      if (name.empty()) name = util::clean_wmi(row.get("FriendlyName"), 256);
+      auto ver = util::clean_wmi(row.get("DriverVersion"), 64);
+      if (name.empty() || ver.empty() || looks_like_product_key(ver)) continue;
+      auto nl = util::to_lower(name);
+      if (nl.find("basic display") != std::string::npos || nl.find("remote display") != std::string::npos)
+        continue;
+      std::string key = util::to_lower(name) + "|" + util::to_lower(ver);
+      if (!seen.insert(key).second) continue;
+      j.begin_object();
+      put_str(j, "name", name);
+      put_str(j, "version", ver);
+      put_str(j, "date", dmtf_date(row.get("DriverDate")));
+      put_str(j, "manufacturer", util::clean_wmi(row.get("Manufacturer"), 128));
+      put_str(j, "class", util::clean_wmi(row.get("DeviceClass"), 64));
+      j.end_object();
+      ++n;
+    }
+    j.end_array();
+    mark(mods, "device_drivers", n > 0 ? "ok" : "degraded");
+  }
+
+  // Firewall profile switches, then a bounded list of enabled rules. No remote addresses.
+  {
+    const wchar_t* policy = L"SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\";
+    auto enabled = [&](const wchar_t* profile) {
+      std::wstring path = std::wstring(policy) + profile;
+      return reg_dword(HKEY_LOCAL_MACHINE, path.c_str(), L"EnableFirewall", 0xFFFFFFFF);
+    };
+    DWORD domain = enabled(L"DomainProfile");
+    DWORD priv = enabled(L"StandardProfile");
+    DWORD pub = enabled(L"PublicProfile");
+    if (domain != 0xFFFFFFFF || priv != 0xFFFFFFFF || pub != 0xFFFFFFFF) {
+      j.key("firewall");
+      j.begin_object();
+      if (domain != 0xFFFFFFFF) {
+        j.key("domain");
+        j.value(domain != 0);
+      }
+      if (priv != 0xFFFFFFFF) {
+        j.key("private");
+        j.value(priv != 0);
+      }
+      if (pub != 0xFFFFFFFF) {
+        j.key("public");
+        j.value(pub != 0);
+      }
+      j.end_object();
+    }
+    int rules_n = 0;
+    if (wmi.ok()) {
+      j.key("firewall_rules");
+      j.begin_array();
+      auto rules = wmi.query(
+          L"ROOT\\StandardCimv2",
+          L"SELECT DisplayName,Direction,Action,Enabled FROM MSFT_NetFirewallRule WHERE Enabled=1");
+      for (auto& rule : rules) {
+        if (rules_n >= 120) break;
+        auto name = util::clean_wmi(rule.get("DisplayName"), 256);
+        if (name.empty() || looks_like_product_key(name)) continue;
+        auto direction = rule.get("Direction");
+        auto action = rule.get("Action");
+        j.begin_object();
+        put_str(j, "name", name);
+        put_str(j, "direction", direction == "2" ? "out" : "in");
+        put_str(j, "action", action == "4" ? "block" : "allow");
+        j.end_object();
+        ++rules_n;
+      }
+      j.end_array();
+    }
+    bool profiles_ok = domain != 0xFFFFFFFF || priv != 0xFFFFFFFF || pub != 0xFFFFFFFF;
+    mark(mods, "firewall", profiles_ok || rules_n > 0 ? "ok" : "degraded");
+  }
+
+  if (wmi.ok()) {
+    j.key("shares");
+    j.begin_array();
+    auto rows = wmi.query_cimv2(L"SELECT Name,Path,Type FROM Win32_Share");
+    int n = 0;
+    for (auto& row : rows) {
+      if (n >= 60) break;
+      auto name = util::clean_wmi(row.get("Name"), 128);
+      if (name.empty()) continue;
+      unsigned long typ = 0;
+      try {
+        typ = std::stoul(row.get("Type"));
+      } catch (...) {
+      }
+      unsigned long base = typ & 0x7FFFFFFFul;
+      if (base == 3) continue;
+      const char* kind = "other";
+      if (base == 0) kind = "disk";
+      else if (base == 1) kind = "print";
+      else if (base == 2) kind = "device";
+      j.begin_object();
+      put_str(j, "name", name);
+      put_str(j, "path", util::clean_wmi(row.get("Path"), 512));
+      j.key("kind");
+      j.value(kind);
+      j.key("admin");
+      j.value((typ & 0x80000000ul) != 0);
+      j.end_object();
+      ++n;
+    }
+    j.end_array();
+    mark(mods, "shares", "ok");
+  }
+
+  {
+    j.key("local_users");
+    j.begin_array();
+    int enabled = 0;
+    int n = 0;
+    DWORD resume = 0;
+    NET_API_STATUS st = NERR_Success;
+    do {
+      DWORD entries = 0, total = 0;
+      USER_INFO_2* info = nullptr;
+      st = NetUserEnum(nullptr, 2, FILTER_NORMAL_ACCOUNT, (LPBYTE*)&info, MAX_PREFERRED_LENGTH, &entries,
+                       &total, &resume);
+      if ((st != NERR_Success && st != ERROR_MORE_DATA) || !info) break;
+      for (DWORD i = 0; i < entries && n < 150; ++i) {
+        auto name = wide_to_utf8(info[i].usri2_name);
+        if (name.empty()) continue;
+        bool disabled = (info[i].usri2_flags & UF_ACCOUNTDISABLE) != 0;
+        if (!disabled) ++enabled;
+        j.begin_object();
+        put_str(j, "name", name);
+        put_str(j, "full_name", wide_to_utf8(info[i].usri2_full_name));
+        j.key("disabled");
+        j.value(disabled);
+        put_str(j, "last_logon", unix_date(info[i].usri2_last_logon));
+        j.end_object();
+        ++n;
+      }
+      NetApiBufferFree(info);
+    } while (st == ERROR_MORE_DATA && n < 150);
+    j.end_array();
+    j.key("local_users_enabled");
+    if (n == 0 && st != NERR_Success) j.null_value();
+    else j.value((int64_t)enabled);
+    mark(mods, "local_users", n > 0 ? "ok" : "degraded");
   }
 }

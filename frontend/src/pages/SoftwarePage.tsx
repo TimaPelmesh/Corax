@@ -13,11 +13,11 @@ import { IconDetails } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
-function filterBtnClass(active: boolean) {
-  return `w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+function kindBtnClass(active: boolean) {
+  return `w-full rounded-md px-2.5 py-1.5 text-left text-[13px] transition ${
     active
-      ? 'bg-[var(--color-primary)] text-white'
-      : 'border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] hover:border-[var(--color-primary)]/40'
+      ? 'bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)] font-medium text-[var(--color-primary)]'
+      : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]'
   }`
 }
 
@@ -142,10 +142,7 @@ export function SoftwarePage() {
 
   useEffect(() => {
     if (hostsLoading || hosts === null) return
-    if (hostsListRef.current) {
-      hostsListRef.current.scrollTop = 0
-    }
-    hostsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    if (hostsListRef.current) hostsListRef.current.scrollTop = 0
   }, [hosts, hostsLoading, filters])
 
   const nameColumnLabel =
@@ -157,204 +154,192 @@ export function SoftwarePage() {
           ? t('software.columns.motherboard')
           : t('software.columns.name')
 
-  const pcsSum = useMemo(() => rows.reduce((acc, r) => acc + r.count, 0), [rows])
   const activeKeys = useMemo(() => new Set(filters.map(filterKey)), [filters])
 
   return (
-    <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col gap-3 overflow-hidden">
+    <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col overflow-auto lg:overflow-hidden">
       <h1 className="sr-only">{t('titles.software')}</h1>
-      <div className="flex flex-wrap gap-3 text-sm">
-        <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
-          {t('software.statPositions')}: <strong>{loading ? '…' : rows.length}</strong>
-        </span>
-        <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
-          {t('software.statMatches')}: <strong>{loading ? '…' : pcsSum}</strong>
-        </span>
-        {filters.length ? (
-          <span className="rounded-lg bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)] px-3 py-1.5 text-[var(--color-primary)]">
-            {t('software.statSelected')}: <strong>{hostsLoading ? '…' : hostsTotal}</strong>
-            {filters.length > 1 ? (
-              <span className="ml-1 opacity-80">· {t('software.filtersAnd')}</span>
-            ) : null}
-          </span>
-        ) : null}
-      </div>
-
-      <div className="grid min-h-0 flex-1 items-stretch gap-4 overflow-hidden lg:grid-cols-[15.5rem_minmax(0,1fr)_minmax(17rem,22rem)]">
-        <aside className="flex min-h-0 flex-col gap-3 overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)] p-3">
-          <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-subtle)]">
+      <div className="grid min-h-0 flex-1 items-stretch gap-3 overflow-hidden lg:grid-cols-[13.25rem_minmax(0,1fr)_minmax(18rem,22rem)]">
+        <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <p className="border-b border-[var(--color-border)] px-3 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
             {t('software.filtersRail')}
           </p>
-          <nav className="flex flex-col gap-1" aria-label={t('software.filtersRail')}>
+          <nav className="flex flex-col gap-0.5 overflow-auto p-1.5" aria-label={t('software.filtersRail')}>
             {catalogSections.map((s) => (
               <button
                 key={s.kind}
                 type="button"
                 onClick={() => setKind(s.kind)}
-                className={filterBtnClass(kind === s.kind)}
+                className={kindBtnClass(kind === s.kind)}
                 aria-pressed={kind === s.kind}
               >
                 {s.label}
               </button>
             ))}
           </nav>
-          <input
-            id="sw-search"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('software.searchPlaceholder')}
-            className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
-          />
-          {loading ? (
-            <span className="px-1 text-xs text-[var(--color-fg-subtle)]">{t('software.refreshing')}</span>
-          ) : null}
           {filters.length ? (
-            <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3">
-              <span className="px-1 text-[13px] font-medium text-[var(--color-fg-subtle)]">
-                {t('software.activeFilters')}
-              </span>
-              {filters.map((f) => (
+            <div className="mt-auto flex min-h-0 flex-col gap-1.5 border-t border-[var(--color-border)] p-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--color-fg-subtle)]">
+                  {t('software.activeFilters')}
+                </span>
                 <button
-                  key={filterKey(f)}
                   type="button"
-                  onClick={() => removeFilter(f)}
-                  className="flex w-full items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,var(--color-primary)_35%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-surface))] px-2.5 py-1.5 text-left text-xs text-[var(--color-fg)]"
-                  title={t('software.removeFilter')}
+                  onClick={() => setFilters([])}
+                  className="text-[11px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
                 >
-                  <span className="shrink-0 text-[var(--color-fg-subtle)]">{kindLabel(f.kind)}</span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
-                  <span aria-hidden className="opacity-60">
-                    ×
-                  </span>
+                  {t('software.clearFilters')}
                 </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setFilters([])}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-bg)]"
-              >
-                {t('software.clearFilters')}
-              </button>
+              </div>
+              <div className="flex max-h-40 flex-col gap-1 overflow-auto">
+                {filters.map((f) => (
+                  <button
+                    key={filterKey(f)}
+                    type="button"
+                    onClick={() => removeFilter(f)}
+                    className="flex w-full items-center gap-1.5 rounded-md bg-[var(--color-bg-muted)] px-2 py-1 text-left text-xs text-[var(--color-fg)] hover:bg-[color-mix(in_srgb,var(--color-primary)_10%,var(--color-bg-muted))]"
+                    title={t('software.removeFilter')}
+                  >
+                    <span className="shrink-0 text-[var(--color-fg-subtle)]">{kindLabel(f.kind)}</span>
+                    <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                    <span aria-hidden className="text-[var(--color-fg-subtle)]">
+                      ×
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
         </aside>
 
-        <div key={`sw-${kind}`} className="app-table-shell min-h-0 overflow-auto overscroll-contain rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <table className="app-table min-w-full text-left text-sm">
-            <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
-              <tr>
-                <th className="px-3 py-2.5">{nameColumnLabel}</th>
-                <th className="px-3 py-2.5 text-right">{t('software.columns.pcs')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && !loading ? (
-                <tr>
-                  <td colSpan={2} className="px-3 py-10 text-center text-[var(--color-fg-subtle)]">
-                    <p>{query.trim() ? t('software.emptySearch') : t('software.empty')}</p>
-                    {query.trim() ? (
-                      <button
-                        type="button"
-                        className="app-btn app-btn-secondary mt-4"
-                        onClick={() => setQuery('')}
-                      >
-                        {t('software.clearSearch')}
-                      </button>
-                    ) : canDownloadAgent ? (
-                      <Link to="/settings/agent-bundle" className="app-btn app-btn-primary mt-4">
-                        {t('common.downloadAgent')}
-                      </Link>
-                    ) : null}
-                  </td>
-                </tr>
-              ) : loading && rows.length === 0 ? (
-                <tr>
-                  <td colSpan={2} className="px-3 py-10 text-center text-[var(--color-fg-subtle)]">
-                    {t('common.loading')}
-                  </td>
-                </tr>
-              ) : (
-                rows.map((r) => {
-                  const active = activeKeys.has(filterKey({ kind, name: r.name }))
-                  return (
-                    <tr
-                      key={r.name}
-                      className={`cursor-pointer border-t border-[var(--color-border)]/70 transition ${
-                        active
-                          ? 'bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)]'
-                          : 'hover:bg-[var(--color-bg-muted)]/50'
-                      }`}
-                      onClick={() => toggleFilter(r.name)}
-                    >
-                      <td className="px-3 py-2.5" title={r.version ? `${r.name} — ${r.version}` : r.name}>
-                        <div className="font-medium leading-snug text-[var(--color-fg)]">{r.name}</div>
-                        {r.version ? (
-                          <div className="mt-0.5 font-mono text-[11px] text-[var(--color-fg-subtle)]">{r.version}</div>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-[var(--color-fg-muted)]">{r.count}</td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div
-          ref={hostsPanelRef}
-          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+        <section
+          key={`sw-${kind}`}
+          className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
         >
-          <h2 className="text-[0.95rem] font-medium tracking-tight text-[var(--color-fg)]">
-            {t('software.installedOnTitle')}
-          </h2>
+          <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+            <input
+              id="sw-search"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t('software.searchPlaceholder')}
+              className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-muted)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--color-primary)]"
+            />
+            <span className="shrink-0 text-xs tabular-nums text-[var(--color-fg-subtle)]">
+              {loading ? t('software.refreshing') : t('software.rowsCount', { count: rows.length })}
+            </span>
+          </div>
+          <div className="app-table-shell min-h-0 flex-1 overflow-auto overscroll-contain">
+            <table className="app-table min-w-full text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-[12px] font-medium text-[var(--color-fg-subtle)]">
+                <tr>
+                  <th className="px-3 py-2 font-medium">{nameColumnLabel}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('software.columns.pcs')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && !loading ? (
+                  <tr>
+                    <td colSpan={2} className="px-3 py-12 text-center text-[var(--color-fg-subtle)]">
+                      <p>{query.trim() ? t('software.emptySearch') : t('software.empty')}</p>
+                      {query.trim() ? (
+                        <button type="button" className="app-btn app-btn-secondary mt-3" onClick={() => setQuery('')}>
+                          {t('software.clearSearch')}
+                        </button>
+                      ) : canDownloadAgent ? (
+                        <Link to="/settings/agent-bundle" className="app-btn app-btn-primary mt-3">
+                          {t('common.downloadAgent')}
+                        </Link>
+                      ) : null}
+                    </td>
+                  </tr>
+                ) : loading && rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="px-3 py-12 text-center text-[var(--color-fg-subtle)]">
+                      {t('common.loading')}
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((r) => {
+                    const active = activeKeys.has(filterKey({ kind, name: r.name }))
+                    return (
+                      <tr
+                        key={r.name}
+                        className={`cursor-pointer ${
+                          active
+                            ? 'bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)] shadow-[inset_2px_0_0_var(--color-primary)]'
+                            : 'hover:bg-[var(--color-bg-muted)]/70'
+                        }`}
+                        onClick={() => toggleFilter(r.name)}
+                      >
+                        <td className="px-3 py-2" title={r.version ? `${r.name} — ${r.version}` : r.name}>
+                          <div className="flex min-w-0 items-baseline gap-2">
+                            <span className="min-w-0 truncate text-[var(--color-fg)]">{r.name}</span>
+                            {r.version ? (
+                              <span className="shrink-0 font-mono text-[11px] text-[var(--color-fg-subtle)]">
+                                {r.version}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-[var(--color-fg-muted)]">{r.count}</td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section
+          ref={hostsPanelRef}
+          className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
+            <h2 className="text-[13px] font-medium text-[var(--color-fg)]">{t('software.installedOnTitle')}</h2>
+            {filters.length ? (
+              <span className="text-xs tabular-nums text-[var(--color-fg-subtle)]">
+                {hostsLoading ? '…' : hostsTotal}
+                {filters.length > 1 ? ` · ${t('software.filtersAnd')}` : ''}
+              </span>
+            ) : null}
+          </div>
 
           {!filters.length ? (
-            <p className="mt-4 text-sm text-[var(--color-fg-subtle)]">{t('software.selectRowHint')}</p>
+            <p className="px-4 py-8 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('software.selectRowHint')}</p>
           ) : hostsLoading ? (
-            <p className="mt-4 text-sm text-[var(--color-fg-subtle)]">{t('software.loadingHosts')}</p>
+            <p className="px-4 py-8 text-sm text-[var(--color-fg-subtle)]">{t('software.loadingHosts')}</p>
           ) : sortedHosts && sortedHosts.length ? (
             <>
-              <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
-                {t('software.exactPackageName')}{' '}
-                <span className="font-medium text-[var(--color-fg)]">
-                  {filters.map((f) => `${kindLabel(f.kind)}: ${f.name}`).join(' · ')}
-                </span>
-              </p>
-
-              <div
-                ref={hostsListRef}
-                className="mt-3 h-[30rem] max-h-[30rem] overflow-y-auto overscroll-contain rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40"
-              >
+              <div ref={hostsListRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <ul>
                   {sortedHosts.map((pc, idx) => {
                     const clickable = pc.id > 0
+                    const meta = [
+                      pc.os_summary || pc.os_name,
+                      pc.cpu,
+                      pc.ram_gb != null ? t('computers.ramValue', { value: pc.ram_gb }) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
                     return (
                       <li
                         key={`${pc.id}-${pc.hostname}`}
                         className={idx > 0 ? 'border-t border-[var(--color-border)]' : undefined}
                       >
-                        <div className="flex items-start gap-2 px-3 py-2">
+                        <div className="flex items-center gap-2 px-3 py-2">
                           <div className="min-w-0 flex-1">
-                            <div className="truncate font-mono text-sm font-semibold text-[var(--color-fg)]">
-                              {pc.hostname}
-                            </div>
-                            <div className="mt-0.5 truncate text-[11px] text-[var(--color-fg-subtle)]">
-                              {[
-                                pc.os_summary || pc.os_name,
-                                pc.cpu,
-                                pc.ram_gb != null ? `${pc.ram_gb} ГБ` : null,
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')}
-                            </div>
+                            <div className="truncate font-mono text-[13px] text-[var(--color-fg)]">{pc.hostname}</div>
+                            {meta ? (
+                              <div className="mt-0.5 truncate text-[11px] text-[var(--color-fg-subtle)]">{meta}</div>
+                            ) : null}
                           </div>
                           {clickable ? (
                             <button
                               type="button"
                               onClick={() => setComputerId(pc.id)}
-                              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-primary)] shadow-sm transition hover:border-[var(--color-primary)]/40 hover:bg-[color-mix(in_srgb,var(--color-primary)_10%,transparent)]"
+                              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--color-fg-muted)] transition hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-primary)]"
                               title={t('software.openDetails')}
                               aria-label={t('software.openDetails')}
                             >
@@ -367,17 +352,16 @@ export function SoftwarePage() {
                   })}
                 </ul>
               </div>
-              <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">
-                {t('common.total')}: {hostsTotal}
-                {hostsTotal > sortedHosts.length
-                  ? ` · ${t('software.shownCount').replace('{count}', String(sortedHosts.length))}`
-                  : null}
-              </p>
+              {hostsTotal > sortedHosts.length ? (
+                <p className="border-t border-[var(--color-border)] px-3 py-2 text-[11px] text-[var(--color-fg-subtle)]">
+                  {t('software.shownCount', { count: sortedHosts.length })}
+                </p>
+              ) : null}
             </>
           ) : (
-            <p className="mt-4 text-sm text-[var(--color-fg-subtle)]">{t('software.noDataForSelection')}</p>
+            <p className="px-4 py-8 text-sm text-[var(--color-fg-subtle)]">{t('software.noDataForSelection')}</p>
           )}
-        </div>
+        </section>
       </div>
 
       {computerId != null ? (

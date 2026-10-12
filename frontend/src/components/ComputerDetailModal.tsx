@@ -12,12 +12,23 @@ import {
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { parseAgentExtras } from '../computerAgentExtras'
-import { useT } from '../i18n/LocaleContext'
+import { useT, type MessageKey } from '../i18n/LocaleContext'
 import { groupPeripheralsForDisplay } from '../peripheralDisplay'
 import { useToast } from '../ToastContext'
 import { IconClose } from './icons'
 import { ComputerZabbixStatus } from './ComputerZabbixStatus'
 import { RemoteConnectMenu } from './RemoteConnectMenu'
+
+function activationLabel(
+  status: string,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+) {
+  if (status === 'Licensed') return t('computerDetail.activationLicensed')
+  if (status === 'Grace') return t('computerDetail.activationGrace')
+  if (status === 'Not genuine') return t('computerDetail.activationNotGenuine')
+  if (status === 'Not licensed') return t('computerDetail.activationNotLicensed')
+  return status
+}
 
 export function fmtDate(iso: string | null, locale: 'ru' | 'en') {
   if (!iso) return '—'
@@ -615,6 +626,18 @@ export function ComputerDetailModal({
                       )}
                     </dd>
                   </div>
+                  {agentExtras?.bios ? (
+                    <div className="min-w-0 sm:col-span-2">
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.bios')}</dt>
+                      <dd className="break-words text-[var(--color-fg)]">{agentExtras.bios}</dd>
+                    </div>
+                  ) : null}
+                  {agentExtras?.windowsEdition ? (
+                    <div className="min-w-0 sm:col-span-2">
+                      <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.windowsEdition')}</dt>
+                      <dd className="break-words text-[var(--color-fg)]">{agentExtras.windowsEdition}</dd>
+                    </div>
+                  ) : null}
                   <div className="min-w-0 sm:col-span-2">
                     <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.mac')}</dt>
                     <dd className="font-mono text-[var(--color-fg)]">{detail.mac_primary ?? '—'}</dd>
@@ -696,7 +719,7 @@ export function ComputerDetailModal({
                   {agentExtras?.activation ? (
                     <div className="min-w-0">
                       <dt className="text-[var(--color-fg-muted)]">{t('computerDetail.activation')}</dt>
-                      <dd className="text-[var(--color-fg)]">{agentExtras.activation}</dd>
+                      <dd className="text-[var(--color-fg)]">{activationLabel(agentExtras.activation, t)}</dd>
                     </div>
                   ) : null}
                   {agentExtras?.securityPosture ? (
@@ -871,6 +894,8 @@ export function ComputerDetailModal({
                   agentExtras.sharesCount != null ||
                   agentExtras.usbHistoryCount != null ||
                   agentExtras.localUsersEnabled != null ||
+                  agentExtras.deviceDriversCount != null ||
+                  agentExtras.firewallRulesCount != null ||
                   agentExtras.expiringCerts.length) ? (
                   <div className="mt-4 space-y-2 border-t border-[var(--color-border)] pt-3">
                     <div className="text-sm font-medium text-[var(--color-fg)]">
@@ -907,6 +932,16 @@ export function ComputerDetailModal({
                       {agentExtras.problemDevicesCount != null ? (
                         <span className="rounded-md bg-amber-50 px-2 py-0.5 text-amber-950">
                           {t('computerDetail.problemDevices', { n: agentExtras.problemDevicesCount })}
+                        </span>
+                      ) : null}
+                      {agentExtras.deviceDriversCount != null ? (
+                        <span className="rounded-md bg-[var(--color-surface-muted)] px-2 py-0.5 text-[var(--color-fg)]">
+                          {t('computerDetail.deviceDrivers', { n: agentExtras.deviceDriversCount })}
+                        </span>
+                      ) : null}
+                      {agentExtras.firewallRulesCount != null ? (
+                        <span className="rounded-md bg-[var(--color-surface-muted)] px-2 py-0.5 text-[var(--color-fg)]">
+                          {t('computerDetail.firewallRules', { n: agentExtras.firewallRulesCount })}
                         </span>
                       ) : null}
                       {agentExtras.localUsersEnabled != null ? (

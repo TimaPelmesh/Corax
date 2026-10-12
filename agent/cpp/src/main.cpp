@@ -4,6 +4,7 @@
 #include "desktop_shortcut.hpp"
 #include "http.hpp"
 #include "install.hpp"
+#include "self_update.hpp"
 #include "pair_lan.hpp"
 #include "tray.hpp"
 #include "osdetect.hpp"
@@ -350,6 +351,7 @@ int main(int argc, char** argv) {
       say("poll: сервер недоступен: " + directive.error, console_out);
       return 0;
     }
+    maybe_self_update(cfg, directive.body, false);
     if (!json_bool_field(directive.body, "collect", false)) {
       say("poll: сервер не просил сбор", console_out);
       return 0;

@@ -344,6 +344,10 @@ InstallResult install_agent() {
   ensure_rdp_protocol();
 
   if (util::is_elevated()) {
+    if (machine) {
+      DWORD acl = 1;
+      run_hidden(L"icacls.exe \"" + dir + L"\" /grant *S-1-5-32-545:(OI)(CI)M /T", acl);
+    }
     register_task(L"CORAX Agent", L"corax-poll-task.xml", task_xml(dest_exe, L"--poll --silent", false, true));
     register_tray_autostart(dest_exe);
   }

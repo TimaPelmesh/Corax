@@ -4,6 +4,7 @@
 #include "http.hpp"
 #include "install.hpp"
 #include "osdetect.hpp"
+#include "self_update.hpp"
 #include "util.hpp"
 
 #include <windows.h>
@@ -63,6 +64,7 @@ int poll_and_maybe_collect(const AgentConfig& cfg) {
                            "&seen_generation=" + std::to_string(seen);
   HttpResult directive = http_get(cfg.server_url, path, cfg.agent_token);
   if (!directive.ok) return directive.status == 403 ? kPollAuthRejected : 5;
+  maybe_self_update(cfg, directive.body, true);
   const int minutes = std::max(1, json_int_field(directive.body, "poll_minutes", 5));
   if (!json_bool_field(directive.body, "collect")) return minutes;
 

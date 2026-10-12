@@ -77,6 +77,7 @@ dmi_string() {
       board_name) dmikey=baseboard-product-name ;;
       bios_vendor) dmikey=bios-vendor ;;
       bios_version) dmikey=bios-version ;;
+      bios_date) dmikey=bios-release-date ;;
       chassis_vendor) dmikey=chassis-manufacturer ;;
     esac
     if [ -n "$dmikey" ]; then

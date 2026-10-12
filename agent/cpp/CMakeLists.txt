@@ -38,6 +38,7 @@ add_executable(CORAX-Agent
   src/install.cpp
   src/pair_lan.cpp
   src/poll.cpp
+  src/self_update.cpp
   src/tray.cpp
   src/assist.cpp
   src/assist_ui.cpp
@@ -75,6 +76,7 @@ if(MSVC)
     netapi32
     advapi32
     crypt32
+    bcrypt
     shell32
     version
     comctl32

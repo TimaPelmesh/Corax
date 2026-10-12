@@ -22,6 +22,9 @@ _SRC_HASH_FILE = _CACHE_DIR / "src.hash"
 _CFG_BEGIN = b"<<<CORAX_CFG_BEGIN>>>"
 _CFG_END = b"<<<CORAX_CFG_END>>>"
 _SLOT_BYTES = 8192
+# Bump together with agent/cpp include/config.hpp. The tray updates itself
+# when this string is newer than the copy already running on the PC.
+AGENT_RELEASE_VERSION = "5.3.0"
 
 
 def _cmake_exe() -> Path | None:
@@ -308,7 +311,7 @@ def _cpp_public_config(body: AgentBundleCreate, server: str) -> dict:
     return {
         "schema_version": 1,
         "server_url": server,
-        "agent_version": "5.1.0",
+        "agent_version": AGENT_RELEASE_VERSION,
         "profile": profile,
         "silent": False,
         "helpdesk_shortcut": True,
@@ -329,7 +332,7 @@ def build_cpp_agent_exe(body: AgentBundleCreate, token: str) -> tuple[bytes, str
     secret = (token or "").strip()
 
     embed = _cpp_public_config(body, server)
-    embed["agent_version"] = "5.1.0"
+    embed["agent_version"] = AGENT_RELEASE_VERSION
     if secret:
         embed["agent_token"] = secret
 

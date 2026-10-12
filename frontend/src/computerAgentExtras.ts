@@ -47,6 +47,10 @@ export type ParsedAgentExtras = {
   expiringCerts: ExpiringCert[]
   screenResolution: string | null
   activation: string | null
+  bios: string | null
+  windowsEdition: string | null
+  deviceDriversCount: number | null
+  firewallRulesCount: number | null
   securityPosture: string | null
   problemDevicesCount: number | null
   localUsersEnabled: number | null
@@ -66,6 +70,13 @@ function asArr(v: unknown): unknown[] {
 function s(v: unknown): string | null {
   if (v == null || v === '') return null
   return String(v)
+}
+
+function notAProductKey(v: string | null): string | null {
+  if (!v) return null
+  const compact = v.replace(/[-\s]/g, '')
+  if (/^[A-Za-z0-9]{25}$/.test(compact)) return null
+  return v
 }
 
 function isUsefulDns(addr: string) {
@@ -232,6 +243,25 @@ export function parseAgentExtras(ext: Record<string, unknown> | null | undefined
     })
     .filter((x): x is string => Boolean(x))
 
+  const biosObj = asObj(ext.bios)
+  const biosParts = [
+    notAProductKey(s(biosObj?.vendor) ?? s(ext.bios_vendor)),
+    notAProductKey(s(biosObj?.version) ?? s(ext.bios_version)),
+    notAProductKey(s(biosObj?.release_date) ?? s(ext.bios_date)),
+  ].filter((x): x is string => Boolean(x))
+  const bios = biosParts.length ? biosParts.join(' · ') : null
+
+  const win = asObj(ext.windows)
+  const editionParts = [
+    notAProductKey(s(win?.edition) ?? s(win?.product_name)),
+    notAProductKey(s(win?.display_version)),
+  ].filter((x): x is string => Boolean(x))
+  const windowsEdition = editionParts.length ? editionParts.join(' · ') : null
+
+  let activation = notAProductKey(s(ext.activation))
+  if (!activation && win?.activated === true) activation = 'Licensed'
+  else if (!activation && win?.activated === false) activation = 'Not licensed'
+
   const fw = asObj(ext.firewall)
   let firewall: string | null = null
   if (fw) {
@@ -308,7 +338,11 @@ export function parseAgentExtras(ext: Record<string, unknown> | null | undefined
     hardErrorsCount: asArr(ext.hard_errors).length || null,
     expiringCerts,
     screenResolution: s(ext.screen_resolution),
-    activation: s(ext.activation),
+    activation,
+    bios,
+    windowsEdition,
+    deviceDriversCount: asArr(ext.device_drivers).length || null,
+    firewallRulesCount: asArr(ext.firewall_rules).length || null,
     securityPosture,
     problemDevicesCount: asArr(ext.problem_devices).length || null,
     localUsersEnabled:

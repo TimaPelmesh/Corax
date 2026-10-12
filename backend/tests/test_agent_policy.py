@@ -102,3 +102,25 @@ def test_collect_now_bumps_generation(client: TestClient, auth_headers: dict[str
     assert due.status_code == 200, due.text
     assert due.json()["collect"] is True
     assert due.json()["reason"] == "now"
+    assert due.json()["release_version"]
+
+
+def test_directive_release_fields(client: TestClient, agent_headers: dict[str, str], monkeypatch):
+    monkeypatch.setattr(
+        "app.routers.agent.release_meta",
+        lambda: {"version": "9.9.9", "sha256": "ab" * 32, "size": 3, "path": None},
+    )
+    response = client.get(
+        "/api/v1/agent/directive",
+        params={"hostname": "fleet-pc", "seen_generation": 0},
+        headers=agent_headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["release_version"] == "9.9.9"
+    assert body["release_sha256"] == "ab" * 32
+
+
+def test_agent_release_requires_token(client: TestClient):
+    response = client.get("/api/v1/agent/release", params={"hostname": "fleet-pc"})
+    assert response.status_code == 401

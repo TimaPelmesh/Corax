@@ -118,6 +118,7 @@ collect_dmi() {
   write_kv motherboard_product "$mb_prod"
   write_kv bios_vendor "$(dmi_string bios_vendor)"
   write_kv bios_version "$(dmi_string bios_version)"
+  write_kv bios_date "$(dmi_string bios_date)"
 }
 
 collect_gpu() {

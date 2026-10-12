@@ -85,6 +85,10 @@ describe('parseAgentExtras', () => {
     expect(extras?.expiringCerts[0]).toEqual({ subject: 'CN=pc.local', daysLeft: 12 })
     expect(extras?.screenResolution).toBe('2560x1440@60Hz')
     expect(extras?.activation).toBe('Licensed')
+    expect(extras?.bios).toBeNull()
+    expect(extras?.windowsEdition).toBeNull()
+    expect(extras?.deviceDriversCount).toBeNull()
+    expect(extras?.firewallRulesCount).toBeNull()
     expect(extras?.securityPosture).toBe('RDP on · SMB1 on · UAC off')
     expect(extras?.problemDevicesCount).toBe(1)
     expect(extras?.localUsersEnabled).toBe(3)
@@ -92,6 +96,22 @@ describe('parseAgentExtras', () => {
     expect(extras?.loggedOnUsers).toEqual(['ivanov'])
     expect(extras?.usbHistoryCount).toBe(5)
     expect(extras?.patchTotal).toBe(2)
+  })
+
+  it('shows firmware, edition and counts, and drops a Windows product key', () => {
+    const extras = parseAgentExtras({
+      bios: { vendor: 'Dell Inc.', version: '1.12.0', release_date: '2020-03-15' },
+      windows: { edition: 'Professional', display_version: '22H2', activated: true, product_key: 'AAAAA-BBBBB-CCCCC-DDDDD-EEEEE' },
+      device_drivers: [{ name: 'Realtek', version: '6.0.1' }],
+      firewall_rules: [{ name: 'Core Networking' }, { name: 'File and Printer Sharing' }],
+      activation: 'AAAAA-BBBBB-CCCCC-DDDDD-EEEEE',
+    })
+    expect(extras?.bios).toBe('Dell Inc. · 1.12.0 · 2020-03-15')
+    expect(extras?.windowsEdition).toBe('Professional · 22H2')
+    expect(extras?.activation).toBe('Licensed')
+    expect(extras?.deviceDriversCount).toBe(1)
+    expect(extras?.firewallRulesCount).toBe(2)
+    expect(JSON.stringify(extras)).not.toContain('AAAAA')
   })
 
   it('ignores virtual display adapters and driver versions from other software', () => {

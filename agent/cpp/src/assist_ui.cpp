@@ -34,6 +34,7 @@ struct Ui {
   RECT allow_rc{};
   RECT deny_rc{};
   RECT end_rc{};
+  float phase = 0.f;
 };
 
 Ui g;
@@ -57,14 +58,19 @@ void ensure_gdiplus() {
   if (Gdiplus::GdiplusStartup(&g.gdiplus, &input, nullptr) == Gdiplus::Ok) g.gdiplus_ready = true;
 }
 
-void fill_round(Gdiplus::Graphics& gfx, const Gdiplus::RectF& rect, float radius, const Gdiplus::Color& color) {
-  Gdiplus::GraphicsPath path;
-  const float d = radius * 2.f;
+void add_round(Gdiplus::GraphicsPath& path, const Gdiplus::RectF& rect, float radius) {
+  const float d = std::min(radius * 2.f, std::min(rect.Width, rect.Height));
+  path.Reset();
   path.AddArc(rect.X, rect.Y, d, d, 180.f, 90.f);
   path.AddArc(rect.GetRight() - d, rect.Y, d, d, 270.f, 90.f);
   path.AddArc(rect.GetRight() - d, rect.GetBottom() - d, d, d, 0.f, 90.f);
   path.AddArc(rect.X, rect.GetBottom() - d, d, d, 90.f, 90.f);
   path.CloseFigure();
+}
+
+void fill_round(Gdiplus::Graphics& gfx, const Gdiplus::RectF& rect, float radius, const Gdiplus::Color& color) {
+  Gdiplus::GraphicsPath path;
+  add_round(path, rect, radius);
   Gdiplus::SolidBrush brush(color);
   gfx.FillPath(&brush, &path);
 }
@@ -90,73 +96,83 @@ void present() {
   gfx.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
   gfx.Clear(Gdiplus::Color(0, 0, 0, 0));
 
-  Gdiplus::RectF card(0, 0, static_cast<float>(w), static_cast<float>(h));
-  fill_round(gfx, card, static_cast<float>(sx(10)), Gdiplus::Color(235, 32, 32, 32));
+  g.phase += 0.012f;
+  if (g.phase > 1.f) g.phase -= 1.f;
+
+  const float margin = static_cast<float>(sx(14));
+  Gdiplus::RectF card(margin, margin * 0.55f, static_cast<float>(w) - margin * 2.f,
+                      static_cast<float>(h) - margin * 1.35f);
+  const float radius = static_cast<float>(sx(22));
+  fill_round(gfx, Gdiplus::RectF(card.X, card.Y + static_cast<float>(sx(8)), card.Width, card.Height), radius,
+             Gdiplus::Color(36, 0, 0, 0));
+
+  Gdiplus::GraphicsPath clip;
+  add_round(clip, card, radius);
+  Gdiplus::LinearGradientBrush glass(card, Gdiplus::Color(214, 46, 52, 64), Gdiplus::Color(228, 16, 18, 24),
+                                     Gdiplus::LinearGradientModeVertical);
+  gfx.FillPath(&glass, &clip);
+
+  gfx.SetClip(&clip);
+  const float travel = card.Width + static_cast<float>(sx(120));
+  const float blob = static_cast<float>(sx(150));
+  const float bx = card.X - blob * 0.35f + travel * g.phase;
+  Gdiplus::SolidBrush liquid(Gdiplus::Color(42, 125, 186, 255));
+  gfx.FillEllipse(&liquid, bx, card.Y - blob * 0.25f, blob, card.Height + blob * 0.45f);
+  Gdiplus::SolidBrush sheen(Gdiplus::Color(28, 255, 255, 255));
+  gfx.FillEllipse(&sheen, card.GetRight() - bx + card.X - blob * 0.2f, card.Y - static_cast<float>(sx(24)),
+                  blob * 0.72f, card.Height * 0.7f);
+  gfx.ResetClip();
+
+  Gdiplus::Pen edge(Gdiplus::Color(78, 255, 255, 255), 1.f);
+  gfx.DrawPath(&edge, &clip);
 
   Gdiplus::FontFamily family(L"Segoe UI");
-  Gdiplus::Font title(&family, static_cast<float>(sx(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+  Gdiplus::Font title(&family, static_cast<float>(sx(15)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
   Gdiplus::Font body(&family, static_cast<float>(sx(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
   Gdiplus::Font btn(&family, static_cast<float>(sx(12)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+  const Gdiplus::Color fg(255, 248, 248, 248);
+  const Gdiplus::Color muted(255, 186, 196, 210);
 
-  const Gdiplus::Color fg(255, 243, 243, 243);
-  const Gdiplus::Color muted(255, 197, 197, 197);
-  const Gdiplus::Color primary(255, 96, 165, 250);
-  const Gdiplus::Color on_primary(255, 10, 10, 10);
+  auto pill = [&](const RECT& rc, const Gdiplus::Color& fill, const wchar_t* label, const Gdiplus::Color& ink) {
+    Gdiplus::RectF box(static_cast<float>(rc.left), static_cast<float>(rc.top),
+                       static_cast<float>(rc.right - rc.left), static_cast<float>(rc.bottom - rc.top));
+    fill_round(gfx, box, box.Height / 2.f, fill);
+    Gdiplus::StringFormat center;
+    center.SetAlignment(Gdiplus::StringAlignmentCenter);
+    center.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    Gdiplus::SolidBrush brush(ink);
+    gfx.DrawString(label, -1, &btn, box, &center, &brush);
+  };
 
+  const int inset = static_cast<int>(card.X) + sx(16);
+  const int inner_w = static_cast<int>(card.Width) - sx(32);
   if (g.mode == Mode::Offer) {
-    draw_string(gfx, L"Corax Assist", Gdiplus::RectF(static_cast<float>(sx(16)), static_cast<float>(sx(10)),
-                                                     static_cast<float>(sx(220)), static_cast<float>(sx(18))),
+    draw_string(gfx, L"Доступ к экрану",
+                Gdiplus::RectF(static_cast<float>(inset), card.Y + static_cast<float>(sx(16)),
+                               static_cast<float>(inner_w), static_cast<float>(sx(20))),
                 title, fg);
-    std::wstring line = g.admin.empty() ? L"Администратор хочет помочь с этим экраном"
-                                        : g.admin + L" хочет помочь с этим экраном";
-    draw_string(gfx, line, Gdiplus::RectF(static_cast<float>(sx(16)), static_cast<float>(sx(28)),
-                                          static_cast<float>(w - sx(200)), static_cast<float>(sx(18))),
+    std::wstring who = g.admin.empty() ? L"Администратор" : g.admin;
+    draw_string(gfx, who,
+                Gdiplus::RectF(static_cast<float>(inset), card.Y + static_cast<float>(sx(38)),
+                               static_cast<float>(inner_w), static_cast<float>(sx(18))),
                 body, muted);
-
-    const int bw = sx(88);
-    const int bh = sx(28);
-    const int by = (h - bh) / 2;
-    g.deny_rc = {w - sx(16) - bw, by, w - sx(16), by + bh};
-    g.allow_rc = {g.deny_rc.left - sx(8) - bw, by, g.deny_rc.left - sx(8), by + bh};
-    fill_round(gfx,
-               Gdiplus::RectF(static_cast<float>(g.allow_rc.left), static_cast<float>(g.allow_rc.top),
-                              static_cast<float>(bw), static_cast<float>(bh)),
-               static_cast<float>(sx(6)), primary);
-    fill_round(gfx,
-               Gdiplus::RectF(static_cast<float>(g.deny_rc.left), static_cast<float>(g.deny_rc.top),
-                              static_cast<float>(bw), static_cast<float>(bh)),
-               static_cast<float>(sx(6)), Gdiplus::Color(40, 255, 255, 255));
-    Gdiplus::StringFormat center;
-    center.SetAlignment(Gdiplus::StringAlignmentCenter);
-    center.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-    Gdiplus::SolidBrush ink(on_primary);
-    Gdiplus::SolidBrush ghost(fg);
-    Gdiplus::RectF ar(static_cast<float>(g.allow_rc.left), static_cast<float>(g.allow_rc.top), static_cast<float>(bw),
-                      static_cast<float>(bh));
-    Gdiplus::RectF dr(static_cast<float>(g.deny_rc.left), static_cast<float>(g.deny_rc.top), static_cast<float>(bw),
-                      static_cast<float>(bh));
-    gfx.DrawString(L"Разрешить", -1, &btn, ar, &center, &ink);
-    gfx.DrawString(L"Нет", -1, &btn, dr, &center, &ghost);
+    const int bh = sx(34);
+    const int gap = sx(8);
+    const int by = static_cast<int>(card.GetBottom()) - sx(16) - bh;
+    const int bw = (inner_w - gap) / 2;
+    g.deny_rc = {inset, by, inset + bw, by + bh};
+    g.allow_rc = {inset + bw + gap, by, inset + bw + gap + bw, by + bh};
+    pill(g.deny_rc, Gdiplus::Color(42, 255, 255, 255), L"Нет", fg);
+    pill(g.allow_rc, Gdiplus::Color(236, 96, 165, 250), L"Разрешить", Gdiplus::Color(255, 12, 18, 28));
   } else {
-    draw_string(gfx, L"Экран виден администратору",
-                Gdiplus::RectF(static_cast<float>(sx(16)), static_cast<float>(sx(8)), static_cast<float>(w - sx(140)),
-                               static_cast<float>(h - sx(16))),
+    draw_string(gfx, L"Экран виден",
+                Gdiplus::RectF(static_cast<float>(inset), card.Y + static_cast<float>(sx(14)),
+                               static_cast<float>(inner_w), static_cast<float>(sx(20))),
                 title, fg);
-    const int bw = sx(100);
-    const int bh = sx(26);
-    const int by = (h - bh) / 2;
-    g.end_rc = {w - sx(14) - bw, by, w - sx(14), by + bh};
-    fill_round(gfx,
-               Gdiplus::RectF(static_cast<float>(g.end_rc.left), static_cast<float>(g.end_rc.top),
-                              static_cast<float>(bw), static_cast<float>(bh)),
-               static_cast<float>(sx(6)), Gdiplus::Color(255, 196, 43, 28));
-    Gdiplus::StringFormat center;
-    center.SetAlignment(Gdiplus::StringAlignmentCenter);
-    center.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-    Gdiplus::SolidBrush white(Gdiplus::Color(255, 255, 255, 255));
-    Gdiplus::RectF er(static_cast<float>(g.end_rc.left), static_cast<float>(g.end_rc.top), static_cast<float>(bw),
-                      static_cast<float>(bh));
-    gfx.DrawString(L"Завершить", -1, &btn, er, &center, &white);
+    const int bh = sx(32);
+    const int by = static_cast<int>(card.GetBottom()) - sx(14) - bh;
+    g.end_rc = {inset, by, inset + inner_w, by + bh};
+    pill(g.end_rc, Gdiplus::Color(220, 196, 54, 42), L"Завершить", Gdiplus::Color(255, 255, 255, 255));
   }
 
   Gdiplus::BitmapData data;
@@ -204,6 +220,12 @@ void notify(int code) {
 }
 
 LRESULT CALLBACK AssistWnd(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+  if (msg == WM_MOUSEMOVE) {
+    const bool over = (g.mode == Mode::Offer && (hit(g.allow_rc, lp) || hit(g.deny_rc, lp))) ||
+                      (g.mode == Mode::Live && hit(g.end_rc, lp));
+    SetCursor(LoadCursor(nullptr, over ? IDC_HAND : IDC_ARROW));
+    return 0;
+  }
   if (msg == WM_LBUTTONUP) {
     if (g.mode == Mode::Offer) {
       if (hit(g.allow_rc, lp)) notify(1);
@@ -251,15 +273,15 @@ void recreate(Mode mode) {
   ensure_class();
   g.scale = dpi_scale();
   g.mode = mode;
-  g.width = sx(mode == Mode::Offer ? 520 : 360);
-  g.height = sx(mode == Mode::Offer ? 56 : 40);
+  g.width = sx(mode == Mode::Offer ? 312 : 248);
+  g.height = sx(mode == Mode::Offer ? 176 : 132);
   if (!g.hwnd) {
     DWORD ex = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
     if (mode == Mode::Live) ex |= WS_EX_NOACTIVATE;
     g.hwnd = CreateWindowExW(ex, L"CORAXAssistBanner", L"Corax Assist", WS_POPUP, 0, 0, g.width, g.height, nullptr,
                              nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!g.hwnd) return;
-    SetTimer(g.hwnd, kPulse, 400, nullptr);
+    SetTimer(g.hwnd, kPulse, 70, nullptr);
   } else {
     LONG_PTR ex = GetWindowLongPtrW(g.hwnd, GWL_EXSTYLE);
     if (mode == Mode::Live) ex |= WS_EX_NOACTIVATE;

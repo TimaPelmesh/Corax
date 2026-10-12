@@ -6,6 +6,7 @@ import hashlib
 import hmac
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from app.oem_normalize import normalize_manufacturer, normalize_system_model
 from app.peripheral_display import is_noise_peripheral
 from app.schemas import AgentInventoryReport
 from app.agent_policy import ack_hostname, build_directive
+from app.agent_release import release_file, release_meta
 from app.search_index import sync_computer
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -75,9 +77,52 @@ def _guard_agent_identity(existing: Computer, report: AgentInventoryReport) -> N
         )
 
 
+_WINDOWS_KEY_FIELDS = {
+    "product_key",
+    "partial_product_key",
+    "partialproductkey",
+    "productkey",
+    "productkeyid",
+    "productkeyid2",
+    "product_key_id",
+    "oa3xoriginalproductkey",
+    "digital_product_id",
+    "digitalproductid",
+    "windows_product_key",
+}
+
+
+def _looks_like_windows_product_key(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    compact = "".join(ch for ch in value if ch not in "- \t")
+    return len(compact) == 25 and compact.isalnum()
+
+
+def _strip_windows_product_keys(node, *, inside_office: bool = False):
+    """Drop Windows product-key fields. Office last-five partial_key is kept."""
+    if isinstance(node, dict):
+        out = {}
+        for key, value in node.items():
+            normalized = str(key).lower().replace("-", "_")
+            if normalized in _WINDOWS_KEY_FIELDS:
+                continue
+            if not inside_office and normalized in {"partial_key", "partialkey"}:
+                continue
+            child_office = inside_office or normalized == "office_licenses"
+            cleaned = _strip_windows_product_keys(value, inside_office=child_office)
+            if normalized == "activation" and _looks_like_windows_product_key(cleaned):
+                continue
+            out[key] = cleaned
+        return out
+    if isinstance(node, list):
+        return [_strip_windows_product_keys(item, inside_office=inside_office) for item in node]
+    return node
+
+
 def lean_raw_payload_json(dump: dict) -> str:
     """Store inventory JSON without the full software list (normalized table holds rows)."""
-    data = dict(dump)
+    data = _strip_windows_product_keys(dict(dump))
     software_list = data.pop("software", None) or []
     data["software"] = []
     data["software_count"] = len(software_list)
@@ -357,6 +402,7 @@ async def agent_directive(
     hn = (hostname or "").strip()
     await verify_agent_token(db, authorization, hn or "directive")
     directive = await build_directive(db, hn, seen_generation)
+    release = release_meta()
     return {
         "collect": directive.collect,
         "reason": directive.reason,
@@ -366,4 +412,23 @@ async def agent_directive(
         "weekday": directive.weekday,
         "timezone": directive.timezone,
         "poll_minutes": directive.poll_minutes,
+        "release_version": release["version"],
+        "release_sha256": release["sha256"],
     }
+
+
+@router.get("/release")
+@limiter.limit(settings.rate_limit_agent)
+async def download_agent_release(
+    request: Request,
+    hostname: str = Query(default="", max_length=255),
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """Unstamped agent template. The tray copies its own server and token into it."""
+    _ = request
+    await verify_agent_token(db, authorization, (hostname or "").strip() or "directive")
+    path = release_file()
+    if path is None:
+        raise HTTPException(status_code=404, detail="Шаблон агента ещё не собран")
+    return FileResponse(path, media_type="application/octet-stream", filename="CORAX-Agent.exe")

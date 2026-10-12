@@ -146,6 +146,35 @@ def test_agent_legacy_token(client: TestClient, auth_headers: dict[str, str]):
     client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)
 
 
+def test_lean_raw_payload_json_strips_windows_product_keys():
+    raw = lean_raw_payload_json(
+        {
+            "hostname": "pc-1",
+            "software": [],
+            "extended": {
+                "activation": "Licensed",
+                "windows": {
+                    "activated": True,
+                    "edition": "Professional",
+                    "PartialProductKey": "ABCDE-FGHIJ-KLMNO-PQRST-UVWXY",
+                    "product_key": "AAAAA-BBBBB-CCCCC-DDDDD-EEEEE",
+                },
+                "office_licenses": [{"product": "Office", "partial_key": "GWXTP"}],
+                "bios": {"vendor": "Dell", "partial_key": "SHOULD-GO"},
+            },
+        }
+    )
+    payload = json.loads(raw)
+    assert "PartialProductKey" not in raw
+    assert "AAAAA-BBBBB" not in raw
+    assert "SHOULD-GO" not in raw
+    assert payload["extended"]["activation"] == "Licensed"
+    assert payload["extended"]["windows"]["activated"] is True
+    assert payload["extended"]["windows"]["edition"] == "Professional"
+    assert payload["extended"]["office_licenses"][0]["partial_key"] == "GWXTP"
+    assert "partial_key" not in payload["extended"]["bios"]
+
+
 def test_lean_raw_payload_json_strips_software_names():
     raw = lean_raw_payload_json(
         {

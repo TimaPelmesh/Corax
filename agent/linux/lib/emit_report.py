@@ -7,6 +7,21 @@ import sys
 from pathlib import Path
 
 
+def bios_release_date(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    text = raw.strip()
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) >= 8 and text[:4].isdigit():
+        return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+    parts = text.replace("-", "/").split("/")
+    if len(parts) == 3 and len(parts[2]) == 4 and all(p.isdigit() for p in parts):
+        month, day, year = (int(p) for p in parts)
+        if 1 <= month <= 12 and 1 <= day <= 31:
+            return f"{year:04d}-{month:02d}-{day:02d}"
+    return text or None
+
+
 def meta(wd: Path, key: str) -> str | None:
     p = wd / "meta" / key
     if not p.is_file():
@@ -187,6 +202,12 @@ def build(wd: Path) -> dict:
         "cpu_cores": meta_int(wd, "cpu_cores"),
         "bios_vendor": meta(wd, "bios_vendor"),
         "bios_version": meta(wd, "bios_version"),
+        "bios_date": bios_release_date(meta(wd, "bios_date")),
+        "bios": {
+            "vendor": meta(wd, "bios_vendor"),
+            "version": meta(wd, "bios_version"),
+            "release_date": bios_release_date(meta(wd, "bios_date")),
+        },
         "firmware": meta(wd, "firmware"),
         "tpm_present": meta(wd, "tpm_present") == "true",
         "selinux": meta(wd, "selinux"),
