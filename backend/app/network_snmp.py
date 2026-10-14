@@ -66,7 +66,9 @@ OID_DOT1D_BASE_NUM_PORTS = "1.3.6.1.2.1.17.1.2.0"
 
 OID_IF_DESCR = "1.3.6.1.2.1.2.2.1.2"
 OID_IF_TYPE = "1.3.6.1.2.1.2.2.1.3"
+OID_IF_ADMIN = "1.3.6.1.2.1.2.2.1.7"
 OID_IF_OPER = "1.3.6.1.2.1.2.2.1.8"
+OID_DOT1Q_VLAN_NAME = "1.3.6.1.2.1.17.7.1.4.3.1.1"
 OID_IF_SPEED = "1.3.6.1.2.1.2.2.1.5"
 OID_IF_PHYS = "1.3.6.1.2.1.2.2.1.6"
 OID_IF_NAME = "1.3.6.1.2.1.31.1.1.1.1"
@@ -137,8 +139,10 @@ class SnmpInterface:
     descr: str | None = None
     if_type: int | None = None
     oper_status: str | None = None
+    admin_status: str | None = None
     speed: int | None = None
     mac: str | None = None
+    alias: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -147,8 +151,10 @@ class SnmpInterface:
             "descr": self.descr,
             "if_type": self.if_type,
             "oper_status": self.oper_status,
+            "admin_status": self.admin_status,
             "speed": self.speed,
             "mac": self.mac,
+            "alias": self.alias,
         }
 
 
@@ -157,9 +163,10 @@ class SnmpFdbEntry:
     mac: str
     port: str | None = None
     if_index: str | None = None
+    vlan: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"mac": self.mac, "port": self.port, "if_index": self.if_index}
+        return {"mac": self.mac, "port": self.port, "if_index": self.if_index, "vlan": self.vlan}
 
 
 @dataclass
@@ -185,6 +192,7 @@ class NetworkSnmpSnapshot:
     interfaces: list[SnmpInterface] = field(default_factory=list)
     neighbors: list[SnmpNeighbor] = field(default_factory=list)
     fdb: list[SnmpFdbEntry] = field(default_factory=list)
+    vlans: list[dict[str, Any]] = field(default_factory=list)
     error: str | None = None
 
 
@@ -545,20 +553,21 @@ async def fetch_network_snmp(
         except Exception:
             pass
 
-        if_descr, if_name, if_type, if_oper, if_speed, if_phys, if_high = await asyncio.gather(
+        if_descr, if_name, if_type, if_admin, if_oper, if_speed, if_phys, if_high = await asyncio.gather(
             _walk_oid_map(client, OID_IF_DESCR, walk_timeout),
             _walk_oid_map(client, OID_IF_NAME, walk_timeout),
             _walk_oid_map(client, OID_IF_TYPE, walk_timeout),
+            _walk_oid_map(client, OID_IF_ADMIN, walk_timeout),
             _walk_oid_map(client, OID_IF_OPER, walk_timeout),
             _walk_oid_map(client, OID_IF_SPEED, walk_timeout),
             _walk_oid_map(client, OID_IF_PHYS, walk_timeout),
             _walk_oid_map(client, OID_IF_HIGH_SPEED, walk_timeout),
         )
         keys = sorted(
-            set(if_descr) | set(if_name) | set(if_type) | set(if_oper),
+            set(if_descr) | set(if_name) | set(if_type) | set(if_oper) | set(if_admin),
             key=lambda k: (0, int(k)) if str(k).isdigit() else (1, str(k)),
         )
-        for key in keys[:256]:
+        for key in keys[:512]:
             try:
                 itype = int(if_type[key]) if key in if_type and if_type[key] is not None else None
             except (TypeError, ValueError):
@@ -567,6 +576,10 @@ async def fetch_network_snmp(
                 oper_raw = int(if_oper[key]) if key in if_oper and if_oper[key] is not None else None
             except (TypeError, ValueError):
                 oper_raw = None
+            try:
+                admin_raw = int(if_admin[key]) if key in if_admin and if_admin[key] is not None else None
+            except (TypeError, ValueError):
+                admin_raw = None
             speed = speed_bps(if_speed.get(key), if_high.get(key))
             mac = normalize_mac(if_phys.get(key))
             name = pg_text(if_name.get(key), max_len=128)
@@ -578,6 +591,7 @@ async def fetch_network_snmp(
                     descr=descr,
                     if_type=itype,
                     oper_status=_OPER_MAP.get(oper_raw) if oper_raw is not None else None,
+                    admin_status=_OPER_MAP.get(admin_raw) if admin_raw is not None else None,
                     speed=speed,
                     mac=mac,
                 )
@@ -608,8 +622,10 @@ async def fetch_network_snmp(
         )
         for iface in snap.interfaces:
             alias = pg_text(if_alias.get(iface.if_index), max_len=128)
-            if alias and not iface.name:
-                iface.name = alias
+            if alias:
+                iface.alias = alias
+                if not iface.name:
+                    iface.name = alias
         man_by_rem: dict[str, str] = {}
         for key, val in lldp_man.items():
             idx = _lldp_rem_index(key)
@@ -719,22 +735,54 @@ async def fetch_network_snmp(
             if len(snap.fdb) >= 4000:
                 break
 
-        if len(snap.fdb) < 40:
-            try:
-                qfdb = await _walk_oid_map(client, OID_DOT1Q_FDB_PORT, min(walk_timeout, 10.0))
-                have = {e.mac for e in snap.fdb}
-                for entry in parse_qbridge_fdb(qfdb):
-                    mac = entry.get("mac")
-                    if not mac or mac in have:
-                        continue
-                    have.add(mac)
-                    snap.fdb.append(
-                        SnmpFdbEntry(mac=mac, port=entry.get("port"), if_index=entry.get("if_index"))
-                    )
-                    if len(snap.fdb) >= 4000:
-                        break
-            except Exception:
-                pass
+        try:
+            qfdb = await _walk_oid_map(client, OID_DOT1Q_FDB_PORT, walk_timeout)
+            by_mac: dict[str, list[SnmpFdbEntry]] = {}
+            for entry in snap.fdb:
+                by_mac.setdefault(entry.mac, []).append(entry)
+            for entry in parse_qbridge_fdb(qfdb):
+                mac = entry.get("mac")
+                if not mac:
+                    continue
+                vlan = entry.get("vlan")
+                existing = by_mac.get(mac, [])
+                bare = next((row for row in existing if row.vlan is None), None)
+                if bare is not None and vlan is not None and len(existing) == 1:
+                    bare.vlan = int(vlan)
+                    if not bare.port and entry.get("port"):
+                        bare.port = entry.get("port")
+                        bare.if_index = entry.get("if_index")
+                    continue
+                if any(row.vlan == vlan for row in existing):
+                    continue
+                added = SnmpFdbEntry(
+                    mac=mac,
+                    port=entry.get("port"),
+                    if_index=entry.get("if_index"),
+                    vlan=int(vlan) if vlan is not None else None,
+                )
+                snap.fdb.append(added)
+                by_mac.setdefault(mac, []).append(added)
+                if len(snap.fdb) >= 4000:
+                    break
+        except Exception:
+            pass
+
+        try:
+            vlan_names = await _walk_oid_map(client, OID_DOT1Q_VLAN_NAME, min(walk_timeout, 8.0))
+            vlans: list[dict[str, Any]] = []
+            for key, raw in vlan_names.items():
+                tail = str(key).split(".")[-1]
+                if not tail.isdigit():
+                    continue
+                vid = int(tail)
+                if not 1 <= vid <= 4094:
+                    continue
+                vlans.append({"id": vid, "name": pg_text(raw, max_len=64) or f"VLAN {vid}"})
+            vlans.sort(key=lambda item: int(item["id"]))
+            snap.vlans = vlans[:512]
+        except Exception:
+            pass
 
         # Device IP addresses (IP-MIB)
         try:

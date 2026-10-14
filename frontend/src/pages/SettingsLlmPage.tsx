@@ -13,6 +13,7 @@ import {
   type LlmProvider,
   type WikiRagLmSettings,
 } from '../lib/wikiragLmSettings'
+import { SystemPromptEditor } from '../components/wikirag/SystemPromptEditor'
 import { useToast } from '../ToastContext'
 
 const PANEL = 'rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]'
@@ -345,6 +346,10 @@ export function SettingsLlmPage() {
               </select>
             </label>
         </div>
+      </section>
+
+      <section className={`${PANEL} space-y-3 p-4 sm:p-5`}>
+        <SystemPromptEditor />
       </section>
 
       <section className={`${PANEL} space-y-3 p-4 sm:p-5`}>

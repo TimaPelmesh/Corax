@@ -118,6 +118,9 @@ async def _apply_snapshot(row: NetworkDevice, snap, now: datetime) -> None:
     extras["neighbors_total"] = len(snap.neighbors)
     extras["neighbor_protocols"] = sorted({n.protocol for n in snap.neighbors if n.protocol})
     extras["fdb_total"] = len(snap.fdb)
+    if getattr(snap, "vlans", None):
+        extras["vlans"] = list(snap.vlans)
+        extras["vlan_count"] = len(snap.vlans)
     if hasattr(row, "extras_json"):
         row.extras_json = json.dumps(deep_strip_nul(extras), ensure_ascii=False, default=str)
     row.last_snmp_at = now

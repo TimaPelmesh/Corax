@@ -314,7 +314,14 @@ def parse_qbridge_fdb(port_map: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         seen.add(mac)
         port_str = pg_text(port_raw, max_len=32)
-        out.append({"mac": mac, "port": port_str, "if_index": port_str})
+        vlan: int | None = None
+        try:
+            vlan_raw = int(parts[-7])
+            if 1 <= vlan_raw <= 4094:
+                vlan = vlan_raw
+        except (TypeError, ValueError):
+            vlan = None
+        out.append({"mac": mac, "port": port_str, "if_index": port_str, "vlan": vlan})
         if len(out) >= 4000:
             break
     return out

@@ -259,7 +259,7 @@ async def discover_snmp_printers(
         result.message = (
             f"SNMP discovery: за {result.duration_ms} мс просканировано {result.scanned} адресов "
             f"({zone}), принтеры по UDP/161 не ответили. "
-            f"Проверьте community/SNMP v2c и что зона — LAN, а не Docker 172.x."
+            f"Проверьте community и SNMP v1 или v2c, и что зона — LAN, а не Docker 172.x."
             f"{limit_note}{why}"
         )
     return result

@@ -4365,42 +4365,71 @@ html.theme-fade body {
 .assist-bar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 16px;
-  padding: 12px 16px;
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 .assist-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
   flex: 1;
 }
 .assist-kicker {
   margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--color-fg-subtle);
-}
-.assist-host {
-  margin: 2px 0 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 15px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-fg-subtle);
+}
+.assist-host {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-fg);
 }
+.assist-btn {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+.assist-btn:hover {
+  background: var(--color-surface-muted);
+}
+.assist-btn-end {
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
+  color: var(--color-error-fg);
+}
 .assist-monitors {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 4px;
 }
 .assist-mon {
-  min-height: 32px;
-  padding: 0 10px;
+  height: 24px;
+  padding: 0 8px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--color-surface-muted);
   color: var(--color-fg);
   font-size: 12px;
@@ -4411,14 +4440,14 @@ html.theme-fade body {
   background: var(--color-primary-muted);
   color: var(--color-primary);
 }
-.assist-hangup {
-  margin-left: auto;
-}
 .assist-stage {
   position: relative;
   flex: 1;
   min-height: 0;
   background: var(--color-surface-muted);
+}
+.assist-stage-ended .assist-canvas {
+  filter: saturate(0.72);
 }
 .assist-wait {
   position: absolute;
@@ -4433,11 +4462,14 @@ html.theme-fade body {
   color: var(--color-fg-muted);
 }
 .assist-frame {
+  container-type: size;
   display: grid;
   place-items: center;
   width: 100%;
   height: 100%;
-  padding: 10px;
+  min-height: 0;
+  padding: 4px;
+  overflow: hidden;
 }
 .assist-surface {
   position: relative;
@@ -4447,8 +4479,8 @@ html.theme-fade body {
 }
 .assist-canvas {
   display: block;
-  max-width: 100%;
-  max-height: calc(100dvh - 64px);
+  max-width: 100cqw;
+  max-height: 100cqh;
   width: auto;
   height: auto;
   cursor: none;
@@ -4459,7 +4491,6 @@ html.theme-fade body {
 }
 .assist-stage-live .assist-canvas {
   opacity: 1;
-  max-height: calc(100dvh - 64px);
 }
 .assist-cursor {
   position: absolute;

@@ -13,6 +13,7 @@ import {
   type WikiRagChatTurn,
 } from '../../lib/wikiragChatStore'
 import { cleanAssistantText, streamDisplayText } from '../../lib/wikiragStreamDisplay'
+import { SystemPromptEditor } from './SystemPromptEditor'
 import { IconClose, IconFolder, IconMenu, IconSend } from '../icons'
 import { WikiRagStreamAnswer } from './WikiRagStreamAnswer'
 
@@ -126,6 +127,7 @@ export function WikiRagChat({
   const [pendingTick, setPendingTick] = useState(0)
   const [sessionsOpen, setSessionsOpen] = useState(false)
   const [sourcesFor, setSourcesFor] = useState<number | null>(null)
+  const [promptOpen, setPromptOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -336,6 +338,17 @@ export function WikiRagChat({
         <p className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--color-fg)]">
           {active?.title || fallbackTitle}
         </p>
+        <button
+          type="button"
+          onClick={() => setPromptOpen((open) => !open)}
+          className={`shrink-0 rounded-lg border px-2 py-1 text-[11px] font-semibold ${
+            promptOpen
+              ? 'border-[var(--color-primary)] bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
+              : 'border-[var(--color-border)] text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]'
+          }`}
+        >
+          {t('settingsLlm.systemPrompt')}
+        </button>
         <span className="shrink-0 rounded-md bg-[var(--color-primary)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
           {t('wikirag.chat.askMode')}
         </span>
@@ -363,6 +376,12 @@ export function WikiRagChat({
           </button>
         ) : null}
       </header>
+
+      {promptOpen ? (
+        <div className="shrink-0 border-b border-[var(--color-border)] py-3">
+          <SystemPromptEditor compact />
+        </div>
+      ) : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-3 pr-0.5 [scrollbar-gutter:stable]">
         <div className="mx-auto w-full max-w-4xl space-y-3.5">

@@ -2683,6 +2683,7 @@ export const api = {
     auto_index?: boolean
     embed_model?: string
     lm_context_tokens?: number
+    system_prompt?: string
   }) =>
     request<WikiRagIndexSettings>(`${API_PREFIX}/wiki-rag/index-settings`, {
       method: 'PATCH',
@@ -3124,6 +3125,8 @@ export type WikiRagIndexSettings = {
   embed_model: string
   lm_context_tokens: number
   effective_lm_context_tokens: number
+  system_prompt: string
+  system_prompt_default: string
 }
 
 export type WikiRagIndexStatus = {
@@ -3428,8 +3431,10 @@ export type NetworkDeviceInterface = {
   descr: string | null
   if_type: number | null
   oper_status: string | null
+  admin_status?: string | null
   speed: number | null
   mac: string | null
+  alias?: string | null
 }
 
 export type NetworkDeviceNeighbor = {
@@ -3440,12 +3445,14 @@ export type NetworkDeviceNeighbor = {
   remote_ip: string | null
   local_if_index: string | null
   local_port: string | null
+  remote_chassis?: string | null
 }
 
 export type NetworkDeviceFdb = {
   mac: string
   port: string | null
   if_index: string | null
+  vlan?: number | null
 }
 
 export type NetworkDevice = {

@@ -54,6 +54,7 @@ def test_qbridge_fdb_vlan_mac_index():
     rows = parse_qbridge_fdb({key: 24})
     assert rows[0]["mac"] == "aa:bb:cc:dd:ee:ff"
     assert rows[0]["port"] == "24"
+    assert rows[0]["vlan"] == 10
 
 
 def test_merge_neighbors_dedupes_same_remote():

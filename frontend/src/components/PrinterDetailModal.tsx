@@ -97,13 +97,19 @@ function SupplyCard({ s, colored }: { s: PrinterSupply; colored: boolean }) {
           <span className={`truncate text-sm ${tone.text}`}>{s.name}</span>
         </span>
         <span className="shrink-0 text-sm tabular-nums text-[var(--color-fg-muted)]">
-          {s.level_percent != null ? `${s.level_percent}%` : t('printerDetail.noData')}
+          {s.level_percent != null
+            ? `${s.level_percent}%`
+            : s.level_raw === -3
+              ? t('printerDetail.supplySome')
+              : t('printerDetail.noData')}
         </span>
       </div>
       <div className={`mt-1 h-1 w-full overflow-hidden rounded-full ${tone.track}`}>
         <div
           className={`h-full rounded-full ${low && colored ? 'bg-amber-500' : tone.fill}`}
-          style={{ width: `${Math.max(4, Math.min(100, s.level_percent ?? 0))}%` }}
+          style={{
+            width: `${s.level_percent != null ? Math.max(4, Math.min(100, s.level_percent)) : s.level_raw === -3 ? 40 : 0}%`,
+          }}
         />
       </div>
     </div>

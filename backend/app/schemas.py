@@ -1070,12 +1070,15 @@ class WikiRagIndexSettingsOut(BaseModel):
     # 0 = авто (макс. модели). Ручной override из веб-морды / .env.
     lm_context_tokens: int = 0
     effective_lm_context_tokens: int = 16384
+    system_prompt: str = ""
+    system_prompt_default: str = ""
 
 
 class WikiRagIndexSettingsUpdate(BaseModel):
     auto_index: bool | None = None
     embed_model: str | None = Field(default=None, max_length=256)
     lm_context_tokens: int | None = Field(default=None, ge=0, le=32768)
+    system_prompt: str | None = Field(default=None, max_length=8000)
 
 
 class WikiRagIndexStatusOut(BaseModel):

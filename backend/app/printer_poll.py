@@ -68,7 +68,7 @@ def format_poll_message(stats: PrinterPollStats) -> str:
         return stats.discovery_message or (
             "SNMP discovery завершён: принтеры не найдены. "
             "Сканер должен ходить в LAN хоста, не в Docker 172.x. "
-            "Проверьте VLAN/фаервол/community/SNMP v2c."
+            "Проверьте VLAN/фаервол/community и SNMP v1 или v2c."
         )
     if stats.with_ip == 0:
         return f"В базе {stats.total_in_db} записей без IP. Удалите мусор или добавьте принтер с IP."

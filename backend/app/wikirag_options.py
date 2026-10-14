@@ -93,6 +93,29 @@ def get_lm_context_tokens() -> int:
     return clamp_lm_context_tokens(getattr(settings, "wiki_rag_lm_context_tokens", None) or 0)
 
 
+_SYSTEM_PROMPT_MAX = 8000
+
+
+def get_system_prompt() -> str:
+    """Пустая строка — вшитый промпт. Иначе текст, который задали в настройках."""
+    data = _read_options()
+    raw = data.get("system_prompt")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()[:_SYSTEM_PROMPT_MAX]
+    return ""
+
+
+def set_system_prompt(value: str | None) -> str:
+    data = _read_options()
+    cleaned = (value or "").strip()[:_SYSTEM_PROMPT_MAX]
+    if cleaned:
+        data["system_prompt"] = cleaned
+    else:
+        data.pop("system_prompt", None)
+    _write_options(data)
+    return get_system_prompt()
+
+
 def set_lm_context_tokens(value: int | None) -> int:
     data = _read_options()
     if value is None:

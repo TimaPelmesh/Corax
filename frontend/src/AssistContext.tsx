@@ -15,8 +15,8 @@ export function AssistProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(
     async (hostname: string) => {
-      const width = Math.min(1680, Math.max(1100, window.screen.availWidth - 48))
-      const height = Math.min(1000, Math.max(700, window.screen.availHeight - 48))
+      const width = Math.min(1600, Math.max(880, window.screen.availWidth - 24))
+      const height = Math.min(900, Math.max(480, window.screen.availHeight - 88))
       const left = Math.max(0, (window.screen.availWidth - width) / 2)
       const top = Math.max(0, (window.screen.availHeight - height) / 2)
       const name = `corax-assist-${hostname.replace(/[^\w.-]+/g, '_')}`

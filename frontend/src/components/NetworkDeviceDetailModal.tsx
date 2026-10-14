@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { api, type NetworkDevice } from '../api'
+import { api, type NetworkDevice, type NetworkDeviceInterface } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconClose } from './icons'
 import { NetworkTypeIcon, NETWORK_DEVICE_TYPE_OPTIONS } from './NetworkTypeIcon'
@@ -34,6 +34,39 @@ function getTraceRoute(extras: Record<string, unknown> | null | undefined): Trac
   return Array.isArray(route.hops) && route.hops.length > 0 ? route : null
 }
 
+type CardTab = 'overview' | 'interfaces' | 'mac' | 'neighbors' | 'vlans'
+
+const IF_TYPE_LABEL: Record<number, string> = {
+  6: 'Ethernet',
+  24: 'loopback',
+  53: 'virtual',
+  62: 'FastEthernet',
+  69: 'FastEthernet',
+  71: 'Wi‑Fi',
+  117: 'Gigabit',
+  131: 'tunnel',
+  135: 'VLAN',
+  136: 'L3 VLAN',
+  161: 'LAG',
+  169: 'Wi‑Fi',
+  188: 'radio',
+}
+
+function fmtSpeed(bps: number | null | undefined) {
+  if (bps == null || bps <= 0) return '—'
+  if (bps >= 1_000_000_000) {
+    const g = bps / 1_000_000_000
+    return `${Number.isInteger(g) ? g.toFixed(0) : g.toFixed(1)} G`
+  }
+  if (bps >= 1_000_000) return `${Math.round(bps / 1_000_000)} M`
+  return String(bps)
+}
+
+function portName(iface: NetworkDeviceInterface | undefined, ifIndex: string | null | undefined) {
+  if (iface) return iface.name || iface.descr || `#${iface.if_index}`
+  return ifIndex ? `#${ifIndex}` : '—'
+}
+
 type Props = {
   deviceId: number
   onClose: () => void
@@ -51,7 +84,10 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
   const [deviceType, setDeviceType] = useState('unknown')
   const [location, setLocation] = useState('')
   const [notes, setNotes] = useState('')
+  const [tab, setTab] = useState<CardTab>('overview')
+  const [query, setQuery] = useState('')
   const traceRoute = getTraceRoute(row?.extras)
+  const vlans = Array.isArray(row?.extras?.vlans) ? (row.extras.vlans as Array<{ id?: number; name?: string }>) : []
 
   const load = async () => {
     try {
@@ -67,6 +103,8 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
   }
 
   useEffect(() => {
+    setTab('overview')
+    setQuery('')
     void load()
   }, [deviceId])
 
@@ -104,14 +142,43 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
     }
   }
 
+  const needle = query.trim().toLowerCase()
+  const ifaces = row?.interfaces ?? []
+  const fdbRows = row?.fdb ?? []
+  const neighborRows = row?.neighbors ?? []
+  const ifByIndex = new Map(ifaces.map((iface) => [String(iface.if_index), iface]))
+  const match = (...parts: Array<string | number | null | undefined>) =>
+    !needle || parts.filter((part) => part != null && part !== '').join(' ').toLowerCase().includes(needle)
+  const shownIfaces = ifaces.filter((iface) =>
+    match(iface.name, iface.descr, iface.alias, iface.mac, iface.oper_status, iface.admin_status, iface.if_index),
+  )
+  const shownFdb = fdbRows.filter((entry) => {
+    const iface = ifByIndex.get(String(entry.if_index || ''))
+    return match(entry.mac, entry.port, entry.if_index, entry.vlan, iface?.name, iface?.alias)
+  })
+  const shownNeighbors = neighborRows.filter((item) =>
+    match(item.protocol, item.remote_name, item.remote_ip, item.remote_port, item.local_port, item.remote_descr, item.remote_chassis),
+  )
+  const shownVlans = vlans.filter((vlan) => match(vlan.id, vlan.name))
+  const tabCounts: Record<CardTab, number | null> = {
+    overview: null,
+    interfaces: ifaces.length,
+    mac: fdbRows.length,
+    neighbors: neighborRows.length,
+    vlans: vlans.length,
+  }
+
   return createPortal(
     <div
-      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6"
+      className="fixed inset-0 z-[120] flex items-stretch justify-center bg-slate-900/40 p-0 sm:items-center sm:p-3"
       role="dialog"
       aria-modal
+      onClick={onClose}
     >
-      <button type="button" className="absolute inset-0 cursor-default" aria-label={t('common.close')} onClick={onClose} />
-      <div className="relative z-10 flex max-h-[min(92dvh,52rem)] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl sm:rounded-2xl">
+      <div
+        className="pc-card-shell app-card relative z-10 flex w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-3 shadow-none sm:rounded-xl sm:border sm:border-[var(--color-border)] sm:p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         <header className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg)]">
@@ -139,10 +206,78 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {row ? (
+          <div
+            role="tablist"
+            aria-label={t('network.tabsLabel')}
+            className="mt-3 flex shrink-0 gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/80 p-1"
+          >
+            {(
+              [
+                ['overview', t('network.tabOverview')],
+                ['interfaces', t('network.interfaces')],
+                ['mac', t('network.fdb')],
+                ['neighbors', t('network.neighbors')],
+                ['vlans', t('network.tabVlans')],
+              ] as const
+            ).map(([id, label]) => {
+              const active = tab === id
+              const count = tabCounts[id]
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`flex min-h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition ${
+                    active
+                      ? 'bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm ring-1 ring-[var(--color-border)]'
+                      : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)]/60 hover:text-[var(--color-fg)]'
+                  }`}
+                  onClick={() => {
+                    setTab(id)
+                    setQuery('')
+                  }}
+                >
+                  <span className="truncate">{label}</span>
+                  {count != null ? (
+                    <span
+                      className={`rounded-full px-1.5 text-xs font-medium tabular-nums ${
+                        active
+                          ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
+                          : 'bg-[var(--color-surface)] text-[var(--color-fg-subtle)]'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+
+        {row && tab !== 'overview' ? (
+          <input
+            className="mt-3 w-full shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+            value={query}
+            placeholder={
+              tab === 'interfaces'
+                ? t('network.searchInterfaces')
+                : tab === 'mac'
+                  ? t('network.searchMac')
+                  : tab === 'neighbors'
+                    ? t('network.searchNeighbors')
+                    : t('network.colVlan')
+            }
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        ) : null}
+
+        <div className="app-scroll mt-2 min-h-0 flex-1 overflow-y-auto px-1 py-2">
           {!row ? (
             <p className="text-sm text-[var(--color-fg-subtle)]">{t('common.loading')}</p>
-          ) : (
+          ) : tab === 'overview' ? (
             <div className="space-y-5">
               <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 <div>
@@ -340,71 +475,118 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
                 </div>
               ) : null}
 
-              <section>
-                <h3 className="mb-2 text-sm font-semibold">
-                  {t('network.interfaces')} ({row.interfaces?.length ?? 0})
-                </h3>
-                {(row.interfaces?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.noInterfaces')}</p>
-                ) : (
-                  <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
-                    {row.interfaces.slice(0, 80).map((iface) => (
-                      <li
-                        key={iface.if_index}
-                        className="flex flex-wrap gap-x-3 rounded border border-[var(--color-border)] px-2 py-1.5"
-                      >
-                        <span className="font-mono">{iface.name || iface.descr || `#${iface.if_index}`}</span>
-                        <span className="text-[var(--color-fg-subtle)]">{iface.oper_status || '—'}</span>
-                        {iface.mac ? <span className="font-mono text-[var(--color-fg-subtle)]">{iface.mac}</span> : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section>
-                <h3 className="mb-2 text-sm font-semibold">
-                  {t('network.neighbors')} ({row.neighbors?.length ?? 0})
-                </h3>
-                {(row.neighbors?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.noNeighbors')}</p>
-                ) : (
-                  <ul className="max-h-40 space-y-1 overflow-y-auto text-xs">
-                    {row.neighbors.map((n, i) => (
-                      <li key={`${n.protocol}-${i}`} className="rounded border border-[var(--color-border)] px-2 py-1.5">
-                        <span className="uppercase text-[var(--color-fg-subtle)]">{n.protocol}</span>{' '}
-                        <span className="font-medium">{n.remote_name || n.remote_ip || '—'}</span>
-                        {n.local_port ? (
-                          <span className="text-[var(--color-fg-subtle)]">
-                            {' '}
-                            · {n.local_port}
-                            {n.remote_port ? ` ↔ ${n.remote_port}` : ''}
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section>
-                <h3 className="mb-2 text-sm font-semibold">
-                  {t('network.fdb')} ({row.fdb?.length ?? 0})
-                </h3>
-                {(row.fdb?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.noFdb')}</p>
-                ) : (
-                  <ul className="max-h-32 space-y-1 overflow-y-auto font-mono text-xs">
-                    {row.fdb.slice(0, 100).map((e) => (
-                      <li key={`${e.mac}-${e.port}`}>
-                        {e.mac}
-                        {e.port || e.if_index ? ` · port ${e.if_index || e.port}` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
             </div>
+          ) : tab === 'interfaces' ? (
+            shownIfaces.length === 0 ? (
+              <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.noInterfaces')}</p>
+            ) : (
+              <table className="w-full border-separate border-spacing-0 text-left text-xs">
+                <thead className="sticky top-0 bg-[var(--color-surface)]">
+                  <tr className="text-[var(--color-fg-subtle)]">
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colPort')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colAlias')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colOper')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colAdmin')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colSpeed')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colMac')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownIfaces.map((iface) => (
+                    <tr key={iface.if_index} className="align-top">
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5 font-mono">
+                        {portName(iface, iface.if_index)}
+                        <div className="text-[10px] text-[var(--color-fg-subtle)]">
+                          {iface.if_type != null ? IF_TYPE_LABEL[iface.if_type] || `#${iface.if_type}` : ''}
+                        </div>
+                      </td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5">{iface.alias || iface.descr || '—'}</td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5">{iface.oper_status || '—'}</td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5">{iface.admin_status || '—'}</td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5 tabular-nums">{fmtSpeed(iface.speed)}</td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5 font-mono">{iface.mac || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          ) : tab === 'mac' ? (
+            shownFdb.length === 0 ? (
+              <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.noFdb')}</p>
+            ) : (
+              <table className="w-full border-separate border-spacing-0 text-left text-xs">
+                <thead className="sticky top-0 bg-[var(--color-surface)]">
+                  <tr className="text-[var(--color-fg-subtle)]">
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colMac')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colVlan')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colPort')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownFdb.map((entry, index) => {
+                    const iface = ifByIndex.get(String(entry.if_index || ''))
+                    return (
+                      <tr key={`${entry.mac}-${entry.vlan ?? ''}-${entry.if_index ?? ''}-${index}`}>
+                        <td className="border-b border-[var(--color-border)] px-2 py-1.5 font-mono">{entry.mac}</td>
+                        <td className="border-b border-[var(--color-border)] px-2 py-1.5 tabular-nums">{entry.vlan ?? '—'}</td>
+                        <td className="border-b border-[var(--color-border)] px-2 py-1.5 font-mono">
+                          {portName(iface, entry.if_index)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )
+          ) : tab === 'neighbors' ? (
+            shownNeighbors.length === 0 ? (
+              <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.noNeighbors')}</p>
+            ) : (
+              <table className="w-full border-separate border-spacing-0 text-left text-xs">
+                <thead className="sticky top-0 bg-[var(--color-surface)]">
+                  <tr className="text-[var(--color-fg-subtle)]">
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colProtocol')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colLocal')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colRemote')}</th>
+                    <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colRemotePort')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownNeighbors.map((item, index) => (
+                    <tr key={`${item.protocol}-${item.remote_ip}-${index}`} className="align-top">
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5 uppercase">{item.protocol}</td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5 font-mono">{item.local_port || '—'}</td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5">
+                        <div className="font-medium">{item.remote_name || '—'}</div>
+                        <div className="font-mono text-[10px] text-[var(--color-fg-subtle)]">
+                          {item.remote_ip || item.remote_chassis || ''}
+                        </div>
+                      </td>
+                      <td className="border-b border-[var(--color-border)] px-2 py-1.5 font-mono">{item.remote_port || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+          ) : shownVlans.length === 0 ? (
+            <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.noVlans')}</p>
+          ) : (
+            <table className="w-full border-separate border-spacing-0 text-left text-xs">
+              <thead className="sticky top-0 bg-[var(--color-surface)]">
+                <tr className="text-[var(--color-fg-subtle)]">
+                  <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colVlan')}</th>
+                  <th className="border-b border-[var(--color-border)] px-2 py-2 font-medium">{t('network.colHostname')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shownVlans.map((vlan) => (
+                  <tr key={vlan.id ?? vlan.name}>
+                    <td className="border-b border-[var(--color-border)] px-2 py-1.5 tabular-nums">{vlan.id ?? '—'}</td>
+                    <td className="border-b border-[var(--color-border)] px-2 py-1.5">{vlan.name || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
 

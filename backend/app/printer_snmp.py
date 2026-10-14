@@ -9,20 +9,31 @@ from typing import Any
 from app.network_classify import classify_device
 from puresnmp import Client, ObjectIdentifier, V2C
 
+try:
+    from puresnmp import V1 as SnmpV1
+except ImportError:  # pragma: no cover
+    try:
+        from puresnmp.credentials import V1 as SnmpV1
+    except ImportError:
+        SnmpV1 = None
+
 OID_SYS_DESCR = "1.3.6.1.2.1.1.1.0"
 OID_SYS_NAME = "1.3.6.1.2.1.1.5.0"
 OID_SYS_LOCATION = "1.3.6.1.2.1.1.6.0"
 OID_SYS_OBJECT_ID = "1.3.6.1.2.1.1.2.0"
 OID_PAGE_COUNT = "1.3.6.1.2.1.43.10.2.1.4.1.1"
+OID_SUPPLY_TYPE = "1.3.6.1.2.1.43.11.1.1.5"
 OID_SUPPLY_DESC = "1.3.6.1.2.1.43.11.1.1.6"
+OID_SUPPLY_UNIT = "1.3.6.1.2.1.43.11.1.1.7"
 OID_SUPPLY_MAX = "1.3.6.1.2.1.43.11.1.1.8"
 OID_SUPPLY_LEVEL = "1.3.6.1.2.1.43.11.1.1.9"
+OID_PAGE_COUNT_COL = "1.3.6.1.2.1.43.10.2.1.4"
 OID_PRT_SERIAL = "1.3.6.1.2.1.43.5.1.1.17.1"
 OID_PRT_NAME = "1.3.6.1.2.1.43.5.1.1.16.1"
 # Fallback serial (ENTITY-MIB) — часть этикетников не отдаёт prtGeneralSerialNumber.
 OID_ENT_SERIAL = "1.3.6.1.2.1.47.1.1.1.1.11.1"
 
-_WASTE_RE = re.compile(r"waste|used|maintenance|kit|drum|fuser|transfer", re.I)
+_WASTE_RE = re.compile(r"waste|used\s*toner|отработ|бункер", re.I)
 _HP_PID_RE = re.compile(r"\bPID:([^,\r\n]+)", re.I)
 _HP_SUPPLY_CODE_RE = re.compile(r"\b(?:HP\s*)?(CE\d{3}[A-Z]|CF\d{3}[A-Z]|W\d{4}[A-Z])\b", re.I)
 _HOSTNAME_LIKE_RE = re.compile(r"^[A-Z0-9][A-Z0-9_-]{5,24}$")
@@ -96,6 +107,30 @@ OID_TEC_DEVICE_MODEL = "1.3.6.1.4.1.1129.1.2.1.1.1.2.1"
 OID_TEC_RIBBON_LEVEL = "1.3.6.1.4.1.1129.1.2.1.1.1.2.24"
 OID_TEC_BATTERY_LEVEL = "1.3.6.1.4.1.1129.1.2.1.1.1.2.33"
 OID_TEC_TOTAL_PRINT = "1.3.6.1.4.1.1129.1.2.1.1.3.25"
+
+# Printer-MIB prtMarkerSuppliesType. Отход не показываем, остальное называем, если описание пустое.
+_SUPPLY_TYPE_LABELS: dict[int, str] = {
+    3: "Тонер",
+    5: "Чернила",
+    6: "Картридж",
+    7: "Красящая лента",
+    9: "Фотобарабан",
+    10: "Девелопер",
+    15: "Печь",
+    21: "Картридж с тонером",
+}
+_SKIP_SUPPLY_TYPES = {4, 8, 14}
+_COLOR_HINTS: tuple[tuple[str, str], ...] = (
+    ("cyan", "голубой"),
+    ("magenta", "пурпурный"),
+    ("yellow", "жёлтый"),
+    ("black", "чёрный"),
+    ("голуб", "голубой"),
+    ("пурпур", "пурпурный"),
+    ("жёлт", "жёлтый"),
+    ("желт", "жёлтый"),
+    ("черн", "чёрный"),
+)
 
 _HP_SUPPLY_NAMES: dict[str, str] = {
     "CE400A": "Чёрный тонер HP 507A CE400A",
@@ -343,6 +378,8 @@ def _looks_broken_snmp_text(text: str) -> bool:
     visible = [c for c in s if not c.isspace()]
     if not visible:
         return True
+    if sum(1 for c in visible if c.isprintable()) / len(visible) < 0.5:
+        return True
     broken = sum(1 for c in visible if c in "?�")
     return broken / len(visible) > 0.35
 
@@ -370,10 +407,45 @@ def _index_key(oid_str: str, base_oid: str) -> str | None:
     return suffix or None
 
 
-def _calc_percent(level: int | None, max_cap: int | None) -> int | None:
-    if level is None:
+def _as_int(raw: Any) -> int | None:
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
         return None
-    if max_cap is not None and max_cap > 0 and level >= 0:
+
+
+def _color_hint(text: str) -> str | None:
+    low = (text or "").lower()
+    for needle, label in _COLOR_HINTS:
+        if needle in low:
+            return label
+    return None
+
+
+def _supply_label(desc: str, type_code: int | None, key: str) -> str | None:
+    """Имя расходника. Битая строка HP не выбрасывает строку, если известен тип."""
+    normalized = _normalize_supply_name(desc)
+    if normalized:
+        return normalized
+    kind = _SUPPLY_TYPE_LABELS.get(type_code or 0)
+    color = _color_hint(desc)
+    if kind and color:
+        return f"{kind} · {color}"[:255]
+    if kind:
+        suffix = key.rsplit(".", 1)[-1]
+        return f"{kind} {suffix}"[:255] if suffix else kind
+    if color:
+        return f"Картридж · {color}"[:255]
+    return None
+
+
+def _calc_percent(level: int | None, max_cap: int | None, unit: int | None = None) -> int | None:
+    if level is None or level < 0:
+        return None
+    # prtMarkerSuppliesSupplyUnit = 19 means the level is already a percent.
+    if unit == 19 and 0 <= level <= 100:
+        return int(level)
+    if max_cap is not None and max_cap > 0:
         return max(0, min(100, int(round(level / max_cap * 100))))
     if 0 <= level <= 100:
         return int(level)
@@ -400,15 +472,74 @@ async def _walk_oid_map(client: Client, base_oid: str, timeout: float) -> tuple[
     return out, None
 
 
-async def fetch_printer_snmp(
+async def _load_supplies(client: Client, timeout: float) -> tuple[list[SupplyReading], list[str]]:
+    errors: list[str] = []
+    (desc_map, desc_err), (max_map, max_err), (level_map, level_err), (type_map, type_err), (unit_map, unit_err) = (
+        await asyncio.gather(
+            _walk_oid_map(client, OID_SUPPLY_DESC, timeout),
+            _walk_oid_map(client, OID_SUPPLY_MAX, timeout),
+            _walk_oid_map(client, OID_SUPPLY_LEVEL, timeout),
+            _walk_oid_map(client, OID_SUPPLY_TYPE, timeout),
+            _walk_oid_map(client, OID_SUPPLY_UNIT, timeout),
+        )
+    )
+    for err in (desc_err, max_err, level_err, type_err, unit_err):
+        if err:
+            errors.append(err)
+    supplies: list[SupplyReading] = []
+    keys = sorted(set(desc_map) | set(max_map) | set(level_map) | set(type_map))
+    for key in keys:
+        type_code = _as_int(type_map.get(key))
+        if type_code in _SKIP_SUPPLY_TYPES:
+            continue
+        desc = str(desc_map.get(key) or "").strip()
+        if _WASTE_RE.search(desc):
+            continue
+        name = _supply_label(desc, type_code, key)
+        if not name:
+            continue
+        unit = _as_int(unit_map.get(key))
+        max_cap = _as_int(max_map.get(key))
+        level = _as_int(level_map.get(key))
+        supplies.append(
+            SupplyReading(
+                name=name,
+                level_percent=_calc_percent(level, max_cap, unit),
+                level_raw=level,
+                max_capacity=max_cap if max_cap is not None and max_cap > 0 else None,
+            )
+        )
+    supplies.sort(key=lambda s: s.name.lower())
+    return supplies, errors
+
+
+async def _page_count(client: Client, timeout: float) -> int | None:
+    try:
+        pc = await _safe_get(client, OID_PAGE_COUNT, timeout)
+        if pc is not None:
+            return int(pc)
+    except (TypeError, ValueError, Exception):
+        pass
+    counts, _err = await _walk_oid_map(client, OID_PAGE_COUNT_COL, timeout)
+    best: int | None = None
+    for raw in counts.values():
+        value = _as_int(raw)
+        if value is None or value < 0:
+            continue
+        if best is None or value > best:
+            best = value
+    return best
+
+
+async def _fetch_printer_once(
     ip: str,
+    credentials: Any,
     *,
-    community: str = "public",
-    timeout: float = 5.0,
-    port: int = 161,
+    timeout: float,
+    port: int,
 ) -> SnmpPrinterSnapshot:
     snap = SnmpPrinterSnapshot()
-    client = Client(ip, V2C(community), port=port)
+    client = Client(ip, credentials, port=port)
     errors: list[str] = []
     try:
         descr = ""
@@ -442,49 +573,11 @@ async def fetch_printer_snmp(
             except Exception:
                 continue
 
-        try:
-            pc = await _safe_get(client, OID_PAGE_COUNT, timeout)
-            if pc is not None:
-                snap.page_count = int(pc)
-        except Exception as e:
-            errors.append(_short_error(e))
+        snap.page_count = await _page_count(client, timeout)
 
-        (desc_map, desc_err), (max_map, max_err), (level_map, level_err) = await asyncio.gather(
-            _walk_oid_map(client, OID_SUPPLY_DESC, timeout),
-            _walk_oid_map(client, OID_SUPPLY_MAX, timeout),
-            _walk_oid_map(client, OID_SUPPLY_LEVEL, timeout),
-        )
-        for err in (desc_err, max_err, level_err):
-            if err:
-                errors.append(err)
-        keys = sorted(set(desc_map) | set(max_map) | set(level_map))
-        for key in keys:
-            desc = str(desc_map.get(key) or "").strip()
-            desc = _normalize_supply_name(desc) or ""
-            if not desc:
-                continue
-            if _WASTE_RE.search(desc):
-                continue
-            max_raw = max_map.get(key)
-            level_raw = level_map.get(key)
-            try:
-                max_cap = int(max_raw) if max_raw is not None else None
-            except (TypeError, ValueError):
-                max_cap = None
-            try:
-                level = int(level_raw) if level_raw is not None else None
-            except (TypeError, ValueError):
-                level = None
-            pct = _calc_percent(level, max_cap)
-            snap.supplies.append(
-                SupplyReading(
-                    name=desc,
-                    level_percent=pct,
-                    level_raw=level,
-                    max_capacity=max_cap,
-                )
-            )
-        snap.supplies.sort(key=lambda s: s.name.lower())
+        supplies, supply_errors = await _load_supplies(client, timeout)
+        errors.extend(supply_errors)
+        snap.supplies = supplies
         if _is_toshiba_tec(snap.model, descr, name) or _is_label_printer(
             model=snap.model, descr=descr, name=name, supplies=snap.supplies
         ):
@@ -496,9 +589,44 @@ async def fetch_printer_snmp(
         )
         if not snap.model and snap.page_count is None and not snap.supplies:
             detail = errors[0] if errors else "нет данных"
-            snap.error = f"SNMP: {detail} (проверьте UDP 161, community и SNMP v2c на принтере)"
+            snap.error = f"SNMP: {detail} (проверьте UDP 161, community и SNMP v1/v2c на принтере)"
     except Exception as e:
         snap.error = f"SNMP: {_short_error(e)}"
+    return snap
+
+
+def _printer_identity(snap: SnmpPrinterSnapshot) -> bool:
+    return bool(snap.model or snap.serial_number or snap.page_count is not None)
+
+
+async def fetch_printer_snmp(
+    ip: str,
+    *,
+    community: str = "public",
+    timeout: float = 5.0,
+    port: int = 161,
+) -> SnmpPrinterSnapshot:
+    """Сначала SNMP v2c. Если принтер молчит или картриджи пустые — тот же community по v1."""
+    snap = await _fetch_printer_once(ip, V2C(community), timeout=timeout, port=port)
+    if SnmpV1 is None or snap.supplies:
+        return snap
+    try:
+        if not _printer_identity(snap):
+            alt = await _fetch_printer_once(ip, SnmpV1(community), timeout=timeout, port=port)
+            if _printer_identity(alt) or alt.supplies:
+                return alt
+            return snap
+        v1 = Client(ip, SnmpV1(community), port=port)
+        v1_supplies, _errors = await _load_supplies(v1, timeout)
+        if v1_supplies:
+            snap.supplies = v1_supplies
+            snap.printer_kind = _classify_printer_kind(
+                model=snap.model, descr=snap.model or "", name=snap.sys_name or "", supplies=snap.supplies
+            )
+        if snap.page_count is None:
+            snap.page_count = await _page_count(v1, timeout)
+    except Exception:
+        return snap
     return snap
 
 
@@ -509,9 +637,29 @@ async def probe_printer_snmp(
     timeout: float = 1.2,
     port: int = 161,
 ) -> SnmpPrinterSnapshot:
+    """Поиск принтера: SNMP v2c, при тишине — SNMP v1 с тем же community."""
+    snap = await _probe_printer_once(ip, V2C(community), timeout=timeout, port=port)
+    if _printer_identity(snap) or SnmpV1 is None:
+        return snap
+    try:
+        alt = await _probe_printer_once(ip, SnmpV1(community), timeout=timeout, port=port)
+    except Exception:
+        return snap
+    if _printer_identity(alt):
+        return alt
+    return snap if snap.model or not alt.error else alt
+
+
+async def _probe_printer_once(
+    ip: str,
+    credentials: Any,
+    *,
+    timeout: float,
+    port: int,
+) -> SnmpPrinterSnapshot:
     """Fast SNMP probe: sysDescr/sysName/sysObjectID, then Printer-MIB if needed."""
     snap = SnmpPrinterSnapshot()
-    client = Client(ip, V2C(community), port=port)
+    client = Client(ip, credentials, port=port)
     try:
         descr = ""
         name = ""

@@ -585,7 +585,12 @@ def build_messages(
 ) -> list[dict[str, str]]:
     del response_mode
     focus = question_focus or classify_wikirag_question(question)
-    system = WIKIRAG_SYSTEM_SIMPLE if mode == "simple" else WIKIRAG_SYSTEM_RAG
+    custom_prompt = ""
+    if mode != "simple":
+        from app.wikirag_options import get_system_prompt
+
+        custom_prompt = get_system_prompt()
+    system = WIKIRAG_SYSTEM_SIMPLE if mode == "simple" else (custom_prompt or WIKIRAG_SYSTEM_RAG)
     messages: list[dict[str, str]] = [{"role": "system", "content": system}]
     hist = [] if mode == "simple" else sanitize_chat_history(history)
     for h in hist:
@@ -613,12 +618,11 @@ def build_messages(
             joined = joined[: max_data - 20].rstrip() + "\n… [обрезано]"
         if not joined:
             joined = "(контекст пуст — в индексе ничего не найдено)"
-        user_body = (
+        lead = "" if custom_prompt else (
             "Факты бери из контекста. Если вопрос про выбор или приоритет — сравни цифры и дай конкретный ответ с расчётом. "
             "Не ищи в тексте готовую фразу «кому стоит».\n\n"
-            f"Контекст:\n{joined}"
-            f"{_rag_user_suffix(question, focus)}"
         )
+        user_body = f"{lead}Контекст:\n{joined}{_rag_user_suffix(question, focus)}"
         messages.append({"role": "user", "content": user_body})
     return messages
 

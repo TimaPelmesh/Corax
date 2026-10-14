@@ -66,19 +66,13 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   const aliveRef = useRef(0)
   const [ended, setEnded] = useState(false)
 
-  function markEnded() {
-    if (endedRef.current) return
-    endedRef.current = true
+  function showEnded() {
     setEnded(true)
-    setWaiting(true)
     setHint(t('remoteConnect.assistClosed'))
     setCursor({ x: 0.5, y: 0.5, visible: false })
-    const canvas = canvasRef.current
-    const ctx = canvas?.getContext('2d')
-    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
   }
 
-  function finishSession() {
+  function finishSession(updateUi = true) {
     if (endedRef.current) return
     endedRef.current = true
     const ws = wsRef.current
@@ -90,6 +84,12 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
       }
     }
     void api.assistEnd(session.id).catch(() => undefined)
+    if (updateUi) showEnded()
+  }
+
+  function markEnded() {
+    endedRef.current = true
+    showEnded()
   }
 
   useEffect(() => {
@@ -162,7 +162,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
       ws.close()
       if (wsRef.current === ws) wsRef.current = null
       queueMicrotask(() => {
-        if (aliveRef.current === generation) finishSession()
+        if (aliveRef.current === generation) finishSession(false)
       })
     }
   }, [session.id, session.hostname, t])
@@ -198,8 +198,11 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   }
 
   function hangup() {
+    if (endedRef.current) {
+      onClose()
+      return
+    }
     finishSession()
-    onClose()
   }
 
   function toggleFullscreen() {
@@ -230,8 +233,8 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
       <div className="assist-shell" ref={shellRef}>
         <header className="assist-bar">
           <div className="assist-identity">
-            <p className="assist-kicker">{t('remoteConnect.assist')}</p>
             <p className="assist-host">{session.hostname}</p>
+            {ended ? <p className="assist-kicker">{hint}</p> : null}
           </div>
           {screens.length > 1 ? (
             <div className="assist-monitors" role="tablist" aria-label={t('remoteConnect.assistMonitors')}>
@@ -249,14 +252,14 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
               ))}
             </div>
           ) : null}
-          <button type="button" className="app-btn app-btn-secondary assist-hangup" onClick={toggleFullscreen}>
+          <button type="button" className="assist-btn" onClick={toggleFullscreen}>
             {t('remoteConnect.assistFullscreen')}
           </button>
-          <button type="button" className="app-btn app-btn-secondary" onClick={hangup}>
-            {t('remoteConnect.assistEnd')}
+          <button type="button" className="assist-btn assist-btn-end" onClick={hangup}>
+            {ended ? t('remoteConnect.assistCloseWindow') : t('remoteConnect.assistEnd')}
           </button>
         </header>
-        <div className={`assist-stage${waiting || ended ? '' : ' assist-stage-live'}`}>
+        <div className={`assist-stage${waiting ? '' : ' assist-stage-live'}${ended ? ' assist-stage-ended' : ''}`}>
           {waiting ? <p className="assist-wait">{hint}</p> : null}
           <div className="assist-frame">
             <div className="assist-surface">

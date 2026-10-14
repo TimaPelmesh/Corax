@@ -93,9 +93,11 @@ from app.wikirag_options import (
     get_auto_index,
     get_embed_model,
     get_lm_context_tokens,
+    get_system_prompt,
     set_auto_index,
     set_embed_model,
     set_lm_context_tokens,
+    set_system_prompt,
 )
 from app.wikirag_research import (
     RESEARCH_EMPTY,
@@ -1392,12 +1394,17 @@ async def export_index(
 
 
 def _index_settings_out() -> WikiRagIndexSettingsOut:
+    from app.wikirag_lm import WIKIRAG_SYSTEM_RAG
+
     configured = get_lm_context_tokens()
+    custom = get_system_prompt()
     return WikiRagIndexSettingsOut(
         auto_index=get_auto_index(),
         embed_model=get_embed_model(),
         lm_context_tokens=configured,
         effective_lm_context_tokens=ollama_num_ctx(),
+        system_prompt=custom or WIKIRAG_SYSTEM_RAG,
+        system_prompt_default=WIKIRAG_SYSTEM_RAG,
     )
 
 
@@ -1457,6 +1464,8 @@ async def patch_index_settings(
         set_embed_model(body.embed_model)
     if body.lm_context_tokens is not None:
         set_lm_context_tokens(body.lm_context_tokens)
+    if "system_prompt" in body.model_fields_set:
+        set_system_prompt(body.system_prompt)
     return _index_settings_out()
 
 

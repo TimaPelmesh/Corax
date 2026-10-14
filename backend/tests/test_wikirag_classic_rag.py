@@ -30,7 +30,8 @@ def test_inventory_questions_are_not_small_talk():
     assert is_small_talk("у кого принтер") is False
 
 
-def test_classic_prompt_allows_reasoned_fallback():
+def test_classic_prompt_allows_reasoned_fallback(monkeypatch):
+    monkeypatch.setattr("app.wikirag_options.get_system_prompt", lambda: "")
     msgs = build_messages(
         "Какой IP у HP M402?",
         "### printers.md\n- **IP:** 192.168.3.21",
@@ -63,3 +64,17 @@ def test_nudge_keeps_the_original_task_for_search():
     assert "железо" in q
     assert classify_wikirag_question(q) == "os_hardware"
     assert retrieval_question("у кого Windows 7", history) == "у кого Windows 7"
+
+
+def test_custom_system_prompt_is_what_the_model_sees(tmp_path, monkeypatch):
+    from app.wikirag_options import set_system_prompt
+
+    monkeypatch.setattr("app.wikirag_options.settings.wiki_rag_dir", str(tmp_path))
+    set_system_prompt("Считай статистику по всем ПК из контекста. Не отказывайся.")
+    msgs = build_messages("а у остальных ПК что?", "PC-2 Windows 7\nPC-3 Windows 10", [], mode="rag")
+    assert msgs[0]["content"].startswith("Считай статистику")
+    assert "кому стоит" not in msgs[-1]["content"]
+    assert "PC-3" in msgs[-1]["content"]
+    set_system_prompt("")
+    cleared = build_messages("кто на win7", "PC-1", [], mode="rag")
+    assert "не выдумывай" in cleared[0]["content"].lower()
