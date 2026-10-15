@@ -942,6 +942,19 @@ export type GlpiTestTicketResult = {
   api_mode?: string | null
 }
 
+export type GlpiTicketCheckItem = {
+  corax_id: number | null
+  stored_glpi_id: number | null
+  stored_state: string
+  marker_glpi_id: number | null
+  title_glpi_id: number | null
+  suggestion: string
+  remote_title: string | null
+  remote_status: string | null
+  url: string | null
+  detail: string | null
+}
+
 export type GlpiTicketSyncResult = {
   created: number
   updated: number
@@ -1968,6 +1981,13 @@ export const api = {
     request<GlpiTestTicketResult>(`${API_PREFIX}/settings/glpi/test-ticket`, {
       method: 'POST',
       json: body || {},
+    }),
+
+  glpiCheckTickets: (body: { request_ids?: number[]; glpi_ids?: number[] }) =>
+    request<{ items: GlpiTicketCheckItem[] }>(`${API_PREFIX}/settings/glpi/check-tickets`, {
+      method: 'POST',
+      json: body,
+      timeout_ms: 120_000,
     }),
 
   glpiImportTickets: (limit: number) =>

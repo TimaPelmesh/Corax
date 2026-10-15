@@ -15,7 +15,13 @@ from app.database import get_db
 from app.glpi_assets import export_glpi_assets, import_glpi_assets, list_local_computers
 from app.glpi_devices import export_glpi_devices, import_glpi_devices, list_local_devices, list_remote_devices
 from app.glpi_client import GlpiClientError, GlpiIdentity, GlpiPushResult, create_test_ticket, probe_glpi
-from app.glpi_sync import apply_glpi_ticket_links, creds_from_row, export_glpi_tickets, import_glpi_tickets
+from app.glpi_sync import (
+    apply_glpi_ticket_links,
+    creds_from_row,
+    export_glpi_tickets,
+    import_glpi_tickets,
+    preview_glpi_tickets,
+)
 from app.ldap_config import get_effective_ldap_config
 from app.models import AgentCollectRequest, Bitrix24Config, GlpiConfig, LdapConfig, User, ZabbixConfig
 from app.schemas import (
@@ -27,6 +33,9 @@ from app.schemas import (
     GlpiTestResponse,
     GlpiTestTicketIn,
     GlpiTestTicketOut,
+    GlpiTicketCheckIn,
+    GlpiTicketCheckItem,
+    GlpiTicketCheckOut,
     GlpiAssetSyncIn,
     GlpiComputerRowOut,
     GlpiDeviceRowOut,
@@ -730,6 +739,45 @@ async def export_glpi_tickets_api(
         failed=result.failed,
         message=result.message,
         errors=result.errors,
+    )
+
+
+@router.post("/glpi/check-tickets", response_model=GlpiTicketCheckOut)
+async def check_glpi_tickets_api(
+    body: GlpiTicketCheckIn,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """Сверить конкретные заявки с GLPI по id CORAX и id GLPI. Не создаёт и не обновляет."""
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    if not (body.request_ids or body.glpi_ids):
+        raise HTTPException(status_code=400, detail="Укажите id заявки CORAX или id заявки GLPI")
+    try:
+        probes = await preview_glpi_tickets(
+            db,
+            creds_from_row(row),
+            request_ids=body.request_ids,
+            glpi_ids=body.glpi_ids,
+        )
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return GlpiTicketCheckOut(
+        items=[
+            GlpiTicketCheckItem(
+                corax_id=item.corax_id,
+                stored_glpi_id=item.stored_glpi_id,
+                stored_state=item.stored_state,
+                marker_glpi_id=item.marker_glpi_id,
+                title_glpi_id=item.title_glpi_id,
+                suggestion=item.suggestion,
+                remote_title=item.remote_title,
+                remote_status=item.remote_status,
+                url=item.url,
+                detail=item.detail,
+            )
+            for item in probes
+        ]
     )
 
 

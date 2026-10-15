@@ -128,6 +128,31 @@ class GlpiPushResult:
     detail: str | None = None
 
 
+@dataclass(frozen=True)
+class GlpiTicketQuery:
+    """Одна проверка: заявка CORAX, id в GLPI или оба сразу."""
+
+    corax_id: int | None = None
+    glpi_id: int | None = None
+    title: str | None = None
+
+
+@dataclass(frozen=True)
+class GlpiTicketProbe:
+    """Результат сверки без записи в GLPI."""
+
+    corax_id: int | None
+    stored_glpi_id: int | None
+    stored_state: str
+    marker_glpi_id: int | None
+    title_glpi_id: int | None
+    suggestion: str
+    remote_title: str | None = None
+    remote_status: str | None = None
+    url: str | None = None
+    detail: str | None = None
+
+
 def _titles_match(left: str | None, right: str | None) -> bool:
     a = " ".join((left or "").casefold().split())
     b = " ".join((right or "").casefold().split())
@@ -683,6 +708,19 @@ def create_test_ticket(
         )
 
 
+def check_tickets(
+    creds: GlpiCredentials,
+    queries: list[GlpiTicketQuery],
+    *,
+    transport: httpx.BaseTransport | None = None,
+) -> list[GlpiTicketProbe]:
+    """Прочитать конкретные заявки в GLPI и сказать, что с ними делать. Ничего не пишет."""
+    if not queries:
+        return []
+    with _Session(creds, transport) as session:
+        return [session.inspect_ticket(item) for item in queries[:50]]
+
+
 def fetch_tickets(
     creds: GlpiCredentials,
     limit: int = 200,
@@ -1018,28 +1056,114 @@ class _Session:
                 body["assigned"] = [{"id": assignee_id, "type": "User"}]
         return body
 
-    def _read_ticket(self, ticket_id: int) -> dict[str, Any] | None:
+    def _ticket_get_urls(self, ticket_id: int) -> list[tuple[str, dict[str, str]]]:
+        """GET одной заявки: HL /api.php и /api.php/v2, затем legacy apirest."""
         attempts: list[tuple[str, dict[str, str]]] = []
         if self.mode != "legacy":
-            attempts.append((f"{self.base}/api.php/Assistance/Ticket/{ticket_id}", self._v2_headers()))
+            headers = self._v2_headers()
+            attempts.append((f"{self.base}/api.php/Assistance/Ticket/{ticket_id}", headers))
+            attempts.append((f"{self.base}/api.php/v2/Assistance/Ticket/{ticket_id}", headers))
         headers = self._legacy_headers() if self.mode == "legacy" else self._asset_headers()
         attempts.append((f"{self.base}/apirest.php/Ticket/{ticket_id}", headers))
-        for url, hdrs in attempts:
+        return attempts
+
+    def _unwrap_ticket(self, payload: Any) -> dict[str, Any] | None:
+        row: object = payload
+        if isinstance(payload, dict):
+            nested = payload.get("data") or payload.get("item")
+            if "id" not in payload and isinstance(nested, dict):
+                row = nested
+        if isinstance(row, dict) and _as_int(row.get("id")) is not None:
+            return row
+        return None
+
+    def _read_ticket_state(self, ticket_id: int) -> tuple[str, dict[str, Any] | None]:
+        """ok + тело, missing (404) или denied (401/403). 404 на одном пути не закрывает следующий."""
+        saw_denied = False
+        for url, hdrs in self._ticket_get_urls(ticket_id):
             try:
-                payload = self._parse(
-                    self._http.get(url, headers=hdrs),
-                    empty_on=(401, 403, 404),
-                )
+                response = self._http.get(url, headers=hdrs)
+            except Exception:
+                continue
+            if response.status_code == 404:
+                continue
+            if response.status_code in (401, 403):
+                saw_denied = True
+                continue
+            try:
+                payload = self._parse(response, empty_on=())
             except GlpiClientError:
                 continue
-            row: object = payload
-            if isinstance(payload, dict):
-                nested = payload.get("data") or payload.get("item")
-                if "id" not in payload and isinstance(nested, dict):
-                    row = nested
-            if isinstance(row, dict) and _as_int(row.get("id")) is not None:
-                return row
-        return None
+            row = self._unwrap_ticket(payload)
+            if row is not None:
+                return "ok", row
+        return ("denied", None) if saw_denied else ("missing", None)
+
+    def _read_ticket(self, ticket_id: int) -> dict[str, Any] | None:
+        state, row = self._read_ticket_state(ticket_id)
+        return row if state == "ok" else None
+
+    def inspect_ticket(self, query: GlpiTicketQuery) -> GlpiTicketProbe:
+        """Сверка одной заявки: id GLPI, маркер CORAX#id, затем тема. Без CREATE/UPDATE."""
+        stored_id = query.glpi_id if query.glpi_id and query.glpi_id > 0 else None
+        stored_state = "none"
+        live: dict[str, Any] | None = None
+        if stored_id is not None:
+            stored_state, live = self._read_ticket_state(stored_id)
+
+        marker_id: int | None = None
+        if query.corax_id and query.corax_id > 0:
+            marker_id = self.find_ticket_id_by_marker(query.corax_id)
+        title_id: int | None = None
+        if marker_id is None and (query.title or "").strip():
+            title_id = self.find_ticket_id_by_title(query.title or "")
+
+        chosen = live
+        chosen_id = stored_id if stored_state == "ok" else None
+        if chosen_id is None and marker_id is not None:
+            chosen_id = marker_id
+            chosen = self._read_ticket(marker_id) or chosen
+        elif chosen_id is None and title_id is not None:
+            chosen_id = title_id
+            chosen = self._read_ticket(title_id) or chosen
+
+        remote = parse_ticket(chosen, base_url=self.base) if chosen else None
+        if stored_state == "denied" and chosen_id is None:
+            suggestion = "denied"
+            detail = f"GLPI #{stored_id} не прочитан: нет прав или сессия"
+        elif stored_state == "ok" and marker_id is not None and marker_id != stored_id:
+            suggestion = "conflict"
+            detail = f"связь #{stored_id}, а CORAX#{query.corax_id} ещё и в заявке #{marker_id}"
+        elif stored_state == "ok":
+            suggestion = "update" if query.corax_id else "found"
+            detail = f"заявка GLPI #{stored_id} на месте"
+        elif marker_id is not None or title_id is not None:
+            suggestion = "relink" if stored_state == "missing" else "update"
+            via = "CORAX#id" if marker_id is not None else "теме"
+            stale = f"сохранённый #{stored_id} пуст, " if stored_state == "missing" else ""
+            detail = f"{stale}найдено по {via}: #{chosen_id}"
+        elif stored_state == "missing":
+            suggestion = "create" if query.corax_id else "missing"
+            detail = f"GLPI #{stored_id} нет" + (", можно создать" if query.corax_id else "")
+        elif query.corax_id:
+            suggestion = "create"
+            detail = "в GLPI такой заявки нет, можно создать"
+        else:
+            suggestion = "missing"
+            detail = "заявка не найдена"
+
+        return GlpiTicketProbe(
+            corax_id=query.corax_id,
+            stored_glpi_id=stored_id,
+            stored_state=stored_state,
+            marker_glpi_id=marker_id,
+            title_glpi_id=title_id,
+            suggestion=suggestion,
+            remote_title=None if remote is None else remote.title,
+            remote_status=None if remote is None else remote.status,
+            url=None if remote is None else remote.url,
+            detail=detail,
+        )
 
     def _resolve_category_id(self, name: str | None) -> int | None:
         cleaned = (name or "").strip()
@@ -1490,6 +1614,13 @@ class _Session:
 
         target_id = item.glpi_id
         matched_by = "id" if target_id else None
+        stale_id: int | None = None
+        if target_id is not None:
+            state, _row = self._read_ticket_state(target_id)
+            if state == "missing":
+                stale_id = target_id
+                target_id = None
+                matched_by = None
         if target_id is None:
             target_id = self.find_ticket_id_by_marker(item.corax_id)
             if target_id is not None:
@@ -1504,15 +1635,25 @@ class _Session:
         if target_id is not None:
             try:
                 self.update_ticket(replace(item, glpi_id=target_id, title=title))
+                note = f"сопоставлено по {matched_by}"
+                if stale_id is not None:
+                    note = f"GLPI #{stale_id} нет, {note}"
                 return GlpiPushResult(
                     corax_id=item.corax_id,
                     glpi_id=target_id,
                     action="updated",
-                    detail=f"сопоставлено по {matched_by}",
+                    detail=note,
                 )
             except GlpiClientError as exc:
                 # UPDATE недоступен / HTTP 500 сущности — создаём новую, не конфликтуем.
-                if not (_is_permission_error(exc) or "http 500" in str(exc).casefold() or "error_api" in str(exc).casefold()):
+                text = str(exc).casefold()
+                gone = "http 404" in text or "not found" in text
+                if not (
+                    _is_permission_error(exc)
+                    or "http 500" in text
+                    or "error_api" in text
+                    or gone
+                ):
                     raise
                 created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
                 return GlpiPushResult(
@@ -1525,11 +1666,14 @@ class _Session:
                 )
 
         created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
+        detail = "новая заявка"
+        if stale_id is not None:
+            detail = f"GLPI #{stale_id} нет, создана новая #{created_id}"
         return GlpiPushResult(
             corax_id=item.corax_id,
             glpi_id=created_id,
             action="created",
-            detail="новая заявка",
+            detail=detail,
         )
 
     def list_computers(self, limit: int) -> list[GlpiComputer]:

@@ -13,6 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.glpi_client import (
+    GlpiTicketProbe,
+    GlpiTicketQuery,
+    check_tickets,
     GlpiCredentials,
     GlpiOutbound,
     GlpiPushResult,
@@ -403,3 +406,57 @@ async def apply_glpi_ticket_links(
         message=message,
         errors=errors,
     )
+
+
+def _unknown_corax(corax_id: int) -> GlpiTicketProbe:
+    return GlpiTicketProbe(
+        corax_id=corax_id,
+        stored_glpi_id=None,
+        stored_state="none",
+        marker_glpi_id=None,
+        title_glpi_id=None,
+        suggestion="unknown",
+        detail="заявка CORAX не найдена",
+    )
+
+
+async def preview_glpi_tickets(
+    db: AsyncSession,
+    creds: GlpiCredentials,
+    *,
+    request_ids: list[int] | None = None,
+    glpi_ids: list[int] | None = None,
+) -> list[GlpiTicketProbe]:
+    """Сверить конкретные заявки с GLPI и ничего не записывать."""
+    corax_ids = list(dict.fromkeys(int(item) for item in (request_ids or []) if int(item) > 0))[:50]
+    remote_ids = list(dict.fromkeys(int(item) for item in (glpi_ids or []) if int(item) > 0))[:50]
+    if not corax_ids and not remote_ids:
+        return []
+    rows: list[ServiceRequest] = []
+    if corax_ids:
+        rows = list(
+            (await db.execute(select(ServiceRequest).where(ServiceRequest.id.in_(corax_ids)))).scalars().all()
+        )
+    by_id = {row.id: row for row in rows}
+    queries: list[GlpiTicketQuery] = []
+    probes: list[GlpiTicketProbe] = []
+    linked_glpi: set[int] = set()
+    for corax_id in corax_ids:
+        row = by_id.get(corax_id)
+        if row is None:
+            probes.append(_unknown_corax(corax_id))
+            continue
+        if row.glpi_id:
+            linked_glpi.add(int(row.glpi_id))
+        queries.append(
+            GlpiTicketQuery(corax_id=row.id, glpi_id=row.glpi_id, title=row.title or "")
+        )
+    for glpi_id in remote_ids:
+        if glpi_id in linked_glpi:
+            continue
+        queries.append(GlpiTicketQuery(glpi_id=glpi_id))
+    if queries:
+        probes.extend(await asyncio.to_thread(check_tickets, creds, queries))
+    order = {corax_id: index for index, corax_id in enumerate(corax_ids)}
+    probes.sort(key=lambda item: (0, order.get(item.corax_id or -1, 10_000)) if item.corax_id else (1, item.stored_glpi_id or 0))
+    return probes

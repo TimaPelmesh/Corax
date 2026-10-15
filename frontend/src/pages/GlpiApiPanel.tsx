@@ -7,6 +7,7 @@ import {
   type GlpiIdentity,
   type GlpiTestResult,
   type GlpiTestTicketResult,
+  type GlpiTicketCheckItem,
   type GlpiTicketSyncResult,
   type ServiceRequestRow,
 } from '../api'
@@ -30,6 +31,11 @@ function identityLines(identity: GlpiIdentity | null | undefined, fallbackUser: 
   if (identity?.entity) lines.push({ label: 'entity', value: identity.entity })
   if (identity?.user_id != null) lines.push({ label: 'id', value: String(identity.user_id) })
   return lines
+}
+
+function parseIdList(raw: string) {
+  const found = raw.match(/\d+/g) || []
+  return [...new Set(found.map((item) => Number(item)).filter((item) => item > 0))].slice(0, 50)
 }
 
 function Pill({ children, tone = 'muted' }: { children: string; tone?: 'muted' | 'primary' }) {
@@ -88,6 +94,10 @@ export function GlpiApiPanel() {
   const [exportProgress, setExportProgress] = useState<{ done: number; total: number; percent: number; label: string } | null>(
     null,
   )
+  const [checkCorax, setCheckCorax] = useState('')
+  const [checkGlpi, setCheckGlpi] = useState('')
+  const [checkItems, setCheckItems] = useState<GlpiTicketCheckItem[]>([])
+  const [checking, setChecking] = useState(false)
 
   const apply = useCallback((next: GlpiConfig) => {
     setCfg(next)
@@ -276,6 +286,28 @@ export function GlpiApiPanel() {
       toast.error(e instanceof Error ? e.message : t('settingsGlpi.syncFailed'))
     } finally {
       setTicketPickLoading(false)
+    }
+  }
+
+  async function runCheck(requestIds?: number[], glpiIds?: number[]) {
+    const coraxIds = requestIds ?? parseIdList(checkCorax)
+    const remoteIds = glpiIds ?? parseIdList(checkGlpi)
+    if (!coraxIds.length && !remoteIds.length) {
+      toast.error(t('settingsGlpi.checkNeedId'))
+      return
+    }
+    setChecking(true)
+    try {
+      const result = await api.glpiCheckTickets({
+        request_ids: coraxIds.length ? coraxIds : undefined,
+        glpi_ids: remoteIds.length ? remoteIds : undefined,
+      })
+      setCheckItems(result.items)
+      if (!result.items.length) toast.error(t('settingsGlpi.checkEmpty'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('settingsGlpi.checkFailed'))
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -739,6 +771,66 @@ export function GlpiApiPanel() {
             </button>
           </li>
         </ul>
+        <div className="rounded-lg border border-[var(--color-border)] px-3 py-2.5">
+          <p className="text-sm font-medium text-[var(--color-fg)]">{t('settingsGlpi.checkTitle')}</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.checkHint')}</p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <label className="block min-w-[10rem] flex-1 text-sm">
+              <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">{t('settingsGlpi.checkCorax')}</span>
+              <input
+                className="app-input w-full"
+                value={checkCorax}
+                placeholder="15, 16"
+                onChange={(e) => setCheckCorax(e.target.value)}
+              />
+            </label>
+            <label className="block min-w-[10rem] flex-1 text-sm">
+              <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">{t('settingsGlpi.checkGlpi')}</span>
+              <input
+                className="app-input w-full"
+                value={checkGlpi}
+                placeholder="88, 3199"
+                onChange={(e) => setCheckGlpi(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="app-btn app-btn-secondary shrink-0"
+              disabled={busy || checking || !enabled}
+              onClick={() => void runCheck()}
+            >
+              {checking ? t('settingsGlpi.syncing') : t('settingsGlpi.checkRun')}
+            </button>
+          </div>
+          {checkItems.length ? (
+            <ul className="mt-2 space-y-1 text-xs">
+              {checkItems.map((item, index) => (
+                <li key={`${item.corax_id ?? 'g'}-${item.stored_glpi_id ?? index}`} className="rounded-md bg-[var(--color-bg-muted)] px-2 py-1.5">
+                  <span className="font-medium text-[var(--color-fg)]">
+                    {item.corax_id != null ? `CORAX#${item.corax_id}` : `GLPI#${item.stored_glpi_id ?? '—'}`}
+                    {' · '}
+                    {t(`settingsGlpi.checkSuggest.${item.suggestion}` as 'settingsGlpi.checkSuggest.found')}
+                  </span>
+                  {item.detail ? <span className="text-[var(--color-fg-muted)]"> — {item.detail}</span> : null}
+                  {item.remote_title ? (
+                    <div className="truncate text-[var(--color-fg-muted)]">
+                      {item.remote_title}
+                      {item.remote_status ? ` · ${item.remote_status}` : ''}
+                      {item.url ? (
+                        <>
+                          {' · '}
+                          <a href={item.url} target="_blank" rel="noreferrer noopener" className="text-[var(--color-primary)] underline-offset-2 hover:underline">
+                            {t('settingsGlpi.testTicketOpen')}
+                          </a>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -947,6 +1039,10 @@ export function GlpiApiPanel() {
               ids,
             })
           }
+          onCheck={(ids) => {
+            setPickerOpen(null)
+            void runCheck(ids, [])
+          }}
         />
       ) : null}
     </section>
@@ -967,6 +1063,7 @@ function TicketPickerDialog({
   onClear,
   onClose,
   onRun,
+  onCheck,
 }: {
   intent: PickerIntent
   rows: ServiceRequestRow[]
@@ -981,6 +1078,7 @@ function TicketPickerDialog({
   onClear: () => void
   onClose: () => void
   onRun: (ids: number[]) => void
+  onCheck: (ids: number[]) => void
 }) {
   const t = useT()
   const titleId = useId()
@@ -1085,6 +1183,14 @@ function TicketPickerDialog({
                       type="button"
                       className="app-btn app-btn-secondary !min-h-8 shrink-0"
                       disabled={busy}
+                      onClick={() => onCheck([row.id])}
+                    >
+                      {t('settingsGlpi.checkOne')}
+                    </button>
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary !min-h-8 shrink-0"
+                      disabled={busy}
                       onClick={() => onRun([row.id])}
                     >
                       {t('settingsGlpi.pickerOne')}
@@ -1102,7 +1208,16 @@ function TicketPickerDialog({
             {query.trim() ? ` · ${t('settingsGlpi.pickerFiltered', { n: rows.length })}` : ''}
             {` · ${t('settingsGlpi.pickerSelected', { n: picked.length })}`}
           </span>
-          <button
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="app-btn app-btn-secondary"
+              disabled={busy || picked.length === 0}
+              onClick={() => onCheck(picked)}
+            >
+              {t('settingsGlpi.checkRun')}
+            </button>
+            <button
             type="button"
             className="app-btn app-btn-primary"
             disabled={busy || picked.length === 0}
@@ -1113,7 +1228,8 @@ function TicketPickerDialog({
               : update
                 ? t('settingsGlpi.pickerRunUpdate')
                 : t('settingsGlpi.pickerRunCreate')}
-          </button>
+            </button>
+          </div>
         </div>
       </div>
     </div>,

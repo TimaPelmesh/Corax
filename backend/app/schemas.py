@@ -858,6 +858,30 @@ class GlpiTicketSyncOut(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class GlpiTicketCheckIn(BaseModel):
+    """Проверка без записи: id заявок CORAX и/или id заявок в GLPI."""
+
+    request_ids: list[int] | None = Field(default=None, max_length=50)
+    glpi_ids: list[int] | None = Field(default=None, max_length=50)
+
+
+class GlpiTicketCheckItem(BaseModel):
+    corax_id: int | None = None
+    stored_glpi_id: int | None = None
+    stored_state: str = "none"
+    marker_glpi_id: int | None = None
+    title_glpi_id: int | None = None
+    suggestion: str
+    remote_title: str | None = None
+    remote_status: str | None = None
+    url: str | None = None
+    detail: str | None = None
+
+
+class GlpiTicketCheckOut(BaseModel):
+    items: list[GlpiTicketCheckItem] = Field(default_factory=list)
+
+
 class GlpiTicketLinkItem(BaseModel):
     """Переписать связь заявки CORAX ↔ id заявки в GLPI.
 

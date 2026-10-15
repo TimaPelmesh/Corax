@@ -20,6 +20,8 @@ from app.glpi_client import (
     GlpiSoftware,
     GlpiTicket,
     canonical_software,
+    GlpiTicketQuery,
+    check_tickets,
     fetch_computers,
     fetch_tickets,
     normalize_base_url,
@@ -1410,3 +1412,104 @@ def test_glpi_asset_import_and_export_keep_the_same_software_set(
     assert outbound.os_version == "23H2"
     assert same_software_set(outbound.software, [("Google Chrome", "120"), ("7-Zip", None)])
     client.delete(f"/api/v1/computers/{pc_id}", headers=auth_headers)
+
+
+def _ticket_routes(request: httpx.Request) -> str:
+    return request.url.path.rstrip("/")
+
+
+def test_check_ticket_by_glpi_id_and_corax_marker():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = _ticket_routes(request)
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Assistance/Ticket/88") or path.endswith("/v2/Assistance/Ticket/88"):
+            return httpx.Response(
+                200,
+                json={"id": 88, "name": "Принтер не печатает · CORAX#15", "status": 2, "content": "[CORAX #15]"},
+            )
+        if request.method == "GET" and path.endswith("/Ticket"):
+            return httpx.Response(200, json=[{"id": 88, "name": "Принтер не печатает · CORAX#15"}])
+        return httpx.Response(404, json={"message": path})
+
+    probes = check_tickets(
+        _v2_creds(),
+        [GlpiTicketQuery(corax_id=15, glpi_id=88, title="Принтер не печатает")],
+        transport=httpx.MockTransport(handler),
+    )
+    assert probes[0].suggestion == "update"
+    assert probes[0].stored_state == "ok"
+    assert probes[0].marker_glpi_id == 88
+    assert probes[0].remote_title and "CORAX#15" in probes[0].remote_title
+
+
+def test_missing_glpi_id_is_relinked_by_marker_instead_of_failing():
+    patched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = _ticket_routes(request)
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if path.endswith("/Ticket/3199"):
+            return httpx.Response(404, json={"message": "not found"})
+        if request.method == "PATCH" and path.endswith("/Ticket/88"):
+            patched.append(path)
+            return httpx.Response(200, json={"id": 88})
+        if path.endswith("/Assistance/Ticket/88"):
+            return httpx.Response(200, json={"id": 88, "name": "Принтер · CORAX#15", "status": 1})
+        if request.method == "GET" and path.endswith("/Ticket"):
+            return httpx.Response(200, json=[{"id": 88, "name": "Принтер · CORAX#15", "content": "[CORAX #15]"}])
+        if request.method == "POST":
+            return httpx.Response(500, json={"message": "must not create"})
+        return httpx.Response(404, json={"message": path})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=15,
+                glpi_id=3199,
+                title="Принтер",
+                content="текст",
+                status="open",
+                priority="normal",
+                force_create=False,
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "updated"
+    assert results[0].glpi_id == 88
+    assert patched
+    assert results[0].detail and "3199" in results[0].detail
+
+
+def test_missing_glpi_id_creates_when_nothing_matches():
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = _ticket_routes(request)
+        if path.endswith("/api.php/token"):
+            return httpx.Response(200, json={"access_token": "atk", "expires_in": 3600})
+        if request.method == "POST" and path.endswith("/Assistance/Ticket"):
+            return httpx.Response(201, json={"id": 700})
+        if request.method == "GET":
+            return httpx.Response(200, json=[])
+        return httpx.Response(404, json={"message": path})
+
+    results = push_tickets(
+        _v2_creds(),
+        [
+            GlpiOutbound(
+                corax_id=15,
+                glpi_id=3199,
+                title="Новая тема",
+                content="текст",
+                status="open",
+                priority="normal",
+                force_create=False,
+            )
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    assert results[0].action == "created"
+    assert results[0].glpi_id == 700
+    assert results[0].detail and "3199" in results[0].detail
