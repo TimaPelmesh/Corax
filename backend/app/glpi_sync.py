@@ -164,8 +164,48 @@ async def _ticket_people_map(
     return out
 
 
-async def import_glpi_tickets(creds: GlpiCredentials, *, created_by_id: int, limit: int) -> GlpiSyncResult:
+def filter_tickets_by_glpi_id(tickets: list[GlpiTicket], glpi_ids: list[int] | None) -> list[GlpiTicket]:
+    """None — вся выборка. Список — только отмеченные id, без добора остальных."""
+    if glpi_ids is None:
+        return tickets
+    wanted = {int(item) for item in glpi_ids if int(item) > 0}
+    return [ticket for ticket in tickets if ticket.glpi_id in wanted]
+
+
+async def list_remote_glpi_tickets(
+    db: AsyncSession,
+    creds: GlpiCredentials,
+    *,
+    limit: int,
+) -> list[tuple[GlpiTicket, int | None]]:
+    """Заявки GLPI и id уже созданной заявки CORAX, если связь есть."""
     tickets = await asyncio.to_thread(fetch_tickets, creds, max(1, min(int(limit), 2000)))
+    ids = [ticket.glpi_id for ticket in tickets]
+    linked: dict[int, int] = {}
+    if ids:
+        rows = await db.execute(
+            select(ServiceRequest.id, ServiceRequest.glpi_id).where(ServiceRequest.glpi_id.in_(ids))
+        )
+        for corax_id, glpi_id in rows.all():
+            if glpi_id is None:
+                continue
+            linked.setdefault(int(glpi_id), int(corax_id))
+    return [(ticket, linked.get(ticket.glpi_id)) for ticket in tickets]
+
+
+async def import_glpi_tickets(
+    creds: GlpiCredentials,
+    *,
+    created_by_id: int,
+    limit: int,
+    glpi_ids: list[int] | None = None,
+) -> GlpiSyncResult:
+    tickets = filter_tickets_by_glpi_id(
+        await asyncio.to_thread(fetch_tickets, creds, max(1, min(int(limit), 2000))),
+        glpi_ids,
+    )
+    if glpi_ids is not None and not tickets:
+        return GlpiSyncResult(message="В загруженной выборке GLPI нет отмеченных заявок")
     records = [ticket_to_record(index, ticket) for index, ticket in enumerate(tickets, start=1)]
     created = updated = skipped = 0
     for offset in range(0, len(records), _BATCH):
@@ -194,6 +234,7 @@ async def export_glpi_tickets(
     limit: int,
     request_ids: list[int] | None = None,
     mode: str = "recent",
+    fields: frozenset[str] | None = None,
     on_progress: Callable[[int, int, GlpiPushResult], None] | None = None,
 ) -> GlpiSyncResult:
     """Выгрузка заявок в GLPI.
@@ -262,6 +303,7 @@ async def export_glpi_tickets(
             requester_hints=tuple(people[row.id].get("requester_hints") or ()),
             assignee_hints=tuple(people[row.id].get("assignee_hints") or ()),
             opened_at=row.opened_at or row.created_at,
+            include=fields,
         )
         for row in rows
     ]

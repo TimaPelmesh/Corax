@@ -5,7 +5,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.glpi_sync import (
     creds_from_row,
     export_glpi_tickets,
     import_glpi_tickets,
+    list_remote_glpi_tickets,
     preview_glpi_tickets,
 )
 from app.ldap_config import get_effective_ldap_config
@@ -42,6 +43,8 @@ from app.schemas import (
     GlpiDeviceSyncIn,
     GlpiTicketLinksIn,
     GlpiTicketLinksOut,
+    GlpiRemoteTicketOut,
+    GlpiRemoteTicketsOut,
     GlpiTicketSyncIn,
     GlpiTicketSyncOut,
     LdapConfigOut,
@@ -690,6 +693,40 @@ async def create_glpi_test_ticket(
     )
 
 
+@router.get("/glpi/remote-tickets", response_model=GlpiRemoteTicketsOut)
+async def glpi_remote_tickets(
+    limit: int = Query(default=200, ge=1, le=2000),
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """Список заявок GLPI без записи в CORAX. corax_id заполнен, если заявка уже создана."""
+    row = await _get_or_create_glpi(db)
+    _require_glpi_enabled(row)
+    try:
+        pairs = await list_remote_glpi_tickets(db, creds_from_row(row), limit=limit)
+    except GlpiClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items = [
+        GlpiRemoteTicketOut(
+            glpi_id=ticket.glpi_id,
+            title=ticket.title,
+            content=(ticket.content or "")[:2000] or None,
+            status=ticket.status,
+            priority=ticket.priority,
+            status_label=ticket.status_label,
+            priority_label=ticket.priority_label,
+            requester=ticket.requester,
+            category=ticket.category,
+            location=ticket.location,
+            opened_at=ticket.opened_at,
+            url=ticket.url,
+            corax_id=corax_id,
+        )
+        for ticket, corax_id in pairs
+    ]
+    return GlpiRemoteTicketsOut(items=items)
+
+
 @router.post("/glpi/import-tickets", response_model=GlpiTicketSyncOut)
 async def import_glpi_tickets_api(
     body: GlpiTicketSyncIn | None = None,
@@ -700,7 +737,12 @@ async def import_glpi_tickets_api(
     _require_glpi_enabled(row)
     payload = body or GlpiTicketSyncIn()
     try:
-        result = await import_glpi_tickets(creds_from_row(row), created_by_id=user.id, limit=payload.limit)
+        result = await import_glpi_tickets(
+            creds_from_row(row),
+            created_by_id=user.id,
+            limit=payload.limit,
+            glpi_ids=payload.glpi_ids,
+        )
     except GlpiClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return GlpiTicketSyncOut(
@@ -729,6 +771,7 @@ async def export_glpi_tickets_api(
             limit=payload.limit,
             request_ids=payload.request_ids,
             mode=payload.mode,
+            fields=None if payload.fields is None else frozenset(payload.fields),
         )
     except GlpiClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -840,6 +883,7 @@ async def export_glpi_tickets_stream(
                 limit=payload.limit,
                 request_ids=payload.request_ids,
                 mode=payload.mode,
+                fields=None if payload.fields is None else frozenset(payload.fields),
                 on_progress=on_progress,
             )
             await queue.put(

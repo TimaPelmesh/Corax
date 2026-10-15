@@ -964,6 +964,24 @@ export type GlpiTicketSyncResult = {
   errors: string[]
 }
 
+export type GlpiTicketField = 'content' | 'status' | 'priority' | 'requester' | 'assignee' | 'category' | 'opened_at'
+
+export type GlpiRemoteTicket = {
+  glpi_id: number
+  title: string
+  content: string | null
+  status: string
+  priority: string
+  status_label?: string | null
+  priority_label?: string | null
+  requester: string | null
+  category: string | null
+  location: string | null
+  opened_at: string | null
+  url: string | null
+  corax_id: number | null
+}
+
 export type GlpiDeviceKind = 'monitor' | 'printer' | 'network'
 
 export type GlpiDeviceRow = {
@@ -1990,10 +2008,13 @@ export const api = {
       timeout_ms: 120_000,
     }),
 
-  glpiImportTickets: (limit: number) =>
+  glpiRemoteTickets: (limit: number) =>
+    request<{ items: GlpiRemoteTicket[] }>(`${API_PREFIX}/settings/glpi/remote-tickets?limit=${limit}`),
+
+  glpiImportTickets: (limit: number, glpiIds?: number[]) =>
     request<GlpiTicketSyncResult>(`${API_PREFIX}/settings/glpi/import-tickets`, {
       method: 'POST',
-      json: { limit },
+      json: { limit, glpi_ids: glpiIds?.length ? glpiIds : undefined },
       timeout_ms: 180_000,
     }),
 
@@ -2029,6 +2050,7 @@ export const api = {
     opts: {
       mode?: 'recent' | 'new_only' | 'linked_only' | 'selected' | 'selected_update' | 'test_one' | 'force_create'
       request_ids?: number[]
+      fields?: GlpiTicketField[]
       onProgress?: (p: {
         done: number
         total: number
@@ -2055,6 +2077,7 @@ export const api = {
           limit,
           mode: opts.mode || 'recent',
           request_ids: opts.request_ids?.length ? opts.request_ids : undefined,
+          fields: opts.fields,
         }),
         signal: ctrl.signal,
       })

@@ -666,6 +666,22 @@ def test_outbound_body_maps_corax_statuses_for_glpi():
         for_update=True,
     )
     assert "content" not in empty_update
+    title_only = _outbound_body(
+        GlpiOutbound(
+            corax_id=15,
+            glpi_id=None,
+            title="Только тема",
+            content="секрет",
+            status="open",
+            priority="high",
+            include=frozenset({"content"}),
+        )
+    )
+    assert title_only["name"] == "Только тема"
+    assert "секрет" in title_only["content"]
+    assert "status" not in title_only
+    assert "priority" not in title_only
+    assert "urgency" not in title_only
 
 
 def test_v2_create_ticket_sets_category_and_team_members():
@@ -995,6 +1011,152 @@ def test_glpi_import_export_roundtrip(client: TestClient, auth_headers: dict[str
     assert outbound["external_url"].endswith("/front/ticket.form.php?id=4242")
     assert outbound["glpi_priority"] == "Low"
     assert request_id != outbound_id
+
+
+def test_filter_tickets_keeps_only_selected_glpi_ids():
+    from app.glpi_sync import filter_tickets_by_glpi_id
+
+    tickets = [
+        GlpiTicket(1, "A", None, "open", "normal", None, None, None, None, None, None, None, None, None),
+        GlpiTicket(2, "B", None, "open", "normal", None, None, None, None, None, None, None, None, None),
+    ]
+    assert [item.glpi_id for item in filter_tickets_by_glpi_id(tickets, None)] == [1, 2]
+    assert [item.glpi_id for item in filter_tickets_by_glpi_id(tickets, [2])] == [2]
+    assert filter_tickets_by_glpi_id(tickets, []) == []
+
+
+def test_selected_glpi_ticket_becomes_corax_request(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+):
+    keep_id = 9_100_000 + secrets.randbelow(100_000)
+    skip_id = keep_id + 1
+    title = f"GLPI pick {unique_hostname('pick')}"
+
+    def fake_fetch(creds, limit=200, transport=None):
+        return [
+            GlpiTicket(
+                glpi_id=keep_id,
+                title=title,
+                content="Нужна помощь с принтером",
+                status="open",
+                priority="normal",
+                status_label="New",
+                priority_label="Medium",
+                updated_at=None,
+                opened_at=datetime(2026, 3, 1, 9, 0, tzinfo=timezone.utc),
+                closed_at=None,
+                requester="Петрова",
+                category="Печать",
+                location="Каб. 4",
+                url=f"http://glpi.local/glpi/front/ticket.form.php?id={keep_id}",
+            ),
+            GlpiTicket(
+                glpi_id=skip_id,
+                title=f"{title} skip",
+                content="не брать",
+                status="open",
+                priority="low",
+                status_label="New",
+                priority_label="Low",
+                updated_at=None,
+                opened_at=None,
+                closed_at=None,
+                requester=None,
+                category=None,
+                location=None,
+                url=None,
+            ),
+        ]
+
+    monkeypatch.setattr("app.glpi_sync.fetch_tickets", fake_fetch)
+    saved = client.put(
+        "/api/v1/settings/glpi",
+        headers=auth_headers,
+        json={"enabled": True, "base_url": "http://glpi.local/glpi", "api_mode": "v2", "verify_tls": False},
+    )
+    assert saved.status_code == 200, saved.text
+
+    preview = client.get("/api/v1/settings/glpi/remote-tickets", headers=auth_headers, params={"limit": 10})
+    assert preview.status_code == 200, preview.text
+    preview_ids = {item["glpi_id"] for item in preview.json()["items"]}
+    assert keep_id in preview_ids
+    assert skip_id in preview_ids
+
+    imported = client.post(
+        "/api/v1/settings/glpi/import-tickets",
+        headers=auth_headers,
+        json={"limit": 10, "glpi_ids": [keep_id]},
+    )
+    assert imported.status_code == 200, imported.text
+    assert imported.json()["created"] == 1
+
+    listed = client.get("/api/v1/service-requests", headers=auth_headers, params={"limit": 50})
+    match = next(item for item in listed.json()["items"] if item["title"] == title)
+    assert match["glpi_id"] == keep_id
+    assert match["ticket_no"]
+    assert match["description"] == "Нужна помощь с принтером"
+    assert match["status"] == "open"
+    assert match["priority"] == "normal"
+    assert match["requester_name"] == "Петрова"
+    assert match["category"] == "Печать"
+    assert match["location"] == "Каб. 4"
+    assert match["external_source"] == "glpi"
+    assert all(item["title"] != f"{title} skip" for item in listed.json()["items"])
+
+
+def test_export_sends_only_selected_fields(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+):
+    pushed: list[GlpiOutbound] = []
+
+    def fake_push(creds, items, transport=None, on_progress=None):
+        pushed.extend(items)
+        return [
+            type("R", (), {"corax_id": item.corax_id, "glpi_id": 77, "action": "created", "error": None, "detail": None})()
+            for item in items
+        ]
+
+    monkeypatch.setattr("app.glpi_sync.push_tickets", fake_push)
+    saved = client.put(
+        "/api/v1/settings/glpi",
+        headers=auth_headers,
+        json={"enabled": True, "base_url": "http://glpi.local/glpi", "api_mode": "v2", "verify_tls": False},
+    )
+    assert saved.status_code == 200, saved.text
+    created = client.post(
+        "/api/v1/service-requests",
+        headers=auth_headers,
+        json={
+            "title": f"fields {unique_hostname('fld')}",
+            "description": "Текст",
+            "status": "open",
+            "priority": "high",
+            "requester_name": "Анна",
+            "category": "Сеть",
+        },
+    )
+    assert created.status_code == 200, created.text
+    request_id = created.json()["id"]
+    exported = client.post(
+        "/api/v1/settings/glpi/export-tickets",
+        headers=auth_headers,
+        json={"limit": 5, "mode": "selected", "request_ids": [request_id], "fields": ["content"]},
+    )
+    assert exported.status_code == 200, exported.text
+    assert pushed[0].include == frozenset({"content"})
+    from app.glpi_client import _outbound_body
+
+    body = _outbound_body(pushed[0])
+    assert "content" in body
+    assert "status" not in body
+    assert "priority" not in body
+
+    rejected = client.post(
+        "/api/v1/settings/glpi/export-tickets",
+        headers=auth_headers,
+        json={"request_ids": [request_id], "mode": "selected", "fields": ["secret"]},
+    )
+    assert rejected.status_code == 422
 
 
 def test_glpi_import_requires_enabled_connection(client: TestClient, auth_headers: dict[str, str]):

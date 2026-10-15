@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   api,
   type GlpiComputerRow,
@@ -7,20 +6,17 @@ import {
   type GlpiIdentity,
   type GlpiTestResult,
   type GlpiTestTicketResult,
-  type GlpiTicketCheckItem,
   type GlpiTicketSyncResult,
-  type ServiceRequestRow,
 } from '../api'
 import { GlpiDeviceSync } from './GlpiDeviceSync'
+import { GlpiTicketTransfer } from './GlpiTicketTransfer'
 import { IconKey, IconTicket } from '../components/icons'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
 type ApiMode = 'v2' | 'legacy'
 type GrantType = 'password' | 'client_credentials'
-type TicketExportMode = 'selected' | 'selected_update'
 type AssetExportMode = 'all' | 'selected'
-type PickerIntent = 'create' | 'update'
 
 function identityLines(identity: GlpiIdentity | null | undefined, fallbackUser: string) {
   const lines: { label: string; value: string }[] = []
@@ -31,11 +27,6 @@ function identityLines(identity: GlpiIdentity | null | undefined, fallbackUser: 
   if (identity?.entity) lines.push({ label: 'entity', value: identity.entity })
   if (identity?.user_id != null) lines.push({ label: 'id', value: String(identity.user_id) })
   return lines
-}
-
-function parseIdList(raw: string) {
-  const found = raw.match(/\d+/g) || []
-  return [...new Set(found.map((item) => Number(item)).filter((item) => item > 0))].slice(0, 50)
 }
 
 function Pill({ children, tone = 'muted' }: { children: string; tone?: 'muted' | 'primary' }) {
@@ -79,11 +70,8 @@ export function GlpiApiPanel() {
   )
   const [lastTicket, setLastTicket] = useState<GlpiTestTicketResult | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [pickerOpen, setPickerOpen] = useState<PickerIntent | null>(null)
-  const [pickerQuery, setPickerQuery] = useState('')
-  const [ticketPickRows, setTicketPickRows] = useState<ServiceRequestRow[]>([])
-  const [ticketPickLoading, setTicketPickLoading] = useState(false)
-  const [ticketPicked, setTicketPicked] = useState<number[]>([])
+  const [connectOpen, setConnectOpen] = useState(false)
+  const connectInit = useRef(false)
   const [assetMode, setAssetMode] = useState<AssetExportMode>('all')
   const [assetSkipSoftware, setAssetSkipSoftware] = useState(false)
   const [assetRows, setAssetRows] = useState<GlpiComputerRow[]>([])
@@ -91,14 +79,6 @@ export function GlpiApiPanel() {
   const [assetLoading, setAssetLoading] = useState(false)
   const [lastSyncErrors, setLastSyncErrors] = useState<string[]>([])
   const [lastSyncMessage, setLastSyncMessage] = useState('')
-  const [exportProgress, setExportProgress] = useState<{ done: number; total: number; percent: number; label: string } | null>(
-    null,
-  )
-  const [checkCorax, setCheckCorax] = useState('')
-  const [checkGlpi, setCheckGlpi] = useState('')
-  const [checkItems, setCheckItems] = useState<GlpiTicketCheckItem[]>([])
-  const [checking, setChecking] = useState(false)
-
   const apply = useCallback((next: GlpiConfig) => {
     setCfg(next)
     setEnabled(Boolean(next.enabled))
@@ -126,28 +106,16 @@ export function GlpiApiPanel() {
     void load()
   }, [load])
 
+  useEffect(() => {
+    if (!cfg || connectInit.current) return
+    connectInit.current = true
+    if (!cfg.base_url) setConnectOpen(true)
+  }, [cfg])
+
   const urlLooksHttp = useMemo(() => {
     const value = baseUrl.trim().toLowerCase()
     return value.startsWith('http://') || (value.length > 0 && !value.startsWith('https://'))
   }, [baseUrl])
-
-    const pickerRows = useMemo(() => {
-    const q = pickerQuery.trim().toLowerCase()
-    if (!q) return ticketPickRows
-    return ticketPickRows.filter((row) => {
-      const marker = `corax#${row.id}`
-      const assignees = (row.assignee_usernames || []).join(' ')
-      return (
-        String(row.id).includes(q) ||
-        (row.glpi_id != null && String(row.glpi_id).includes(q)) ||
-        row.title.toLowerCase().includes(q) ||
-        marker.includes(q) ||
-        (row.requester_name || '').toLowerCase().includes(q) ||
-        (row.category || '').toLowerCase().includes(q) ||
-        assignees.toLowerCase().includes(q)
-      )
-    })
-  }, [pickerQuery, ticketPickRows])
 
   const activeIdentity = lastTest?.identity || lastTicket?.identity || cfg?.identity || null
   const profileLines = identityLines(activeIdentity, username.trim() || cfg?.username || '')
@@ -277,47 +245,6 @@ export function GlpiApiPanel() {
     else toast.ok(text)
   }
 
-  async function loadTicketPicker() {
-    setTicketPickLoading(true)
-    try {
-      const result = await api.serviceRequestsAll()
-      setTicketPickRows(result.items)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('settingsGlpi.syncFailed'))
-    } finally {
-      setTicketPickLoading(false)
-    }
-  }
-
-  async function runCheck(requestIds?: number[], glpiIds?: number[]) {
-    const coraxIds = requestIds ?? parseIdList(checkCorax)
-    const remoteIds = glpiIds ?? parseIdList(checkGlpi)
-    if (!coraxIds.length && !remoteIds.length) {
-      toast.error(t('settingsGlpi.checkNeedId'))
-      return
-    }
-    setChecking(true)
-    try {
-      const result = await api.glpiCheckTickets({
-        request_ids: coraxIds.length ? coraxIds : undefined,
-        glpi_ids: remoteIds.length ? remoteIds : undefined,
-      })
-      setCheckItems(result.items)
-      if (!result.items.length) toast.error(t('settingsGlpi.checkEmpty'))
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('settingsGlpi.checkFailed'))
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  async function openPicker(intent: PickerIntent) {
-    setPickerOpen(intent)
-    setPickerQuery('')
-    setTicketPicked([])
-    await loadTicketPicker()
-  }
-
   async function loadAssetPicker() {
     setAssetLoading(true)
     try {
@@ -331,73 +258,33 @@ export function GlpiApiPanel() {
     }
   }
 
-  function toggleTicketPick(id: number) {
-    setTicketPicked((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
-  }
-
   function toggleAssetPick(id: number) {
     setAssetPicked((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
   }
 
-  async function runSync(kind: 'import' | 'export' | 'import-assets' | 'export-assets', exportOpts?: { mode: TicketExportMode; ids: number[] }) {
+  async function runSync(kind: 'import-assets' | 'export-assets') {
     setSyncing(kind)
     try {
       const saved = await save(true)
       if (!saved) return
       const bounded = Math.min(2000, Math.max(1, Math.round(limit) || 200))
-      if (kind === 'export') {
-        const ids = exportOpts?.ids ?? ticketPicked
-        if (!ids.length) {
-          toast.error(t('settingsGlpi.exportIdsRequired'))
-          return
-        }
-      }
       if (kind === 'export-assets' && assetMode === 'selected' && assetPicked.length === 0) {
         toast.error(t('settingsGlpi.assetsIdsRequired'))
         return
       }
-      const exportMode = exportOpts?.mode ?? 'selected'
       const result =
-        kind === 'import'
-          ? await api.glpiImportTickets(bounded)
-          : kind === 'export'
-            ? await api.glpiExportTicketsStream(bounded, {
-                mode: exportMode,
-                request_ids: exportOpts?.ids ?? ticketPicked,
-                onProgress: (p) => {
-                  const label =
-                    p.action === 'created'
-                      ? t('settingsGlpi.progressCreated', { id: p.corax_id ?? '—' })
-                      : p.action === 'updated'
-                        ? t('settingsGlpi.progressUpdated', { id: p.corax_id ?? '—' })
-                        : p.action === 'failed'
-                          ? t('settingsGlpi.progressFailed', { id: p.corax_id ?? '—' })
-                          : t('settingsGlpi.progressWorking')
-                  setExportProgress({
-                    done: p.done,
-                    total: p.total,
-                    percent: p.percent,
-                    label,
-                  })
-                },
-              })
-            : kind === 'import-assets'
-              ? await api.glpiImportAssets(bounded)
-              : await api.glpiExportAssets(bounded, {
-                  mode: assetMode,
-                  computer_ids: assetMode === 'selected' ? assetPicked : undefined,
-                  skip_software: assetSkipSoftware,
-                })
+        kind === 'import-assets'
+          ? await api.glpiImportAssets(bounded)
+          : await api.glpiExportAssets(bounded, {
+              mode: assetMode,
+              computer_ids: assetMode === 'selected' ? assetPicked : undefined,
+              skip_software: assetSkipSoftware,
+            })
       reportSync(kind, result)
-      if (kind === 'export') {
-        await loadTicketPicker()
-        if (result.failed === 0) setPickerOpen(null)
-      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('settingsGlpi.syncFailed'))
     } finally {
       setSyncing(null)
-      setExportProgress(null)
     }
   }
 
@@ -419,33 +306,24 @@ export function GlpiApiPanel() {
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-muted)] text-[var(--color-primary)]">
           <IconKey className="h-5 w-5" />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.apiTitle')}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.apiDescription')}</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
+            {baseUrl.trim() || t('settingsGlpi.baseUrlHint')}
+            {connectedOk ? ` · ${t('settingsGlpi.profileConnected')}` : ''}
+          </p>
         </div>
+        <button
+          type="button"
+          className="app-btn app-btn-secondary shrink-0"
+          onClick={() => setConnectOpen((open) => !open)}
+        >
+          {connectOpen ? '▾' : '▸'} {t('settingsGlpi.connectToggle')}
+        </button>
       </div>
 
-      <ol className="grid gap-2 sm:grid-cols-3">
-        {[
-          { n: '1', title: t('settingsGlpi.stepConnect'), hint: t('settingsGlpi.stepConnectHint') },
-          { n: '2', title: t('settingsGlpi.stepProfile'), hint: t('settingsGlpi.stepProfileHint') },
-          { n: '3', title: t('settingsGlpi.stepTicket'), hint: t('settingsGlpi.stepTicketHint') },
-        ].map((step) => (
-          <li
-            key={step.n}
-            className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/50 px-3 py-2.5"
-          >
-            <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--color-fg)]">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-primary)] text-[10px] text-white">
-                {step.n}
-              </span>
-              {step.title}
-            </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-fg-muted)]">{step.hint}</p>
-          </li>
-        ))}
-      </ol>
-
+      {connectOpen ? (
+      <>
       <div className="space-y-4 rounded-xl border border-[var(--color-border)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.stepConnect')}</h3>
@@ -716,150 +594,10 @@ export function GlpiApiPanel() {
           </div>
         ) : null}
       </div>
-
-      <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsGlpi.ticketsBlockTitle')}</p>
-            <p className="mt-0.5 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.ticketsFlow')}</p>
-          </div>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">
-              {t('settingsGlpi.syncLimit')}
-            </span>
-            <input
-              type="number"
-              min={1}
-              max={2000}
-              className="app-input w-24"
-              value={limit}
-              onChange={(e) => setLimit(Number(e.target.value))}
-            />
-          </label>
-        </div>
-        <ul className="grid gap-2">
-          <li className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-[var(--color-fg)]">{t('settingsGlpi.ticketsTransfer')}</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-fg-muted)]">
-                {t('settingsGlpi.ticketsTransferHint')}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="app-btn app-btn-primary shrink-0"
-              disabled={busy || !enabled}
-              onClick={() => void openPicker('create')}
-            >
-              {t('settingsGlpi.ticketsTransfer')}
-            </button>
-          </li>
-          <li className="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-[var(--color-fg)]">{t('settingsGlpi.ticketsUpdate')}</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-fg-muted)]">
-                {t('settingsGlpi.ticketsUpdateHint')}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="app-btn app-btn-secondary shrink-0"
-              disabled={busy || !enabled}
-              onClick={() => void openPicker('update')}
-            >
-              {t('settingsGlpi.ticketsUpdate')}
-            </button>
-          </li>
-        </ul>
-        <div className="rounded-lg border border-[var(--color-border)] px-3 py-2.5">
-          <p className="text-sm font-medium text-[var(--color-fg)]">{t('settingsGlpi.checkTitle')}</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--color-fg-muted)]">{t('settingsGlpi.checkHint')}</p>
-          <div className="mt-2 flex flex-wrap items-end gap-2">
-            <label className="block min-w-[10rem] flex-1 text-sm">
-              <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">{t('settingsGlpi.checkCorax')}</span>
-              <input
-                className="app-input w-full"
-                value={checkCorax}
-                placeholder="15, 16"
-                onChange={(e) => setCheckCorax(e.target.value)}
-              />
-            </label>
-            <label className="block min-w-[10rem] flex-1 text-sm">
-              <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">{t('settingsGlpi.checkGlpi')}</span>
-              <input
-                className="app-input w-full"
-                value={checkGlpi}
-                placeholder="88, 3199"
-                onChange={(e) => setCheckGlpi(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="app-btn app-btn-secondary shrink-0"
-              disabled={busy || checking || !enabled}
-              onClick={() => void runCheck()}
-            >
-              {checking ? t('settingsGlpi.syncing') : t('settingsGlpi.checkRun')}
-            </button>
-          </div>
-          {checkItems.length ? (
-            <ul className="mt-2 space-y-1 text-xs">
-              {checkItems.map((item, index) => (
-                <li key={`${item.corax_id ?? 'g'}-${item.stored_glpi_id ?? index}`} className="rounded-md bg-[var(--color-bg-muted)] px-2 py-1.5">
-                  <span className="font-medium text-[var(--color-fg)]">
-                    {item.corax_id != null ? `CORAX#${item.corax_id}` : `GLPI#${item.stored_glpi_id ?? '—'}`}
-                    {' · '}
-                    {t(`settingsGlpi.checkSuggest.${item.suggestion}` as 'settingsGlpi.checkSuggest.found')}
-                  </span>
-                  {item.detail ? <span className="text-[var(--color-fg-muted)]"> — {item.detail}</span> : null}
-                  {item.remote_title ? (
-                    <div className="truncate text-[var(--color-fg-muted)]">
-                      {item.remote_title}
-                      {item.remote_status ? ` · ${item.remote_status}` : ''}
-                      {item.url ? (
-                        <>
-                          {' · '}
-                          <a href={item.url} target="_blank" rel="noreferrer noopener" className="text-[var(--color-primary)] underline-offset-2 hover:underline">
-                            {t('settingsGlpi.testTicketOpen')}
-                          </a>
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="app-btn app-btn-secondary"
-            disabled={busy || !enabled}
-            onClick={() => void runSync('import')}
-          >
-            {syncing === 'import' ? t('settingsGlpi.syncing') : t('settingsGlpi.importApi')}
-          </button>
-          {!enabled ? <span className="text-[11px] text-[var(--color-fg-muted)]">{t('settingsGlpi.enabledRequired')}</span> : null}
-        </div>
-      </div>
-
-      {exportProgress ? (
-        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
-          <div className="flex items-center justify-between gap-2 text-xs text-[var(--color-fg-muted)]">
-            <span>{exportProgress.label}</span>
-            <span className="tabular-nums font-semibold text-[var(--color-fg)]">
-              {exportProgress.done}/{exportProgress.total} · {exportProgress.percent}%
-            </span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
-            <div
-              className="h-full rounded-full bg-[var(--color-primary)] transition-[width] duration-200"
-              style={{ width: `${Math.min(100, Math.max(0, exportProgress.percent))}%` }}
-            />
-          </div>
-        </div>
+      </>
       ) : null}
+
+      <GlpiTicketTransfer enabled={enabled && Boolean(baseUrl.trim())} prepare={async () => Boolean(await save(true))} />
 
       {lastSyncMessage || lastSyncErrors.length ? (
         <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-fg-muted)]">
@@ -885,7 +623,20 @@ export function GlpiApiPanel() {
         </button>
         {showAdvanced ? (
           <div className="mt-4 space-y-4">
-            <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.advancedHint')}</p>
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.advancedHint')}</p>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-[var(--color-fg-subtle)]">{t('settingsGlpi.syncLimit')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={2000}
+                  className="app-input w-24"
+                  value={limit}
+                  onChange={(e) => setLimit(Number(e.target.value))}
+                />
+              </label>
+            </div>
 
             <div className="space-y-3 rounded-xl border border-[var(--color-border)] p-3">
               <div>
@@ -1018,221 +769,6 @@ export function GlpiApiPanel() {
           </div>
         ) : null}
       </div>
-
-      {pickerOpen ? (
-        <TicketPickerDialog
-          intent={pickerOpen}
-          rows={pickerRows}
-          loadedCount={ticketPickRows.length}
-          loading={ticketPickLoading}
-          picked={ticketPicked}
-          query={pickerQuery}
-          busy={busy}
-          onQuery={setPickerQuery}
-          onToggle={toggleTicketPick}
-          onSelectAll={() => setTicketPicked(pickerRows.map((row) => row.id))}
-          onClear={() => setTicketPicked([])}
-          onClose={() => setPickerOpen(null)}
-          onRun={(ids) =>
-            void runSync('export', {
-              mode: pickerOpen === 'update' ? 'selected_update' : 'selected',
-              ids,
-            })
-          }
-          onCheck={(ids) => {
-            setPickerOpen(null)
-            void runCheck(ids, [])
-          }}
-        />
-      ) : null}
     </section>
-  )
-}
-
-function TicketPickerDialog({
-  intent,
-  rows,
-  loadedCount,
-  loading,
-  picked,
-  query,
-  busy,
-  onQuery,
-  onToggle,
-  onSelectAll,
-  onClear,
-  onClose,
-  onRun,
-  onCheck,
-}: {
-  intent: PickerIntent
-  rows: ServiceRequestRow[]
-  loadedCount: number
-  loading: boolean
-  picked: number[]
-  query: string
-  busy: boolean
-  onQuery: (value: string) => void
-  onToggle: (id: number) => void
-  onSelectAll: () => void
-  onClear: () => void
-  onClose: () => void
-  onRun: (ids: number[]) => void
-  onCheck: (ids: number[]) => void
-}) {
-  const t = useT()
-  const titleId = useId()
-  const update = intent === 'update'
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onClose()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="app-modal-layer fixed inset-0 z-[200] flex items-end justify-center bg-[color-mix(in_srgb,var(--color-bg)_45%,black)] p-3 sm:items-center sm:p-6"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="flex max-h-[min(720px,90vh)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-[var(--color-border)] px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 id={titleId} className="text-base font-semibold text-[var(--color-fg)]">
-                {update ? t('settingsGlpi.pickerTitleUpdate') : t('settingsGlpi.pickerTitleCreate')}
-              </h2>
-              <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
-                {update ? t('settingsGlpi.pickerHintUpdate') : t('settingsGlpi.pickerHintCreate')}
-              </p>
-            </div>
-            <button type="button" className="app-btn app-btn-secondary !min-h-8 shrink-0" onClick={onClose}>
-              {t('settingsGlpi.pickerClose')}
-            </button>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <input
-              className="app-input min-w-[12rem] flex-1"
-              value={query}
-              onChange={(e) => onQuery(e.target.value)}
-              placeholder={t('settingsGlpi.pickerSearch')}
-              autoFocus
-            />
-            <button type="button" className="app-btn app-btn-secondary !min-h-8" onClick={onSelectAll} disabled={!rows.length}>
-              {t('settingsGlpi.pickerSelectAll')}
-            </button>
-            <button type="button" className="app-btn app-btn-secondary !min-h-8" onClick={onClear} disabled={!picked.length}>
-              {t('settingsGlpi.pickerClear')}
-            </button>
-          </div>
-        </div>
-
-        <div className="app-scroll min-h-0 flex-1 overflow-auto">
-          {loading ? (
-            <p className="px-4 py-8 text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
-          ) : rows.length === 0 ? (
-            <p className="px-4 py-8 text-sm text-[var(--color-fg-muted)]">{t('settingsGlpi.pickerEmpty')}</p>
-          ) : (
-            <ul className="divide-y divide-[var(--color-border)]">
-              {rows.map((row) => {
-                const checked = picked.includes(row.id)
-                const linked = row.glpi_id != null
-                return (
-                  <li key={row.id} className="flex items-start gap-3 px-4 py-2.5">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={checked}
-                      onChange={() => onToggle(row.id)}
-                      aria-label={`CORAX#${row.id}`}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-mono text-[12px] font-semibold text-[var(--color-fg)]">CORAX#{row.id}</span>
-                        <Pill tone={linked ? 'primary' : 'muted'}>
-                          {linked
-                            ? `${t('settingsGlpi.pickerLinked')} · #${row.glpi_id}`
-                            : t('settingsGlpi.pickerUnlinked')}
-                        </Pill>
-                      </div>
-                      <p className="mt-0.5 truncate text-sm text-[var(--color-fg)]" title={row.title}>
-                        {row.title}
-                      </p>
-                      <p className="mt-0.5 truncate text-[11px] text-[var(--color-fg-muted)]">
-                        {[
-                          row.category,
-                          row.requester_name,
-                          (row.assignee_usernames || []).join(', ') || null,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ') || t('settingsGlpi.pickerNoMeta')}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="app-btn app-btn-secondary !min-h-8 shrink-0"
-                      disabled={busy}
-                      onClick={() => onCheck([row.id])}
-                    >
-                      {t('settingsGlpi.checkOne')}
-                    </button>
-                    <button
-                      type="button"
-                      className="app-btn app-btn-secondary !min-h-8 shrink-0"
-                      disabled={busy}
-                      onClick={() => onRun([row.id])}
-                    >
-                      {t('settingsGlpi.pickerOne')}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] px-4 py-3">
-          <span className="text-[12px] text-[var(--color-fg-muted)]">
-            {t('settingsGlpi.pickerLoaded', { n: loadedCount })}
-            {query.trim() ? ` · ${t('settingsGlpi.pickerFiltered', { n: rows.length })}` : ''}
-            {` · ${t('settingsGlpi.pickerSelected', { n: picked.length })}`}
-          </span>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="app-btn app-btn-secondary"
-              disabled={busy || picked.length === 0}
-              onClick={() => onCheck(picked)}
-            >
-              {t('settingsGlpi.checkRun')}
-            </button>
-            <button
-            type="button"
-            className="app-btn app-btn-primary"
-            disabled={busy || picked.length === 0}
-            onClick={() => onRun(picked)}
-          >
-            {busy
-              ? t('settingsGlpi.syncing')
-              : update
-                ? t('settingsGlpi.pickerRunUpdate')
-                : t('settingsGlpi.pickerRunCreate')}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
   )
 }

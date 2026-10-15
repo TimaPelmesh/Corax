@@ -847,6 +847,25 @@ class GlpiTicketSyncIn(BaseModel):
         default="force_create",
         pattern="^(recent|new_only|linked_only|selected|selected_update|test_one|force_create)$",
     )
+    # None — все поля. Пустой список — только тема.
+    # content, status, priority, requester, assignee, category, opened_at.
+    fields: list[str] | None = None
+    glpi_ids: list[int] | None = Field(default=None, max_length=2000)
+
+    @field_validator("fields")
+    @classmethod
+    def _known_ticket_fields(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        allowed = {"content", "status", "priority", "requester", "assignee", "category", "opened_at"}
+        cleaned: list[str] = []
+        for item in value:
+            name = (item or "").strip()
+            if name not in allowed:
+                raise ValueError(f"Неизвестное поле переноса: {name}")
+            if name not in cleaned:
+                cleaned.append(name)
+        return cleaned
 
 
 class GlpiTicketSyncOut(BaseModel):
@@ -856,6 +875,28 @@ class GlpiTicketSyncOut(BaseModel):
     failed: int = 0
     message: str = ""
     errors: list[str] = Field(default_factory=list)
+
+
+class GlpiRemoteTicketOut(BaseModel):
+    """Заявка GLPI до записи в CORAX — чтобы выбрать, что забирать."""
+
+    glpi_id: int
+    title: str
+    content: str | None = None
+    status: str
+    priority: str
+    status_label: str | None = None
+    priority_label: str | None = None
+    requester: str | None = None
+    category: str | None = None
+    location: str | None = None
+    opened_at: datetime | None = None
+    url: str | None = None
+    corax_id: int | None = None
+
+
+class GlpiRemoteTicketsOut(BaseModel):
+    items: list[GlpiRemoteTicketOut] = Field(default_factory=list)
 
 
 class GlpiTicketCheckIn(BaseModel):

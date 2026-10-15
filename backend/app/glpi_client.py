@@ -118,6 +118,8 @@ class GlpiOutbound:
     requester_hints: tuple[str, ...] = ()
     assignee_hints: tuple[str, ...] = ()
     opened_at: datetime | None = None
+    # None — уходят все поля. Иначе только перечисленные (тема уходит всегда).
+    include: frozenset[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -1032,11 +1034,17 @@ class _Session:
         current: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         body = _outbound_body(item, for_update=for_update)
-        category_id = self._resolve_category_id(item.category)
-        if category_id is None and for_update and current:
-            category_id = _field_id(current.get("category") or current.get("itilcategories_id"))
-        requester_id = self._resolve_user_id_any(item.requester, *item.requester_hints)
-        assignee_id = self._resolve_user_id_any(item.assignee, *item.assignee_hints)
+        category_id = None
+        if _sends(item, "category"):
+            category_id = self._resolve_category_id(item.category)
+            if category_id is None and for_update and current:
+                category_id = _field_id(current.get("category") or current.get("itilcategories_id"))
+        requester_id = (
+            self._resolve_user_id_any(item.requester, *item.requester_hints) if _sends(item, "requester") else None
+        )
+        assignee_id = (
+            self._resolve_user_id_any(item.assignee, *item.assignee_hints) if _sends(item, "assignee") else None
+        )
         if self.mode == "legacy":
             if category_id is not None:
                 body["itilcategories_id"] = category_id
@@ -2965,33 +2973,42 @@ class _Session:
         return friendly or fallback
 
 
+def _sends(item: GlpiOutbound, name: str) -> bool:
+    """Поле уходит в GLPI. Тема не входит в набор: её имя отправляется всегда."""
+    return item.include is None or name in item.include
+
+
 def _outbound_body(item: GlpiOutbound, *, for_update: bool = False) -> dict[str, Any]:
     """Поля Ticket, общие для GLPI 10 (apirest) и GLPI 11 (api.php).
 
     Не шлём external_id — у стандартного Ticket такого поля нет.
     При UPDATE пустой текст CORAX не затирает content в GLPI.
+    Снятые в include поля не попадают в тело, и GLPI их не затирает.
     """
-    priority = glpi_priority_id(item.priority)
-    content = (item.content or "").rstrip()
-    if item.corax_id > 0:
-        marker = f"[CORAX #{item.corax_id}]"
-        if content and marker not in content:
-            content = f"{content}\n\n{marker}".strip()
-        elif not content and not for_update:
-            content = marker
     body: dict[str, Any] = {
         "name": (item.title or f"CORAX #{item.corax_id}")[:255],
-        "status": glpi_status_id(item.status),
-        "priority": priority,
-        "urgency": priority,
-        "impact": 3,
         "type": 1,
     }
-    if content:
-        body["content"] = content
-    elif not for_update:
-        body["content"] = ""
-    opened = _glpi_clock(item.opened_at)
+    if _sends(item, "status"):
+        body["status"] = glpi_status_id(item.status)
+    if _sends(item, "priority"):
+        priority = glpi_priority_id(item.priority)
+        body["priority"] = priority
+        body["urgency"] = priority
+        body["impact"] = 3
+    if _sends(item, "content"):
+        content = (item.content or "").rstrip()
+        if item.corax_id > 0:
+            marker = f"[CORAX #{item.corax_id}]"
+            if content and marker not in content:
+                content = f"{content}\n\n{marker}".strip()
+            elif not content and not for_update:
+                content = marker
+        if content:
+            body["content"] = content
+        elif not for_update:
+            body["content"] = ""
+    opened = _glpi_clock(item.opened_at) if _sends(item, "opened_at") else None
     # date — «Дата открытия» в карточке GLPI. Без неё GLPI ставит сегодня.
     if opened and not for_update:
         body["date"] = opened
