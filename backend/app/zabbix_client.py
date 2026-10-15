@@ -330,8 +330,15 @@ def probe_zabbix(
 
 
 def ui_base_url(base_url: str) -> str:
-    """Public UI root (without /api_jsonrpc.php)."""
+    """Public UI root the browser can open. Always absolute http(s), without /api_jsonrpc.php."""
     raw = (base_url or "").strip().rstrip("/")
+    if not raw:
+        return ""
+    if not (raw.startswith("http://") or raw.startswith("https://")):
+        if re.match(r"^[a-zA-Z0-9.-]+(:\d+)?(/.*)?$", raw):
+            raw = f"http://{raw}"
+        else:
+            return ""
     if raw.endswith("/api_jsonrpc.php"):
         raw = raw[: -len("/api_jsonrpc.php")].rstrip("/")
     return raw

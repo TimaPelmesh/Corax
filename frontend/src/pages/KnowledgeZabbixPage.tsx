@@ -66,6 +66,13 @@ export function KnowledgeZabbixPage() {
 
   const enabled = Boolean(overview?.enabled)
   const available = Boolean(overview?.available)
+  const zabbixHref = useMemo(() => {
+    const raw = (overview?.ui_url || '').trim()
+    if (!raw) return ''
+    if (/^https?:\/\//i.test(raw)) return raw
+    if (/^[a-zA-Z0-9.-]+(:\d+)?(\/.*)?$/.test(raw)) return `http://${raw}`
+    return ''
+  }, [overview?.ui_url])
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
@@ -111,9 +118,9 @@ export function KnowledgeZabbixPage() {
               {t('zabbixUi.settings')}
             </Link>
           ) : null}
-          {overview?.ui_url ? (
+          {zabbixHref ? (
             <a
-              href={overview.ui_url}
+              href={zabbixHref}
               target="_blank"
               rel="noreferrer"
               className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white no-underline"

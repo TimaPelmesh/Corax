@@ -1,5 +1,14 @@
 from starlette.testclient import TestClient
 
+from app.zabbix_client import ui_base_url
+
+
+def test_ui_base_url_is_absolute():
+    assert ui_base_url("192.168.1.10/zabbix") == "http://192.168.1.10/zabbix"
+    assert ui_base_url("http://192.168.1.10/zabbix/api_jsonrpc.php") == "http://192.168.1.10/zabbix"
+    assert ui_base_url("https://zabbix.company.local") == "https://zabbix.company.local"
+    assert ui_base_url("") == ""
+
 
 def test_zabbix_read_endpoints_shape(client: TestClient, auth_headers: dict[str, str]):
     overview = client.get("/api/v1/zabbix/overview", headers=auth_headers)
