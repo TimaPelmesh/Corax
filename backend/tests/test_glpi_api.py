@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import secrets
 from dataclasses import replace
+from datetime import datetime, timezone
 from urllib.parse import parse_qs
 
 import httpx
@@ -718,6 +719,7 @@ def test_v2_create_ticket_sets_category_and_team_members():
                 requester="Иван Иванов",
                 assignee="Пётр Петров",
                 category="Сеть",
+                opened_at=datetime(2024, 5, 3, 11, 30, tzinfo=timezone.utc),
             )
         ],
         transport=httpx.MockTransport(handler),
@@ -727,6 +729,9 @@ def test_v2_create_ticket_sets_category_and_team_members():
     ticket = next(body for kind, body in posts if kind == "ticket")
     assert ticket["status"] == 6
     assert ticket["category"] == {"id": 9}
+    assert ticket["date"] == "2024-05-03 11:30:00"
+    assert {"id": 3, "type": "User", "role": "requester"} in ticket["team"]
+    assert {"id": 4, "type": "User", "role": "assigned"} in ticket["team"]
     assert "_users_id_requester" not in ticket
     team = [body for kind, body in posts if kind == "team"]
     assert {"type": "User", "id": 3, "role": "requester"} in team

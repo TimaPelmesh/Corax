@@ -261,6 +261,7 @@ async def export_glpi_tickets(
             force_create=force_create,
             requester_hints=tuple(people[row.id].get("requester_hints") or ()),
             assignee_hints=tuple(people[row.id].get("assignee_hints") or ()),
+            opened_at=row.opened_at or row.created_at,
         )
         for row in rows
     ]

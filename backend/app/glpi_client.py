@@ -117,6 +117,7 @@ class GlpiOutbound:
     force_create: bool = False
     requester_hints: tuple[str, ...] = ()
     assignee_hints: tuple[str, ...] = ()
+    opened_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -1049,11 +1050,16 @@ class _Session:
             body["category"] = {"id": category_id}
         elif (item.category or "").strip() and not for_update:
             body["category"] = {"name": (item.category or "").strip()[:255]}
-        if for_update:
-            if requester_id is not None:
-                body["requester"] = [{"id": requester_id, "type": "User"}]
-            if assignee_id is not None:
-                body["assigned"] = [{"id": assignee_id, "type": "User"}]
+        team: list[dict[str, Any]] = []
+        if requester_id is not None:
+            body["requester"] = [{"id": requester_id, "type": "User"}]
+            team.append({"id": requester_id, "type": "User", "role": "requester"})
+        if assignee_id is not None:
+            body["assigned"] = [{"id": assignee_id, "type": "User"}]
+            team.append({"id": assignee_id, "type": "User", "role": "assigned"})
+        # На CREATE GLPI 11 берёт команду из team. Отдельный TeamMember после часто не сохраняется.
+        if team and not for_update:
+            body["team"] = team
         return body
 
     def _ticket_get_urls(self, ticket_id: int) -> list[tuple[str, dict[str, str]]]:
@@ -1460,19 +1466,23 @@ class _Session:
                     member_id = nested
             if member_id == user_id:
                 return True
-        url = f"{self.base}/api.php/Assistance/Ticket/{ticket_id}/TeamMember"
+        urls = (
+            f"{self.base}/api.php/Assistance/Ticket/{ticket_id}/TeamMember",
+            f"{self.base}/api.php/v2/Assistance/Ticket/{ticket_id}/TeamMember",
+        )
         # Сначала текстовая роль (GLPI ≥ PR #21633), иначе числовая.
-        for role in (role_text, actor_type):
-            try:
-                self._request(
-                    "POST",
-                    url,
-                    headers=self._v2_headers(),
-                    json={"type": "User", "id": user_id, "role": role},
-                )
-                return True
-            except GlpiClientError:
-                continue
+        for url in urls:
+            for role in (role_text, actor_type):
+                try:
+                    self._request(
+                        "POST",
+                        url,
+                        headers=self._v2_headers(),
+                        json={"type": "User", "id": user_id, "role": role},
+                    )
+                    return True
+                except GlpiClientError:
+                    continue
         return False
 
     def find_ticket_id_by_title(self, title: str) -> int | None:
@@ -2981,7 +2991,20 @@ def _outbound_body(item: GlpiOutbound, *, for_update: bool = False) -> dict[str,
         body["content"] = content
     elif not for_update:
         body["content"] = ""
+    opened = _glpi_clock(item.opened_at)
+    # date — «Дата открытия» в карточке GLPI. Без неё GLPI ставит сегодня.
+    if opened and not for_update:
+        body["date"] = opened
     return body
+
+
+def _glpi_clock(value: datetime | None) -> str | None:
+    """GLPI ждёт YYYY-MM-DD HH:MM:SS без пояса. Берём время заявки, не «сейчас»."""
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _comment_with_ip(comment: str | None, ip_address: str | None) -> str | None:
