@@ -748,6 +748,59 @@ class AgentPairing(Base):
     )
 
 
+class ServerAuditHost(Base):
+    """Linux host enrolled for live server audit (temperature, load, charts)."""
+
+    __tablename__ = "server_audit_hosts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    hostname: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    interval_minutes: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
+    collect_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    computer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("computers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    os_summary: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    latest_cpu_temp_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latest_cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latest_mem_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latest_disk_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latest_load_1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    last_sample_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    samples: Mapped[list["ServerAuditSample"]] = relationship(
+        "ServerAuditSample", back_populates="host", cascade="all, delete-orphan"
+    )
+
+
+class ServerAuditSample(Base):
+    """One telemetry point from the Linux agent."""
+
+    __tablename__ = "server_audit_samples"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    host_id: Mapped[int] = mapped_column(
+        ForeignKey("server_audit_hosts.id", ondelete="CASCADE"), index=True
+    )
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    cpu_temp_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cpu_used_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    load_1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mem_used_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    swap_used_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    disk_used_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    net_rx_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    net_tx_bps: Mapped[float | None] = mapped_column(Float, nullable=True)
+    uptime_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    host: Mapped["ServerAuditHost"] = relationship("ServerAuditHost", back_populates="samples")
+
+
 class RiskFindingAck(Base):
     """Operator acknowledgement or ignore for a deterministic finding id."""
 

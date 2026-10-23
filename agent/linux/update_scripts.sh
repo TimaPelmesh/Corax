@@ -32,5 +32,5 @@ for f in "$SRC"/*; do
     cp -f "$f" "$LIVE/$base"
   fi
 done
-chmod +x "$LIVE/run_console.sh" "$LIVE/corax_send.sh" "$LIVE/inventory_agent.sh" "$LIVE/install_cron.sh" "$LIVE/update_scripts.sh" 2>/dev/null || true
+chmod +x "$LIVE/run_console.sh" "$LIVE/corax_send.sh" "$LIVE/inventory_agent.sh" "$LIVE/audit_agent.sh" "$LIVE/install_cron.sh" "$LIVE/update_scripts.sh" 2>/dev/null || true
 echo "Done. agent_env.sh was not replaced."

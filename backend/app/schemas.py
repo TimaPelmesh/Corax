@@ -635,6 +635,7 @@ class AgentBundleModules(BaseModel):
     office: bool = True
     usb_history: bool = True
     docker_wsl: bool = True
+    server_audit: bool = True
 
 
 class AgentCollectPolicyOut(BaseModel):
@@ -1473,3 +1474,171 @@ class ServiceRequestAiInsight(BaseModel):
     model: str | None = None
     text: str
     cached: bool = False
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
+
+
+class ServerAuditHostCreate(BaseModel):
+    hostname: str = Field(min_length=1, max_length=255)
+    label: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+    interval_minutes: int = 15
+    enabled: bool = True
+
+
+class ServerAuditHostUpdate(BaseModel):
+    hostname: str | None = Field(default=None, max_length=255)
+    label: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+    interval_minutes: int | None = None
+    enabled: bool | None = None
+
+
+class ServerAuditPoint(BaseModel):
+    collected_at: datetime
+    cpu_temp_c: float | None = None
+    cpu_used_percent: float | None = None
+    load_1: float | None = None
+    mem_used_percent: float | None = None
+    swap_used_percent: float | None = None
+    disk_used_percent: float | None = None
+    net_rx_bps: float | None = None
+    net_tx_bps: float | None = None
+    uptime_sec: int | None = None
+
+    @field_serializer("collected_at")
+    def _ser_at(self, value: datetime):
+        return _utc_iso(value)
+
+
+class ServerAuditHostOut(BaseModel):
+    id: int
+    hostname: str
+    label: str | None = None
+    notes: str | None = None
+    enabled: bool
+    interval_minutes: int
+    collect_requested: bool
+    computer_id: int | None = None
+    ip_address: str | None = None
+    os_summary: str | None = None
+    latest_cpu_temp_c: float | None = None
+    latest_cpu_percent: float | None = None
+    latest_mem_percent: float | None = None
+    latest_disk_percent: float | None = None
+    latest_load_1: float | None = None
+    last_sample_at: datetime | None = None
+    created_at: datetime | None = None
+
+    @field_serializer("last_sample_at", "created_at")
+    def _ser_host_dt(self, value: datetime | None):
+        return _utc_iso(value)
+
+
+class ServerAuditDetail(ServerAuditHostOut):
+    payload: dict[str, Any] = Field(default_factory=dict)
+    points: list[ServerAuditPoint] = Field(default_factory=list)
+
+
+class AgentAuditReport(BaseModel):
+    hostname: str = Field(min_length=1, max_length=255)
+    collected_at: str | None = None
+    agent_version: str | None = None
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"extra": "allow"}
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_nul_bytes(cls, data: Any) -> Any:
+        return deep_strip_nul(data)
+
+
+def _iso_z(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
+
+
+class ServerAuditHostCreate(BaseModel):
+    hostname: str = Field(min_length=1, max_length=255)
+    label: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+    interval_minutes: int = 15
+    enabled: bool = True
+
+
+class ServerAuditHostUpdate(BaseModel):
+    hostname: str | None = Field(default=None, max_length=255)
+    label: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+    interval_minutes: int | None = None
+    enabled: bool | None = None
+
+
+class ServerAuditPoint(BaseModel):
+    collected_at: datetime
+    cpu_temp_c: float | None = None
+    cpu_used_percent: float | None = None
+    load_1: float | None = None
+    mem_used_percent: float | None = None
+    swap_used_percent: float | None = None
+    disk_used_percent: float | None = None
+    net_rx_bps: float | None = None
+    net_tx_bps: float | None = None
+    uptime_sec: int | None = None
+
+    @field_serializer("collected_at")
+    def _ser_point(self, value: datetime | None):
+        return _iso_z(value)
+
+
+class ServerAuditHostOut(BaseModel):
+    id: int
+    hostname: str
+    label: str | None = None
+    notes: str | None = None
+    enabled: bool
+    interval_minutes: int
+    collect_requested: bool
+    computer_id: int | None = None
+    ip_address: str | None = None
+    os_summary: str | None = None
+    latest_cpu_temp_c: float | None = None
+    latest_cpu_percent: float | None = None
+    latest_mem_percent: float | None = None
+    latest_disk_percent: float | None = None
+    latest_load_1: float | None = None
+    last_sample_at: datetime | None = None
+    created_at: datetime | None = None
+
+    @field_serializer("last_sample_at", "created_at")
+    def _ser_host(self, value: datetime | None):
+        return _iso_z(value)
+
+
+class ServerAuditDetail(ServerAuditHostOut):
+    payload: dict[str, Any] = Field(default_factory=dict)
+    points: list[ServerAuditPoint] = Field(default_factory=list)
+
+
+class AgentAuditReport(BaseModel):
+    hostname: str = Field(min_length=1, max_length=255)
+    collected_at: str | None = None
+    agent_version: str | None = None
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = {"extra": "allow"}
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_nul_bytes(cls, data: Any) -> Any:
+        return deep_strip_nul(data)

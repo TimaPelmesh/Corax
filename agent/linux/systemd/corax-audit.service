@@ -1,0 +1,10 @@
+[Unit]
+Description=CORAX Linux server audit sample
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/corax-agent
+ExecStart=/bin/sh /opt/corax-agent/audit_agent.sh
+Nice=15

@@ -10,6 +10,7 @@ const APP_PATHS = new Set([
   '/risks',
   '/software',
   '/computers',
+  '/server-audit',
   '/printers',
   '/network',
   '/network-map',

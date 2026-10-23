@@ -1350,6 +1350,44 @@ export type SearchResponse = {
   items: SearchResult[]
 }
 
+export type ServerAuditHost = {
+  id: number
+  hostname: string
+  label: string | null
+  notes: string | null
+  enabled: boolean
+  interval_minutes: number
+  collect_requested: boolean
+  computer_id: number | null
+  ip_address: string | null
+  os_summary: string | null
+  latest_cpu_temp_c: number | null
+  latest_cpu_percent: number | null
+  latest_mem_percent: number | null
+  latest_disk_percent: number | null
+  latest_load_1: number | null
+  last_sample_at: string | null
+  created_at: string | null
+}
+
+export type ServerAuditPoint = {
+  collected_at: string
+  cpu_temp_c: number | null
+  cpu_used_percent: number | null
+  load_1: number | null
+  mem_used_percent: number | null
+  swap_used_percent: number | null
+  disk_used_percent: number | null
+  net_rx_bps: number | null
+  net_tx_bps: number | null
+  uptime_sec: number | null
+}
+
+export type ServerAuditDetail = ServerAuditHost & {
+  payload: Record<string, unknown>
+  points: ServerAuditPoint[]
+}
+
 export const api = {
   health: () => request<{ status: string; api: string }>(`${API_PREFIX}/health`),
 
@@ -3161,6 +3199,25 @@ export const api = {
   }) => request<NetworkLinkDto>(`${API_PREFIX}/network/links`, { method: 'POST', json: body }),
 
   deleteNetworkLink: (id: number) => request<void>(`${API_PREFIX}/network/links/${id}`, { method: 'DELETE' }),
+
+  serverAuditHosts: () => request<ServerAuditHost[]>(`${API_PREFIX}/server-audit/hosts`),
+
+  serverAuditHost: (id: number, hours = 24) =>
+    request<ServerAuditDetail>(`${API_PREFIX}/server-audit/hosts/${id}?hours=${hours}`),
+
+  createServerAuditHost: (body: { hostname: string; label?: string | null; interval_minutes: number; notes?: string | null }) =>
+    request<ServerAuditHost>(`${API_PREFIX}/server-audit/hosts`, { method: 'POST', json: body }),
+
+  updateServerAuditHost: (
+    id: number,
+    body: { hostname?: string; label?: string | null; notes?: string | null; interval_minutes?: number; enabled?: boolean },
+  ) => request<ServerAuditHost>(`${API_PREFIX}/server-audit/hosts/${id}`, { method: 'PATCH', json: body }),
+
+  deleteServerAuditHost: (id: number) =>
+    request<{ ok: boolean }>(`${API_PREFIX}/server-audit/hosts/${id}`, { method: 'DELETE' }),
+
+  collectServerAuditHost: (id: number) =>
+    request<ServerAuditHost>(`${API_PREFIX}/server-audit/hosts/${id}/collect`, { method: 'POST' }),
 }
 
 export type WikiRagIndexSettings = {

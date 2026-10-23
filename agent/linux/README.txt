@@ -1,4 +1,4 @@
-CORAX Linux Agent (bash) 3.1.2
+CORAX Linux Agent (bash) 3.2.0
 ==============================
 
 Полная инструкция:
@@ -54,7 +54,9 @@ CORAX Linux Agent (bash) 3.1.2
 -----
   run_console.sh      — основной консольный запуск (рекомендуется)
   corax_send.sh       — то же самое (алиас)
-  inventory_agent.sh  — ядро сбора
+  inventory_agent.sh  — ядро сбора (учёт в «Компьютеры» + снимок аудита)
+  audit_agent.sh      — короткий опрос панели: шлёт температуру и метрики,
+                        только если хост добавлен во вкладке «Аудит серверов»
   agent_env.sh        — URL + токен (генерируется панелью в ZIP; НЕ коммитить)
   agent_env.sh.example — шаблон без секретов (в git)
   agent_config.json   — модули
@@ -65,7 +67,21 @@ CORAX Linux Agent (bash) 3.1.2
 Расписание
 ----------
   sudo ./install_cron.sh
-или systemd timer из systemd/
+    инвентарь — понедельник 09:15
+    аудит — каждую минуту спрашивает панель и шлёт точку, если её попросили
+или systemd:
+  sudo cp systemd/corax-agent.service systemd/corax-agent.timer /etc/systemd/system/
+  sudo cp systemd/corax-audit.service systemd/corax-audit.timer /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now corax-agent.timer corax-audit.timer
+
+Аудит серверов
+--------------
+В панели: вкладка «Аудит серверов» → добавить hostname -s этой машины.
+Интервал (5–1440 мин) или только «Собрать сейчас».
+Графики строятся из точек, которые присылает audit_agent.sh.
+Нужен python3 (на Debian: apt install python3). Без него полный отчёт и аудит не собираются.
+Полный учёт (ОС, диски, ПО) по-прежнему уходит в «Компьютеры».
 
 Секреты
 -------

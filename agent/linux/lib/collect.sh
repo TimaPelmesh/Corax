@@ -497,6 +497,10 @@ run_collect_all() {
   if module_on battery; then
     collect_battery
   fi
+  if module_on server_audit; then
+    log "collect: server audit snapshot..."
+    collect_audit_snapshot
+  fi
 
   write_kv agent_version "$CORAX_AGENT_VERSION"
   write_kv collected_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date)"

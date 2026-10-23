@@ -48,6 +48,7 @@ from app.routers import (
     request_categories,
     risks,
     search,
+    server_audit,
     self_service,
     service_requests,
     tags,
@@ -403,6 +404,8 @@ class CsrfAndOriginMiddleware:
         if request.method.upper() == "POST" and request.url.path in (
             "/api/v1/agent/inventory",
             "/api/agent/inventory",
+            "/api/v1/agent/audit",
+            "/api/agent/audit",
         ):
             cl = request.headers.get("content-length")
             if cl and cl.isdigit() and int(cl) > int(settings.max_agent_payload_bytes):
@@ -470,6 +473,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(request_categories.router, prefix=base)
     app.include_router(risks.router, prefix=base)
     app.include_router(search.router, prefix=base)
+    app.include_router(server_audit.router, prefix=base)
     app.include_router(self_service.router, prefix=base)
     app.include_router(agent.router, prefix=base)
     app.include_router(assist.router, prefix=base)

@@ -22,6 +22,7 @@ describe('buildNavSections', () => {
       '/',
       '/risks',
       '/computers',
+      '/server-audit',
       '/software',
       '/printers',
       '/network',

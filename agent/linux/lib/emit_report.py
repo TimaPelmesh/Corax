@@ -263,6 +263,15 @@ def build(wd: Path) -> dict:
         except OSError:
             pass
 
+    audit_path = wd / "audit.json"
+    if audit_path.is_file():
+        try:
+            audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            audit = None
+        if isinstance(audit, dict):
+            extended["server_audit"] = audit
+
     payload = {
         "hostname": hostname,
         "serial_number": meta(wd, "serial_number"),

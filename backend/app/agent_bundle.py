@@ -40,6 +40,7 @@ _PROFILE_MODULES: dict[str, dict[str, bool]] = {
         "office": False,
         "usb_history": False,
         "docker_wsl": False,
+        "server_audit": True,
     },
     "standard": {
         "patches": True,
@@ -56,6 +57,7 @@ _PROFILE_MODULES: dict[str, dict[str, bool]] = {
         "office": True,
         "usb_history": False,
         "docker_wsl": True,
+        "server_audit": True,
     },
     "full": {
         "patches": True,
@@ -72,6 +74,7 @@ _PROFILE_MODULES: dict[str, dict[str, bool]] = {
         "office": True,
         "usb_history": True,
         "docker_wsl": True,
+        "server_audit": True,
     },
 }
 
@@ -161,7 +164,7 @@ def _write_agent_env_sh(server_url: str, agent_token: str) -> str:
 def _build_linux_zip(body: AgentBundleCreate, server: str, token: str) -> tuple[bytes, str]:
     profile_key = "custom" if body.profile == "custom" else "full"
     config = _build_agent_config(body)
-    config["agent_version"] = "3.1.1-linux"
+    config["agent_version"] = "3.2.0-linux"
     # Windows-only modules stay off by default on Linux profiles unless custom
     if body.profile != "custom":
         mods = config.get("modules") or {}

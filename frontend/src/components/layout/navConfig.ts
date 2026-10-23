@@ -40,6 +40,7 @@ export function prefsNavItems(user: { is_superuser?: boolean; role?: string } | 
     { path: '/', labelKey: 'nav.dashboard' },
     { path: '/risks', labelKey: 'nav.risks' },
     { path: '/computers', labelKey: 'nav.computers' },
+    { path: '/server-audit', labelKey: 'nav.serverAudit' },
     { path: '/software', labelKey: 'nav.software' },
     { path: '/printers', labelKey: 'nav.printers' },
     { path: '/network', labelKey: 'nav.network' },
@@ -100,6 +101,12 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           labelKey: 'nav.computers',
           keywords: ['парк', 'пк', 'машины', 'pc', 'fleet'],
           badgeKey: 'computers',
+        },
+        {
+          to: '/server-audit',
+          icon: IconServer,
+          labelKey: 'nav.serverAudit',
+          keywords: ['аудит', 'сервер', 'температура', 'linux', 'debian', 'cpu', 'audit'],
         },
         {
           to: '/software',

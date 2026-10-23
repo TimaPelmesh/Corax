@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,12 +19,14 @@ from app.models import AgentToken, Computer, DiskVolume, InstalledSoftware, Peri
 from app.gpu_normalize import resolve_gpu_name
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
 from app.peripheral_display import is_noise_peripheral
-from app.schemas import AgentInventoryReport
+from app.schemas import AgentAuditReport, AgentInventoryReport
+from app.server_audit_store import audit_directive, record_audit_sample
 from app.agent_policy import ack_hostname, build_directive, hostnames_match
 from app.agent_release import release_file, release_meta
 from app.search_index import sync_computer
 
 router = APIRouter(prefix="/agent", tags=["agent"])
+log = logging.getLogger("corax.agent")
 
 _AGENT_TOKEN_PREFIX = "hmac256:"
 
@@ -376,6 +379,14 @@ async def submit_inventory(
                 )
             )
 
+    audit_blob = ext.get("server_audit") if isinstance(ext, dict) else None
+    if isinstance(audit_blob, dict):
+        try:
+            async with db.begin_nested():
+                await record_audit_sample(db, hn, audit_blob)
+        except Exception:
+            log.exception("server audit sample skipped for %s", hn)
+
     await db.flush()
     await sync_computer(db, pc)
     await ack_hostname(db, hn)
@@ -432,3 +443,35 @@ async def download_agent_release(
     if path is None:
         raise HTTPException(status_code=404, detail="Шаблон агента ещё не собран")
     return FileResponse(path, media_type="application/octet-stream", filename="CORAX-Agent.exe")
+
+
+@router.get("/audit-directive")
+@limiter.limit(settings.rate_limit_agent)
+async def agent_audit_directive(
+    request: Request,
+    hostname: str = Query(default="", max_length=255),
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """Linux sampler: collect only when this host is enrolled and due."""
+    _ = request
+    hn = (hostname or "").strip()
+    await verify_agent_token(db, authorization, hn or "directive")
+    return await audit_directive(db, hn)
+
+
+@router.post("/audit")
+@limiter.limit(settings.rate_limit_agent)
+async def submit_audit(
+    request: Request,
+    report: AgentAuditReport,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """One telemetry point for an enrolled Linux host. Unknown hosts are ignored."""
+    _ = request
+    hn = report.hostname.strip()
+    await verify_agent_token(db, authorization, hn)
+    result = await record_audit_sample(db, hn, report.model_dump())
+    await db.commit()
+    return result

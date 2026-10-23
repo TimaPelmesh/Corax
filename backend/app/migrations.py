@@ -1685,6 +1685,75 @@ def _migrate_agent_collect_policy(sync_conn) -> None:
         )
 
 
+def _migrate_server_audit(sync_conn) -> None:
+    """Linux server-audit hosts and time-series samples."""
+    tables = _table_names(sync_conn)
+    if "server_audit_hosts" not in tables:
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE server_audit_hosts (
+                  id INTEGER PRIMARY KEY,
+                  hostname VARCHAR(255) NOT NULL,
+                  label VARCHAR(255),
+                  notes TEXT,
+                  enabled BOOLEAN DEFAULT TRUE,
+                  interval_minutes INTEGER DEFAULT 15,
+                  collect_requested BOOLEAN DEFAULT FALSE,
+                  computer_id INTEGER,
+                  os_summary VARCHAR(255),
+                  latest_cpu_temp_c FLOAT,
+                  latest_cpu_percent FLOAT,
+                  latest_mem_percent FLOAT,
+                  latest_disk_percent FLOAT,
+                  latest_load_1 FLOAT,
+                  last_sample_at TIMESTAMP,
+                  created_at TIMESTAMP
+                )
+                """
+            )
+        )
+    if "server_audit_samples" not in tables:
+        sync_conn.execute(
+            text(
+                """
+                CREATE TABLE server_audit_samples (
+                  id INTEGER PRIMARY KEY,
+                  host_id INTEGER NOT NULL,
+                  collected_at TIMESTAMP NOT NULL,
+                  cpu_temp_c FLOAT,
+                  cpu_used_percent FLOAT,
+                  load_1 FLOAT,
+                  mem_used_percent FLOAT,
+                  swap_used_percent FLOAT,
+                  disk_used_percent FLOAT,
+                  net_rx_bps FLOAT,
+                  net_tx_bps FLOAT,
+                  uptime_sec INTEGER,
+                  payload_json TEXT
+                )
+                """
+            )
+        )
+    sync_conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_server_audit_hosts_hostname_lower "
+            "ON server_audit_hosts (lower(hostname))"
+        )
+    )
+    sync_conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_server_audit_hosts_hostname ON server_audit_hosts (hostname)"
+        )
+    )
+    sync_conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_server_audit_samples_host_time "
+            "ON server_audit_samples (host_id, collected_at)"
+        )
+    )
+
+
 def _migrate_glpi_device_ids(sync_conn) -> None:
     if "monitors" in _table_names(sync_conn):
         cols = _column_names(sync_conn, "monitors")
@@ -1792,6 +1861,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-09-30_glpi_computer_network_ids", _migrate_glpi_computer_network_ids),
     ("2026-10-02_users_phone", _migrate_users_phone),
     ("2026-10-08_ticket_handler_employee_tabs", _migrate_ticket_handler_employee_tabs),
+    ("2026-10-23_server_audit", _migrate_server_audit),
 ]
 
 

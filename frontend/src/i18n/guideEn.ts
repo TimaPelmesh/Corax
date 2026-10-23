@@ -186,7 +186,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Schedule',
-          body: 'sudo ./install_cron.sh from /opt/corax-agent.\nOr the systemd timer under systemd/ in the ZIP.',
+          body: 'sudo ./install_cron.sh from /opt/corax-agent.\nInventory runs Monday 09:15. Audit polls every minute and sends a sample only when the host is added on the Server audit tab.\nOr systemd: corax-agent.timer and corax-audit.timer from systemd/ in the ZIP.',
         },
         {
           title: 'Update without wiping the token',
@@ -204,6 +204,7 @@ export const GUIDE_EN: GuideCopy = {
       links: [
         { to: '/settings/agent-bundle', label: 'Agent build' },
         { to: '/computers', label: 'Computers' },
+        { to: '/server-audit', label: 'Server audit' },
       ],
     },
     {

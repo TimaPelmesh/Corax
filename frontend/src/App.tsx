@@ -20,6 +20,9 @@ const RiskCenterPage = lazyPage(() =>
 const ComputersPage = lazyPage(() =>
   import('./pages/ComputersPage').then((module) => ({ default: module.ComputersPage })),
 )
+const ServerAuditPage = lazyPage(() =>
+  import('./pages/ServerAuditPage').then((module) => ({ default: module.ServerAuditPage })),
+)
 const SoftwarePage = lazyPage(() =>
   import('./pages/SoftwarePage').then((module) => ({ default: module.SoftwarePage })),
 )
@@ -178,6 +181,7 @@ export default function App() {
         <Route path="risks" element={<RiskCenterPage />} />
         <Route path="software" element={<SoftwarePage />} />
         <Route path="computers" element={<ComputersPage />} />
+        <Route path="server-audit" element={<ServerAuditPage />} />
         <Route path="printers" element={<PrintersPage />} />
         <Route path="network" element={<NetworkPage />} />
         <Route path="network-map" element={<NetworkMapPage />} />

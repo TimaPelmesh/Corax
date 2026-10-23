@@ -23,6 +23,8 @@ fi
 # shellcheck disable=SC1091
 . "$LIB/collect.sh"
 # shellcheck disable=SC1091
+. "$LIB/collect_audit.sh"
+# shellcheck disable=SC1091
 . "$LIB/post.sh"
 # shellcheck disable=SC1091
 . "$LIB/emit_min.sh"
@@ -32,7 +34,7 @@ load_config_modules() {
   CORAX_PROFILE="${CORAX_PROFILE:-full}"
   for m in patches network domain_sessions bitlocker tpm_secureboot antivirus \
            startup services storage_health battery windows_features office \
-           usb_history docker_wsl; do
+           usb_history docker_wsl server_audit; do
     eval "CORAX_MOD_${m}=1"
   done
   if [ -f "$cfg" ] && have_cmd python3; then

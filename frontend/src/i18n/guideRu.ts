@@ -186,7 +186,7 @@ export const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'Расписание',
-          body: 'sudo ./install_cron.sh из /opt/corax-agent.\nЛибо systemd timer из каталога systemd/ внутри ZIP.',
+          body: 'sudo ./install_cron.sh из /opt/corax-agent.\nИнвентарь — понедельник 09:15. Аудит — каждую минуту спрашивает панель и шлёт точку, только если хост добавлен во вкладке «Аудит серверов».\nЛибо systemd: corax-agent.timer и corax-audit.timer из каталога systemd/ внутри ZIP.',
         },
         {
           title: 'Обновление без потери токена',
@@ -204,6 +204,7 @@ export const GUIDE_RU: GuideCopy = {
       links: [
         { to: '/settings/agent-bundle', label: 'Сборка агента' },
         { to: '/computers', label: 'Компьютеры' },
+        { to: '/server-audit', label: 'Аудит серверов' },
       ],
     },
     {
