@@ -238,6 +238,16 @@ async def host_detail(
             )
         ).scalars().all()
     )
+    latest = (
+        await db.execute(
+            select(ServerAuditSample)
+            .where(ServerAuditSample.host_id == host.id)
+            .order_by(ServerAuditSample.collected_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    # One stored sample must draw even when it sits outside 6h/24h/7d.
+    chart_rows = rows or ([latest] if latest is not None else [])
     points = [
         ServerAuditPoint(
             collected_at=row.collected_at,
@@ -251,16 +261,8 @@ async def host_detail(
             net_tx_bps=row.net_tx_bps,
             uptime_sec=row.uptime_sec,
         )
-        for row in _downsample(rows)
+        for row in _downsample(chart_rows)
     ]
-    latest = (
-        await db.execute(
-            select(ServerAuditSample)
-            .where(ServerAuditSample.host_id == host.id)
-            .order_by(ServerAuditSample.collected_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
     in_range = rows[-1] if rows else None
     source = in_range or latest
     payload: dict = {}

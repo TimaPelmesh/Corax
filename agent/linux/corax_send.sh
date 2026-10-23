@@ -59,23 +59,38 @@ if [ "$cron" -eq 1 ]; then
   exec /bin/sh "$ROOT/audit_agent.sh"
 fi
 
+set +e
 /bin/sh "$ROOT/audit_agent.sh" --now
+sent=$?
+set -e
 
 if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
-  echo "Report sent. Run once as root so the minute job stays installed:"
+  if [ "$sent" -eq 0 ]; then
+    echo "Report sent. Run once as root so the minute job stays installed:"
+  else
+    echo "Report was not stored. Run as root so the minute job keeps trying:"
+  fi
   echo "  sudo $ROOT/corax_send.sh"
-  exit 0
+  exit "$sent"
 fi
+
+minute_present() {
+  [ -f "$1" ] || return 1
+  if grep -E '^[^#]*\* \* \* \* \*.*(audit_agent\.sh|corax_send\.sh)' "$1" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
+}
 
 if [ ! -d /etc/cron.d ]; then
   echo "No /etc/cron.d. Add this to root crontab:"
   echo "* * * * * /bin/sh $ROOT/corax_send.sh --cron >> /var/log/corax-audit.log 2>&1"
-  exit 0
+  exit "$sent"
 fi
 
-if [ -f /etc/cron.d/corax-agent ] && grep -E 'audit_agent.sh|corax_send.sh' /etc/cron.d/corax-agent >/dev/null 2>&1; then
-  echo "Minute job already in /etc/cron.d/corax-agent"
-  exit 0
+if minute_present /etc/cron.d/corax-agent || minute_present /etc/cron.d/corax-send; then
+  echo "Minute job already installed"
+  exit "$sent"
 fi
 
 printf '%s\n' "# CORAX cluster audit. One token, every host that runs this script." \
@@ -83,4 +98,4 @@ printf '%s\n' "# CORAX cluster audit. One token, every host that runs this scrip
   > /etc/cron.d/corax-send
 chmod 644 /etc/cron.d/corax-send
 echo "Installed /etc/cron.d/corax-send (every minute)"
-exit 0
+exit "$sent"

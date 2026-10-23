@@ -1,7 +1,8 @@
 #!/bin/sh
 # CORAX Linux audit sampler.
-# Asks the panel whether this host is enrolled, then POSTs one telemetry sample.
-# Safe to run every minute: when the panel does not ask, the script exits immediately.
+# Cron (no args) asks the panel, then sends when the button is set, when the
+# host interval has elapsed on this machine, or when the panel is silent.
+# --now always sends one sample. A reply without "stored": true is not success.
 # shellcheck shell=sh
 
 set -eu
@@ -104,10 +105,19 @@ except Exception:
     raise SystemExit
 if not isinstance(d, dict) or "collect" not in d:
     print("bad")
-elif d.get("collect"):
-    print("yes")
-else:
-    print("no")' "$body" 2>/dev/null || printf '%s' bad
+    raise SystemExit
+try:
+    iv=int(d.get("interval_minutes") or 0)
+except (TypeError, ValueError):
+    iv=0
+if iv < 0:
+    iv=0
+if iv > 10080:
+    iv=10080
+reason=str(d.get("reason") or "idle")
+if reason not in {"enroll", "disabled", "requested", "interval", "idle"}:
+    reason="idle"
+print(("yes" if d.get("collect") else "no") + " " + str(iv) + " " + reason)' "$body" 2>/dev/null || printf '%s' bad
 }
 
 post_audit() {
@@ -139,23 +149,61 @@ fi
 trap cleanup_workdir EXIT INT TERM
 
 stamp_file=/var/tmp/corax-last-audit
-stamp_age() {
+stamp_field() {
+  n=$1
   if [ ! -f "$stamp_file" ]; then
+    printf '%s' ''
+    return 0
+  fi
+  awk -v n="$n" 'NR==1 { print $n }' "$stamp_file" 2>/dev/null | tr -cd '0-9' | head -c 12
+}
+
+stamp_age() {
+  then=$(stamp_field 1)
+  now=$(date +%s 2>/dev/null || printf '%s' 0)
+  case "$then" in
+    ''|*[!0-9]*) printf '%s' 999999; return 0 ;;
+  esac
+  case "$now" in
+    ''|*[!0-9]*) printf '%s' 999999; return 0 ;;
+  esac
+  if [ "$now" -lt "$then" ]; then
     printf '%s' 999999
     return 0
   fi
-  then=$(tr -cd '0-9' <"$stamp_file" | head -c 12)
-  now=$(date +%s 2>/dev/null || printf 0)
-  case "$then" in
-    ''|*[!0-9]*) printf '%s' 999999 ;;
-    *) printf '%s' $((now - then)) ;;
+  printf '%s' $((now - then))
+}
+
+stamp_interval() {
+  stamp_field 2
+}
+
+write_stamp() {
+  printf '%s %s\n' "$(date +%s 2>/dev/null || printf '%s' 0)" "${1:-5}" >"$stamp_file" 2>/dev/null || true
+}
+
+apply_directive() {
+  parsed=$1
+  flag=${parsed%% *}
+  rest=${parsed#* }
+  iv=${rest%% *}
+  case "$rest" in
+    *" "*) reason=${rest#* } ;;
+    *) reason=idle ;;
   esac
 }
 
 asked=0
+flag=bad
+iv=5
+reason=
+fallback_no=
 if [ "$mode" = "now" ]; then
   asked=1
 else
+  # The port from agent_env.sh is authoritative. Another port may only
+  # say "collect" — a stranger that answers {"collect": false} must not
+  # cancel the real panel.
   for p in $ports; do
     for path in "/api/v1/agent/audit-directive?hostname=$hn_q" "/api/agent/audit-directive?hostname=$hn_q"; do
       uri="${scheme}://${host}:${p}${path}"
@@ -163,24 +211,66 @@ else
       if [ "$code" != "200" ]; then
         continue
       fi
-      flag=$(directive_flag "${CORAX_WORKDIR}/audit_directive.json")
-      if [ "$flag" = "yes" ]; then
-        asked=1
-        break 2
-      fi
-      if [ "$flag" = "no" ]; then
-        exit 0
-      fi
+      parsed=$(directive_flag "${CORAX_WORKDIR}/audit_directive.json")
+      case "$parsed" in
+        yes\ *)
+          apply_directive "$parsed"
+          break 2
+          ;;
+        no\ *)
+          if [ "$p" = "$port" ]; then
+            apply_directive "$parsed"
+            break 2
+          fi
+          fallback_no=$parsed
+          ;;
+      esac
     done
   done
-  if [ "$asked" -ne 1 ]; then
-    age=$(stamp_age)
-    if [ "$age" -lt 300 ]; then
-      log "audit: panel did not answer, last sample ${age}s ago, skip"
+  if [ "$flag" = "bad" ] && [ -n "$fallback_no" ]; then
+    apply_directive "$fallback_no"
+  fi
+  case "$iv" in
+    ''|*[!0-9]*) iv=5 ;;
+  esac
+  if [ "${reason:-}" = "disabled" ]; then
+    log "audit: host disabled"
+    exit 0
+  fi
+  age=$(stamp_age)
+  if [ "$flag" = "yes" ]; then
+    log "audit: panel asked, sending"
+    asked=1
+  elif [ "$flag" = "no" ]; then
+    if [ "$iv" -le 0 ]; then
+      log "audit: manual, waiting for the button"
       exit 0
     fi
-    log "audit: panel did not answer, sending anyway"
-    asked=1
+    need=$((iv * 60))
+    if [ "$age" -ge "$need" ]; then
+      log "audit: ${iv}m elapsed (${age}s), sending"
+      asked=1
+    else
+      log "audit: idle, next in $((need - age))s"
+      exit 0
+    fi
+  else
+    saved=$(stamp_interval)
+    case "$saved" in
+      '') need=300 ;;
+      0)
+        log "audit: panel silent, manual mode, skip"
+        exit 0
+        ;;
+      *) need=$((saved * 60)) ;;
+    esac
+    if [ "$age" -ge "$need" ]; then
+      log "audit: panel silent for ${age}s, sending"
+      asked=1
+    else
+      log "audit: panel silent, last sample ${age}s ago, skip"
+      exit 0
+    fi
   fi
 fi
 
@@ -209,12 +299,24 @@ elif isinstance(d, dict):
     print(d.get("reason") or "skip")
 else:
     print("unknown")' "${CORAX_WORKDIR}/audit_post.txt" 2>/dev/null || printf '%s' unknown)
-      if [ "$stored" = "yes" ] || [ "$stored" = "unknown" ]; then
-        date +%s >"$stamp_file" 2>/dev/null || true
+      if [ "$stored" = "yes" ]; then
+        keep_iv=$iv
+        if [ "$mode" = "now" ]; then
+          saved=$(stamp_interval)
+          case "$saved" in
+            ''|*[!0-9]*) ;;
+            *) keep_iv=$saved ;;
+          esac
+        fi
+        write_stamp "$keep_iv"
         log "audit: stored $hn via $uri"
         printf 'OK %s\n' "$hn"
         ok=1
         break 2
+      fi
+      if [ "$stored" = "unknown" ]; then
+        log "audit: HTTP $code is not a CORAX reply, trying next ($uri)"
+        continue
       fi
       log "audit: panel did not store ($stored) via $uri"
       if [ "$stored" = "disabled" ]; then

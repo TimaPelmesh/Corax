@@ -66,6 +66,22 @@ def metrics_from_payload(payload: dict[str, Any]) -> dict[str, float | int | Non
     }
 
 
+def _utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _due(last: datetime | None, now: datetime, interval_min: int) -> bool:
+    """True when the interval has elapsed. A future stamp is not due (the agent clock still sends)."""
+    last_utc = _utc(last)
+    if last_utc is None:
+        return True
+    return (now - last_utc).total_seconds() >= interval_min * 60
+
+
 def _parse_when(raw: Any, now: datetime) -> datetime:
     if not isinstance(raw, str) or not raw.strip():
         return now
@@ -386,10 +402,7 @@ async def audit_directive(db: AsyncSession, hostname: str) -> dict[str, Any]:
         }
     if interval <= 0:
         return {"collect": False, "reason": "idle", "interval_minutes": 0, "hostname": host.hostname}
-    last = host.last_sample_at
-    if last is not None and last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
-    due = last is None or (datetime.now(timezone.utc) - last).total_seconds() >= interval * 60
+    due = _due(host.last_sample_at, datetime.now(timezone.utc), interval)
     return {
         "collect": due,
         "reason": "interval" if due else "idle",

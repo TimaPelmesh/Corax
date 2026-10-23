@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 SAMPLE_SEC = 0.45
-AGENT_VERSION = os.environ.get("CORAX_AGENT_VERSION") or "3.3.0-linux"
+AGENT_VERSION = os.environ.get("CORAX_AGENT_VERSION") or "3.4.0-linux"
 
 _SKIP_FSTYPE = {
     "tmpfs",
