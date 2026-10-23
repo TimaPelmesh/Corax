@@ -108,7 +108,6 @@ export function ServerAuditPage() {
   const [fleetOpen, setFleetOpen] = useState(false)
   const [fleetItems, setFleetItems] = useState<Computer[]>([])
   const [linuxOnly, setLinuxOnly] = useState(true)
-  const [picked, setPicked] = useState<Computer | null>(null)
   const [logMode, setLogMode] = useState<'err' | 'all'>('err')
   const [hostQuery, setHostQuery] = useState('')
   const [status, setStatus] = useState<'all' | 'fresh' | 'stale' | 'none' | 'off'>('all')
@@ -276,7 +275,6 @@ export function ServerAuditPage() {
       setFleetOpen(false)
       return
     }
-    setPicked(computer)
     setHostname(computer.hostname)
     setLabel(computer.os_name || computer.model || '')
     setFleetQuery(computer.hostname)
@@ -296,7 +294,6 @@ export function ServerAuditPage() {
       setHostname('')
       setLabel('')
       setFleetQuery('')
-      setPicked(null)
       toast.ok(t('serverAudit.added'))
       await loadHosts()
       setSelectedId(created.id)
@@ -457,7 +454,6 @@ export function ServerAuditPage() {
                   onChange={(event) => {
                     setFleetQuery(event.target.value)
                     setHostname(event.target.value)
-                    setPicked(null)
                     setFleetOpen(true)
                   }}
                   onBlur={() => window.setTimeout(() => setFleetOpen(false), 150)}
@@ -718,6 +714,7 @@ export function ServerAuditPage() {
               </div>
 
               {(detail.interval_minutes > 0 || labels.length > 0) ? (
+              <>
               <div className="flex flex-wrap gap-2">
                 {([
                   ['all', t('serverAudit.focusAll')],
@@ -776,6 +773,7 @@ export function ServerAuditPage() {
                   ) : null}
                 </div>
               )}
+              </>
               ) : null}
 
               <JournalPanel
