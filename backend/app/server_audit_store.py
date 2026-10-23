@@ -75,23 +75,31 @@ def _parse_when(raw: Any, now: datetime) -> datetime:
     return parsed
 
 
+def _cap_list(data: dict[str, Any], key: str, limit: int) -> None:
+    if isinstance(data.get(key), list) and len(data[key]) > limit:
+        data[key] = data[key][:limit]
+
+
 def trim_payload(payload: dict[str, Any]) -> str:
     data = dict(payload)
     text = json.dumps(data, ensure_ascii=False)
     if len(text) <= _PAYLOAD_MAX:
         return text
+    _cap_list(data, "logs", 40)
     for key in ("processes", "listeners", "docker", "failed_units", "disk_io"):
-        if isinstance(data.get(key), list):
-            data[key] = data[key][:8]
+        _cap_list(data, key, 8)
     text = json.dumps(data, ensure_ascii=False)
     if len(text) <= _PAYLOAD_MAX:
         return text
+    logs = data.get("logs") if isinstance(data.get("logs"), list) else []
     slim = {
         "hostname": data.get("hostname"),
         "collected_at": data.get("collected_at"),
         "agent_version": data.get("agent_version"),
         "summary": data.get("summary") if isinstance(data.get("summary"), dict) else {},
         "os": data.get("os") if isinstance(data.get("os"), dict) else {},
+        "logs_source": data.get("logs_source"),
+        "logs": logs[:20],
         "truncated": True,
     }
     return json.dumps(slim, ensure_ascii=False)[:_PAYLOAD_MAX]

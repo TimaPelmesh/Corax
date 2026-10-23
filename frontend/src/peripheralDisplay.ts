@@ -11,7 +11,24 @@ const KIND_ORDER = [
   'bluetooth',
   'touchpad',
   'net',
+  'usb',
+  'other',
 ] as const
+
+const KNOWN_KINDS = new Set<string>(KIND_ORDER)
+
+const AUDIO_NAME = /headphone|headset|speaker|microphone|\bmic\b|\bhda\b|\baudio\b|\bline\b/i
+
+/** Короткий код категории. Неизвестное и «other» с именем звукового устройства — audio. */
+export function canonicalPeripheralKind(kind: string, name: string): string {
+  const k = (kind || 'other').trim().toLowerCase() || 'other'
+  if (KNOWN_KINDS.has(k) && k !== 'other') return k
+  const n = name || ''
+  if (AUDIO_NAME.test(n)) return 'audio'
+  if (/keyboard/i.test(n)) return 'keyboard'
+  if (/\bmouse\b|touchpad/i.test(n)) return 'mouse'
+  return 'other'
+}
 
 const MONITOR_NOISE =
   /pnp|nvidia|geforce|amd|radeon|intel\(r\)?.*graphics|display adapter|mirror|dameware|remote display|basic display|generic pnp/i
@@ -43,9 +60,10 @@ export function preparePeripheralsForDisplay(items: PeripheralItem[]): Periphera
   const seen = new Set<string>()
   const out: PeripheralItem[] = []
   for (const p of items) {
-    const kind = (p.kind || 'other').trim() || 'other'
+    const rawKind = (p.kind || 'other').trim() || 'other'
     const name = (p.name || '').trim()
-    if (isNoisePeripheral(kind, name)) continue
+    if (isNoisePeripheral(rawKind, name)) continue
+    const kind = canonicalPeripheralKind(rawKind, name)
     const key = `${kind}|${name.toLowerCase()}`
     if (seen.has(key)) continue
     seen.add(key)

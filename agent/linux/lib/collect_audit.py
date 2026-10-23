@@ -639,6 +639,112 @@ def _file_nr() -> dict[str, int | None]:
     }
 
 
+_LOG_LEVELS = {
+    "0": "emerg",
+    "1": "alert",
+    "2": "crit",
+    "3": "err",
+    "4": "warning",
+    "5": "notice",
+    "6": "info",
+    "7": "debug",
+}
+_SECRET_RE = re.compile(r"(?i)(password|passwd|token|secret|api[_-]?key)\s*[=:]\s*\S+")
+
+
+def _redact(text: str) -> str:
+    cleaned = _SECRET_RE.sub(r"\1=***", text.replace("\x00", " "))
+    return cleaned.strip()[:400]
+
+
+def _journal_message(raw: object) -> str:
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, list):
+        chars: list[str] = []
+        for item in raw[:400]:
+            if isinstance(item, int) and 32 <= item < 127:
+                chars.append(chr(item))
+            elif isinstance(item, int) and item in {9, 10, 13}:
+                chars.append(" ")
+            else:
+                return ""
+        return "".join(chars)
+    return ""
+
+
+def _journal_logs() -> list[dict]:
+    text = _run(["journalctl", "-n", "120", "--no-pager", "-o", "json"], timeout=6)
+    rows: list[dict] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(item, dict):
+            continue
+        message = _redact(_journal_message(item.get("MESSAGE")))
+        if not message:
+            continue
+        level = _LOG_LEVELS.get(str(item.get("PRIORITY") or "6"), "info")
+        unit = str(item.get("_SYSTEMD_UNIT") or item.get("SYSLOG_IDENTIFIER") or "").strip()[:80]
+        stamp = None
+        try:
+            micros = int(item.get("__REALTIME_TIMESTAMP") or 0)
+            if micros > 0:
+                stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(micros / 1_000_000))
+        except (TypeError, ValueError, OSError):
+            stamp = None
+        rows.append({"at": stamp, "level": level, "unit": unit or None, "text": message})
+        if len(rows) >= 100:
+            break
+    return rows
+
+
+def _tail_text(path: str, max_bytes: int = 65536) -> str:
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - max_bytes))
+            return fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
+def _file_logs() -> tuple[str, list[dict]]:
+    for path, source in (("/var/log/syslog", "syslog"), ("/var/log/messages", "messages")):
+        text = _tail_text(path)
+        if not text.strip():
+            continue
+        rows: list[dict] = []
+        for line in text.splitlines()[-80:]:
+            message = _redact(line)
+            if not message:
+                continue
+            low = message.lower()
+            if any(word in low for word in ("error", "fail", "crit", "emerg", "panic")):
+                level = "err"
+            elif "warn" in low:
+                level = "warning"
+            else:
+                level = "info"
+            rows.append({"at": None, "level": level, "unit": None, "text": message})
+        if rows:
+            return source, rows[-80:]
+    return "none", []
+
+
+def _logs() -> tuple[str, list[dict]]:
+    journal = _journal_logs()
+    if journal:
+        return "journal", journal
+    return _file_logs()
+
+
 def _docker() -> list[dict]:
     if not _run(["docker", "--version"], timeout=2).strip():
         return []
@@ -701,6 +807,8 @@ def build_audit() -> dict:
     disk_io = _disk_io(disk_rates)
     processes, process_count = _processes()
     failed = _failed_units()
+    log_source, logs = _logs()
+    log_errors = sum(1 for row in logs if row.get("level") in {"emerg", "alert", "crit", "err"})
     model, cores, mhz = _cpu_model()
     release = _os_release()
     virt, container = _virt()
@@ -728,6 +836,8 @@ def build_audit() -> dict:
         "uptime_sec": _uptime(),
         "process_count": process_count,
         "failed_units": len(failed),
+        "log_lines": len(logs),
+        "log_errors": log_errors,
     }
     return {
         "hostname": _hostname(),
@@ -760,6 +870,8 @@ def build_audit() -> dict:
         "network": network,
         "processes": processes,
         "failed_units": failed,
+        "logs_source": log_source,
+        "logs": logs,
         "listeners": _listeners(),
         "sessions": _sessions(),
         "packages": _packages(),

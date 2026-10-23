@@ -19,6 +19,34 @@ import { IconClose } from './icons'
 import { ComputerZabbixStatus } from './ComputerZabbixStatus'
 import { RemoteConnectMenu } from './RemoteConnectMenu'
 
+const PERIPHERAL_KINDS = [
+  'keyboard',
+  'mouse',
+  'monitor',
+  'camera',
+  'audio',
+  'printer',
+  'biometric',
+  'bluetooth',
+  'touchpad',
+  'net',
+  'usb',
+  'other',
+] as const
+
+type PeripheralKind = (typeof PERIPHERAL_KINDS)[number]
+
+function peripheralKindLabel(
+  kind: string,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+) {
+  const key = kind.trim().toLowerCase()
+  if ((PERIPHERAL_KINDS as readonly string[]).includes(key)) {
+    return t(`computerDetail.kinds.${key as PeripheralKind}`)
+  }
+  return t('computerDetail.kinds.other')
+}
+
 function activationLabel(
   status: string,
   t: (key: MessageKey, params?: Record<string, string | number>) => string,
@@ -1037,19 +1065,27 @@ export function ComputerDetailModal({
                     </li>
                   ) : (
                     peripheralGroups.flatMap((g) =>
-                      g.items.map((p, i) => (
-                        <li
-                          key={`${p.kind}-${p.name}-${i}`}
-                          className="border-b border-[var(--color-border)] px-2.5 py-1.5 last:border-0"
-                        >
-                          <div className="flex items-baseline gap-3">
-                            <span className="w-28 shrink-0 text-xs text-[var(--color-fg-muted)]">
-                              {t(`computerDetail.kinds.${g.kind as 'keyboard' | 'mouse' | 'monitor' | 'camera' | 'audio' | 'printer' | 'biometric' | 'bluetooth' | 'touchpad' | 'net'}`)}
-                            </span>
-                            <span className="min-w-0 break-words text-sm text-[var(--color-fg)]">{p.name}</span>
-                          </div>
-                        </li>
-                      )),
+                      g.items.map((p, i) => {
+                        const kindLabel = peripheralKindLabel(g.kind, t)
+                        return (
+                          <li
+                            key={`${p.kind}-${p.name}-${i}`}
+                            className="border-b border-[var(--color-border)] px-2.5 py-1.5 last:border-0"
+                          >
+                            <div className="grid min-w-0 grid-cols-[5.5rem_minmax(0,1fr)] items-start gap-x-3">
+                              <span
+                                className="truncate text-xs leading-5 text-[var(--color-fg-muted)]"
+                                title={kindLabel}
+                              >
+                                {kindLabel}
+                              </span>
+                              <span className="min-w-0 break-words text-sm leading-5 text-[var(--color-fg)]">
+                                {p.name}
+                              </span>
+                            </div>
+                          </li>
+                        )
+                      }),
                     )
                   )}
                 </ul>

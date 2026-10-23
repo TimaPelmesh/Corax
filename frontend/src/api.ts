@@ -1517,6 +1517,7 @@ export const api = {
       ping_status?: 'online' | 'offline' | 'unknown'
       sort?: 'last' | 'host' | 'ram' | 'periph'
       sort_dir?: 'asc' | 'desc'
+      platform?: 'linux' | 'windows'
     },
   ): Promise<V extends 'map' ? ComputerMapListResponse : ComputerListResponse> => {
     const p = new URLSearchParams()
@@ -1528,6 +1529,7 @@ export const api = {
     if (opts?.ping_status) p.set('ping_status', opts.ping_status)
     if (opts?.sort) p.set('sort', opts.sort)
     if (opts?.sort_dir) p.set('sort_dir', opts.sort_dir)
+    if (opts?.platform) p.set('platform', opts.platform)
     const qs = p.toString()
     if (opts?.view === 'map') {
       return (await request<ComputerMapListResponse>(

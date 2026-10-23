@@ -334,6 +334,7 @@ async def list_computers(
     ),
     sort: Literal["last", "host", "ram", "periph"] = Query("last"),
     sort_dir: Literal["asc", "desc"] = Query("desc"),
+    platform: Literal["linux", "windows"] | None = Query(None),
 ):
     """Fleet list. Never materializes raw_payload/disks_json for list/map views."""
     sq_sw = (
@@ -392,8 +393,30 @@ async def list_computers(
                 Computer.notes.ilike(needle, escape="\\"),
                 User.username.ilike(needle, escape="\\"),
                 User.full_name.ilike(needle, escape="\\"),
+                Computer.os_name.ilike(needle, escape="\\"),
             )
         )
+    if platform == "linux":
+        stmt = stmt.where(
+            or_(
+                Computer.os_name.ilike("%linux%"),
+                Computer.os_name.ilike("%debian%"),
+                Computer.os_name.ilike("%ubuntu%"),
+                Computer.os_name.ilike("%centos%"),
+                Computer.os_name.ilike("%rhel%"),
+                Computer.os_name.ilike("%red hat%"),
+                Computer.os_name.ilike("%alma%"),
+                Computer.os_name.ilike("%rocky%"),
+                Computer.os_name.ilike("%suse%"),
+                Computer.os_name.ilike("%fedora%"),
+                Computer.os_name.ilike("%astra%"),
+                Computer.os_name.ilike("%redos%"),
+                Computer.os_name.ilike("%альт%"),
+                Computer.os_name.ilike("%астра%"),
+            )
+        )
+    elif platform == "windows":
+        stmt = stmt.where(Computer.os_name.ilike("%windows%"))
     if tag_ids:
         tagged_computers = select(computer_tags.c.computer_id).where(
             computer_tags.c.tag_id.in_(tag_ids)

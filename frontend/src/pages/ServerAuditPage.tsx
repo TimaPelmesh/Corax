@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type ServerAuditDetail, type ServerAuditHost } from '../api'
+import { api, type Computer, type ServerAuditDetail, type ServerAuditHost } from '../api'
 import { useAuth } from '../AuthContext'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useLocale, useT } from '../i18n/LocaleContext'
@@ -71,6 +71,14 @@ function fmtTemp(value: number | null | undefined) {
   return `${value.toFixed(1)}°C`
 }
 
+function isLinuxOs(os: string | null | undefined) {
+  return /linux|debian|ubuntu|centos|rhel|red hat|alma|rocky|suse|oracle|fedora|astra|redos|alt linux|альт|астра|ред\s*ос/i.test(os || '')
+}
+
+function isLogError(level: string) {
+  return level === 'emerg' || level === 'alert' || level === 'crit' || level === 'err'
+}
+
 function freshness(host: ServerAuditHost): 'fresh' | 'stale' | 'none' {
   if (!host.last_sample_at) return 'none'
   const age = Date.now() - new Date(host.last_sample_at).getTime()
@@ -96,6 +104,12 @@ export function ServerAuditPage() {
   const [label, setLabel] = useState('')
   const [interval, setIntervalMinutes] = useState(15)
   const [busy, setBusy] = useState(false)
+  const [fleetQuery, setFleetQuery] = useState('')
+  const [fleetOpen, setFleetOpen] = useState(false)
+  const [fleetItems, setFleetItems] = useState<Computer[]>([])
+  const [linuxOnly, setLinuxOnly] = useState(true)
+  const [picked, setPicked] = useState<Computer | null>(null)
+  const [logMode, setLogMode] = useState<'err' | 'all'>('err')
 
   const loadHosts = useCallback(async () => {
     const rows = await api.serverAuditHosts()
@@ -109,6 +123,36 @@ export function ServerAuditPage() {
     setDetail(row)
     setHosts((current) => current.map((host) => (host.id === row.id ? { ...host, ...row } : host)))
   }, [])
+
+  useEffect(() => {
+    if (!canEdit || !fleetOpen) return
+    const query = fleetQuery.trim()
+    let alive = true
+    const timer = window.setTimeout(() => {
+      api
+        .computers({
+          q: query || undefined,
+          limit: query ? 30 : 40,
+          sort: 'host',
+          sort_dir: 'asc',
+          platform: linuxOnly ? 'linux' : undefined,
+        })
+        .then((res) => {
+          if (alive) setFleetItems(res.items)
+        })
+        .catch(() => {
+          if (alive) setFleetItems([])
+        })
+    }, 180)
+    return () => {
+      alive = false
+      window.clearTimeout(timer)
+    }
+  }, [canEdit, fleetOpen, fleetQuery, linuxOnly])
+
+  useEffect(() => {
+    setLogMode('err')
+  }, [selectedId])
 
   useEffect(() => {
     let alive = true
@@ -158,14 +202,38 @@ export function ServerAuditPage() {
   const processes = asRows(payload.processes)
   const listeners = asRows(payload.listeners)
   const failed = asRows(payload.failed_units)
+  const logs = asRows(payload.logs)
+  const logSource = typeof payload.logs_source === 'string' ? payload.logs_source : ''
   const sessions = asRows(payload.sessions)
   const docker = asRows(payload.docker)
   const network = asRows(payload.network)
+
+  const suggestions = useMemo(() => {
+    const enrolled = new Set(hosts.map((host) => host.hostname.toLowerCase()))
+    return fleetItems
+      .filter((computer) => !linuxOnly || isLinuxOs(computer.os_name))
+      .slice(0, 12)
+      .map((computer) => ({ computer, enrolled: enrolled.has(computer.hostname.toLowerCase()) }))
+  }, [fleetItems, hosts, linuxOnly])
 
   const labels = useMemo(
     () => (detail?.points ?? []).map((point) => fmtWhen(point.collected_at, locale)),
     [detail?.points, locale],
   )
+
+  function chooseComputer(computer: Computer) {
+    const existing = hosts.find((host) => host.hostname.toLowerCase() === computer.hostname.toLowerCase())
+    if (existing) {
+      setSelectedId(existing.id)
+      setFleetOpen(false)
+      return
+    }
+    setPicked(computer)
+    setHostname(computer.hostname)
+    setLabel(computer.os_name || computer.model || '')
+    setFleetQuery(computer.hostname)
+    setFleetOpen(false)
+  }
 
   async function onAdd(event: React.FormEvent) {
     event.preventDefault()
@@ -179,6 +247,8 @@ export function ServerAuditPage() {
       })
       setHostname('')
       setLabel('')
+      setFleetQuery('')
+      setPicked(null)
       toast.ok(t('serverAudit.added'))
       await loadHosts()
       setSelectedId(created.id)
@@ -254,57 +324,126 @@ export function ServerAuditPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
       {confirm.dialog}
-      <h1 className="sr-only">{t('titles.serverAudit')}</h1>
-      <p className="max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.subtitle')}</p>
+      <div>
+        <h1 className="text-xl font-semibold">{t('titles.serverAudit')}</h1>
+        <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.subtitle')}</p>
+      </div>
 
       {canEdit ? (
         <form
           onSubmit={(event) => void onAdd(event)}
-          className="grid gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 md:grid-cols-[1.2fr_1fr_180px_auto]"
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
         >
-          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-            {t('serverAudit.hostname')}
-            <input
-              value={hostname}
-              onChange={(event) => setHostname(event.target.value)}
-              placeholder={t('serverAudit.hostnamePh')}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
-              required
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-            {t('serverAudit.label')}
-            <input
-              value={label}
-              onChange={(event) => setLabel(event.target.value)}
-              placeholder={t('serverAudit.labelPh')}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-            {t('serverAudit.interval')}
-            <select
-              value={interval}
-              onChange={(event) => setIntervalMinutes(Number(event.target.value))}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
-            >
-              {INTERVALS.map((value) => (
-                <option key={value} value={value}>
-                  {value === 0 ? t('serverAudit.manual') : t('serverAudit.every', { n: value })}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-end">
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {t('serverAudit.add')}
-            </button>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">{t('serverAudit.pickTitle')}</h2>
+            <label className="flex items-center gap-2 text-xs text-[var(--color-fg-subtle)]">
+              <input
+                type="checkbox"
+                checked={linuxOnly}
+                onChange={(event) => setLinuxOnly(event.target.checked)}
+              />
+              {t('serverAudit.linuxOnly')}
+            </label>
           </div>
-          <p className="md:col-span-4 text-xs text-[var(--color-fg-subtle)]">{t('serverAudit.hint')}</p>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_180px_auto]">
+            <div className="relative">
+              <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                {t('serverAudit.hostname')}
+                <input
+                  value={fleetOpen ? fleetQuery : hostname || fleetQuery}
+                  onFocus={() => {
+                    setFleetOpen(true)
+                    setFleetQuery(hostname || fleetQuery)
+                  }}
+                  onChange={(event) => {
+                    setFleetQuery(event.target.value)
+                    setHostname(event.target.value)
+                    setPicked(null)
+                    setFleetOpen(true)
+                  }}
+                  onBlur={() => window.setTimeout(() => setFleetOpen(false), 150)}
+                  placeholder={t('serverAudit.searchFleet')}
+                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
+                  required
+                  autoComplete="off"
+                />
+              </label>
+              {fleetOpen ? (
+                <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
+                  {suggestions.length === 0 ? (
+                    <li className="px-3 py-3 text-xs text-[var(--color-fg-subtle)]">
+                      {linuxOnly && fleetItems.length > 0 ? t('serverAudit.fleetLinuxEmpty') : t('serverAudit.fleetEmpty')}
+                    </li>
+                  ) : (
+                    suggestions.map(({ computer, enrolled }) => (
+                      <li key={computer.id}>
+                        <button
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => chooseComputer(computer)}
+                          className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-[var(--color-bg-muted)]"
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-medium">{computer.hostname}</span>
+                            {enrolled ? (
+                              <span className="shrink-0 text-[10px] font-medium text-[var(--color-fg-subtle)]">
+                                {t('serverAudit.alreadyAudited')}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span className="truncate text-xs text-[var(--color-fg-subtle)]">
+                            {[computer.ip_address, computer.os_name, computer.model].filter(Boolean).join(' · ') || '—'}
+                          </span>
+                        </button>
+                      </li>
+                    ))
+                  )}
+                  {fleetQuery.trim() && !suggestions.some((row) => row.computer.hostname.toLowerCase() === fleetQuery.trim().toLowerCase()) ? (
+                    <li className="border-t border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-fg-subtle)]">
+                      {t('serverAudit.addTyped', { host: fleetQuery.trim() })}
+                    </li>
+                  ) : null}
+                </ul>
+              ) : null}
+            </div>
+            <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+              {t('serverAudit.label')}
+              <input
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder={t('serverAudit.labelPh')}
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+              {t('serverAudit.interval')}
+              <select
+                value={interval}
+                onChange={(event) => setIntervalMinutes(Number(event.target.value))}
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
+              >
+                {INTERVALS.map((value) => (
+                  <option key={value} value={value}>
+                    {value === 0 ? t('serverAudit.manual') : t('serverAudit.every', { n: value })}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={busy || !hostname.trim()}
+                className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {t('serverAudit.add')}
+              </button>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-[var(--color-fg-subtle)]">
+            {picked
+              ? `${t('serverAudit.fromFleet')}: ${picked.hostname}${picked.ip_address ? ` · ${picked.ip_address}` : ''}${picked.os_name ? ` · ${picked.os_name}` : ''}`
+              : t('serverAudit.hint')}
+          </p>
         </form>
       ) : null}
 
@@ -430,6 +569,19 @@ export function ServerAuditPage() {
                 <Metric label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} />
                 <Metric label={t('serverAudit.swap')} value={fmtPct(numOf(memory?.swap_used_percent))} />
               </div>
+
+              <JournalPanel
+                logs={logs}
+                mode={logMode}
+                onMode={setLogMode}
+                locale={locale}
+                title={t('serverAudit.logs')}
+                allLabel={t('serverAudit.logsAll')}
+                errorsLabel={t('serverAudit.logsErrors')}
+                emptyLabel={t('serverAudit.logsEmpty')}
+                noErrorsLabel={t('serverAudit.logsNoErrors')}
+                sourceLabel={logSource ? t('serverAudit.logsSource', { source: logSource }) : ''}
+              />
 
               <div className="flex flex-wrap gap-2">
                 {([6, 24, 168] as Hours[]).map((value) => (
@@ -621,6 +773,83 @@ function SimpleTable({ head, rows }: { head?: string[]; rows: string[][] }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+function JournalPanel({
+  logs,
+  mode,
+  onMode,
+  locale,
+  title,
+  allLabel,
+  errorsLabel,
+  emptyLabel,
+  noErrorsLabel,
+  sourceLabel,
+}: {
+  logs: Record<string, unknown>[]
+  mode: 'err' | 'all'
+  onMode: (mode: 'err' | 'all') => void
+  locale: string
+  title: string
+  allLabel: string
+  errorsLabel: string
+  emptyLabel: string
+  noErrorsLabel: string
+  sourceLabel: string
+}) {
+  const errors = logs.filter((row) => isLogError(String(row.level || '')))
+  const shown = mode === 'err' ? errors : logs
+  return (
+    <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          {sourceLabel ? <span className="text-xs text-[var(--color-fg-subtle)]">{sourceLabel}</span> : null}
+          <button
+            type="button"
+            onClick={() => onMode('err')}
+            className={`rounded-md px-2 py-1 text-xs ${mode === 'err' ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+          >
+            {errorsLabel} ({errors.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => onMode('all')}
+            className={`rounded-md px-2 py-1 text-xs ${mode === 'all' ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+          >
+            {allLabel} ({logs.length})
+          </button>
+        </div>
+      </div>
+      {logs.length === 0 ? (
+        <Empty>{emptyLabel}</Empty>
+      ) : shown.length === 0 ? (
+        <Empty>{noErrorsLabel}</Empty>
+      ) : (
+        <ul className="max-h-80 overflow-auto font-mono text-xs">
+          {shown.map((row, index) => {
+            const level = String(row.level || 'info')
+            const tone = isLogError(level)
+              ? 'text-red-600'
+              : level === 'warning'
+                ? 'text-amber-600'
+                : 'text-[var(--color-fg-subtle)]'
+            return (
+              <li key={`${textOf(row.at)}-${index}`} className="border-t border-[var(--color-border)] px-3 py-1.5">
+                <span className={tone}>{level}</span>
+                <span className="text-[var(--color-fg-subtle)]">
+                  {row.at ? ` ${fmtWhen(String(row.at), locale)}` : ''}
+                  {row.unit ? ` ${textOf(row.unit)}` : ''}
+                </span>
+                <div className="whitespace-pre-wrap break-all text-[var(--color-fg)]">{textOf(row.text)}</div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }
 

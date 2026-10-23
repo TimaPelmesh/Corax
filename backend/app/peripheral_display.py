@@ -15,7 +15,15 @@ _PERIPHERAL_KIND_ORDER: tuple[str, ...] = (
     "bluetooth",
     "touchpad",
     "net",
+    "usb",
     "other",
+)
+
+_KNOWN_KINDS = frozenset(_PERIPHERAL_KIND_ORDER)
+
+_AUDIO_NAME_RE = re.compile(
+    r"headphone|headset|speaker|microphone|\bmic\b|\bhda\b|\baudio\b|\bline\b",
+    re.I,
 )
 
 _MONITOR_EXCLUDE_RE = re.compile(
@@ -59,6 +67,21 @@ def is_noise_peripheral(kind: str, name: str) -> bool:
     return False
 
 
+def canonical_kind(kind: str, name: str) -> str:
+    """Короткий код категории. Неизвестное имя звукового устройства — audio."""
+    k = (kind or "other").strip().lower() or "other"
+    if k in _KNOWN_KINDS and k != "other":
+        return k
+    n = name or ""
+    if _AUDIO_NAME_RE.search(n):
+        return "audio"
+    if re.search(r"keyboard", n, re.I):
+        return "keyboard"
+    if re.search(r"\bmouse\b|touchpad", n, re.I):
+        return "mouse"
+    return "other"
+
+
 def _kind_sort_key(kind: str) -> tuple[int, str]:
     k = (kind or "other").strip().lower() or "other"
     try:
@@ -72,10 +95,11 @@ def prepare_peripherals_for_display(items: list[tuple[str, str]]) -> list[tuple[
     seen: set[str] = set()
     out: list[tuple[str, str]] = []
     for kind, name in items:
-        k = (kind or "other").strip()[:32] or "other"
+        raw = (kind or "other").strip()[:32] or "other"
         n = (name or "").strip()[:512]
-        if not n or is_noise_peripheral(k, n):
+        if not n or is_noise_peripheral(raw, n):
             continue
+        k = canonical_kind(raw, n)
         key = f"{k}|{n.lower()}"
         if key in seen:
             continue

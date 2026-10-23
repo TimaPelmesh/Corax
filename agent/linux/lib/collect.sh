@@ -300,6 +300,7 @@ collect_peripherals() {
         kind="other"
         if (name ~ /[Kk]eyboard/) kind="keyboard"
         else if (name ~ /[Mm]ouse|[Tt]ouchpad/) kind="mouse"
+        else if (name ~ /[Hh]eadphone|[Hh]eadset|[Ss]peaker|HDA|[Aa]udio|[Mm]icrophone|[Mm]ic([^A-Za-z]|$)|[Ll]ine([^A-Za-z]|$)/) kind="audio"
         print kind "\t" name
       }
     ' /proc/bus/input/devices >>"$CORAX_WORKDIR/peripherals.tsv"
