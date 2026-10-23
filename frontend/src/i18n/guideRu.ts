@@ -182,11 +182,11 @@ export const GUIDE_RU: GuideCopy = {
         },
         {
           title: 'Файлы в ZIP',
-          body: 'run_console.sh — основной консольный запуск (рекомендуется).\ncorax_send.sh — то же (алиас).\ninventory_agent.sh — ядро сбора.\nagent_env.sh — URL + токен (генерирует панель; не коммитить).\nagent_config.json — модули.\ninstall_cron.sh — cron.\nsystemd/ — timer.\nupdate_scripts.sh — обновить скрипты, не трогая agent_env.sh.\nREADME.txt — шпаргалка в архиве.',
+          body: 'corax_send.sh — один токен на кластер: сразу шлёт отчёт аудита и ставит минутный таймер.\nrun_console.sh — полный инвентарь.\ninventory_agent.sh — ядро инвентаря.\naudit_agent.sh — сбор одной точки (его вызывает corax_send).\nagent_env.sh — URL + токен (генерирует панель; не коммитить).\nagent_config.json — модули.\ninstall_cron.sh — cron.\nsystemd/ — timer.\nupdate_scripts.sh — обновить скрипты, не трогая agent_env.sh.\nREADME.txt — шпаргалка в архиве.',
         },
         {
           title: 'Расписание',
-          body: 'sudo ./install_cron.sh из /opt/corax-agent.\nИнвентарь — понедельник 09:15. Аудит — каждую минуту спрашивает панель и шлёт точку, только если хост добавлен во вкладке «Аудит серверов».\nЛибо systemd: corax-agent.timer и corax-audit.timer из каталога systemd/ внутри ZIP.',
+          body: 'sudo ./corax_send.sh из /opt/corax-agent.\nОдин и тот же agent_env.sh копируют на все серверы. Первый запуск сразу шлёт отчёт, хост появляется во вкладке «Аудит серверов» сам. Дальше минутный таймер шлёт по кнопке «Собрать сейчас» и по интервалу.\nЛибо sudo ./install_cron.sh: инвентарь в понедельник 09:15 и тот же минутный аудит.',
         },
         {
           title: 'Обновление без потери токена',

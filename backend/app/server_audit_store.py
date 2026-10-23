@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_policy import hostnames_match
@@ -16,6 +18,8 @@ _KEEP_DAYS = 30
 _KEEP_MAX = 3000
 _PAYLOAD_MAX = 180_000
 ALLOWED_INTERVALS = frozenset({0, 5, 15, 30, 60, 180, 360, 720, 1440})
+_HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")
+_AUTO_INTERVAL = 5
 
 
 def _fnum(value: Any, lo: float, hi: float, digits: int = 1) -> float | None:
@@ -113,22 +117,76 @@ def os_summary_from_payload(payload: dict[str, Any]) -> str | None:
     return text[:255] or None
 
 
-async def find_audit_host(db: AsyncSession, hostname: str) -> ServerAuditHost | None:
-    key = (hostname or "").strip().lower()
-    if not key:
+def _host_names(hostname: str, payload: dict[str, Any] | None = None) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    raw_names = [hostname]
+    if payload:
+        fqdn = payload.get("hostname_fqdn")
+        if isinstance(fqdn, str):
+            raw_names.append(fqdn)
+        aliases = payload.get("aliases")
+        if isinstance(aliases, list):
+            raw_names.extend(str(item) for item in aliases)
+    for raw in raw_names:
+        text = (raw or "").strip().rstrip(".")
+        key = text.lower()
+        if not text or key in seen or not _HOST_RE.match(text):
+            continue
+        seen.add(key)
+        names.append(text[:255])
+    return names
+
+
+async def find_audit_host(
+    db: AsyncSession,
+    hostname: str,
+    payload: dict[str, Any] | None = None,
+) -> ServerAuditHost | None:
+    names = _host_names(hostname, payload)
+    if not names:
         return None
-    exact = (
-        await db.execute(
-            select(ServerAuditHost).where(func.lower(ServerAuditHost.hostname) == key).limit(1)
-        )
-    ).scalar_one_or_none()
-    if exact is not None:
-        return exact
+    for name in names:
+        exact = (
+            await db.execute(
+                select(ServerAuditHost).where(func.lower(ServerAuditHost.hostname) == name.lower()).limit(1)
+            )
+        ).scalar_one_or_none()
+        if exact is not None:
+            return exact
     rows = (await db.execute(select(ServerAuditHost))).scalars().all()
-    matched = [row for row in rows if hostnames_match(hostname, row.hostname)]
+    matched: list[ServerAuditHost] = []
+    seen_ids: set[int] = set()
+    for row in rows:
+        if row.id in seen_ids:
+            continue
+        if any(hostnames_match(name, row.hostname) for name in names):
+            seen_ids.add(row.id)
+            matched.append(row)
     if len(matched) == 1:
         return matched[0]
     return None
+
+
+async def _enroll_host(db: AsyncSession, hostname: str) -> ServerAuditHost | None:
+    """First report from a cluster token creates the host. Disabled hosts are not recreated."""
+    name = (hostname or "").strip().rstrip(".")[:255]
+    if not _HOST_RE.match(name):
+        return None
+    host = ServerAuditHost(
+        hostname=name,
+        enabled=True,
+        interval_minutes=_AUTO_INTERVAL,
+        collect_requested=False,
+    )
+    try:
+        async with db.begin_nested():
+            db.add(host)
+            await db.flush()
+    except IntegrityError:
+        return await find_audit_host(db, name)
+    await _link_computer(db, host, name)
+    return host
 
 
 async def _link_computer(db: AsyncSession, host: ServerAuditHost, hostname: str) -> None:
@@ -169,10 +227,12 @@ async def _prune(db: AsyncSession, host_id: int, now: datetime) -> None:
 
 
 async def record_audit_sample(db: AsyncSession, hostname: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Append a point when the hostname is enrolled. Does not commit."""
-    host = await find_audit_host(db, hostname)
+    """Append a point. An unknown host is enrolled on the first valid report. Does not commit."""
+    host = await find_audit_host(db, hostname, payload)
     if host is None:
-        return {"ok": True, "stored": False, "reason": "not_enrolled"}
+        host = await _enroll_host(db, hostname)
+    if host is None:
+        return {"ok": True, "stored": False, "reason": "bad_hostname"}
     if not host.enabled:
         return {"ok": True, "stored": False, "reason": "disabled", "host_id": host.id}
 
@@ -206,13 +266,19 @@ async def record_audit_sample(db: AsyncSession, hostname: str, payload: dict[str
     await _link_computer(db, host, hostname)
     await db.flush()
     await _prune(db, host.id, now)
-    return {"ok": True, "stored": True, "reason": "stored", "host_id": host.id}
+    return {"ok": True, "stored": True, "reason": "stored", "host_id": host.id, "hostname": host.hostname}
 
 
 async def audit_directive(db: AsyncSession, hostname: str) -> dict[str, Any]:
     host = await find_audit_host(db, hostname)
     if host is None:
-        return {"collect": False, "reason": "not_enrolled", "interval_minutes": 0, "hostname": hostname}
+        # Unknown host still collects. The following POST creates the row.
+        return {
+            "collect": True,
+            "reason": "enroll",
+            "interval_minutes": _AUTO_INTERVAL,
+            "hostname": hostname,
+        }
     if not host.enabled:
         return {
             "collect": False,

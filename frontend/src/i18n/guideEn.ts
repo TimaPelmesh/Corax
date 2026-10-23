@@ -182,11 +182,11 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Files in the ZIP',
-          body: 'run_console.sh — main console launcher (recommended).\ncorax_send.sh — same (alias).\ninventory_agent.sh — collection core.\nagent_env.sh — URL + token (panel-generated; do not commit).\nagent_config.json — modules.\ninstall_cron.sh — cron.\nsystemd/ — timer.\nupdate_scripts.sh — refresh scripts without touching agent_env.sh.\nREADME.txt — cheat sheet in the archive.',
+          body: 'corax_send.sh — one token for the cluster: sends an audit report immediately and installs the minute timer.\nrun_console.sh — full inventory.\ninventory_agent.sh — inventory core.\naudit_agent.sh — one audit sample (corax_send calls it).\nagent_env.sh — URL + token (panel-generated; do not commit).\nagent_config.json — modules.\ninstall_cron.sh — cron.\nsystemd/ — timer.\nupdate_scripts.sh — refresh scripts without touching agent_env.sh.\nREADME.txt — cheat sheet in the archive.',
         },
         {
           title: 'Schedule',
-          body: 'sudo ./install_cron.sh from /opt/corax-agent.\nInventory runs Monday 09:15. Audit polls every minute and sends a sample only when the host is added on the Server audit tab.\nOr systemd: corax-agent.timer and corax-audit.timer from systemd/ in the ZIP.',
+          body: 'sudo ./corax_send.sh from /opt/corax-agent.\nCopy the same agent_env.sh to every server. The first run sends a report immediately and the host shows up on Server audit by itself. The minute timer then sends on Collect now and on the interval.\nOr sudo ./install_cron.sh: inventory Monday 09:15 and the same minute audit.',
         },
         {
           title: 'Update without wiping the token',

@@ -110,6 +110,11 @@ export function ServerAuditPage() {
   const [linuxOnly, setLinuxOnly] = useState(true)
   const [picked, setPicked] = useState<Computer | null>(null)
   const [logMode, setLogMode] = useState<'err' | 'all'>('err')
+  const [hostQuery, setHostQuery] = useState('')
+  const [status, setStatus] = useState<'all' | 'fresh' | 'stale' | 'none' | 'off'>('all')
+  const [sortKey, setSortKey] = useState<'name' | 'temp' | 'cpu' | 'seen'>('temp')
+  const [sensorQuery, setSensorQuery] = useState('')
+  const [focus, setFocus] = useState<'all' | 'temp' | 'load' | 'net'>('all')
 
   const loadHosts = useCallback(async () => {
     const rows = await api.serverAuditHosts()
@@ -169,6 +174,8 @@ export function ServerAuditPage() {
     }
   }, [loadHosts, t, toast])
 
+  const hurry = hosts.some((host) => host.collect_requested || !host.last_sample_at)
+
   useEffect(() => {
     if (selectedId == null) {
       setDetail(null)
@@ -181,12 +188,12 @@ export function ServerAuditPage() {
     const timer = window.setInterval(() => {
       void loadDetail(selectedId, hours).catch(() => undefined)
       void loadHosts().catch(() => undefined)
-    }, 45000)
+    }, hurry ? 8000 : 20000)
     return () => {
       alive = false
       window.clearInterval(timer)
     }
-  }, [hours, loadDetail, loadHosts, selectedId, t, toast])
+  }, [hours, hurry, loadDetail, loadHosts, selectedId, t, toast])
 
   const payload = detail?.payload ?? {}
   const os = asRecord(payload.os)
@@ -197,6 +204,7 @@ export function ServerAuditPage() {
   const sockets = asRecord(payload.sockets)
   const timeInfo = asRecord(payload.time)
   const temps = asRows(payload.temperatures)
+  const voltages = asRows(payload.voltages)
   const fans = asRows(payload.fans)
   const disks = asRows(payload.disks)
   const processes = asRows(payload.processes)
@@ -215,6 +223,36 @@ export function ServerAuditPage() {
       .slice(0, 12)
       .map((computer) => ({ computer, enrolled: enrolled.has(computer.hostname.toLowerCase()) }))
   }, [fleetItems, hosts, linuxOnly])
+
+  const visibleHosts = useMemo(() => {
+    const query = hostQuery.trim().toLowerCase()
+    const rows = hosts.filter((host) => {
+      if (status === 'off') {
+        if (host.enabled) return false
+      } else if (status !== 'all' && (freshness(host) !== status || !host.enabled)) {
+        return false
+      }
+      if (!query) return true
+      return [host.hostname, host.label, host.ip_address, host.os_summary].some((part) =>
+        (part || '').toLowerCase().includes(query),
+      )
+    })
+    rows.sort((a, b) => {
+      if (sortKey === 'temp') return (b.latest_cpu_temp_c ?? -1) - (a.latest_cpu_temp_c ?? -1)
+      if (sortKey === 'cpu') return (b.latest_cpu_percent ?? -1) - (a.latest_cpu_percent ?? -1)
+      if (sortKey === 'seen') return (b.last_sample_at || '').localeCompare(a.last_sample_at || '')
+      return (a.label || a.hostname).localeCompare(b.label || b.hostname, locale === 'en' ? 'en' : 'ru')
+    })
+    return rows
+  }, [hostQuery, hosts, locale, sortKey, status])
+
+  const sensorNeedle = sensorQuery.trim().toLowerCase()
+  const shownTemps = sensorNeedle
+    ? temps.filter((row) => `${textOf(row.name)} ${textOf(row.source)}`.toLowerCase().includes(sensorNeedle))
+    : temps
+  const shownVolts = sensorNeedle
+    ? voltages.filter((row) => `${textOf(row.name)} ${textOf(row.source)}`.toLowerCase().includes(sensorNeedle))
+    : voltages
 
   const labels = useMemo(
     () => (detail?.points ?? []).map((point) => fmtWhen(point.collected_at, locale)),
@@ -324,16 +362,37 @@ export function ServerAuditPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
       {confirm.dialog}
-      <div>
-        <h1 className="text-xl font-semibold">{t('titles.serverAudit')}</h1>
-        <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.subtitle')}</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">{t('titles.serverAudit')}</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.subtitle')}</p>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {([6, 24, 168] as Hours[]).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setHours(value)}
+              className={`rounded-lg px-3 py-1.5 text-sm ${hours === value ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+            >
+              {value === 6 ? t('serverAudit.range6') : value === 24 ? t('serverAudit.range24') : t('serverAudit.range7')}
+            </button>
+          ))}
+        </div>
       </div>
 
+      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+        <div className="text-sm font-semibold">{t('serverAudit.setupTitle')}</div>
+        <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.setupBody')}</p>
+        <code className="mt-2 inline-block rounded-md bg-[var(--color-bg-muted)] px-2 py-1 font-mono text-sm">
+          {t('serverAudit.setupCmd')}
+        </code>
+      </section>
+
       {canEdit ? (
-        <form
-          onSubmit={(event) => void onAdd(event)}
-          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-        >
+        <details className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold">{t('serverAudit.addManual')}</summary>
+          <form className="mt-3" onSubmit={(event) => void onAdd(event)}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">{t('serverAudit.pickTitle')}</h2>
             <label className="flex items-center gap-2 text-xs text-[var(--color-fg-subtle)]">
@@ -445,25 +504,64 @@ export function ServerAuditPage() {
               : t('serverAudit.hint')}
           </p>
         </form>
+        </details>
       ) : null}
 
       <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2">
-            <span className="text-sm font-medium">{t('common.total')}: {hosts.length}</span>
-            <button
-              type="button"
-              className="rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-bg-muted)]"
-              onClick={() => void loadHosts().catch((error: unknown) => toast.error(error instanceof Error ? error.message : t('common.error')))}
+          <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{t('common.total')}: {visibleHosts.length}/{hosts.length}</span>
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-bg-muted)]"
+                onClick={() => void loadHosts().catch((error: unknown) => toast.error(error instanceof Error ? error.message : t('common.error')))}
+              >
+                {loading ? t('common.loading') : t('common.refresh')}
+              </button>
+            </div>
+            <input
+              value={hostQuery}
+              onChange={(event) => setHostQuery(event.target.value)}
+              placeholder={t('serverAudit.searchHosts')}
+              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm"
+            />
+            <div className="flex flex-wrap gap-1">
+              {([
+                ['all', t('serverAudit.filterAll')],
+                ['fresh', t('serverAudit.filterLive')],
+                ['none', t('serverAudit.filterWait')],
+                ['stale', t('serverAudit.filterStale')],
+                ['off', t('serverAudit.filterOff')],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setStatus(id)}
+                  className={`rounded-md px-2 py-0.5 text-[11px] ${status === id ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={sortKey}
+              onChange={(event) => setSortKey(event.target.value as 'name' | 'temp' | 'cpu' | 'seen')}
+              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-xs"
             >
-              {loading ? t('common.loading') : t('common.refresh')}
-            </button>
+              <option value="temp">{t('serverAudit.sortTemp')}</option>
+              <option value="cpu">{t('serverAudit.sortCpu')}</option>
+              <option value="seen">{t('serverAudit.sortSeen')}</option>
+              <option value="name">{t('serverAudit.sortName')}</option>
+            </select>
           </div>
           {hosts.length === 0 ? (
             <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.empty')}</p>
+          ) : visibleHosts.length === 0 ? (
+            <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.noMatch')}</p>
           ) : (
             <ul className="max-h-[70vh] divide-y divide-[var(--color-border)] overflow-auto">
-              {hosts.map((host) => {
+              {visibleHosts.map((host) => {
                 const tone = freshness(host)
                 const active = host.id === selectedId
                 return (
@@ -483,8 +581,11 @@ export function ServerAuditPage() {
                         {host.hostname}
                         {host.ip_address ? ` · ${host.ip_address}` : ''}
                       </span>
-                      <span className="text-xs text-[var(--color-fg-subtle)]">
-                        {fmtTemp(host.latest_cpu_temp_c)} · CPU {fmtPct(host.latest_cpu_percent)} · RAM {fmtPct(host.latest_mem_percent)}
+                      <span className="font-mono text-xs text-[var(--color-fg)]">
+                        <span className={host.latest_cpu_temp_c != null && host.latest_cpu_temp_c >= 75 ? 'text-rose-600' : ''}>
+                          {fmtTemp(host.latest_cpu_temp_c)}
+                        </span>
+                        {' · CPU '}{fmtPct(host.latest_cpu_percent)}{' · RAM '}{fmtPct(host.latest_mem_percent)}
                       </span>
                     </button>
                   </li>
@@ -562,10 +663,10 @@ export function ServerAuditPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
-                <Metric label={t('serverAudit.temp')} value={fmtTemp(detail.latest_cpu_temp_c)} />
-                <Metric label={t('serverAudit.cpu')} value={fmtPct(detail.latest_cpu_percent)} />
-                <Metric label={t('serverAudit.memory')} value={fmtPct(detail.latest_mem_percent)} />
-                <Metric label={t('serverAudit.disk')} value={fmtPct(detail.latest_disk_percent)} />
+                <Metric label={t('serverAudit.temp')} value={fmtTemp(detail.latest_cpu_temp_c)} hot={detail.latest_cpu_temp_c != null && detail.latest_cpu_temp_c >= 75} />
+                <Metric label={t('serverAudit.cpu')} value={fmtPct(detail.latest_cpu_percent)} hot={detail.latest_cpu_percent != null && detail.latest_cpu_percent >= 90} />
+                <Metric label={t('serverAudit.memory')} value={fmtPct(detail.latest_mem_percent)} hot={detail.latest_mem_percent != null && detail.latest_mem_percent >= 90} />
+                <Metric label={t('serverAudit.disk')} value={fmtPct(detail.latest_disk_percent)} hot={detail.latest_disk_percent != null && detail.latest_disk_percent >= 90} />
                 <Metric label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} />
                 <Metric label={t('serverAudit.swap')} value={fmtPct(numOf(memory?.swap_used_percent))} />
               </div>
@@ -584,14 +685,19 @@ export function ServerAuditPage() {
               />
 
               <div className="flex flex-wrap gap-2">
-                {([6, 24, 168] as Hours[]).map((value) => (
+                {([
+                  ['all', t('serverAudit.focusAll')],
+                  ['temp', t('serverAudit.focusTemp')],
+                  ['load', t('serverAudit.focusLoad')],
+                  ['net', t('serverAudit.focusNet')],
+                ] as const).map(([id, label]) => (
                   <button
-                    key={value}
+                    key={id}
                     type="button"
-                    onClick={() => setHours(value)}
-                    className={`rounded-lg px-3 py-1.5 text-sm ${hours === value ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+                    onClick={() => setFocus(id)}
+                    className={`rounded-lg px-3 py-1.5 text-sm ${focus === id ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
                   >
-                    {value === 6 ? t('serverAudit.range6') : value === 24 ? t('serverAudit.range24') : t('serverAudit.range7')}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -599,43 +705,73 @@ export function ServerAuditPage() {
               {labels.length < 2 ? (
                 <p className="text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.chartNeed')}</p>
               ) : (
-                <div className="grid gap-4 xl:grid-cols-2">
-                  <div className="h-64 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                    <ServerAuditCharts
-                      labels={labels}
-                      percent
-                      series={[
-                        { label: t('serverAudit.cpu'), color: '#2563eb', data: detail.points.map((p) => p.cpu_used_percent) },
-                        { label: t('serverAudit.memory'), color: '#059669', data: detail.points.map((p) => p.mem_used_percent) },
-                        { label: t('serverAudit.disk'), color: '#d97706', data: detail.points.map((p) => p.disk_used_percent) },
-                        { label: t('serverAudit.temp'), color: '#e11d48', data: detail.points.map((p) => p.cpu_temp_c), axis: 'y1' },
-                      ]}
-                    />
-                  </div>
-                  <div className="h-64 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                    <ServerAuditCharts
-                      labels={labels}
-                      series={[
-                        { label: t('serverAudit.rx'), color: '#0284c7', data: detail.points.map((p) => p.net_rx_bps) },
-                        { label: t('serverAudit.tx'), color: '#7c3aed', data: detail.points.map((p) => p.net_tx_bps) },
-                        { label: t('serverAudit.load'), color: '#64748b', data: detail.points.map((p) => p.load_1), axis: 'y1' },
-                      ]}
-                    />
-                  </div>
+                <div className={`grid gap-4 ${focus === 'all' ? 'xl:grid-cols-2' : ''}`}>
+                  {focus !== 'net' ? (
+                    <div className="h-64 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                      <ServerAuditCharts
+                        labels={labels}
+                        percent={focus !== 'temp'}
+                        series={
+                          focus === 'temp'
+                            ? [{ label: t('serverAudit.temp'), color: '#e11d48', data: detail.points.map((p) => p.cpu_temp_c) }]
+                            : [
+                                { label: t('serverAudit.cpu'), color: '#2563eb', data: detail.points.map((p) => p.cpu_used_percent) },
+                                { label: t('serverAudit.memory'), color: '#059669', data: detail.points.map((p) => p.mem_used_percent) },
+                                { label: t('serverAudit.disk'), color: '#d97706', data: detail.points.map((p) => p.disk_used_percent) },
+                                ...(focus === 'all'
+                                  ? [{ label: t('serverAudit.temp'), color: '#e11d48', data: detail.points.map((p) => p.cpu_temp_c), axis: 'y1' as const }]
+                                  : []),
+                              ]
+                        }
+                      />
+                    </div>
+                  ) : null}
+                  {focus !== 'load' && focus !== 'temp' ? (
+                    <div className="h-64 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                      <ServerAuditCharts
+                        labels={labels}
+                        series={[
+                          { label: t('serverAudit.rx'), color: '#0284c7', data: detail.points.map((p) => p.net_rx_bps) },
+                          { label: t('serverAudit.tx'), color: '#7c3aed', data: detail.points.map((p) => p.net_tx_bps) },
+                          ...(focus === 'all'
+                            ? [{ label: t('serverAudit.load'), color: '#64748b', data: detail.points.map((p) => p.load_1), axis: 'y1' as const }]
+                            : []),
+                        ]}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               )}
 
               <div className="grid gap-4 lg:grid-cols-2">
-                <Panel title={t('serverAudit.temperatures')}>
-                  {temps.length === 0 ? (
+                <Panel title={t('serverAudit.sensors')}>
+                  <div className="border-b border-[var(--color-border)] px-3 py-2">
+                    <input
+                      value={sensorQuery}
+                      onChange={(event) => setSensorQuery(event.target.value)}
+                      placeholder={t('serverAudit.sensorPh')}
+                      className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  {shownTemps.length === 0 ? (
                     <Empty>{t('serverAudit.noTemp')}</Empty>
                   ) : (
                     <SimpleTable
-                      rows={temps.map((row) => [textOf(row.name), fmtTemp(numOf(row.celsius)), textOf(row.source)])}
+                      rows={shownTemps.map((row) => [
+                        textOf(row.name),
+                        fmtTemp(numOf(row.celsius)),
+                        row.max != null || row.crit != null ? `${fmtTemp(numOf(row.max))} / ${fmtTemp(numOf(row.crit))}` : textOf(row.source),
+                      ])}
                     />
                   )}
                   {fans.length > 0 ? (
                     <SimpleTable rows={fans.map((row) => [textOf(row.name), `${textOf(row.rpm)} rpm`])} />
+                  ) : null}
+                  {shownVolts.length > 0 ? (
+                    <SimpleTable
+                      head={[t('serverAudit.voltages'), 'V']}
+                      rows={shownVolts.map((row) => [textOf(row.name), textOf(row.volts)])}
+                    />
                   ) : null}
                 </Panel>
                 <Panel title={t('serverAudit.disks')}>
@@ -724,11 +860,11 @@ export function ServerAuditPage() {
   )
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, hot }: { label: string; value: string; hot?: boolean }) {
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
       <div className="text-[11px] uppercase tracking-wide text-[var(--color-fg-subtle)]">{label}</div>
-      <div className="text-lg font-semibold">{value}</div>
+      <div className={`font-mono text-lg font-semibold ${hot ? 'text-rose-600' : ''}`}>{value}</div>
     </div>
   )
 }

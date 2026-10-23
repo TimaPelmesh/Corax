@@ -47,16 +47,15 @@ CORAX Linux Agent (bash) 3.2.0
      sudo mkdir -p /opt/corax-agent
      sudo unzip -o corax-agent-linux-*.zip -d /opt/corax-agent
      cd /opt/corax-agent
-     chmod +x run_console.sh corax_send.sh inventory_agent.sh update_scripts.sh
-     /bin/sh ./run_console.sh
+     chmod +x run_console.sh corax_send.sh inventory_agent.sh audit_agent.sh update_scripts.sh
+     sudo ./corax_send.sh
 
 Файлы
 -----
-  run_console.sh      — основной консольный запуск (рекомендуется)
-  corax_send.sh       — то же самое (алиас)
-  inventory_agent.sh  — ядро сбора (учёт в «Компьютеры» + снимок аудита)
-  audit_agent.sh      — короткий опрос панели: шлёт температуру и метрики,
-                        только если хост добавлен во вкладке «Аудит серверов»
+  corax_send.sh       — один токен на кластер: сразу шлёт отчёт и ставит минутный таймер
+  run_console.sh      — полный инвентарь в «Компьютеры»
+  inventory_agent.sh  — ядро инвентаря
+  audit_agent.sh      — одна точка аудита (corax_send вызывает его)
   agent_env.sh        — URL + токен (генерируется панелью в ZIP; НЕ коммитить)
   agent_env.sh.example — шаблон без секретов (в git)
   agent_config.json   — модули
@@ -66,9 +65,11 @@ CORAX Linux Agent (bash) 3.2.0
 
 Расписание
 ----------
+  sudo ./corax_send.sh
+    сразу один отчёт и минутный таймер (/etc/cron.d/corax-send)
   sudo ./install_cron.sh
     инвентарь — понедельник 09:15
-    аудит — каждую минуту спрашивает панель и шлёт точку, если её попросили
+    аудит — каждую минуту (corax_send.sh --cron)
 или systemd:
   sudo cp systemd/corax-agent.service systemd/corax-agent.timer /etc/systemd/system/
   sudo cp systemd/corax-audit.service systemd/corax-audit.timer /etc/systemd/system/
@@ -77,10 +78,9 @@ CORAX Linux Agent (bash) 3.2.0
 
 Аудит серверов
 --------------
-В панели: вкладка «Аудит серверов» → добавить hostname -s этой машины.
-Интервал (5–1440 мин) или только «Собрать сейчас».
-Графики строятся из точек, которые присылает audit_agent.sh.
-Нужен python3 (на Debian: apt install python3). Без него полный отчёт и аудит не собираются.
+Один agent_env.sh (один токен) копируют на все серверы. Хост появляется сам после первого corax_send.
+Кнопка «Собрать сейчас» и интервал срабатывают на следующем минутном запуске.
+Нужен python3 (на Debian: apt install python3). Датчики полнее, если стоит lm-sensors.
 Полный учёт (ОС, диски, ПО) по-прежнему уходит в «Компьютеры».
 
 Секреты

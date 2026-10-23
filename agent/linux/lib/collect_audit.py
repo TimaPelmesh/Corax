@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 SAMPLE_SEC = 0.45
-AGENT_VERSION = os.environ.get("CORAX_AGENT_VERSION") or "3.2.0-linux"
+AGENT_VERSION = os.environ.get("CORAX_AGENT_VERSION") or "3.3.0-linux"
 
 _SKIP_FSTYPE = {
     "tmpfs",
@@ -80,6 +80,19 @@ def _hostname() -> str:
     if not name:
         name = _read("/etc/hostname").splitlines()[0].strip() if _read("/etc/hostname") else ""
     return name[:255] or "unknown-host"
+
+
+def _hostname_fqdn() -> str:
+    out = _run(["hostname", "-f"], timeout=2).strip()
+    if out and " " not in out and out != "localhost":
+        return out[:255]
+    try:
+        fqdn = socket.getfqdn().strip()
+    except OSError:
+        fqdn = ""
+    if not fqdn or fqdn == "localhost":
+        return ""
+    return fqdn[:255]
 
 
 def _os_release() -> dict[str, str]:
@@ -193,8 +206,7 @@ def _temperatures() -> list[dict]:
     if thermal.is_dir():
         for zone in sorted(thermal.glob("thermal_zone*")):
             kind = _read(str(zone / "type")).strip() or zone.name
-            raw = _read(str(zone / "temp")).strip()
-            celsius = _milli_c(raw)
+            celsius = _milli_c(_read(str(zone / "temp")).strip())
             if celsius is None:
                 continue
             rows.append({"name": kind[:80], "celsius": celsius, "source": "thermal"})
@@ -209,16 +221,111 @@ def _temperatures() -> list[dict]:
                 celsius = _milli_c(_read(str(temp)).strip())
                 if celsius is None:
                     continue
-                rows.append({"name": name[:80], "celsius": celsius, "source": chip[:40] or "hwmon"})
+                row = {"name": name[:80], "celsius": celsius, "source": chip[:40] or "hwmon"}
+                high = _milli_c(_read(str(mon / f"temp{idx}_max")).strip())
+                crit = _milli_c(_read(str(mon / f"temp{idx}_crit")).strip())
+                if high is not None:
+                    row["max"] = high
+                if crit is not None:
+                    row["crit"] = crit
+                rows.append(row)
+    sensor_temps, _, _ = _sensors_once()
+    rows.extend(sensor_temps)
+    return _dedupe_named(rows, "celsius", 64)
+
+
+def _voltages() -> list[dict]:
+    rows: list[dict] = []
+    hwmon = Path("/sys/class/hwmon")
+    if hwmon.is_dir():
+        for mon in sorted(hwmon.glob("hwmon*")):
+            chip = _read(str(mon / "name")).strip() or mon.name
+            for sensor in sorted(mon.glob("in*_input")):
+                idx = sensor.name.replace("in", "").replace("_input", "")
+                label = _read(str(mon / f"in{idx}_label")).strip() or f"{chip} in{idx}"
+                volts = _volts(_read(str(sensor)).strip())
+                if volts is None:
+                    continue
+                rows.append({"name": label[:80], "volts": volts, "source": chip[:40]})
+    _, _, sensor_volts = _sensors_once()
+    rows.extend(sensor_volts)
+    return _dedupe_named(rows, "volts", 24)
+
+
+def _sensors_once() -> tuple[list[dict], list[dict], list[dict]]:
+    cached = getattr(_sensors_once, "cached", None)
+    if cached is not None:
+        return cached
+    cached = _parse_sensors_json(_run(["sensors", "-j"], timeout=4))
+    setattr(_sensors_once, "cached", cached)
+    return cached
+
+
+def _parse_sensors_json(text: str) -> tuple[list[dict], list[dict], list[dict]]:
+    """lm-sensors JSON: chip -> feature -> tempN_input / fanN_input / inN_input."""
+    temps: list[dict] = []
+    fans: list[dict] = []
+    volts: list[dict] = []
+    if not text.strip():
+        return temps, fans, volts
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return temps, fans, volts
+    if not isinstance(data, dict):
+        return temps, fans, volts
+    for chip, block in data.items():
+        if not isinstance(block, dict):
+            continue
+        chip_name = str(chip)[:40]
+        for feature, values in block.items():
+            if not isinstance(values, dict):
+                continue
+            name = str(feature)[:80]
+            for key, val in values.items():
+                if not isinstance(val, (int, float)) or isinstance(val, bool):
+                    continue
+                if key.startswith("temp") and key.endswith("_input"):
+                    celsius = float(val)
+                    if celsius <= 0 or celsius > 140:
+                        continue
+                    row: dict = {"name": name, "celsius": round(celsius, 1), "source": chip_name}
+                    prefix = key[: -len("_input")]
+                    high = values.get(f"{prefix}_max")
+                    crit = values.get(f"{prefix}_crit")
+                    if isinstance(high, (int, float)) and not isinstance(high, bool) and 0 < float(high) <= 140:
+                        row["max"] = round(float(high), 1)
+                    if isinstance(crit, (int, float)) and not isinstance(crit, bool) and 0 < float(crit) <= 140:
+                        row["crit"] = round(float(crit), 1)
+                    temps.append(row)
+                elif key.startswith("fan") and key.endswith("_input"):
+                    rpm = int(val)
+                    if 0 < rpm <= 30000:
+                        fans.append({"name": name, "rpm": rpm, "source": chip_name})
+                elif key.startswith("in") and key.endswith("_input"):
+                    reading = float(val)
+                    if 0 < reading < 400:
+                        # lm-sensors already uses volts; sysfs millivolts are handled elsewhere.
+                        if reading > 40:
+                            reading = reading / 1000.0
+                        volts.append({"name": name, "volts": round(reading, 3), "source": chip_name})
+    return temps, fans, volts
+
+
+def _dedupe_named(rows: list[dict], value_key: str, limit: int) -> list[dict]:
     uniq: list[dict] = []
     seen: set[tuple[str, float]] = set()
     for row in rows:
-        key = (str(row["name"]).lower(), float(row["celsius"]))
+        try:
+            value = round(float(row[value_key]), 3)
+        except (KeyError, TypeError, ValueError):
+            continue
+        key = (str(row.get("source") or "").lower(), str(row.get("name") or "").lower(), value)
         if key in seen:
             continue
         seen.add(key)
         uniq.append(row)
-        if len(uniq) >= 32:
+        if len(uniq) >= limit:
             break
     return uniq
 
@@ -228,11 +335,23 @@ def _milli_c(raw: str) -> float | None:
         n = float(raw)
     except (TypeError, ValueError):
         return None
-    if n > 1000:
+    if n >= 1000:
         n = n / 1000.0
-    if n < 1 or n > 140:
+    if n <= 0 or n > 140:
         return None
     return round(n, 1)
+
+
+def _volts(raw: str) -> float | None:
+    try:
+        n = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if n >= 100:
+        n = n / 1000.0
+    if n <= 0 or n > 40:
+        return None
+    return round(n, 3)
 
 
 def _headline_temp(rows: list[dict]) -> float | None:
@@ -250,23 +369,24 @@ def _headline_temp(rows: list[dict]) -> float | None:
 def _fans() -> list[dict]:
     rows: list[dict] = []
     hwmon = Path("/sys/class/hwmon")
-    if not hwmon.is_dir():
-        return rows
-    for mon in sorted(hwmon.glob("hwmon*")):
-        chip = _read(str(mon / "name")).strip() or mon.name
-        for fan in sorted(mon.glob("fan*_input")):
-            idx = fan.name.replace("fan", "").replace("_input", "")
-            label = _read(str(mon / f"fan{idx}_label")).strip() or f"{chip} fan{idx}"
-            try:
-                rpm = int(float(_read(str(fan)).strip() or "0"))
-            except ValueError:
-                continue
-            if rpm <= 0 or rpm > 30000:
-                continue
-            rows.append({"name": label[:80], "rpm": rpm})
-            if len(rows) >= 16:
-                return rows
-    return rows
+    if hwmon.is_dir():
+        for mon in sorted(hwmon.glob("hwmon*")):
+            chip = _read(str(mon / "name")).strip() or mon.name
+            for fan in sorted(mon.glob("fan*_input")):
+                idx = fan.name.replace("fan", "").replace("_input", "")
+                label = _read(str(mon / f"fan{idx}_label")).strip() or f"{chip} fan{idx}"
+                try:
+                    rpm = int(float(_read(str(fan)).strip() or "0"))
+                except ValueError:
+                    continue
+                if rpm <= 0 or rpm > 30000:
+                    continue
+                rows.append({"name": label[:80], "rpm": rpm, "source": chip[:40]})
+                if len(rows) >= 24:
+                    break
+    _, sensor_fans, _ = _sensors_once()
+    rows.extend(sensor_fans)
+    return _dedupe_named(rows, "rpm", 24)
 
 
 def _meminfo() -> dict[str, int]:
@@ -797,6 +917,9 @@ def build_audit() -> dict:
             break
 
     temps = _temperatures()
+    voltages = _voltages()
+    fqdn = _hostname_fqdn()
+    short = _hostname()
     memory = _memory(_meminfo())
     load = _load()
     disks = _df()
@@ -840,7 +963,9 @@ def build_audit() -> dict:
         "log_errors": log_errors,
     }
     return {
-        "hostname": _hostname(),
+        "hostname": short,
+        "hostname_fqdn": fqdn or None,
+        "aliases": [name for name in (short, fqdn) if name],
         "collected_at": now,
         "agent_version": AGENT_VERSION,
         "summary": summary,
@@ -861,6 +986,7 @@ def build_audit() -> dict:
             "per_core": per_core,
         },
         "temperatures": temps,
+        "voltages": voltages,
         "fans": _fans(),
         "memory": memory,
         "load": load,

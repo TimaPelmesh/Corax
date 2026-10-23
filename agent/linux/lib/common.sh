@@ -4,7 +4,7 @@
 # Never touch .env, databases, docker volumes, or the agent install tree.
 # shellcheck shell=sh
 
-CORAX_AGENT_VERSION="${CORAX_AGENT_VERSION:-3.2.0-linux}"
+CORAX_AGENT_VERSION="${CORAX_AGENT_VERSION:-3.3.0-linux}"
 
 log() {
   printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date)" "$*" >&2

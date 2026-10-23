@@ -36,6 +36,11 @@ if ! require_agent_config "$base" "$token"; then
   exit 2
 fi
 
+mode=cron
+if [ "${1:-}" = "--now" ]; then
+  mode=now
+fi
+
 hn=$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo unknown-host)
 hn=$(printf '%s' "$hn" | tr -d '\r\n' | head -c 255)
 if have_cmd python3; then
@@ -133,28 +138,50 @@ if ! ensure_workdir; then
 fi
 trap cleanup_workdir EXIT INT TERM
 
+stamp_file=/var/tmp/corax-last-audit
+stamp_age() {
+  if [ ! -f "$stamp_file" ]; then
+    printf '%s' 999999
+    return 0
+  fi
+  then=$(tr -cd '0-9' <"$stamp_file" | head -c 12)
+  now=$(date +%s 2>/dev/null || printf 0)
+  case "$then" in
+    ''|*[!0-9]*) printf '%s' 999999 ;;
+    *) printf '%s' $((now - then)) ;;
+  esac
+}
+
 asked=0
-for p in $ports; do
-  for path in "/api/v1/agent/audit-directive?hostname=$hn_q" "/api/agent/audit-directive?hostname=$hn_q"; do
-    uri="${scheme}://${host}:${p}${path}"
-    code=$(fetch_directive "$uri")
-    if [ "$code" != "200" ]; then
-      continue
-    fi
-    flag=$(directive_flag "${CORAX_WORKDIR}/audit_directive.json")
-    if [ "$flag" = "yes" ]; then
-      asked=1
-      break 2
-    fi
-    if [ "$flag" = "no" ]; then
+if [ "$mode" = "now" ]; then
+  asked=1
+else
+  for p in $ports; do
+    for path in "/api/v1/agent/audit-directive?hostname=$hn_q" "/api/agent/audit-directive?hostname=$hn_q"; do
+      uri="${scheme}://${host}:${p}${path}"
+      code=$(fetch_directive "$uri")
+      if [ "$code" != "200" ]; then
+        continue
+      fi
+      flag=$(directive_flag "${CORAX_WORKDIR}/audit_directive.json")
+      if [ "$flag" = "yes" ]; then
+        asked=1
+        break 2
+      fi
+      if [ "$flag" = "no" ]; then
+        exit 0
+      fi
+    done
+  done
+  if [ "$asked" -ne 1 ]; then
+    age=$(stamp_age)
+    if [ "$age" -lt 300 ]; then
+      log "audit: panel did not answer, last sample ${age}s ago, skip"
       exit 0
     fi
-  done
-done
-
-if [ "$asked" -ne 1 ]; then
-  log "audit: panel did not answer, skip"
-  exit 0
+    log "audit: panel did not answer, sending anyway"
+    asked=1
+  fi
 fi
 
 collect_audit_snapshot
@@ -170,8 +197,30 @@ for p in $ports; do
     uri="${scheme}://${host}:${p}${path}"
     code=$(post_audit "$json_out" "$uri")
     if [ "$code" = "200" ] || [ "$code" = "201" ]; then
-      log "audit: stored via $uri"
-      ok=1
+      stored=$(python3 -c 'import json,sys
+try:
+    d=json.load(open(sys.argv[1],encoding="utf-8"))
+except Exception:
+    print("unknown")
+    raise SystemExit
+if isinstance(d, dict) and d.get("stored") is True:
+    print("yes")
+elif isinstance(d, dict):
+    print(d.get("reason") or "skip")
+else:
+    print("unknown")' "${CORAX_WORKDIR}/audit_post.txt" 2>/dev/null || printf '%s' unknown)
+      if [ "$stored" = "yes" ] || [ "$stored" = "unknown" ]; then
+        date +%s >"$stamp_file" 2>/dev/null || true
+        log "audit: stored $hn via $uri"
+        printf 'OK %s\n' "$hn"
+        ok=1
+        break 2
+      fi
+      log "audit: panel did not store ($stored) via $uri"
+      if [ "$stored" = "disabled" ]; then
+        exit 0
+      fi
+      ok=0
       break 2
     fi
     log "audit: HTTP $code $uri"

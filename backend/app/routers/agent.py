@@ -199,7 +199,13 @@ async def _reported_assigned_user(db: AsyncSession, extended: dict | None) -> Us
     return None
 
 
-async def verify_agent_token(db: AsyncSession, authorization: str | None, hostname: str) -> None:
+async def verify_agent_token(
+    db: AsyncSession,
+    authorization: str | None,
+    hostname: str,
+    *,
+    any_host: bool = False,
+) -> None:
     env = (settings.environment or "").strip().lower()
     if env == "development" and settings.allow_dev_any_agent_token:
         if authorization and authorization.startswith("Bearer "):
@@ -232,13 +238,11 @@ async def verify_agent_token(db: AsyncSession, authorization: str | None, hostna
             raise HTTPException(status_code=403, detail="Неверный токен агента")
         host = hostname.strip()
         allow = (row.allowed_hostname or "").strip()
-        if host and host.lower() != "directive":
-            if allow:
-                if not hostnames_match(host, allow):
-                    raise HTTPException(status_code=403, detail="Токен агента не разрешён для этого хоста")
-            else:
-                # First inventory from this install claims the token. A shared fleet token never reaches here.
-                row.allowed_hostname = host[:255]
+        # Empty allowed_hostname is a cluster token: one secret for every Linux host.
+        # Audit endpoints also accept a pinned token, so corax_send works across the fleet.
+        if not any_host and host and host.lower() != "directive" and allow:
+            if not hostnames_match(host, allow):
+                raise HTTPException(status_code=403, detail="Токен агента не разрешён для этого хоста")
         row.last_used_at = datetime.now(timezone.utc)
 
 
@@ -456,7 +460,7 @@ async def agent_audit_directive(
     """Linux sampler: collect only when this host is enrolled and due."""
     _ = request
     hn = (hostname or "").strip()
-    await verify_agent_token(db, authorization, hn or "directive")
+    await verify_agent_token(db, authorization, hn or "directive", any_host=True)
     return await audit_directive(db, hn)
 
 
@@ -471,7 +475,7 @@ async def submit_audit(
     """One telemetry point for an enrolled Linux host. Unknown hosts are ignored."""
     _ = request
     hn = report.hostname.strip()
-    await verify_agent_token(db, authorization, hn)
+    await verify_agent_token(db, authorization, hn, any_host=True)
     result = await record_audit_sample(db, hn, report.model_dump())
     await db.commit()
     return result
