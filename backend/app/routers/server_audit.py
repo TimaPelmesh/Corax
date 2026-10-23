@@ -20,7 +20,15 @@ from app.schemas import (
     ServerAuditHostUpdate,
     ServerAuditPoint,
 )
-from app.server_audit_store import ALLOWED_INTERVALS, _link_computer, find_audit_host
+from app.server_audit_store import (
+    ALLOWED_INTERVALS,
+    JOURNAL_LINES,
+    JOURNAL_MODES,
+    RETAIN_DAYS,
+    _link_computer,
+    apply_journal_now,
+    find_audit_host,
+)
 
 router = APIRouter(prefix="/server-audit", tags=["server-audit"])
 
@@ -72,6 +80,9 @@ def _host_out(host: ServerAuditHost, ip: str | None = None) -> ServerAuditHostOu
         enabled=bool(host.enabled),
         interval_minutes=int(host.interval_minutes or 0),
         collect_requested=bool(host.collect_requested),
+        journal_mode=(host.journal_mode or "errors"),
+        journal_lines=int(host.journal_lines or 0),
+        retain_days=int(host.retain_days or 14),
         computer_id=host.computer_id,
         ip_address=ip,
         os_summary=host.os_summary,
@@ -158,6 +169,23 @@ async def update_host(
         host.interval_minutes = _clean_interval(int(data["interval_minutes"]))
     if "enabled" in data and data["enabled"] is not None:
         host.enabled = bool(data["enabled"])
+    if "journal_mode" in data and data["journal_mode"] is not None:
+        mode = str(data["journal_mode"]).strip().lower()
+        if mode not in JOURNAL_MODES:
+            raise HTTPException(status_code=400, detail="Журнал: выкл, ошибки или все")
+        host.journal_mode = mode
+    if "journal_lines" in data and data["journal_lines"] is not None:
+        lines = int(data["journal_lines"])
+        if lines not in JOURNAL_LINES:
+            raise HTTPException(status_code=400, detail="Строк журнала: 0, 10, 20, 40 или 80")
+        host.journal_lines = lines
+    if "retain_days" in data and data["retain_days"] is not None:
+        days = int(data["retain_days"])
+        if days not in RETAIN_DAYS:
+            raise HTTPException(status_code=400, detail="Хранение: 7, 14, 30 или 90 дней")
+        host.retain_days = days
+    if any(key in data for key in ("journal_mode", "journal_lines", "retain_days")):
+        await apply_journal_now(db, host)
     await db.commit()
     await db.refresh(host)
     ips = await _ips(db, [host])
@@ -233,10 +261,12 @@ async def host_detail(
             .limit(1)
         )
     ).scalar_one_or_none()
+    in_range = rows[-1] if rows else None
+    source = in_range or latest
     payload: dict = {}
-    if latest and latest.payload_json:
+    if source and source.payload_json:
         try:
-            parsed = json.loads(latest.payload_json)
+            parsed = json.loads(source.payload_json)
         except json.JSONDecodeError:
             parsed = {}
         if isinstance(parsed, dict):
@@ -263,4 +293,5 @@ async def host_detail(
         created_at=base.created_at,
         payload=payload,
         points=points,
+        payload_in_range=in_range is not None or latest is None,
     )

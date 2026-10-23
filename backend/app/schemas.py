@@ -1498,6 +1498,9 @@ class ServerAuditHostUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
     interval_minutes: int | None = None
     enabled: bool | None = None
+    journal_mode: str | None = None
+    journal_lines: int | None = None
+    retain_days: int | None = None
 
 
 class ServerAuditPoint(BaseModel):
@@ -1582,6 +1585,9 @@ class ServerAuditHostUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=4000)
     interval_minutes: int | None = None
     enabled: bool | None = None
+    journal_mode: str | None = None
+    journal_lines: int | None = None
+    retain_days: int | None = None
 
 
 class ServerAuditPoint(BaseModel):
@@ -1609,6 +1615,9 @@ class ServerAuditHostOut(BaseModel):
     enabled: bool
     interval_minutes: int
     collect_requested: bool
+    journal_mode: str = "errors"
+    journal_lines: int = 20
+    retain_days: int = 14
     computer_id: int | None = None
     ip_address: str | None = None
     os_summary: str | None = None
@@ -1628,6 +1637,7 @@ class ServerAuditHostOut(BaseModel):
 class ServerAuditDetail(ServerAuditHostOut):
     payload: dict[str, Any] = Field(default_factory=dict)
     points: list[ServerAuditPoint] = Field(default_factory=list)
+    payload_in_range: bool = True
 
 
 class AgentAuditReport(BaseModel):

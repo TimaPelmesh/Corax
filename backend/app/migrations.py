@@ -1754,6 +1754,24 @@ def _migrate_server_audit(sync_conn) -> None:
     )
 
 
+def _migrate_server_audit_journal(sync_conn) -> None:
+    if "server_audit_hosts" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "server_audit_hosts")
+    if "journal_mode" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE server_audit_hosts ADD COLUMN journal_mode VARCHAR(16) DEFAULT 'errors'")
+        )
+    if "journal_lines" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE server_audit_hosts ADD COLUMN journal_lines INTEGER DEFAULT 20")
+        )
+    if "retain_days" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE server_audit_hosts ADD COLUMN retain_days INTEGER DEFAULT 14")
+        )
+
+
 def _migrate_glpi_device_ids(sync_conn) -> None:
     if "monitors" in _table_names(sync_conn):
         cols = _column_names(sync_conn, "monitors")
@@ -1862,6 +1880,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-02_users_phone", _migrate_users_phone),
     ("2026-10-08_ticket_handler_employee_tabs", _migrate_ticket_handler_employee_tabs),
     ("2026-10-23_server_audit", _migrate_server_audit),
+    ("2026-10-23_server_audit_journal", _migrate_server_audit_journal),
 ]
 
 

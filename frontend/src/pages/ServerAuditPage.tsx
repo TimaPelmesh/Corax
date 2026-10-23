@@ -115,6 +115,7 @@ export function ServerAuditPage() {
   const [sortKey, setSortKey] = useState<'name' | 'temp' | 'cpu' | 'seen'>('temp')
   const [sensorQuery, setSensorQuery] = useState('')
   const [focus, setFocus] = useState<'all' | 'temp' | 'load' | 'net'>('all')
+  const [addOpen, setAddOpen] = useState(false)
 
   const loadHosts = useCallback(async () => {
     const rows = await api.serverAuditHosts()
@@ -198,7 +199,6 @@ export function ServerAuditPage() {
   const payload = detail?.payload ?? {}
   const os = asRecord(payload.os)
   const cpu = asRecord(payload.cpu)
-  const memory = asRecord(payload.memory)
   const packages = asRecord(payload.packages)
   const pressure = asRecord(payload.pressure)
   const sockets = asRecord(payload.sockets)
@@ -223,6 +223,16 @@ export function ServerAuditPage() {
       .slice(0, 12)
       .map((computer) => ({ computer, enrolled: enrolled.has(computer.hostname.toLowerCase()) }))
   }, [fleetItems, hosts, linuxOnly])
+
+  const stats = useMemo(
+    () => ({
+      total: hosts.length,
+      live: hosts.filter((host) => host.enabled && freshness(host) === 'fresh').length,
+      wait: hosts.filter((host) => host.enabled && freshness(host) === 'none').length,
+      stale: hosts.filter((host) => host.enabled && freshness(host) === 'stale').length,
+    }),
+    [hosts],
+  )
 
   const visibleHosts = useMemo(() => {
     const query = hostQuery.trim().toLowerCase()
@@ -324,6 +334,23 @@ export function ServerAuditPage() {
     }
   }
 
+  async function onJournal(patch: {
+    journal_mode?: 'off' | 'errors' | 'all'
+    journal_lines?: number
+    retain_days?: number
+  }) {
+    if (!detail || !canEdit) return
+    try {
+      const updated = await api.updateServerAuditHost(detail.id, patch)
+      setDetail((current) => (current ? { ...current, ...updated } : current))
+      setHosts((current) => current.map((host) => (host.id === updated.id ? { ...host, ...updated } : host)))
+      await loadDetail(detail.id, hours)
+      toast.ok(t('serverAudit.saved'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('common.error'))
+    }
+  }
+
   async function onToggle() {
     if (!detail || !canEdit) return
     try {
@@ -362,37 +389,50 @@ export function ServerAuditPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
       {confirm.dialog}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">{t('titles.serverAudit')}</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.subtitle')}</p>
-        </div>
+      <header className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex flex-wrap gap-1">
           {([6, 24, 168] as Hours[]).map((value) => (
             <button
               key={value}
               type="button"
               onClick={() => setHours(value)}
-              className={`rounded-lg px-3 py-1.5 text-sm ${hours === value ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${hours === value ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'}`}
             >
               {value === 6 ? t('serverAudit.range6') : value === 24 ? t('serverAudit.range24') : t('serverAudit.range7')}
             </button>
           ))}
         </div>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => setAddOpen((open) => !open)}
+            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
+          >
+            {t('serverAudit.addManual')}
+          </button>
+        ) : null}
+      </header>
+
+      <div className="flex flex-wrap gap-3 text-sm">
+        <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
+          {t('common.total')}: <strong>{stats.total}</strong>
+        </span>
+        <span className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-emerald-800 dark:text-emerald-200">
+          {t('serverAudit.statLive')}: <strong>{stats.live}</strong>
+        </span>
+        <span className="rounded-lg bg-amber-500/10 px-3 py-1.5 text-amber-800 dark:text-amber-200">
+          {t('serverAudit.statStale')}: <strong>{stats.stale}</strong>
+        </span>
+        <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
+          {t('serverAudit.statWait')}: <strong>{stats.wait}</strong>
+        </span>
       </div>
 
-      <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
-        <div className="text-sm font-semibold">{t('serverAudit.setupTitle')}</div>
-        <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.setupBody')}</p>
-        <code className="mt-2 inline-block rounded-md bg-[var(--color-bg-muted)] px-2 py-1 font-mono text-sm">
-          {t('serverAudit.setupCmd')}
-        </code>
-      </section>
-
-      {canEdit ? (
-        <details className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
-          <summary className="cursor-pointer text-sm font-semibold">{t('serverAudit.addManual')}</summary>
-          <form className="mt-3" onSubmit={(event) => void onAdd(event)}>
+      {canEdit && addOpen ? (
+        <form
+          onSubmit={(event) => void onAdd(event)}
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+        >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">{t('serverAudit.pickTitle')}</h2>
             <label className="flex items-center gap-2 text-xs text-[var(--color-fg-subtle)]">
@@ -498,33 +538,17 @@ export function ServerAuditPage() {
               </button>
             </div>
           </div>
-          <p className="mt-3 text-xs text-[var(--color-fg-subtle)]">
-            {picked
-              ? `${t('serverAudit.fromFleet')}: ${picked.hostname}${picked.ip_address ? ` · ${picked.ip_address}` : ''}${picked.os_name ? ` · ${picked.os_name}` : ''}`
-              : t('serverAudit.hint')}
-          </p>
         </form>
-        </details>
       ) : null}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-          <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-medium">{t('common.total')}: {visibleHosts.length}/{hosts.length}</span>
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-bg-muted)]"
-                onClick={() => void loadHosts().catch((error: unknown) => toast.error(error instanceof Error ? error.message : t('common.error')))}
-              >
-                {loading ? t('common.loading') : t('common.refresh')}
-              </button>
-            </div>
+      <div className="flex flex-col gap-4">
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               value={hostQuery}
               onChange={(event) => setHostQuery(event.target.value)}
               placeholder={t('serverAudit.searchHosts')}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm"
+              className="min-w-[12rem] flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm sm:max-w-xs"
             />
             <div className="flex flex-wrap gap-1">
               {([
@@ -538,7 +562,7 @@ export function ServerAuditPage() {
                   key={id}
                   type="button"
                   onClick={() => setStatus(id)}
-                  className={`rounded-md px-2 py-0.5 text-[11px] ${status === id ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${status === id ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'}`}
                 >
                   {label}
                 </button>
@@ -547,51 +571,79 @@ export function ServerAuditPage() {
             <select
               value={sortKey}
               onChange={(event) => setSortKey(event.target.value as 'name' | 'temp' | 'cpu' | 'seen')}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-xs"
+              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
             >
               <option value="temp">{t('serverAudit.sortTemp')}</option>
               <option value="cpu">{t('serverAudit.sortCpu')}</option>
               <option value="seen">{t('serverAudit.sortSeen')}</option>
               <option value="name">{t('serverAudit.sortName')}</option>
             </select>
+            <button
+              type="button"
+              className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
+              onClick={() => void loadHosts().catch((error: unknown) => toast.error(error instanceof Error ? error.message : t('common.error')))}
+            >
+              {loading ? t('common.loading') : t('common.refresh')}
+            </button>
           </div>
           {hosts.length === 0 ? (
             <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.empty')}</p>
           ) : visibleHosts.length === 0 ? (
             <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.noMatch')}</p>
           ) : (
-            <ul className="max-h-[70vh] divide-y divide-[var(--color-border)] overflow-auto">
-              {visibleHosts.map((host) => {
-                const tone = freshness(host)
-                const active = host.id === selectedId
-                return (
-                  <li key={host.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(host.id)}
-                      className={`flex w-full flex-col gap-1 px-3 py-3 text-left ${active ? 'bg-[var(--color-bg-muted)]' : 'hover:bg-[var(--color-bg-muted)]'}`}
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-semibold">{host.label || host.hostname}</span>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${toneClass[tone]}`}>
-                          {tone === 'fresh' ? t('serverAudit.fresh') : tone === 'stale' ? t('serverAudit.stale') : t('serverAudit.noData')}
-                        </span>
-                      </span>
-                      <span className="truncate text-xs text-[var(--color-fg-subtle)]">
-                        {host.hostname}
-                        {host.ip_address ? ` · ${host.ip_address}` : ''}
-                      </span>
-                      <span className="font-mono text-xs text-[var(--color-fg)]">
-                        <span className={host.latest_cpu_temp_c != null && host.latest_cpu_temp_c >= 75 ? 'text-rose-600' : ''}>
+            <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
+              <table className="app-table min-w-full text-left text-sm">
+                <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
+                  <tr>
+                    <th className="px-3 py-2.5">{t('serverAudit.hostname')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.temp')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.cpu')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.memory')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.disk')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.load')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.interval')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.lastSample')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleHosts.map((host) => {
+                    const tone = freshness(host)
+                    const active = host.id === selectedId
+                    return (
+                      <tr
+                        key={host.id}
+                        onClick={() => setSelectedId(host.id)}
+                        className={`cursor-pointer border-t border-[var(--color-border)] ${active ? 'bg-[var(--color-bg-muted)]' : 'hover:bg-[var(--color-bg-muted)]/70'}`}
+                      >
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-medium">{host.label || host.hostname}</span>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${host.enabled ? toneClass[tone] : toneClass.none}`}>
+                              {!host.enabled ? t('serverAudit.disabled') : tone === 'fresh' ? t('serverAudit.fresh') : tone === 'stale' ? t('serverAudit.stale') : t('serverAudit.noData')}
+                            </span>
+                          </div>
+                          <div className="truncate text-xs text-[var(--color-fg-subtle)]">
+                            {host.hostname}
+                            {host.ip_address ? ` · ${host.ip_address}` : ''}
+                          </div>
+                        </td>
+                        <td className={`px-3 py-2.5 font-mono ${host.latest_cpu_temp_c != null && host.latest_cpu_temp_c >= 75 ? 'text-rose-600' : ''}`}>
                           {fmtTemp(host.latest_cpu_temp_c)}
-                        </span>
-                        {' · CPU '}{fmtPct(host.latest_cpu_percent)}{' · RAM '}{fmtPct(host.latest_mem_percent)}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
+                        </td>
+                        <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_cpu_percent)}</td>
+                        <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_mem_percent)}</td>
+                        <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_disk_percent)}</td>
+                        <td className="px-3 py-2.5 font-mono">{host.latest_load_1 == null ? '—' : host.latest_load_1.toFixed(2)}</td>
+                        <td className="px-3 py-2.5 text-[var(--color-fg-subtle)]">
+                          {host.interval_minutes ? t('serverAudit.every', { n: host.interval_minutes }) : t('serverAudit.manual')}
+                        </td>
+                        <td className="px-3 py-2.5 text-[var(--color-fg-subtle)]">{fmtWhen(host.last_sample_at, locale)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
 
@@ -612,10 +664,13 @@ export function ServerAuditPage() {
                   </p>
                   <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
                     {detail.last_sample_at
-                      ? `${fmtWhen(detail.last_sample_at, locale)} · ${fmtUptime(detail.points.at(-1)?.uptime_sec)}`
+                      ? `${t('serverAudit.lastSample')} · ${fmtWhen(detail.last_sample_at, locale)} · ${t('serverAudit.uptime')} ${fmtUptime(detail.points.at(-1)?.uptime_sec ?? numOf(asRecord(detail.payload)?.uptime_sec))}`
                       : t('serverAudit.waitingAgent')}
                     {detail.collect_requested ? ` · ${t('serverAudit.queued')}` : ''}
                   </p>
+                  {detail.last_sample_at && detail.payload_in_range === false ? (
+                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('serverAudit.outsideRange')}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {canEdit ? (
@@ -662,28 +717,7 @@ export function ServerAuditPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
-                <Metric label={t('serverAudit.temp')} value={fmtTemp(detail.latest_cpu_temp_c)} hot={detail.latest_cpu_temp_c != null && detail.latest_cpu_temp_c >= 75} />
-                <Metric label={t('serverAudit.cpu')} value={fmtPct(detail.latest_cpu_percent)} hot={detail.latest_cpu_percent != null && detail.latest_cpu_percent >= 90} />
-                <Metric label={t('serverAudit.memory')} value={fmtPct(detail.latest_mem_percent)} hot={detail.latest_mem_percent != null && detail.latest_mem_percent >= 90} />
-                <Metric label={t('serverAudit.disk')} value={fmtPct(detail.latest_disk_percent)} hot={detail.latest_disk_percent != null && detail.latest_disk_percent >= 90} />
-                <Metric label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} />
-                <Metric label={t('serverAudit.swap')} value={fmtPct(numOf(memory?.swap_used_percent))} />
-              </div>
-
-              <JournalPanel
-                logs={logs}
-                mode={logMode}
-                onMode={setLogMode}
-                locale={locale}
-                title={t('serverAudit.logs')}
-                allLabel={t('serverAudit.logsAll')}
-                errorsLabel={t('serverAudit.logsErrors')}
-                emptyLabel={t('serverAudit.logsEmpty')}
-                noErrorsLabel={t('serverAudit.logsNoErrors')}
-                sourceLabel={logSource ? t('serverAudit.logsSource', { source: logSource }) : ''}
-              />
-
+              {(detail.interval_minutes > 0 || labels.length > 0) ? (
               <div className="flex flex-wrap gap-2">
                 {([
                   ['all', t('serverAudit.focusAll')],
@@ -695,14 +729,14 @@ export function ServerAuditPage() {
                     key={id}
                     type="button"
                     onClick={() => setFocus(id)}
-                    className={`rounded-lg px-3 py-1.5 text-sm ${focus === id ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${focus === id ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'}`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
 
-              {labels.length < 2 ? (
+              {labels.length < 1 ? (
                 <p className="text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.chartNeed')}</p>
               ) : (
                 <div className={`grid gap-4 ${focus === 'all' ? 'xl:grid-cols-2' : ''}`}>
@@ -742,6 +776,30 @@ export function ServerAuditPage() {
                   ) : null}
                 </div>
               )}
+              ) : null}
+
+              <JournalPanel
+                logs={logs}
+                mode={logMode}
+                onMode={setLogMode}
+                locale={locale}
+                title={t('serverAudit.logs')}
+                allLabel={t('serverAudit.logsAll')}
+                errorsLabel={t('serverAudit.logsErrors')}
+                emptyLabel={t('serverAudit.logsEmpty')}
+                noErrorsLabel={t('serverAudit.logsNoErrors')}
+                sourceLabel={logSource ? t('serverAudit.logsSource', { source: logSource }) : ''}
+                canEdit={canEdit}
+                journalMode={detail.journal_mode || 'errors'}
+                journalLines={detail.journal_lines || 20}
+                retainDays={detail.retain_days || 14}
+                onJournal={(patch) => void onJournal(patch)}
+                keepLabel={t('serverAudit.journalKeep')}
+                offLabel={t('serverAudit.journalOff')}
+                linesLabel={t('serverAudit.journalLines')}
+                retainLabel={t('serverAudit.retain')}
+                daysLabel={(n) => t('serverAudit.retainDays', { n })}
+              />
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <Panel title={t('serverAudit.sensors')}>
@@ -860,15 +918,6 @@ export function ServerAuditPage() {
   )
 }
 
-function Metric({ label, value, hot }: { label: string; value: string; hot?: boolean }) {
-  return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-[var(--color-fg-subtle)]">{label}</div>
-      <div className={`font-mono text-lg font-semibold ${hot ? 'text-rose-600' : ''}`}>{value}</div>
-    </div>
-  )
-}
-
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
@@ -923,6 +972,16 @@ function JournalPanel({
   emptyLabel,
   noErrorsLabel,
   sourceLabel,
+  canEdit,
+  journalMode,
+  journalLines,
+  retainDays,
+  onJournal,
+  keepLabel,
+  offLabel,
+  linesLabel,
+  retainLabel,
+  daysLabel,
 }: {
   logs: Record<string, unknown>[]
   mode: 'err' | 'all'
@@ -934,6 +993,16 @@ function JournalPanel({
   emptyLabel: string
   noErrorsLabel: string
   sourceLabel: string
+  canEdit: boolean
+  journalMode: 'off' | 'errors' | 'all'
+  journalLines: number
+  retainDays: number
+  onJournal: (patch: { journal_mode?: 'off' | 'errors' | 'all'; journal_lines?: number; retain_days?: number }) => void
+  keepLabel: string
+  offLabel: string
+  linesLabel: string
+  retainLabel: string
+  daysLabel: (n: number) => string
 }) {
   const errors = logs.filter((row) => isLogError(String(row.level || '')))
   const shown = mode === 'err' ? errors : logs
@@ -942,6 +1011,50 @@ function JournalPanel({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
         <h3 className="text-sm font-semibold">{title}</h3>
         <div className="flex flex-wrap items-center gap-2">
+          {canEdit ? (
+            <>
+              <label className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)]">
+                {keepLabel}
+                <select
+                  value={journalMode}
+                  onChange={(event) => onJournal({ journal_mode: event.target.value as 'off' | 'errors' | 'all' })}
+                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-xs text-[var(--color-fg)]"
+                >
+                  <option value="off">{offLabel}</option>
+                  <option value="errors">{errorsLabel}</option>
+                  <option value="all">{allLabel}</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)]">
+                {linesLabel}
+                <select
+                  value={journalLines}
+                  onChange={(event) => onJournal({ journal_lines: Number(event.target.value) })}
+                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-xs text-[var(--color-fg)]"
+                >
+                  {[0, 10, 20, 40, 80].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)]">
+                {retainLabel}
+                <select
+                  value={retainDays}
+                  onChange={(event) => onJournal({ retain_days: Number(event.target.value) })}
+                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-xs text-[var(--color-fg)]"
+                >
+                  {[7, 14, 30, 90].map((n) => (
+                    <option key={n} value={n}>
+                      {daysLabel(n)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
           {sourceLabel ? <span className="text-xs text-[var(--color-fg-subtle)]">{sourceLabel}</span> : null}
           <button
             type="button"

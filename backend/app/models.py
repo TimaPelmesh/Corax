@@ -760,6 +760,9 @@ class ServerAuditHost(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     interval_minutes: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
     collect_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    journal_mode: Mapped[str] = mapped_column(String(16), default="errors", server_default="errors")
+    journal_lines: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
+    retain_days: Mapped[int] = mapped_column(Integer, default=14, server_default="14")
     computer_id: Mapped[int | None] = mapped_column(
         ForeignKey("computers.id", ondelete="SET NULL"), nullable=True, index=True
     )

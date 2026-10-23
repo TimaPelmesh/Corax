@@ -1358,6 +1358,9 @@ export type ServerAuditHost = {
   enabled: boolean
   interval_minutes: number
   collect_requested: boolean
+  journal_mode: 'off' | 'errors' | 'all'
+  journal_lines: number
+  retain_days: number
   computer_id: number | null
   ip_address: string | null
   os_summary: string | null
@@ -1386,6 +1389,7 @@ export type ServerAuditPoint = {
 export type ServerAuditDetail = ServerAuditHost & {
   payload: Record<string, unknown>
   points: ServerAuditPoint[]
+  payload_in_range: boolean
 }
 
 export const api = {
@@ -3212,7 +3216,16 @@ export const api = {
 
   updateServerAuditHost: (
     id: number,
-    body: { hostname?: string; label?: string | null; notes?: string | null; interval_minutes?: number; enabled?: boolean },
+    body: {
+      hostname?: string
+      label?: string | null
+      notes?: string | null
+      interval_minutes?: number
+      enabled?: boolean
+      journal_mode?: 'off' | 'errors' | 'all'
+      journal_lines?: number
+      retain_days?: number
+    },
   ) => request<ServerAuditHost>(`${API_PREFIX}/server-audit/hosts/${id}`, { method: 'PATCH', json: body }),
 
   deleteServerAuditHost: (id: number) =>

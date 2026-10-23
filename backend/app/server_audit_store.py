@@ -14,8 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_policy import hostnames_match
 from app.models import Computer, ServerAuditHost, ServerAuditSample
 
-_KEEP_DAYS = 30
-_KEEP_MAX = 3000
+_KEEP_MAX = 1500
+JOURNAL_MODES = frozenset({"off", "errors", "all"})
+JOURNAL_LINES = frozenset({0, 10, 20, 40, 80})
+RETAIN_DAYS = frozenset({7, 14, 30, 90})
+_ERROR_LEVELS = frozenset({"emerg", "alert", "crit", "err", "error", "fatal"})
 _PAYLOAD_MAX = 180_000
 ALLOWED_INTERVALS = frozenset({0, 5, 15, 30, 60, 180, 360, 720, 1440})
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")
@@ -82,6 +85,44 @@ def _parse_when(raw: Any, now: datetime) -> datetime:
 def _cap_list(data: dict[str, Any], key: str, limit: int) -> None:
     if isinstance(data.get(key), list) and len(data[key]) > limit:
         data[key] = data[key][:limit]
+
+
+def shape_payload(payload: dict[str, Any], *, journal_mode: str, journal_lines: int) -> str:
+    """Keep chart fields. Journal text stays only as configured, and only on this sample."""
+    data = dict(payload)
+    logs = data.get("logs") if isinstance(data.get("logs"), list) else []
+    mode = journal_mode if journal_mode in JOURNAL_MODES else "errors"
+    limit = journal_lines if journal_lines in JOURNAL_LINES else 20
+    if mode == "off" or limit <= 0:
+        kept: list[Any] = []
+    elif mode == "errors":
+        kept = [
+            row
+            for row in logs
+            if isinstance(row, dict) and str(row.get("level") or "").lower() in _ERROR_LEVELS
+        ][:limit]
+    else:
+        kept = [row for row in logs if isinstance(row, dict)][:limit]
+    data["logs"] = kept
+    if not kept:
+        data.pop("logs_source", None)
+    for key, cap in (("processes", 12), ("listeners", 24), ("docker", 12), ("temperatures", 48), ("voltages", 16)):
+        _cap_list(data, key, cap)
+    return trim_payload(data)
+
+
+def _without_logs(raw: str | None) -> str | None:
+    if not raw or '"logs"' not in raw:
+        return raw
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    if not isinstance(data, dict) or not data.get("logs"):
+        return raw
+    data["logs"] = []
+    data.pop("logs_source", None)
+    return json.dumps(data, ensure_ascii=False)
 
 
 def trim_payload(payload: dict[str, Any]) -> str:
@@ -178,6 +219,9 @@ async def _enroll_host(db: AsyncSession, hostname: str) -> ServerAuditHost | Non
         enabled=True,
         interval_minutes=_AUTO_INTERVAL,
         collect_requested=False,
+        journal_mode="errors",
+        journal_lines=20,
+        retain_days=14,
     )
     try:
         async with db.begin_nested():
@@ -198,8 +242,9 @@ async def _link_computer(db: AsyncSession, host: ServerAuditHost, hostname: str)
         host.computer_id = pc.id
 
 
-async def _prune(db: AsyncSession, host_id: int, now: datetime) -> None:
-    cutoff = now - timedelta(days=_KEEP_DAYS)
+async def _prune(db: AsyncSession, host_id: int, now: datetime, retain_days: int) -> None:
+    days = retain_days if retain_days in RETAIN_DAYS else 14
+    cutoff = now - timedelta(days=days)
     await db.execute(
         delete(ServerAuditSample).where(
             ServerAuditSample.host_id == host_id,
@@ -250,7 +295,11 @@ async def record_audit_sample(db: AsyncSession, hostname: str, payload: dict[str
         net_rx_bps=metrics["net_rx_bps"],
         net_tx_bps=metrics["net_tx_bps"],
         uptime_sec=metrics["uptime_sec"],
-        payload_json=trim_payload(payload),
+        payload_json=shape_payload(
+            payload,
+            journal_mode=str(host.journal_mode or "errors"),
+            journal_lines=int(host.journal_lines or 0),
+        ),
     )
     db.add(sample)
     host.last_sample_at = sample.collected_at
@@ -265,8 +314,49 @@ async def record_audit_sample(db: AsyncSession, hostname: str, payload: dict[str
         host.os_summary = summary
     await _link_computer(db, host, hostname)
     await db.flush()
-    await _prune(db, host.id, now)
+    await _drop_older_logs(db, host.id, sample.id)
+    await _prune(db, host.id, now, int(host.retain_days or 14))
     return {"ok": True, "stored": True, "reason": "stored", "host_id": host.id, "hostname": host.hostname}
+
+
+async def _drop_older_logs(db: AsyncSession, host_id: int, keep_id: int) -> None:
+    """Journal text lives on the newest sample only, so history stays numeric."""
+    rows = list(
+        (
+            await db.execute(
+                select(ServerAuditSample)
+                .where(ServerAuditSample.host_id == host_id, ServerAuditSample.id != keep_id)
+                .order_by(ServerAuditSample.collected_at.desc())
+                .limit(30)
+            )
+        ).scalars().all()
+    )
+    for row in rows:
+        slim = _without_logs(row.payload_json)
+        if slim is not None and slim != row.payload_json:
+            row.payload_json = slim
+
+
+async def apply_journal_now(db: AsyncSession, host: ServerAuditHost) -> None:
+    """Retention and an empty journal take effect without waiting for the next sample."""
+    now = datetime.now(timezone.utc)
+    await _prune(db, host.id, now, int(host.retain_days or 14))
+    if (host.journal_mode or "errors") != "off":
+        return
+    rows = list(
+        (
+            await db.execute(
+                select(ServerAuditSample)
+                .where(ServerAuditSample.host_id == host.id)
+                .order_by(ServerAuditSample.collected_at.desc())
+                .limit(40)
+            )
+        ).scalars().all()
+    )
+    for row in rows:
+        slim = _without_logs(row.payload_json)
+        if slim is not None and slim != row.payload_json:
+            row.payload_json = slim
 
 
 async def audit_directive(db: AsyncSession, hostname: str) -> dict[str, Any]:
