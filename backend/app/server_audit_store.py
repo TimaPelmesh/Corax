@@ -223,7 +223,16 @@ def shape_payload(payload: dict[str, Any], *, journal_mode: str, journal_lines: 
     data["logs"] = kept
     if not kept:
         data.pop("logs_source", None)
-    for key, cap in (("processes", 12), ("listeners", 24), ("docker", 12), ("temperatures", 48), ("voltages", 16), ("gpus", 8)):
+    for key, cap in (
+        ("processes", 20),
+        ("listeners", 40),
+        ("docker", 20),
+        ("disk_io", 16),
+        ("disks", 24),
+        ("temperatures", 48),
+        ("voltages", 16),
+        ("gpus", 8),
+    ):
         _cap_list(data, key, cap)
     return trim_payload(data)
 

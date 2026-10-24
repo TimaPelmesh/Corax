@@ -182,7 +182,9 @@ export function ServerAuditPage() {
   const [hostQuery, setHostQuery] = useState('')
   const [sensorQuery, setSensorQuery] = useState('')
   const [addOpen, setAddOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [panel, setPanel] = useState<'charts' | 'sensors' | 'lists' | 'journal' | 'control'>('charts')
+  const [draftLabel, setDraftLabel] = useState('')
+  const [draftNotes, setDraftNotes] = useState('')
   const [paused, setPaused] = useState(false)
   const [hoverMs, setHoverMs] = useState<number | null>(null)
   const [polledAt, setPolledAt] = useState(() => Date.now())
@@ -249,8 +251,15 @@ export function ServerAuditPage() {
 
   useEffect(() => {
     setLogMode('err')
-    setSettingsOpen(false)
+    setDraftLabel('')
+    setDraftNotes('')
   }, [selectedId])
+
+  useEffect(() => {
+    if (!detail || detail.id !== selectedId) return
+    setDraftLabel(detail.label || '')
+    setDraftNotes(detail.notes || '')
+  }, [detail?.id, selectedId])
 
   useEffect(() => {
     if (hosts.length === 0) return
@@ -321,6 +330,14 @@ export function ServerAuditPage() {
   const voltages = asRows(payload.voltages)
   const fans = asRows(payload.fans)
   const disks = asRows(payload.disks)
+  const diskIo = asRows(payload.disk_io)
+  const memory = asRecord(payload.memory)
+  const loadInfo = asRecord(payload.load)
+  const cluster = asRecord(payload.cluster)
+  const files = asRecord(payload.files)
+  const perCore = Array.isArray(cpu?.per_core)
+    ? cpu.per_core.filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+    : []
   const processes = asRows(payload.processes)
   const listeners = asRows(payload.listeners)
   const failed = asRows(payload.failed_units)
@@ -472,6 +489,22 @@ export function ServerAuditPage() {
       setDetail((current) => (current ? { ...current, ...updated } : current))
       setHosts((current) => current.map((host) => (host.id === updated.id ? { ...host, ...updated } : host)))
       await loadDetail(detail.id, hours)
+      toast.ok(t('serverAudit.saved'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('common.error'))
+    }
+  }
+
+  async function onLabel(event: React.FormEvent) {
+    event.preventDefault()
+    if (!detail || !canEdit) return
+    try {
+      const updated = await api.updateServerAuditHost(detail.id, {
+        label: draftLabel.trim() || null,
+        notes: draftNotes.trim() || null,
+      })
+      setDetail((current) => (current ? { ...current, ...updated } : current))
+      setHosts((current) => current.map((host) => (host.id === updated.id ? { ...host, ...updated } : host)))
       toast.ok(t('serverAudit.saved'))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'))
@@ -682,7 +715,7 @@ export function ServerAuditPage() {
               <select
                 value={intervalSec}
                 onChange={(event) => setIntervalSec(Number(event.target.value))}
-                className="app-input"
+                className="app-input app-select"
               >
                 {INTERVALS.map((value) => (
                   <option key={value} value={value}>
@@ -795,6 +828,9 @@ export function ServerAuditPage() {
                     {detail.hostname}
                     {detail.ip_address ? ` · ${detail.ip_address}` : ''}
                     {detail.os_summary ? ` · ${detail.os_summary}` : ''}
+                    {cluster?.kind && cluster.kind !== 'standalone'
+                      ? ` · ${t('serverAudit.cluster')} ${textOf(cluster.name || cluster.kind)}${cluster.role ? ` · ${textOf(cluster.role)}` : ''}`
+                      : ''}
                   </p>
                   <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">
                     {detail.last_sample_at
@@ -826,77 +862,12 @@ export function ServerAuditPage() {
                     </Link>
                   ) : null}
                   {canEdit ? (
-                    <button type="button" className="app-chip" onClick={() => setSettingsOpen((open) => !open)}>
-                      {t('serverAudit.settings')}
+                    <button type="button" className={`app-chip ${panel === 'control' ? 'app-chip--active' : ''}`} onClick={() => setPanel('control')}>
+                      {t('serverAudit.manage')}
                     </button>
                   ) : null}
                 </div>
                 </div>
-              {canEdit && settingsOpen ? (
-                <div className="mt-3 grid gap-3 border-t border-[var(--color-border)] pt-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.interval')}
-                    <select
-                      value={intervalSecOf(detail)}
-                      onChange={(event) => void onInterval(Number(event.target.value))}
-                      className="app-input"
-                    >
-                      {INTERVALS.map((value) => (
-                        <option key={value} value={value}>
-                          {labelFor(value)}
-                        </option>
-                      ))}
-                    </select>
-                    {intervalSecOf(detail) > 0 && intervalSecOf(detail) < 60 ? (
-                      <span className="font-normal">{t('serverAudit.intervalFast')}</span>
-                    ) : null}
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.journalCollect')}
-                    <select
-                      value={detail.journal_mode || 'errors'}
-                      onChange={(event) => void onJournal({ journal_mode: event.target.value as 'off' | 'errors' | 'all' })}
-                      className="app-input"
-                    >
-                      <option value="off">{t('serverAudit.journalCollectOff')}</option>
-                      <option value="errors">{t('serverAudit.journalCollectErrors')}</option>
-                      <option value="all">{t('serverAudit.journalCollectAll')}</option>
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.journalLines')}
-                    <select
-                      value={detail.journal_lines || 20}
-                      onChange={(event) => void onJournal({ journal_lines: Number(event.target.value) })}
-                      className="app-input"
-                    >
-                      {[0, 10, 20, 40, 80].map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.retain')}
-                    <select
-                      value={detail.retain_days || 14}
-                      onChange={(event) => void onJournal({ retain_days: Number(event.target.value) })}
-                      className="app-input"
-                    >
-                      {[7, 14, 30, 90].map((n) => (
-                        <option key={n} value={n}>{t('serverAudit.retainDays', { n })}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="flex flex-wrap items-end gap-2 sm:col-span-2 xl:col-span-4">
-                    <button type="button" onClick={() => void onToggle()} className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">
-                      {detail.enabled ? t('serverAudit.enabled') : t('serverAudit.disabled')}
-                    </button>
-                    <button type="button" onClick={() => void onDelete(detail)} className="app-btn app-btn-danger !min-h-0 !px-3 !py-2">
-                      {t('serverAudit.remove')}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               {(() => {
                 const notes: { tone: string; text: string }[] = []
                 if (detail.enabled && freshness(detail) === 'stale') notes.push({ tone: 'border-amber-500/40 text-amber-700 dark:text-amber-300', text: t('serverAudit.stale') })
@@ -923,7 +894,36 @@ export function ServerAuditPage() {
                 <Meter label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} hint={`${t('serverAudit.cores')} ${cores}`} ratio={Math.min(loadRatio(detail.latest_load_1, cores), 1)} valueClass={loadClass(detail.latest_load_1, cores)} barClass={loadBar(detail.latest_load_1, cores)} />
               </div>
 
-              <div className="grid gap-3 xl:grid-cols-2" onMouseLeave={() => setHoverMs(null)}>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setPanel('charts')} className={`app-chip ${panel === 'charts' ? 'app-chip--active' : ''}`}>{t('serverAudit.chartsTab')}</button>
+                <button type="button" onClick={() => setPanel('sensors')} className={`app-chip ${panel === 'sensors' ? 'app-chip--active' : ''}`}>{t('serverAudit.sensors')}</button>
+                <button type="button" onClick={() => setPanel('lists')} className={`app-chip ${panel === 'lists' ? 'app-chip--active' : ''}`}>{t('serverAudit.lists')}</button>
+                <button type="button" onClick={() => setPanel('journal')} className={`app-chip ${panel === 'journal' ? 'app-chip--active' : ''}`}>{t('serverAudit.logs')}</button>
+                {canEdit ? (
+                  <button type="button" onClick={() => setPanel('control')} className={`app-chip ${panel === 'control' ? 'app-chip--active' : ''}`}>{t('serverAudit.manage')}</button>
+                ) : null}
+              </div>
+
+              {panel === 'charts' ? (
+              <div className="flex flex-col gap-3" onMouseLeave={() => setHoverMs(null)}>
+                <div className="flex flex-wrap gap-2 text-xs text-[var(--color-fg-subtle)]">
+                  <span className="app-chip">{t('serverAudit.load')} {textOf(loadInfo?.['1'] ?? detail.latest_load_1)} / {textOf(loadInfo?.['5'])} / {textOf(loadInfo?.['15'])}</span>
+                  <span className="app-chip">{t('serverAudit.memory')} {fmtPct(numOf(memory?.used_percent))} · {t('serverAudit.cached')} {textOf(memory?.cached_mb)} MB · {t('serverAudit.available')} {textOf(memory?.available_mb)} MB</span>
+                  <span className="app-chip">{t('serverAudit.cluster')} {cluster?.kind && cluster.kind !== 'standalone' ? `${textOf(cluster.kind)}${cluster.name ? ` · ${textOf(cluster.name)}` : ''}` : t('serverAudit.clusterStandalone')}</span>
+                </div>
+                {perCore.length > 0 ? (
+                  <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                    <div className="mb-2 text-sm font-semibold">{t('serverAudit.perCore')}</div>
+                    <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(2.4rem, 1fr))' }}>
+                      {perCore.map((value, index) => (
+                        <div key={index} title={`${index}: ${value.toFixed(0)}%`} className="flex h-10 items-end overflow-hidden rounded-sm bg-[var(--color-bg-muted)]">
+                          <div className={`w-full ${pctBar(value)}`} style={{ height: `${Math.max(4, Math.min(100, value))}%` }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              <div className="grid gap-3 xl:grid-cols-2">
                 <ChartFrame title={t('serverAudit.chartTemp')}>
                   {tempSeries.length > 0 ? (
                     <ServerAuditCharts times={times} unit="temp" series={tempSeries} locale={locale} hoverMs={hoverMs} onHover={setHoverMs} threshold={80} />
@@ -982,15 +982,18 @@ export function ServerAuditPage() {
                   )}
                 </ChartFrame>
               </div>
+              </div>
+              ) : null}
 
-              <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+              {panel === 'sensors' ? (
+              <section className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold">{t('serverAudit.sensors')}</h3>
                   <input
                     value={sensorQuery}
                     onChange={(event) => setSensorQuery(event.target.value)}
                     placeholder={t('serverAudit.sensorPh')}
-                    className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm sm:w-56"
+                    className="app-input w-full sm:w-56"
                   />
                 </div>
                 {gpus.length > 0 ? (
@@ -1058,7 +1061,9 @@ export function ServerAuditPage() {
                   </div>
                 ) : null}
               </section>
+              ) : null}
 
+              {panel === 'journal' ? (
               <JournalPanel
                 logs={logs}
                 mode={logMode}
@@ -1071,9 +1076,11 @@ export function ServerAuditPage() {
                 noErrorsLabel={t('serverAudit.logsNoErrors')}
                 sourceLabel={logSource ? t('serverAudit.logsSource', { source: logSource }) : ''}
               />
+              ) : null}
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Panel title={t('serverAudit.disks')}>
+              {panel === 'lists' ? (
+              <div className="flex flex-col gap-3">
+                <Fold title={t('serverAudit.disks')} count={disks.length} open>
                   {disks.length === 0 ? (
                     <Empty>—</Empty>
                   ) : (
@@ -1083,22 +1090,36 @@ export function ServerAuditPage() {
                         return (
                           <div key={`${textOf(row.mount)}-${index}`}>
                             <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
-                              <span className="truncate font-medium">{textOf(row.mount)}</span>
+                              <span className="truncate font-medium">{textOf(row.mount)}{row.model ? ` · ${textOf(row.model)}` : ''}</span>
                               <span className="shrink-0 text-[var(--color-fg-subtle)]">
                                 {fmtPct(numOf(row.used_percent))} · {textOf(row.free_gb)} {t('serverAudit.free')}
                               </span>
                             </div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
-                              <div className={`h-full rounded-full ${used >= 90 ? 'bg-rose-500' : used >= 75 ? 'bg-amber-500' : 'bg-sky-500'}`} style={{ width: `${Math.max(0, Math.min(100, used))}%` }} />
+                              <div className={`h-full rounded-full ${used >= 90 ? 'bg-rose-500' : used >= 75 ? 'bg-amber-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${Math.max(0, Math.min(100, used))}%` }} />
                             </div>
                           </div>
                         )
                       })}
                     </div>
                   )}
-                </Panel>
-                <Panel title={t('serverAudit.network')}>
+                  {diskIo.length > 0 ? (
+                    <div className="border-t border-[var(--color-border)]">
+                      <div className="px-3 pt-2 text-xs font-medium text-[var(--color-fg-subtle)]">{t('serverAudit.diskIo')}</div>
+                      <SimpleTable
+                        head={[t('serverAudit.name'), t('serverAudit.read'), t('serverAudit.write')]}
+                        rows={diskIo.map((row) => [
+                          textOf(row.name || row.model),
+                          fmtRate(numOf(row.read_bps)),
+                          fmtRate(numOf(row.write_bps)),
+                        ])}
+                      />
+                    </div>
+                  ) : null}
+                </Fold>
+                <Fold title={t('serverAudit.network')} count={network.length} open>
                   <SimpleTable
+                    head={[t('serverAudit.name'), 'IPv4', '', `${t('serverAudit.rx')} / ${t('serverAudit.tx')}`]}
                     rows={network.map((row) => [
                       textOf(row.name),
                       textOf(row.ipv4),
@@ -1106,32 +1127,47 @@ export function ServerAuditPage() {
                       `${fmtRate(numOf(row.rx_bps))} / ${fmtRate(numOf(row.tx_bps))}`,
                     ])}
                   />
-                </Panel>
-                <Panel title={t('serverAudit.processes')}>
+                </Fold>
+                <Fold title={t('serverAudit.processes')} count={processes.length}>
                   <SimpleTable
                     head={['PID', t('serverAudit.user'), 'CPU', 'RAM', t('serverAudit.name')]}
                     rows={processes.map((row) => [
                       textOf(row.pid),
                       textOf(row.user),
                       fmtPct(numOf(row.cpu)),
-                      textOf(row.rss_mb),
+                      numOf(row.rss_mb) == null ? '—' : `${numOf(row.rss_mb)?.toFixed(0)} MB`,
                       textOf(row.name),
                     ])}
                   />
-                </Panel>
-                <Panel title={t('serverAudit.listeners')}>
-                  <SimpleTable rows={listeners.map((row) => [textOf(row.proto), textOf(row.address)])} />
-                </Panel>
-                <Panel title={t('serverAudit.failed')}>
+                </Fold>
+                <Fold title={t('serverAudit.listeners')} count={listeners.length}>
+                  <SimpleTable head={['', '']} rows={listeners.map((row) => [textOf(row.proto), textOf(row.address)])} />
+                </Fold>
+                <Fold title={t('serverAudit.docker')} count={docker.length} open={docker.length > 0}>
+                  {docker.length === 0 ? (
+                    <Empty>—</Empty>
+                  ) : (
+                    <SimpleTable
+                      head={[t('serverAudit.name'), '', '']}
+                      rows={docker.map((row) => [textOf(row.name), textOf(row.status), textOf(row.image)])}
+                    />
+                  )}
+                </Fold>
+                <Fold title={t('serverAudit.failed')} count={failed.length} open={failed.length > 0}>
                   {failed.length === 0 ? (
                     <Empty>{t('serverAudit.noFailed')}</Empty>
                   ) : (
                     <SimpleTable rows={failed.map((row) => [textOf(row.name), textOf(row.sub)])} />
                   )}
-                </Panel>
-              </div>
-
-              <div className="grid gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm md:grid-cols-2">
+                </Fold>
+                <Fold title={t('serverAudit.sessions')} count={sessions.length}>
+                  {sessions.length === 0 ? (
+                    <Empty>—</Empty>
+                  ) : (
+                    <SimpleTable rows={sessions.map((row) => [textOf(row.user), textOf(row.host || row.tty || '')])} />
+                  )}
+                </Fold>
+              <div className="grid gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm md:grid-cols-2">
                 <Info label={t('serverAudit.cores')} value={textOf(cpu?.cores)} extra={textOf(cpu?.model)} />
                 <Info label={t('serverAudit.virt')} value={textOf(os?.virt)} extra={textOf(os?.kernel)} />
                 <Info
@@ -1157,13 +1193,76 @@ export function ServerAuditPage() {
                   label={t('serverAudit.sockets')}
                   value={`tcp ${textOf(sockets?.tcp_inuse)} · udp ${textOf(sockets?.udp_inuse)}`}
                 />
-                {sessions.length > 0 ? (
-                  <Info label={t('serverAudit.sessions')} value={sessions.map((row) => textOf(row.user)).join(', ')} />
-                ) : null}
-                {docker.length > 0 ? (
-                  <Info label={t('serverAudit.docker')} value={docker.map((row) => textOf(row.name)).join(', ')} />
-                ) : null}
+                <Info
+                  label={t('serverAudit.files')}
+                  value={`${textOf(files?.allocated)} / ${textOf(files?.max)}`}
+                />
+                <Info
+                  label={t('serverAudit.clusterRole')}
+                  value={cluster?.role ? textOf(cluster.role) : t('serverAudit.clusterStandalone')}
+                  extra={textOf(cluster?.name || cluster?.kind)}
+                />
               </div>
+              </div>
+              ) : null}
+
+              {panel === 'control' && canEdit ? (
+                <div className="chrome-glass-card grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <form onSubmit={(event) => void onLabel(event)} className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)] sm:col-span-2 xl:col-span-4">
+                    {t('serverAudit.rename')}
+                    <span className="font-normal">{t('serverAudit.manageHint')}</span>
+                    <div className="flex flex-wrap gap-2">
+                      <input value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder={t('serverAudit.labelPh')} className="app-input min-w-[12rem] flex-1" />
+                      <button type="submit" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">{t('serverAudit.saveLabel')}</button>
+                    </div>
+                    <span className="mt-2 font-medium">{t('serverAudit.hostNotes')}</span>
+                    <textarea value={draftNotes} onChange={(event) => setDraftNotes(event.target.value)} rows={3} className="app-input min-h-[4.5rem] resize-y" />
+                  </form>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.interval')}
+                    <select value={intervalSecOf(detail)} onChange={(event) => void onInterval(Number(event.target.value))} className="app-input app-select">
+                      {INTERVALS.map((value) => (
+                        <option key={value} value={value}>{labelFor(value)}</option>
+                      ))}
+                    </select>
+                    {intervalSecOf(detail) > 0 && intervalSecOf(detail) < 60 ? (
+                      <span className="font-normal">{t('serverAudit.intervalFast')}</span>
+                    ) : null}
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.journalCollect')}
+                    <select value={detail.journal_mode || 'errors'} onChange={(event) => void onJournal({ journal_mode: event.target.value as 'off' | 'errors' | 'all' })} className="app-input app-select">
+                      <option value="off">{t('serverAudit.journalCollectOff')}</option>
+                      <option value="errors">{t('serverAudit.journalCollectErrors')}</option>
+                      <option value="all">{t('serverAudit.journalCollectAll')}</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.journalLines')}
+                    <select value={detail.journal_lines || 20} onChange={(event) => void onJournal({ journal_lines: Number(event.target.value) })} className="app-input app-select">
+                      {[0, 10, 20, 40, 80].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.retain')}
+                    <select value={detail.retain_days || 14} onChange={(event) => void onJournal({ retain_days: Number(event.target.value) })} className="app-input app-select">
+                      {[7, 14, 30, 90].map((n) => (
+                        <option key={n} value={n}>{t('serverAudit.retainDays', { n })}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex flex-wrap items-end gap-2 sm:col-span-2 xl:col-span-4">
+                    <button type="button" onClick={() => void onToggle()} className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">
+                      {detail.enabled ? t('serverAudit.enabled') : t('serverAudit.disabled')}
+                    </button>
+                    <button type="button" onClick={() => void onDelete(detail)} className="app-btn app-btn-danger !min-h-0 !px-3 !py-2">
+                      {t('serverAudit.remove')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </>
           )}
         </section>
@@ -1189,7 +1288,7 @@ function Meter({
 }) {
   const width = Math.max(0, Math.min(100, ratio * 100))
   return (
-    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3">
+    <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3">
       <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">{label}</div>
       <div className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${valueClass}`}>{value}</div>
       <div className="mt-0.5 h-4 truncate text-[11px] text-[var(--color-fg-subtle)]">{hint || ' '}</div>
@@ -1202,7 +1301,7 @@ function Meter({
 
 function ChartFrame({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+    <section className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
       <h3 className="px-1 pb-2 text-sm font-semibold">{title}</h3>
       <div className="h-56">{children}</div>
     </section>
@@ -1239,12 +1338,38 @@ function SensorCard({
   )
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Fold({
+  title,
+  count,
+  open = false,
+  children,
+}: {
+  title: string
+  count?: number
+  open?: boolean
+  children: React.ReactNode
+}) {
+  const [shown, setShown] = useState(open)
+  useEffect(() => {
+    setShown(open)
+  }, [open])
   return (
-    <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-      <h3 className="border-b border-[var(--color-border)] px-3 py-2 text-sm font-semibold">{title}</h3>
-      <div className="max-h-64 overflow-auto">{children}</div>
-    </section>
+    <details
+      open={shown}
+      onToggle={(event) => setShown(event.currentTarget.open)}
+      className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]"
+    >
+      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center justify-between gap-3">
+          <span>
+            {title}
+            {count != null ? <span className="ml-2 font-normal text-[var(--color-fg-subtle)]">{count}</span> : null}
+          </span>
+          <span aria-hidden className="text-xs text-[var(--color-fg-subtle)]">▾</span>
+        </span>
+      </summary>
+      <div className="max-h-72 overflow-auto border-t border-[var(--color-border)]">{children}</div>
+    </details>
   )
 }
 

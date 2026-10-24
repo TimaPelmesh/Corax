@@ -950,6 +950,42 @@ def _ntp() -> bool | None:
     return None
 
 
+def _cluster() -> dict:
+    """Name the host's cluster without reading credentials or kubeconfig."""
+    kind = "standalone"
+    name = None
+    role = None
+    if Path("/var/lib/kubelet").is_dir() or Path("/etc/kubernetes").is_dir():
+        kind = "kubernetes"
+        role = "node"
+    swarm = _run(
+        ["docker", "info", "--format", "{{.Swarm.LocalNodeState}}|{{.Swarm.ControlAvailable}}|{{.Name}}"],
+        timeout=3,
+    ).strip()
+    if swarm:
+        parts = swarm.split("|")
+        state = parts[0].strip().lower() if parts else ""
+        if state == "active":
+            kind = "swarm"
+            role = "manager" if len(parts) > 1 and parts[1].strip().lower() == "true" else "worker"
+            if len(parts) > 2 and parts[2].strip():
+                name = parts[2].strip()[:80]
+    conf = Path("/etc/corosync/corosync.conf")
+    if kind == "standalone" and conf.is_file():
+        try:
+            text = conf.read_text(encoding="utf-8", errors="replace")[:4000]
+        except OSError:
+            text = ""
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.lower().startswith("cluster_name:"):
+                name = stripped.split(":", 1)[1].strip().strip('"')[:80] or None
+                kind = "pacemaker"
+                role = "node"
+                break
+    return {"kind": kind, "name": name, "role": role}
+
+
 def build_audit() -> dict:
     cpu_before = _read_cpu()
     disk_before = _read_diskstats()
@@ -1076,6 +1112,7 @@ def build_audit() -> dict:
         "sockets": _sockstat(),
         "files": _file_nr(),
         "docker": _docker(),
+        "cluster": _cluster(),
         "time": {"utc": now, "ntp_synchronized": _ntp()},
     }
 

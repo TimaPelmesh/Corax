@@ -505,6 +505,19 @@ body {
     @apply px-4 py-3;
   }
 
+  select.app-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'><path d='M5.5 7.5 10 12l4.5-4.5' stroke='%236b7280' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+    padding-right: 2.4rem;
+  }
+
+  [data-theme="dark"] select.app-select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'><path d='M5.5 7.5 10 12l4.5-4.5' stroke='%23a1a1aa' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  }
+
   .app-input-glass {
     border-color: color-mix(in srgb, var(--color-border) 70%, transparent) !important;
     background: color-mix(in srgb, var(--color-surface) 86%, transparent) !important;
