@@ -42,6 +42,34 @@ def _inum(value: Any, lo: int, hi: int) -> int | None:
     return int(number)
 
 
+def _gpu_temp(payload: dict[str, Any], summary: dict[str, Any]) -> float | None:
+    direct = _fnum(summary.get("gpu_temp_c"), 1, 125, 1)
+    if direct is not None:
+        return direct
+    values: list[float] = []
+    gpus = payload.get("gpus")
+    if isinstance(gpus, list):
+        for row in gpus:
+            if isinstance(row, dict):
+                reading = _fnum(row.get("temp_c"), 1, 125, 1)
+                if reading is not None:
+                    values.append(reading)
+    temps = payload.get("temperatures")
+    if isinstance(temps, list):
+        for row in temps:
+            if not isinstance(row, dict):
+                continue
+            blob = f"{row.get('source') or ''} {row.get('name') or ''} {row.get('kind') or ''}".lower()
+            if not any(token in blob for token in ("nvidia", "amdgpu", "radeon", "nouveau", "gpu", "vga")):
+                continue
+            reading = _fnum(row.get("celsius"), 1, 125, 1)
+            if reading is not None:
+                values.append(reading)
+    if not values:
+        return None
+    return round(max(values), 1)
+
+
 def metrics_from_payload(payload: dict[str, Any]) -> dict[str, float | int | None]:
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     memory = payload.get("memory") if isinstance(payload.get("memory"), dict) else {}
@@ -49,6 +77,7 @@ def metrics_from_payload(payload: dict[str, Any]) -> dict[str, float | int | Non
     cpu = payload.get("cpu") if isinstance(payload.get("cpu"), dict) else {}
     return {
         "cpu_temp_c": _fnum(summary.get("cpu_temp_c"), 1, 125, 1),
+        "gpu_temp_c": _gpu_temp(payload, summary),
         "cpu_used_percent": _fnum(
             summary.get("cpu_used_percent", cpu.get("used_percent")), 0, 100, 1
         ),
@@ -122,7 +151,7 @@ def shape_payload(payload: dict[str, Any], *, journal_mode: str, journal_lines: 
     data["logs"] = kept
     if not kept:
         data.pop("logs_source", None)
-    for key, cap in (("processes", 12), ("listeners", 24), ("docker", 12), ("temperatures", 48), ("voltages", 16)):
+    for key, cap in (("processes", 12), ("listeners", 24), ("docker", 12), ("temperatures", 48), ("voltages", 16), ("gpus", 8)):
         _cap_list(data, key, cap)
     return trim_payload(data)
 
@@ -303,6 +332,7 @@ async def record_audit_sample(db: AsyncSession, hostname: str, payload: dict[str
         host_id=host.id,
         collected_at=_parse_when(payload.get("collected_at"), now),
         cpu_temp_c=metrics["cpu_temp_c"],
+        gpu_temp_c=metrics["gpu_temp_c"],
         cpu_used_percent=metrics["cpu_used_percent"],
         load_1=metrics["load_1"],
         mem_used_percent=int(metrics["mem_used_percent"]) if metrics["mem_used_percent"] is not None else None,
@@ -321,6 +351,7 @@ async def record_audit_sample(db: AsyncSession, hostname: str, payload: dict[str
     host.last_sample_at = sample.collected_at
     host.collect_requested = False
     host.latest_cpu_temp_c = metrics["cpu_temp_c"]
+    host.latest_gpu_temp_c = metrics["gpu_temp_c"]
     host.latest_cpu_percent = metrics["cpu_used_percent"]
     host.latest_mem_percent = metrics["mem_used_percent"]
     host.latest_disk_percent = metrics["disk_used_percent"]

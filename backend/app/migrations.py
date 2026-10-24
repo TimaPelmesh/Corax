@@ -1772,6 +1772,18 @@ def _migrate_server_audit_journal(sync_conn) -> None:
         )
 
 
+def _migrate_server_audit_gpu(sync_conn) -> None:
+    if "server_audit_hosts" in _table_names(sync_conn):
+        cols = _column_names(sync_conn, "server_audit_hosts")
+        if "latest_gpu_temp_c" not in cols:
+            sync_conn.execute(text("ALTER TABLE server_audit_hosts ADD COLUMN latest_gpu_temp_c FLOAT"))
+    if "server_audit_samples" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "server_audit_samples")
+    if "gpu_temp_c" not in cols:
+        sync_conn.execute(text("ALTER TABLE server_audit_samples ADD COLUMN gpu_temp_c FLOAT"))
+
+
 def _migrate_glpi_device_ids(sync_conn) -> None:
     if "monitors" in _table_names(sync_conn):
         cols = _column_names(sync_conn, "monitors")
@@ -1881,6 +1893,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-08_ticket_handler_employee_tabs", _migrate_ticket_handler_employee_tabs),
     ("2026-10-23_server_audit", _migrate_server_audit),
     ("2026-10-23_server_audit_journal", _migrate_server_audit_journal),
+    ("2026-10-24_server_audit_gpu", _migrate_server_audit_gpu),
 ]
 
 

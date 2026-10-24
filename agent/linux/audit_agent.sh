@@ -22,13 +22,16 @@ fi
 # shellcheck disable=SC1091
 . "$AGENT_ROOT/lib/collect_audit.sh"
 
+if ! refuse_if_inside_corax_server; then
+  exit 2
+fi
+
+# The minute poll plants the 04:00 job, so hosts pick it up after this script lands.
+ensure_nightly_script_update || true
+
 if have_cmd flock; then
   exec 9>/tmp/corax-audit.lock
   flock -n 9 || exit 0
-fi
-
-if ! refuse_if_inside_corax_server; then
-  exit 2
 fi
 
 base=${INVENTORY_SERVER:-}

@@ -7,7 +7,7 @@ import hashlib
 import hmac
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ from app.peripheral_display import is_noise_peripheral
 from app.schemas import AgentAuditReport, AgentInventoryReport
 from app.server_audit_store import audit_directive, record_audit_sample
 from app.agent_policy import ack_hostname, build_directive, hostnames_match
+from app.agent_bundle import linux_scripts_zip_bytes
 from app.agent_release import release_file, release_meta
 from app.search_index import sync_computer
 
@@ -447,6 +448,29 @@ async def download_agent_release(
     if path is None:
         raise HTTPException(status_code=404, detail="Шаблон агента ещё не собран")
     return FileResponse(path, media_type="application/octet-stream", filename="CORAX-Agent.exe")
+
+
+@router.get("/linux-scripts")
+@limiter.limit(settings.rate_limit_agent)
+async def download_linux_scripts(
+    request: Request,
+    hostname: str = Query(default="", max_length=255),
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """Current Linux scripts. The host applies them with update_scripts.sh and keeps its own token."""
+    _ = request
+    await verify_agent_token(db, authorization, (hostname or "").strip() or "scripts", any_host=True)
+    data = linux_scripts_zip_bytes()
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="corax-agent-linux-scripts.zip"',
+            "Cache-Control": "no-store",
+            "X-Corax-Agent-Version": "3.6.0-linux",
+        },
+    )
 
 
 @router.get("/audit-directive")

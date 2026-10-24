@@ -14,6 +14,9 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$ROOT" || exit 1
+export AGENT_ROOT=$ROOT
+# shellcheck disable=SC1091
+. "$ROOT/lib/common.sh"
 
 cron=0
 server=
@@ -55,6 +58,11 @@ if [ -n "$server" ] || [ -n "$token" ]; then
   chmod 600 "$ROOT/agent_env.sh" 2>/dev/null || true
 fi
 
+if ! refuse_if_inside_corax_server; then
+  exit 2
+fi
+ensure_nightly_script_update || true
+
 if [ "$cron" -eq 1 ]; then
   exec /bin/sh "$ROOT/audit_agent.sh"
 fi
@@ -71,6 +79,7 @@ if [ "$(id -u 2>/dev/null || echo 1)" -ne 0 ]; then
     echo "Report was not stored. Run as root so the minute job keeps trying:"
   fi
   echo "  sudo $ROOT/corax_send.sh"
+  echo "Root also installs the 04:00 script update."
   exit "$sent"
 fi
 
@@ -85,6 +94,7 @@ minute_present() {
 if [ ! -d /etc/cron.d ]; then
   echo "No /etc/cron.d. Add this to root crontab:"
   echo "* * * * * /bin/sh $ROOT/corax_send.sh --cron >> /var/log/corax-audit.log 2>&1"
+  echo "0 4 * * * /bin/sh $ROOT/update_scripts.sh >> /var/log/corax-update.log 2>&1"
   exit "$sent"
 fi
 

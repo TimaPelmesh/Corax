@@ -161,10 +161,45 @@ def _write_agent_env_sh(server_url: str, agent_token: str) -> str:
     )
 
 
+def _zip_template_file(zf: zipfile.ZipFile, fs_path: Path, arc_name: str) -> None:
+    data = fs_path.read_bytes()
+    if fs_path.suffix in {".sh", ".service", ".timer"} or fs_path.name in {
+        "inventory_agent.sh",
+        "corax_send.sh",
+        "run_console.sh",
+        "install_cron.sh",
+        "update_scripts.sh",
+    }:
+        data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    if arc_name.endswith(".sh") or arc_name in {
+        "inventory_agent.sh",
+        "corax_send.sh",
+        "run_console.sh",
+        "install_cron.sh",
+        "update_scripts.sh",
+    }:
+        info = zipfile.ZipInfo(arc_name)
+        info.date_time = time.localtime(fs_path.stat().st_mtime)[:6]
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o755 << 16
+        zf.writestr(info, data)
+        return
+    zf.writestr(arc_name, data)
+
+
+def linux_scripts_zip_bytes() -> bytes:
+    """Current Linux scripts only. No URL and no token — the host keeps agent_env.sh."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for fs_path, arc_name in _iter_template_files(_AGENT_LINUX_TEMPLATE):
+            _zip_template_file(zf, fs_path, arc_name)
+    return buf.getvalue()
+
+
 def _build_linux_zip(body: AgentBundleCreate, server: str, token: str) -> tuple[bytes, str]:
     profile_key = "custom" if body.profile == "custom" else "full"
     config = _build_agent_config(body)
-    config["agent_version"] = "3.4.0-linux"
+    config["agent_version"] = "3.6.0-linux"
     # Windows-only modules stay off by default on Linux profiles unless custom
     if body.profile != "custom":
         mods = config.get("modules") or {}
@@ -179,31 +214,7 @@ def _build_linux_zip(body: AgentBundleCreate, server: str, token: str) -> tuple[
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for fs_path, arc_name in _iter_template_files(_AGENT_LINUX_TEMPLATE):
-            data = fs_path.read_bytes()
-            # Normalize shell scripts to LF
-            if fs_path.suffix in {".sh", ".service", ".timer"} or fs_path.name in {
-                "inventory_agent.sh",
-                "corax_send.sh",
-                "run_console.sh",
-                "install_cron.sh",
-                "update_scripts.sh",
-            }:
-                data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-            # Mark shell entrypoints executable inside the ZIP
-            if arc_name.endswith(".sh") or arc_name in {
-                "inventory_agent.sh",
-                "corax_send.sh",
-                "run_console.sh",
-                "install_cron.sh",
-                "update_scripts.sh",
-            }:
-                info = zipfile.ZipInfo(arc_name)
-                info.date_time = time.localtime(fs_path.stat().st_mtime)[:6]
-                info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = 0o755 << 16
-                zf.writestr(info, data)
-            else:
-                zf.writestr(arc_name, data)
+            _zip_template_file(zf, fs_path, arc_name)
         zf.writestr("agent_env.sh", env_sh.encode("utf-8"))
         zf.writestr("agent_config.json", config_json.encode("utf-8"))
         if schedule.enabled:
@@ -223,6 +234,8 @@ def _iter_template_files(template_dir: Path) -> list[tuple[Path, str]]:
     out: list[tuple[Path, str]] = []
     for path in sorted(template_dir.rglob("*")):
         if not path.is_file():
+            continue
+        if "__pycache__" in path.parts or path.suffix == ".pyc":
             continue
         if path.name in _GENERATED_NAMES or path.name in _SKIP_NAMES:
             continue

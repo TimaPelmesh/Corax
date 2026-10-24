@@ -71,6 +71,29 @@ function fmtTemp(value: number | null | undefined) {
   return `${value.toFixed(1)}°C`
 }
 
+function sensorKind(row: Record<string, unknown>): 'gpu' | 'cpu' | 'other' {
+  const given = String(row.kind || '')
+  if (given === 'gpu' || given === 'cpu' || given === 'other') return given
+  const blob = `${row.source || ''} ${row.name || ''}`.toLowerCase()
+  if (/nvidia|amdgpu|radeon|nouveau|\bgpu\b|vga/.test(blob)) return 'gpu'
+  if (/pkg|tctl|tdie|tccd|k10|cpu|core|x86|package/.test(blob)) return 'cpu'
+  return 'other'
+}
+
+function heatClass(celsius: number | null) {
+  if (celsius == null) return 'text-[var(--color-fg-subtle)]'
+  if (celsius >= 80) return 'text-rose-600 dark:text-rose-400'
+  if (celsius >= 68) return 'text-amber-600 dark:text-amber-400'
+  return 'text-emerald-600 dark:text-emerald-400'
+}
+
+function heatBar(celsius: number | null) {
+  if (celsius == null) return 'bg-[var(--color-border)]'
+  if (celsius >= 80) return 'bg-rose-500'
+  if (celsius >= 68) return 'bg-amber-500'
+  return 'bg-emerald-500'
+}
+
 function isLinuxOs(os: string | null | undefined) {
   return /linux|debian|ubuntu|centos|rhel|red hat|alma|rocky|suse|oracle|fedora|astra|redos|alt linux|альт|астра|ред\s*ос/i.test(os || '')
 }
@@ -113,7 +136,6 @@ export function ServerAuditPage() {
   const [status, setStatus] = useState<'all' | 'fresh' | 'stale' | 'none' | 'off'>('all')
   const [sortKey, setSortKey] = useState<'name' | 'temp' | 'cpu' | 'seen'>('temp')
   const [sensorQuery, setSensorQuery] = useState('')
-  const [focus, setFocus] = useState<'all' | 'temp' | 'load' | 'net'>('all')
   const [addOpen, setAddOpen] = useState(false)
 
   const loadHosts = useCallback(async () => {
@@ -262,6 +284,23 @@ export function ServerAuditPage() {
   const shownVolts = sensorNeedle
     ? voltages.filter((row) => `${textOf(row.name)} ${textOf(row.source)}`.toLowerCase().includes(sensorNeedle))
     : voltages
+  const gpus = asRows(payload.gpus)
+  const gpuFromSensors = temps
+    .filter((row) => sensorKind(row) === 'gpu')
+    .map((row) => numOf(row.celsius))
+    .filter((value): value is number => value != null)
+  const gpuNow = detail?.latest_gpu_temp_c ?? (gpuFromSensors.length ? Math.max(...gpuFromSensors) : null)
+  const gpuHint = gpus[0] ? textOf(gpus[0].name) : gpuNow == null ? t('serverAudit.gpuIdle') : undefined
+  const rankedTemps = [...shownTemps].sort((a, b) => {
+    const rank = { gpu: 0, cpu: 1, other: 2 }
+    const byKind = rank[sensorKind(a)] - rank[sensorKind(b)]
+    if (byKind !== 0) return byKind
+    return (numOf(b.celsius) ?? -1) - (numOf(a.celsius) ?? -1)
+  })
+  const tempSeries = [
+    { label: t('serverAudit.temp'), color: '#e11d48', data: (detail?.points ?? []).map((point) => point.cpu_temp_c) },
+    { label: t('serverAudit.gpu'), color: '#7c3aed', data: (detail?.points ?? []).map((point) => point.gpu_temp_c) },
+  ].filter((series) => series.data.some((value) => value != null))
 
   const labels = useMemo(
     () => (detail?.points ?? []).map((point) => fmtWhen(point.collected_at, locale)),
@@ -593,6 +632,7 @@ export function ServerAuditPage() {
                   <tr>
                     <th className="px-3 py-2.5">{t('serverAudit.hostname')}</th>
                     <th className="px-3 py-2.5">{t('serverAudit.temp')}</th>
+                    <th className="px-3 py-2.5">{t('serverAudit.gpu')}</th>
                     <th className="px-3 py-2.5">{t('serverAudit.cpu')}</th>
                     <th className="px-3 py-2.5">{t('serverAudit.memory')}</th>
                     <th className="px-3 py-2.5">{t('serverAudit.disk')}</th>
@@ -623,8 +663,11 @@ export function ServerAuditPage() {
                             {host.ip_address ? ` · ${host.ip_address}` : ''}
                           </div>
                         </td>
-                        <td className={`px-3 py-2.5 font-mono ${host.latest_cpu_temp_c != null && host.latest_cpu_temp_c >= 75 ? 'text-rose-600' : ''}`}>
+                        <td className={`px-3 py-2.5 font-mono ${heatClass(host.latest_cpu_temp_c)}`}>
                           {fmtTemp(host.latest_cpu_temp_c)}
+                        </td>
+                        <td className={`px-3 py-2.5 font-mono ${heatClass(host.latest_gpu_temp_c)}`}>
+                          {fmtTemp(host.latest_gpu_temp_c)}
                         </td>
                         <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_cpu_percent)}</td>
                         <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_mem_percent)}</td>
@@ -713,68 +756,140 @@ export function ServerAuditPage() {
                 </div>
               </div>
 
-              {(detail.interval_minutes > 0 || labels.length > 0) ? (
-              <>
-              <div className="flex flex-wrap gap-2">
-                {([
-                  ['all', t('serverAudit.focusAll')],
-                  ['temp', t('serverAudit.focusTemp')],
-                  ['load', t('serverAudit.focusLoad')],
-                  ['net', t('serverAudit.focusNet')],
-                ] as const).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setFocus(id)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${focus === id ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'}`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                <Meter label={t('serverAudit.temp')} value={fmtTemp(detail.latest_cpu_temp_c)} ratio={(detail.latest_cpu_temp_c ?? 0) / 100} valueClass={heatClass(detail.latest_cpu_temp_c)} barClass={heatBar(detail.latest_cpu_temp_c)} />
+                <Meter label={t('serverAudit.gpu')} value={fmtTemp(gpuNow)} hint={gpuHint} ratio={(gpuNow ?? 0) / 100} valueClass={heatClass(gpuNow)} barClass={heatBar(gpuNow)} />
+                <Meter label={t('serverAudit.cpu')} value={fmtPct(detail.latest_cpu_percent)} ratio={(detail.latest_cpu_percent ?? 0) / 100} valueClass="text-[var(--color-fg)]" barClass="bg-sky-500" />
+                <Meter label={t('serverAudit.memory')} value={fmtPct(detail.latest_mem_percent)} ratio={(detail.latest_mem_percent ?? 0) / 100} valueClass="text-[var(--color-fg)]" barClass="bg-emerald-500" />
+                <Meter label={t('serverAudit.disk')} value={fmtPct(detail.latest_disk_percent)} ratio={(detail.latest_disk_percent ?? 0) / 100} valueClass="text-[var(--color-fg)]" barClass="bg-amber-500" />
+                <Meter label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} ratio={Math.min((detail.latest_load_1 ?? 0) / 8, 1)} valueClass="text-[var(--color-fg)]" barClass="bg-slate-500" />
               </div>
 
-              {labels.length < 1 ? (
-                <p className="text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.chartNeed')}</p>
-              ) : (
-                <div className={`grid gap-4 ${focus === 'all' ? 'xl:grid-cols-2' : ''}`}>
-                  {focus !== 'net' ? (
-                    <div className="h-64 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <ServerAuditCharts
-                        labels={labels}
-                        percent={focus !== 'temp'}
-                        series={
-                          focus === 'temp'
-                            ? [{ label: t('serverAudit.temp'), color: '#e11d48', data: detail.points.map((p) => p.cpu_temp_c) }]
-                            : [
-                                { label: t('serverAudit.cpu'), color: '#2563eb', data: detail.points.map((p) => p.cpu_used_percent) },
-                                { label: t('serverAudit.memory'), color: '#059669', data: detail.points.map((p) => p.mem_used_percent) },
-                                { label: t('serverAudit.disk'), color: '#d97706', data: detail.points.map((p) => p.disk_used_percent) },
-                                ...(focus === 'all'
-                                  ? [{ label: t('serverAudit.temp'), color: '#e11d48', data: detail.points.map((p) => p.cpu_temp_c), axis: 'y1' as const }]
-                                  : []),
-                              ]
-                        }
-                      />
-                    </div>
-                  ) : null}
-                  {focus !== 'load' && focus !== 'temp' ? (
-                    <div className="h-64 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                      <ServerAuditCharts
-                        labels={labels}
-                        series={[
-                          { label: t('serverAudit.rx'), color: '#0284c7', data: detail.points.map((p) => p.net_rx_bps) },
-                          { label: t('serverAudit.tx'), color: '#7c3aed', data: detail.points.map((p) => p.net_tx_bps) },
-                          ...(focus === 'all'
-                            ? [{ label: t('serverAudit.load'), color: '#64748b', data: detail.points.map((p) => p.load_1), axis: 'y1' as const }]
-                            : []),
-                        ]}
-                      />
-                    </div>
-                  ) : null}
+              <div className="grid gap-3 xl:grid-cols-2">
+                <ChartFrame title={t('serverAudit.chartTemp')}>
+                  {tempSeries.length > 0 ? (
+                    <ServerAuditCharts labels={labels} unit="temp" series={tempSeries} />
+                  ) : (
+                    <ChartEmpty>{t('serverAudit.chartNeed')}</ChartEmpty>
+                  )}
+                </ChartFrame>
+                <ChartFrame title={t('serverAudit.chartUse')}>
+                  {labels.length > 0 ? (
+                    <ServerAuditCharts
+                      labels={labels}
+                      unit="percent"
+                      series={[
+                        { label: t('serverAudit.cpu'), color: '#2563eb', data: detail.points.map((point) => point.cpu_used_percent) },
+                        { label: t('serverAudit.memory'), color: '#059669', data: detail.points.map((point) => point.mem_used_percent) },
+                        { label: t('serverAudit.disk'), color: '#d97706', data: detail.points.map((point) => point.disk_used_percent) },
+                      ]}
+                    />
+                  ) : (
+                    <ChartEmpty>{t('serverAudit.chartNeed')}</ChartEmpty>
+                  )}
+                </ChartFrame>
+                <ChartFrame title={t('serverAudit.chartNet')}>
+                  {labels.length > 0 ? (
+                    <ServerAuditCharts
+                      labels={labels}
+                      unit="rate"
+                      series={[
+                        { label: t('serverAudit.rx'), color: '#0284c7', data: detail.points.map((point) => point.net_rx_bps) },
+                        { label: t('serverAudit.tx'), color: '#7c3aed', data: detail.points.map((point) => point.net_tx_bps) },
+                      ]}
+                    />
+                  ) : (
+                    <ChartEmpty>{t('serverAudit.chartNeed')}</ChartEmpty>
+                  )}
+                </ChartFrame>
+                <ChartFrame title={t('serverAudit.chartLoad')}>
+                  {labels.length > 0 ? (
+                    <ServerAuditCharts
+                      labels={labels}
+                      unit="load"
+                      series={[{ label: t('serverAudit.load'), color: '#475569', data: detail.points.map((point) => point.load_1) }]}
+                    />
+                  ) : (
+                    <ChartEmpty>{t('serverAudit.chartNeed')}</ChartEmpty>
+                  )}
+                </ChartFrame>
+              </div>
+
+              <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">{t('serverAudit.sensors')}</h3>
+                  <input
+                    value={sensorQuery}
+                    onChange={(event) => setSensorQuery(event.target.value)}
+                    placeholder={t('serverAudit.sensorPh')}
+                    className="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm sm:w-56"
+                  />
                 </div>
-              )}
-              </>
-              ) : null}
+                {gpus.length > 0 ? (
+                  <div className="mb-3 grid gap-2 md:grid-cols-2">
+                    {gpus.map((gpu, index) => {
+                      const used = numOf(gpu.mem_used_mb)
+                      const total = numOf(gpu.mem_total_mb)
+                      const temp = numOf(gpu.temp_c)
+                      return (
+                        <div key={`${textOf(gpu.index)}-${index}`} className="rounded-xl border border-violet-400/40 bg-violet-500/5 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">{t('serverAudit.gpu')}</div>
+                              <div className="truncate text-sm font-medium">{textOf(gpu.name)}</div>
+                            </div>
+                            <div className={`font-mono text-2xl font-semibold tabular-nums ${heatClass(temp)}`}>{fmtTemp(temp)}</div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--color-fg-subtle)] sm:grid-cols-4">
+                            <span>{t('serverAudit.cpu')} {fmtPct(numOf(gpu.util_percent))}</span>
+                            <span>{t('serverAudit.vram')} {used == null ? '—' : `${Math.round(used)} / ${total == null ? '—' : Math.round(total)} MB`}</span>
+                            <span>{t('serverAudit.power')} {numOf(gpu.power_w) == null ? '—' : `${numOf(gpu.power_w)?.toFixed(0)} W`}</span>
+                            <span>{t('serverAudit.fan')} {numOf(gpu.fan_percent) == null ? '—' : fmtPct(numOf(gpu.fan_percent))}</span>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
+                            <div className={`h-full rounded-full ${heatBar(temp)}`} style={{ width: `${Math.max(0, Math.min(100, temp ?? 0))}%` }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+                {rankedTemps.length === 0 ? (
+                  <p className="text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.noTemp')}</p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {rankedTemps.map((row, index) => {
+                      const kind = sensorKind(row)
+                      const meta = row.max != null || row.crit != null
+                        ? `${fmtTemp(numOf(row.max))} / ${fmtTemp(numOf(row.crit))}`
+                        : textOf(row.source)
+                      return (
+                        <SensorCard
+                          key={`${textOf(row.name)}-${index}`}
+                          name={textOf(row.name)}
+                          value={numOf(row.celsius)}
+                          meta={kind === 'gpu' ? `${t('serverAudit.gpu')} · ${meta}` : meta}
+                          kind={kind}
+                        />
+                      )
+                    })}
+                  </div>
+                )}
+                {fans.length > 0 || shownVolts.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {fans.map((row, index) => (
+                      <span key={`fan-${index}`} className="rounded-full bg-[var(--color-bg-muted)] px-2.5 py-1 text-xs">
+                        {textOf(row.name)} · {textOf(row.rpm)} rpm
+                      </span>
+                    ))}
+                    {shownVolts.map((row, index) => (
+                      <span key={`volt-${index}`} className="rounded-full bg-[var(--color-bg-muted)] px-2.5 py-1 text-xs">
+                        {textOf(row.name)} · {textOf(row.volts)} V
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
 
               <JournalPanel
                 logs={logs}
@@ -831,15 +946,28 @@ export function ServerAuditPage() {
                   ) : null}
                 </Panel>
                 <Panel title={t('serverAudit.disks')}>
-                  <SimpleTable
-                    head={[t('serverAudit.mount'), t('serverAudit.used'), t('serverAudit.free'), t('serverAudit.inodes')]}
-                    rows={disks.map((row) => [
-                      textOf(row.mount),
-                      fmtPct(numOf(row.used_percent)),
-                      textOf(row.free_gb),
-                      fmtPct(numOf(row.inodes_used_percent)),
-                    ])}
-                  />
+                  {disks.length === 0 ? (
+                    <Empty>—</Empty>
+                  ) : (
+                    <div className="flex flex-col gap-3 p-3">
+                      {disks.map((row, index) => {
+                        const used = numOf(row.used_percent) ?? 0
+                        return (
+                          <div key={`${textOf(row.mount)}-${index}`}>
+                            <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+                              <span className="truncate font-medium">{textOf(row.mount)}</span>
+                              <span className="shrink-0 text-[var(--color-fg-subtle)]">
+                                {fmtPct(numOf(row.used_percent))} · {textOf(row.free_gb)} {t('serverAudit.free')}
+                              </span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
+                              <div className={`h-full rounded-full ${used >= 90 ? 'bg-rose-500' : used >= 75 ? 'bg-amber-500' : 'bg-sky-500'}`} style={{ width: `${Math.max(0, Math.min(100, used))}%` }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </Panel>
                 <Panel title={t('serverAudit.network')}>
                   <SimpleTable
@@ -912,6 +1040,73 @@ export function ServerAuditPage() {
           )}
         </section>
       </div>
+    </div>
+  )
+}
+
+function Meter({
+  label,
+  value,
+  hint,
+  ratio,
+  valueClass,
+  barClass,
+}: {
+  label: string
+  value: string
+  hint?: string
+  ratio: number
+  valueClass: string
+  barClass: string
+}) {
+  const width = Math.max(0, Math.min(100, ratio * 100))
+  return (
+    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">{label}</div>
+      <div className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${valueClass}`}>{value}</div>
+      <div className="mt-0.5 h-4 truncate text-[11px] text-[var(--color-fg-subtle)]">{hint || ' '}</div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
+        <div className={`h-full rounded-full ${barClass}`} style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function ChartFrame({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+      <h3 className="px-1 pb-2 text-sm font-semibold">{title}</h3>
+      <div className="h-56">{children}</div>
+    </section>
+  )
+}
+
+function ChartEmpty({ children }: { children: React.ReactNode }) {
+  return <div className="flex h-full items-center justify-center text-sm text-[var(--color-fg-subtle)]">{children}</div>
+}
+
+function SensorCard({
+  name,
+  value,
+  meta,
+  kind,
+}: {
+  name: string
+  value: number | null
+  meta: string
+  kind: string
+}) {
+  const width = value == null ? 0 : Math.max(4, Math.min(100, value))
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 ${kind === 'gpu' ? 'border-violet-400/50 bg-violet-500/5' : 'border-[var(--color-border)] bg-[var(--color-bg)]'}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-xs text-[var(--color-fg-subtle)]">{name}</span>
+        <span className={`font-mono text-sm font-semibold tabular-nums ${heatClass(value)}`}>{fmtTemp(value)}</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-muted)]">
+        <div className={`h-full rounded-full ${heatBar(value)}`} style={{ width: `${width}%` }} />
+      </div>
+      <div className="mt-1 truncate text-[10px] text-[var(--color-fg-subtle)]">{meta}</div>
     </div>
   )
 }

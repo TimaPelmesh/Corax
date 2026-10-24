@@ -87,6 +87,7 @@ def _host_out(host: ServerAuditHost, ip: str | None = None) -> ServerAuditHostOu
         ip_address=ip,
         os_summary=host.os_summary,
         latest_cpu_temp_c=host.latest_cpu_temp_c,
+        latest_gpu_temp_c=host.latest_gpu_temp_c,
         latest_cpu_percent=host.latest_cpu_percent,
         latest_mem_percent=host.latest_mem_percent,
         latest_disk_percent=host.latest_disk_percent,
@@ -252,6 +253,7 @@ async def host_detail(
         ServerAuditPoint(
             collected_at=row.collected_at,
             cpu_temp_c=row.cpu_temp_c,
+            gpu_temp_c=row.gpu_temp_c,
             cpu_used_percent=row.cpu_used_percent,
             load_1=row.load_1,
             mem_used_percent=row.mem_used_percent,

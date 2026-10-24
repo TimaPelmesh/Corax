@@ -1506,6 +1506,7 @@ class ServerAuditHostUpdate(BaseModel):
 class ServerAuditPoint(BaseModel):
     collected_at: datetime
     cpu_temp_c: float | None = None
+    gpu_temp_c: float | None = None
     cpu_used_percent: float | None = None
     load_1: float | None = None
     mem_used_percent: float | None = None
@@ -1532,6 +1533,7 @@ class ServerAuditHostOut(BaseModel):
     ip_address: str | None = None
     os_summary: str | None = None
     latest_cpu_temp_c: float | None = None
+    latest_gpu_temp_c: float | None = None
     latest_cpu_percent: float | None = None
     latest_mem_percent: float | None = None
     latest_disk_percent: float | None = None
@@ -1593,6 +1595,7 @@ class ServerAuditHostUpdate(BaseModel):
 class ServerAuditPoint(BaseModel):
     collected_at: datetime
     cpu_temp_c: float | None = None
+    gpu_temp_c: float | None = None
     cpu_used_percent: float | None = None
     load_1: float | None = None
     mem_used_percent: float | None = None
@@ -1622,6 +1625,7 @@ class ServerAuditHostOut(BaseModel):
     ip_address: str | None = None
     os_summary: str | None = None
     latest_cpu_temp_c: float | None = None
+    latest_gpu_temp_c: float | None = None
     latest_cpu_percent: float | None = None
     latest_mem_percent: float | None = None
     latest_disk_percent: float | None = None

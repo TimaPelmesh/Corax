@@ -4,7 +4,7 @@
 # Never touch .env, databases, docker volumes, or the agent install tree.
 # shellcheck shell=sh
 
-CORAX_AGENT_VERSION="${CORAX_AGENT_VERSION:-3.4.0-linux}"
+CORAX_AGENT_VERSION="${CORAX_AGENT_VERSION:-3.6.0-linux}"
 
 log() {
   printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date)" "$*" >&2
@@ -219,5 +219,28 @@ require_agent_config() {
     log "ERROR: AGENT_TOKEN не задан или плейсхолдер"
     return 2
   fi
+  return 0
+}
+
+# Plant a 04:00 job that downloads scripts from the panel. agent_env.sh stays.
+# Idempotent. No-op without root or /etc/cron.d. 04:00 is the host's own clock.
+ensure_nightly_script_update() {
+  root=${AGENT_ROOT:-}
+  [ -n "$root" ] || return 0
+  [ -f "$root/update_scripts.sh" ] || return 0
+  [ "$(id -u 2>/dev/null || echo 1)" -eq 0 ] || return 0
+  [ -d /etc/cron.d ] || return 0
+  dest=/etc/cron.d/corax-update
+  if [ -f "$dest" ] && grep -F "$root/update_scripts.sh" "$dest" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! printf '%s\n%s\n' \
+    "# CORAX Linux agent. Refresh scripts at 04:00 by the host clock. agent_env.sh is kept." \
+    "0 4 * * * root /bin/sh $root/update_scripts.sh >> /var/log/corax-update.log 2>&1" \
+    >"$dest"; then
+    return 0
+  fi
+  chmod 644 "$dest" 2>/dev/null || true
+  log "nightly script update installed (04:00, $dest)"
   return 0
 }

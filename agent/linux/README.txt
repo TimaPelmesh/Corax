@@ -61,7 +61,7 @@ CORAX Linux Agent (bash) 3.2.0
   agent_config.json   — модули
   install_cron.sh     — cron
   systemd/            — timer
-  update_scripts.sh   — обновить скрипты, не трогая agent_env.sh
+  update_scripts.sh   — скачать скрипты с панели в 04:00, не трогая agent_env.sh
 
 Расписание
 ----------
@@ -70,6 +70,7 @@ CORAX Linux Agent (bash) 3.2.0
   sudo ./install_cron.sh
     инвентарь — понедельник 09:15
     аудит — каждую минуту (corax_send.sh --cron)
+    скрипты — каждый день в 04:00 по часам хоста (update_scripts.sh)
 или systemd:
   sudo cp systemd/corax-agent.service systemd/corax-agent.timer /etc/systemd/system/
   sudo cp systemd/corax-audit.service systemd/corax-audit.timer /etc/systemd/system/

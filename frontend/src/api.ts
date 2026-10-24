@@ -1365,6 +1365,7 @@ export type ServerAuditHost = {
   ip_address: string | null
   os_summary: string | null
   latest_cpu_temp_c: number | null
+  latest_gpu_temp_c: number | null
   latest_cpu_percent: number | null
   latest_mem_percent: number | null
   latest_disk_percent: number | null
@@ -1376,6 +1377,7 @@ export type ServerAuditHost = {
 export type ServerAuditPoint = {
   collected_at: string
   cpu_temp_c: number | null
+  gpu_temp_c: number | null
   cpu_used_percent: number | null
   load_1: number | null
   mem_used_percent: number | null

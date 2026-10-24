@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 SAMPLE_SEC = 0.45
-AGENT_VERSION = os.environ.get("CORAX_AGENT_VERSION") or "3.4.0-linux"
+AGENT_VERSION = os.environ.get("CORAX_AGENT_VERSION") or "3.6.0-linux"
 
 _SKIP_FSTYPE = {
     "tmpfs",
@@ -231,7 +231,65 @@ def _temperatures() -> list[dict]:
                 rows.append(row)
     sensor_temps, _, _ = _sensors_once()
     rows.extend(sensor_temps)
+    for row in rows:
+        row["kind"] = _sensor_kind(str(row.get("name") or ""), str(row.get("source") or ""))
     return _dedupe_named(rows, "celsius", 64)
+
+
+def _sensor_kind(name: str, source: str) -> str:
+    blob = f"{source} {name}".lower()
+    if any(token in blob for token in ("nvidia", "amdgpu", "radeon", "nouveau", "gpu", "vga")):
+        return "gpu"
+    if any(token in blob for token in ("pkg", "tctl", "tdie", "tccd", "k10temp", "cpu", "core", "x86", "package")):
+        return "cpu"
+    return "other"
+
+
+def _metric(raw: str, lo: float, hi: float) -> float | None:
+    text = raw.strip()
+    if not text or "n/a" in text.lower():
+        return None
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    if value < lo or value > hi:
+        return None
+    return value
+
+
+def _gpus() -> list[dict]:
+    """NVIDIA cards via nvidia-smi. AMD temperatures still arrive through hwmon."""
+    text = _run(
+        [
+            "nvidia-smi",
+            "--query-gpu=index,name,temperature.gpu,utilization.gpu,memory.used,memory.total,power.draw,fan.speed",
+            "--format=csv,noheader,nounits",
+        ],
+        timeout=4,
+    )
+    rows: list[dict] = []
+    for line in text.splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 3:
+            continue
+        temp = _metric(parts[2], 1, 125)
+        name = (parts[1] or f"GPU {parts[0]}")[:80]
+        rows.append(
+            {
+                "index": parts[0][:8],
+                "name": name,
+                "temp_c": round(temp, 1) if temp is not None else None,
+                "util_percent": _metric(parts[3] if len(parts) > 3 else "", 0, 100),
+                "mem_used_mb": _metric(parts[4] if len(parts) > 4 else "", 0, 1_000_000),
+                "mem_total_mb": _metric(parts[5] if len(parts) > 5 else "", 0, 1_000_000),
+                "power_w": _metric(parts[6] if len(parts) > 6 else "", 0, 2000),
+                "fan_percent": _metric(parts[7] if len(parts) > 7 else "", 0, 100),
+            }
+        )
+        if len(rows) >= 8:
+            break
+    return rows
 
 
 def _voltages() -> list[dict]:
@@ -357,12 +415,9 @@ def _volts(raw: str) -> float | None:
 def _headline_temp(rows: list[dict]) -> float | None:
     if not rows:
         return None
-    preferred = []
-    for row in rows:
-        name = str(row.get("name") or "").lower()
-        if any(token in name for token in ("pkg", "tctl", "k10", "cpu", "core", "x86", "soc", "package")):
-            preferred.append(float(row["celsius"]))
-    pool = preferred or [float(row["celsius"]) for row in rows]
+    cpu = [float(row["celsius"]) for row in rows if row.get("kind") == "cpu"]
+    other = [float(row["celsius"]) for row in rows if row.get("kind") != "gpu"]
+    pool = cpu or other or [float(row["celsius"]) for row in rows]
     return round(max(pool), 1)
 
 
@@ -917,6 +972,19 @@ def build_audit() -> dict:
             break
 
     temps = _temperatures()
+    gpus = _gpus()
+    for gpu in gpus:
+        temp = gpu.get("temp_c")
+        if temp is None:
+            continue
+        label = str(gpu.get("name") or "GPU")
+        if any(row.get("kind") == "gpu" and str(row.get("name")) == label for row in temps):
+            continue
+        temps.append({"name": label[:80], "celsius": temp, "source": "nvidia-smi", "kind": "gpu"})
+    gpu_vals = [float(row["celsius"]) for row in temps if row.get("kind") == "gpu"]
+    gpu_temp = round(max(gpu_vals), 1) if gpu_vals else None
+    gpu_utils = [float(gpu["util_percent"]) for gpu in gpus if gpu.get("util_percent") is not None]
+    gpu_util = round(max(gpu_utils), 1) if gpu_utils else None
     voltages = _voltages()
     fqdn = _hostname_fqdn()
     short = _hostname()
@@ -942,6 +1010,8 @@ def build_audit() -> dict:
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     summary = {
         "cpu_temp_c": temp_c,
+        "gpu_temp_c": gpu_temp,
+        "gpu_used_percent": gpu_util,
         "cpu_used_percent": cpu_pct if cpu_pct is not None else 0.0,
         "load_1": load["1"],
         "load_5": load["5"],
@@ -985,7 +1055,8 @@ def build_audit() -> dict:
             "used_percent": summary["cpu_used_percent"],
             "per_core": per_core,
         },
-        "temperatures": temps,
+        "temperatures": temps[:64],
+        "gpus": gpus,
         "voltages": voltages,
         "fans": _fans(),
         "memory": memory,
