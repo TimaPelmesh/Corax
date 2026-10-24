@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,9 +20,22 @@ JOURNAL_LINES = frozenset({0, 10, 20, 40, 80})
 RETAIN_DAYS = frozenset({7, 14, 30, 90})
 _ERROR_LEVELS = frozenset({"emerg", "alert", "crit", "err", "error", "fatal"})
 _PAYLOAD_MAX = 180_000
-ALLOWED_INTERVALS = frozenset({0, 5, 15, 30, 60, 180, 360, 720, 1440})
+ALLOWED_INTERVALS = frozenset({0, 15, 30, 60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400})
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")
-_AUTO_INTERVAL = 5
+_AUTO_INTERVAL_MIN = 5
+_AUTO_INTERVAL_SEC = 300
+_KEEP_CEILING = 80_000
+_BUCKET_KEYS = (
+    "cpu_temp_c",
+    "gpu_temp_c",
+    "cpu_used_percent",
+    "mem_used_percent",
+    "swap_used_percent",
+    "disk_used_percent",
+    "load_1",
+    "net_rx_bps",
+    "net_tx_bps",
+)
 
 
 def _fnum(value: Any, lo: float, hi: float, digits: int = 1) -> float | None:
@@ -103,12 +116,71 @@ def _utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _due(last: datetime | None, now: datetime, interval_min: int) -> bool:
+def interval_seconds_of(host: ServerAuditHost) -> int:
+    raw = getattr(host, "interval_seconds", None)
+    if raw is not None:
+        return max(0, int(raw))
+    return max(0, int(host.interval_minutes or 0) * 60)
+
+
+def minutes_mirror(seconds: int) -> int:
+    """Old agents only understand minutes. Sub-minute schedules collect once a minute until the script updates."""
+    if seconds <= 0:
+        return 0
+    if seconds < 60:
+        return 1
+    return seconds // 60
+
+
+def keep_cap(interval_seconds: int) -> int:
+    """14 days at the chosen interval, so a 15s schedule is not thrown away after six hours."""
+    if interval_seconds <= 0:
+        return _KEEP_MAX
+    span = int((14 * 86400) / max(interval_seconds, 1))
+    return max(_KEEP_MAX, min(span, _KEEP_CEILING))
+
+
+def bucket_downsample(rows: list, cap: int = 800) -> list:
+    """Keep the first, last, min and max of each series inside a time bucket so a spike survives the cap."""
+    if len(rows) <= cap:
+        return rows
+    bucket_count = max(1, cap // 20)
+    step = len(rows) / bucket_count
+    picked: list = []
+    seen: set[int] = set()
+    for index in range(bucket_count):
+        start = int(index * step)
+        end = len(rows) if index == bucket_count - 1 else int((index + 1) * step)
+        chunk = rows[start:end]
+        if not chunk:
+            continue
+        chosen = [chunk[0], chunk[-1]]
+        for key in _BUCKET_KEYS:
+            valued: list[tuple[float, Any]] = []
+            for row in chunk:
+                value = getattr(row, key, None)
+                if value is None:
+                    continue
+                valued.append((float(value), row))
+            if not valued:
+                continue
+            chosen.append(min(valued, key=lambda item: item[0])[1])
+            chosen.append(max(valued, key=lambda item: item[0])[1])
+        for row in sorted(chosen, key=lambda item: item.collected_at):
+            marker = id(row)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            picked.append(row)
+    return picked
+
+
+def _due(last: datetime | None, now: datetime, interval_sec: int) -> bool:
     """True when the interval has elapsed. A future stamp is not due (the agent clock still sends)."""
     last_utc = _utc(last)
     if last_utc is None:
         return True
-    return (now - last_utc).total_seconds() >= interval_min * 60
+    return (now - last_utc).total_seconds() >= interval_sec
 
 
 def _parse_when(raw: Any, now: datetime) -> datetime:
@@ -262,7 +334,8 @@ async def _enroll_host(db: AsyncSession, hostname: str) -> ServerAuditHost | Non
     host = ServerAuditHost(
         hostname=name,
         enabled=True,
-        interval_minutes=_AUTO_INTERVAL,
+        interval_minutes=_AUTO_INTERVAL_MIN,
+        interval_seconds=_AUTO_INTERVAL_SEC,
         collect_requested=False,
         journal_mode="errors",
         journal_lines=20,
@@ -287,7 +360,7 @@ async def _link_computer(db: AsyncSession, host: ServerAuditHost, hostname: str)
         host.computer_id = pc.id
 
 
-async def _prune(db: AsyncSession, host_id: int, now: datetime, retain_days: int) -> None:
+async def _prune(db: AsyncSession, host_id: int, now: datetime, retain_days: int, interval_seconds: int = 900) -> None:
     days = retain_days if retain_days in RETAIN_DAYS else 14
     cutoff = now - timedelta(days=days)
     await db.execute(
@@ -299,7 +372,7 @@ async def _prune(db: AsyncSession, host_id: int, now: datetime, retain_days: int
     count = await db.scalar(
         select(func.count()).select_from(ServerAuditSample).where(ServerAuditSample.host_id == host_id)
     )
-    extra = int(count or 0) - _KEEP_MAX
+    extra = int(count or 0) - keep_cap(interval_seconds)
     if extra <= 0:
         return
     old_ids = list(
@@ -361,33 +434,28 @@ async def record_audit_sample(db: AsyncSession, hostname: str, payload: dict[str
         host.os_summary = summary
     await _link_computer(db, host, hostname)
     await db.flush()
-    await _drop_older_logs(db, host.id, sample.id)
-    await _prune(db, host.id, now, int(host.retain_days or 14))
+    await _drop_older_payloads(db, host.id, sample.id)
+    await _prune(db, host.id, now, int(host.retain_days or 14), interval_seconds_of(host))
     return {"ok": True, "stored": True, "reason": "stored", "host_id": host.id, "hostname": host.hostname}
 
 
-async def _drop_older_logs(db: AsyncSession, host_id: int, keep_id: int) -> None:
-    """Journal text lives on the newest sample only, so history stays numeric."""
-    rows = list(
-        (
-            await db.execute(
-                select(ServerAuditSample)
-                .where(ServerAuditSample.host_id == host_id, ServerAuditSample.id != keep_id)
-                .order_by(ServerAuditSample.collected_at.desc())
-                .limit(30)
-            )
-        ).scalars().all()
+async def _drop_older_payloads(db: AsyncSession, host_id: int, keep_id: int) -> None:
+    """Charts read numeric columns. The snapshot payload stays on the newest sample only."""
+    await db.execute(
+        update(ServerAuditSample)
+        .where(
+            ServerAuditSample.host_id == host_id,
+            ServerAuditSample.id != keep_id,
+            ServerAuditSample.payload_json.is_not(None),
+        )
+        .values(payload_json=None)
     )
-    for row in rows:
-        slim = _without_logs(row.payload_json)
-        if slim is not None and slim != row.payload_json:
-            row.payload_json = slim
 
 
 async def apply_journal_now(db: AsyncSession, host: ServerAuditHost) -> None:
     """Retention and an empty journal take effect without waiting for the next sample."""
     now = datetime.now(timezone.utc)
-    await _prune(db, host.id, now, int(host.retain_days or 14))
+    await _prune(db, host.id, now, int(host.retain_days or 14), interval_seconds_of(host))
     if (host.journal_mode or "errors") != "off":
         return
     rows = list(
@@ -406,6 +474,17 @@ async def apply_journal_now(db: AsyncSession, host: ServerAuditHost) -> None:
             row.payload_json = slim
 
 
+def _directive(host: ServerAuditHost, collect: bool, reason: str) -> dict[str, Any]:
+    seconds = interval_seconds_of(host)
+    return {
+        "collect": collect,
+        "reason": reason,
+        "interval_seconds": seconds,
+        "interval_minutes": minutes_mirror(seconds),
+        "hostname": host.hostname,
+    }
+
+
 async def audit_directive(db: AsyncSession, hostname: str) -> dict[str, Any]:
     host = await find_audit_host(db, hostname)
     if host is None:
@@ -413,30 +492,16 @@ async def audit_directive(db: AsyncSession, hostname: str) -> dict[str, Any]:
         return {
             "collect": True,
             "reason": "enroll",
-            "interval_minutes": _AUTO_INTERVAL,
+            "interval_seconds": _AUTO_INTERVAL_SEC,
+            "interval_minutes": _AUTO_INTERVAL_MIN,
             "hostname": hostname,
         }
     if not host.enabled:
-        return {
-            "collect": False,
-            "reason": "disabled",
-            "interval_minutes": int(host.interval_minutes or 0),
-            "hostname": host.hostname,
-        }
-    interval = int(host.interval_minutes or 0)
+        return _directive(host, False, "disabled")
+    seconds = interval_seconds_of(host)
     if host.collect_requested:
-        return {
-            "collect": True,
-            "reason": "requested",
-            "interval_minutes": interval,
-            "hostname": host.hostname,
-        }
-    if interval <= 0:
-        return {"collect": False, "reason": "idle", "interval_minutes": 0, "hostname": host.hostname}
-    due = _due(host.last_sample_at, datetime.now(timezone.utc), interval)
-    return {
-        "collect": due,
-        "reason": "interval" if due else "idle",
-        "interval_minutes": interval,
-        "hostname": host.hostname,
-    }
+        return _directive(host, True, "requested")
+    if seconds <= 0:
+        return _directive(host, False, "idle")
+    due = _due(host.last_sample_at, datetime.now(timezone.utc), seconds)
+    return _directive(host, due, "interval" if due else "idle")

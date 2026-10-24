@@ -759,6 +759,7 @@ class ServerAuditHost(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     interval_minutes: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
+    interval_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     collect_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     journal_mode: Mapped[str] = mapped_column(String(16), default="errors", server_default="errors")
     journal_lines: Mapped[int] = mapped_column(Integer, default=20, server_default="20")

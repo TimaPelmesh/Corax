@@ -113,14 +113,23 @@ try:
     iv=int(d.get("interval_minutes") or 0)
 except (TypeError, ValueError):
     iv=0
+raw_sec=d.get("interval_seconds")
+try:
+    sec=int(raw_sec) if raw_sec is not None else iv * 60
+except (TypeError, ValueError):
+    sec=iv * 60
 if iv < 0:
     iv=0
 if iv > 10080:
     iv=10080
+if sec < 0:
+    sec=0
+if sec > 604800:
+    sec=604800
 reason=str(d.get("reason") or "idle")
 if reason not in {"enroll", "disabled", "requested", "interval", "idle"}:
     reason="idle"
-print(("yes" if d.get("collect") else "no") + " " + str(iv) + " " + reason)' "$body" 2>/dev/null || printf '%s' bad
+print(("yes" if d.get("collect") else "no") + " " + str(iv) + " " + str(sec) + " " + reason)' "$body" 2>/dev/null || printf '%s' bad
 }
 
 post_audit() {
@@ -177,12 +186,19 @@ stamp_age() {
   printf '%s' $((now - then))
 }
 
-stamp_interval() {
-  stamp_field 2
+stamp_seconds() {
+  if [ ! -f "$stamp_file" ]; then
+    printf '%s' ''
+    return 0
+  fi
+  awk 'NR==1 {
+    if ($3 == "s" && $2 ~ /^[0-9]+$/) print $2
+    else if ($2 ~ /^[0-9]+$/) print $2 * 60
+  }' "$stamp_file" 2>/dev/null | head -c 12
 }
 
 write_stamp() {
-  printf '%s %s\n' "$(date +%s 2>/dev/null || printf '%s' 0)" "${1:-5}" >"$stamp_file" 2>/dev/null || true
+  printf '%s %s s\n' "$(date +%s 2>/dev/null || printf '%s' 0)" "${1:-300}" >"$stamp_file" 2>/dev/null || true
 }
 
 apply_directive() {
@@ -191,14 +207,83 @@ apply_directive() {
   rest=${parsed#* }
   iv=${rest%% *}
   case "$rest" in
-    *" "*) reason=${rest#* } ;;
-    *) reason=idle ;;
+    *" "*) rest=${rest#* } ;;
+    *) rest=idle ;;
   esac
+  iv_sec=${rest%% *}
+  case "$rest" in
+    *" "*) reason=${rest#* } ;;
+    *) reason=$rest ;;
+  esac
+  case "$iv_sec" in
+    ''|*[!0-9]*)
+      case "$iv" in
+        ''|*[!0-9]*) iv_sec=300 ;;
+        *) iv_sec=$((iv * 60)) ;;
+      esac
+      ;;
+  esac
+}
+
+send_sample() {
+  collect_audit_snapshot
+  json_out="$CORAX_WORKDIR/audit.json"
+  if [ ! -s "$json_out" ]; then
+    log "audit: empty snapshot"
+    return 1
+  fi
+  for p in $ports; do
+    for path in /api/v1/agent/audit /api/agent/audit; do
+      uri="${scheme}://${host}:${p}${path}"
+      code=$(post_audit "$json_out" "$uri")
+      if [ "$code" != "200" ] && [ "$code" != "201" ]; then
+        log "audit: HTTP $code $uri"
+        continue
+      fi
+      stored=$(python3 -c 'import json,sys
+try:
+    d=json.load(open(sys.argv[1],encoding="utf-8"))
+except Exception:
+    print("unknown")
+    raise SystemExit
+if isinstance(d, dict) and d.get("stored") is True:
+    print("yes")
+elif isinstance(d, dict):
+    print(d.get("reason") or "skip")
+else:
+    print("unknown")' "${CORAX_WORKDIR}/audit_post.txt" 2>/dev/null || printf '%s' unknown)
+      if [ "$stored" = "yes" ]; then
+        keep=$iv_sec
+        if [ "$mode" = "now" ]; then
+          saved=$(stamp_seconds)
+          case "$saved" in
+            ''|*[!0-9]*) ;;
+            *) keep=$saved ;;
+          esac
+        fi
+        write_stamp "$keep"
+        log "audit: stored $hn via $uri"
+        printf 'OK %s\n' "$hn"
+        return 0
+      fi
+      if [ "$stored" = "unknown" ]; then
+        log "audit: HTTP $code is not a CORAX reply, trying next ($uri)"
+        continue
+      fi
+      log "audit: panel did not store ($stored) via $uri"
+      if [ "$stored" = "disabled" ]; then
+        return 2
+      fi
+      return 1
+    done
+  done
+  return 1
 }
 
 asked=0
 flag=bad
 iv=5
+iv_sec=300
 reason=
 fallback_no=
 if [ "$mode" = "now" ]; then
@@ -233,8 +318,8 @@ else
   if [ "$flag" = "bad" ] && [ -n "$fallback_no" ]; then
     apply_directive "$fallback_no"
   fi
-  case "$iv" in
-    ''|*[!0-9]*) iv=5 ;;
+  case "$iv_sec" in
+    ''|*[!0-9]*) iv_sec=300 ;;
   esac
   if [ "${reason:-}" = "disabled" ]; then
     log "audit: host disabled"
@@ -245,30 +330,30 @@ else
     log "audit: panel asked, sending"
     asked=1
   elif [ "$flag" = "no" ]; then
-    if [ "$iv" -le 0 ]; then
+    if [ "$iv_sec" -le 0 ]; then
       log "audit: manual, waiting for the button"
       exit 0
     fi
-    need=$((iv * 60))
-    if [ "$age" -ge "$need" ]; then
-      log "audit: ${iv}m elapsed (${age}s), sending"
+    if [ "$age" -ge "$iv_sec" ]; then
+      log "audit: ${iv_sec}s elapsed (${age}s), sending"
       asked=1
     else
-      log "audit: idle, next in $((need - age))s"
+      log "audit: idle, next in $((iv_sec - age))s"
       exit 0
     fi
   else
-    saved=$(stamp_interval)
+    saved=$(stamp_seconds)
     case "$saved" in
       '') need=300 ;;
       0)
         log "audit: panel silent, manual mode, skip"
         exit 0
         ;;
-      *) need=$((saved * 60)) ;;
+      *) need=$saved ;;
     esac
     if [ "$age" -ge "$need" ]; then
       log "audit: panel silent for ${age}s, sending"
+      iv_sec=$need
       asked=1
     else
       log "audit: panel silent, last sample ${age}s ago, skip"
@@ -277,62 +362,31 @@ else
   fi
 fi
 
-collect_audit_snapshot
-json_out="$CORAX_WORKDIR/audit.json"
-if [ ! -s "$json_out" ]; then
-  log "audit: empty snapshot"
+send_sample
+rc=$?
+if [ "$rc" -eq 2 ]; then
+  exit 0
+fi
+if [ "$rc" -ne 0 ]; then
   exit 1
 fi
-
-ok=0
-for p in $ports; do
-  for path in /api/v1/agent/audit /api/agent/audit; do
-    uri="${scheme}://${host}:${p}${path}"
-    code=$(post_audit "$json_out" "$uri")
-    if [ "$code" = "200" ] || [ "$code" = "201" ]; then
-      stored=$(python3 -c 'import json,sys
-try:
-    d=json.load(open(sys.argv[1],encoding="utf-8"))
-except Exception:
-    print("unknown")
-    raise SystemExit
-if isinstance(d, dict) and d.get("stored") is True:
-    print("yes")
-elif isinstance(d, dict):
-    print(d.get("reason") or "skip")
-else:
-    print("unknown")' "${CORAX_WORKDIR}/audit_post.txt" 2>/dev/null || printf '%s' unknown)
-      if [ "$stored" = "yes" ]; then
-        keep_iv=$iv
-        if [ "$mode" = "now" ]; then
-          saved=$(stamp_interval)
-          case "$saved" in
-            ''|*[!0-9]*) ;;
-            *) keep_iv=$saved ;;
-          esac
-        fi
-        write_stamp "$keep_iv"
-        log "audit: stored $hn via $uri"
-        printf 'OK %s\n' "$hn"
-        ok=1
-        break 2
-      fi
-      if [ "$stored" = "unknown" ]; then
-        log "audit: HTTP $code is not a CORAX reply, trying next ($uri)"
-        continue
-      fi
-      log "audit: panel did not store ($stored) via $uri"
-      if [ "$stored" = "disabled" ]; then
-        exit 0
-      fi
-      ok=0
-      break 2
+# The installed job wakes once a minute. A sub-minute schedule sends the rest of the minute here.
+if [ "$mode" != "now" ] && [ "$iv_sec" -ge 15 ] && [ "$iv_sec" -lt 60 ]; then
+  begin=$(date +%s 2>/dev/null || printf '%s' 0)
+  while :; do
+    now=$(date +%s 2>/dev/null || printf '%s' 0)
+    if [ $((now - begin + iv_sec)) -ge 52 ]; then
+      break
     fi
-    log "audit: HTTP $code $uri"
+    sleep "$iv_sec"
+    send_sample
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+      exit 0
+    fi
+    if [ "$rc" -ne 0 ]; then
+      exit 1
+    fi
   done
-done
-
-if [ "$ok" -ne 1 ]; then
-  exit 1
 fi
 exit 0

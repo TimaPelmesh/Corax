@@ -1357,6 +1357,7 @@ export type ServerAuditHost = {
   notes: string | null
   enabled: boolean
   interval_minutes: number
+  interval_seconds: number
   collect_requested: boolean
   journal_mode: 'off' | 'errors' | 'all'
   journal_lines: number
@@ -3213,7 +3214,7 @@ export const api = {
   serverAuditHost: (id: number, hours = 24) =>
     request<ServerAuditDetail>(`${API_PREFIX}/server-audit/hosts/${id}?hours=${hours}`),
 
-  createServerAuditHost: (body: { hostname: string; label?: string | null; interval_minutes: number; notes?: string | null }) =>
+  createServerAuditHost: (body: { hostname: string; label?: string | null; interval_seconds: number; notes?: string | null }) =>
     request<ServerAuditHost>(`${API_PREFIX}/server-audit/hosts`, { method: 'POST', json: body }),
 
   updateServerAuditHost: (
@@ -3223,6 +3224,7 @@ export const api = {
       label?: string | null
       notes?: string | null
       interval_minutes?: number
+      interval_seconds?: number
       enabled?: boolean
       journal_mode?: 'off' | 'errors' | 'all'
       journal_lines?: number

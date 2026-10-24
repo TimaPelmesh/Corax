@@ -1488,7 +1488,8 @@ class ServerAuditHostCreate(BaseModel):
     hostname: str = Field(min_length=1, max_length=255)
     label: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=4000)
-    interval_minutes: int = 15
+    interval_minutes: int | None = None
+    interval_seconds: int | None = None
     enabled: bool = True
 
 
@@ -1497,6 +1498,7 @@ class ServerAuditHostUpdate(BaseModel):
     label: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=4000)
     interval_minutes: int | None = None
+    interval_seconds: int | None = None
     enabled: bool | None = None
     journal_mode: str | None = None
     journal_lines: int | None = None
@@ -1528,6 +1530,7 @@ class ServerAuditHostOut(BaseModel):
     notes: str | None = None
     enabled: bool
     interval_minutes: int
+    interval_seconds: int = 900
     collect_requested: bool
     computer_id: int | None = None
     ip_address: str | None = None
@@ -1577,7 +1580,8 @@ class ServerAuditHostCreate(BaseModel):
     hostname: str = Field(min_length=1, max_length=255)
     label: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=4000)
-    interval_minutes: int = 15
+    interval_minutes: int | None = None
+    interval_seconds: int | None = None
     enabled: bool = True
 
 
@@ -1586,6 +1590,7 @@ class ServerAuditHostUpdate(BaseModel):
     label: str | None = Field(default=None, max_length=255)
     notes: str | None = Field(default=None, max_length=4000)
     interval_minutes: int | None = None
+    interval_seconds: int | None = None
     enabled: bool | None = None
     journal_mode: str | None = None
     journal_lines: int | None = None
@@ -1617,6 +1622,7 @@ class ServerAuditHostOut(BaseModel):
     notes: str | None = None
     enabled: bool
     interval_minutes: int
+    interval_seconds: int = 900
     collect_requested: bool
     journal_mode: str = "errors"
     journal_lines: int = 20

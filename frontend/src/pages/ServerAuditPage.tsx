@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, type Computer, type ServerAuditDetail, type ServerAuditHost } from '../api'
 import { useAuth } from '../AuthContext'
 import { useConfirmDialog } from '../components/ConfirmDialog'
@@ -7,9 +7,11 @@ import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 import { ServerAuditCharts } from './ServerAuditCharts'
 
-const INTERVALS = [0, 5, 15, 30, 60, 180, 360, 720, 1440] as const
+const INTERVALS = [0, 15, 30, 60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400] as const
 
 type Hours = 6 | 24 | 168
+type Status = 'all' | 'fresh' | 'stale' | 'none' | 'off'
+type SortKey = 'name' | 'temp' | 'cpu' | 'seen'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -102,12 +104,58 @@ function isLogError(level: string) {
   return level === 'emerg' || level === 'alert' || level === 'crit' || level === 'err'
 }
 
+function intervalSecOf(host: { interval_seconds?: number | null; interval_minutes: number }) {
+  if (typeof host.interval_seconds === 'number' && Number.isFinite(host.interval_seconds)) return host.interval_seconds
+  return Math.max(0, (host.interval_minutes || 0) * 60)
+}
+
 function freshness(host: ServerAuditHost): 'fresh' | 'stale' | 'none' {
   if (!host.last_sample_at) return 'none'
   const age = Date.now() - new Date(host.last_sample_at).getTime()
-  const windowMin = Math.max((host.interval_minutes || 0) * 2, 20)
+  const seconds = intervalSecOf(host)
+  const windowMs = seconds > 0 ? Math.max(seconds * 2, 45) * 1000 : 20 * 60_000
   if (!Number.isFinite(age) || age < 0) return 'fresh'
-  return age <= windowMin * 60_000 ? 'fresh' : 'stale'
+  return age <= windowMs ? 'fresh' : 'stale'
+}
+
+function pctClass(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) return 'text-[var(--color-fg-subtle)]'
+  if (value >= 90) return 'text-rose-600 dark:text-rose-400'
+  if (value >= 75) return 'text-amber-600 dark:text-amber-400'
+  return 'text-[var(--color-fg)]'
+}
+
+function pctBar(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) return 'bg-[var(--color-border)]'
+  if (value >= 90) return 'bg-rose-500'
+  if (value >= 75) return 'bg-amber-500'
+  return 'bg-sky-500'
+}
+
+function loadRatio(load: number | null | undefined, cores: number) {
+  if (load == null || Number.isNaN(load)) return 0
+  return Math.max(0, load / Math.max(cores, 1))
+}
+
+function loadClass(load: number | null | undefined, cores: number) {
+  const ratio = loadRatio(load, cores)
+  if (load == null) return 'text-[var(--color-fg-subtle)]'
+  if (ratio >= 1) return 'text-rose-600 dark:text-rose-400'
+  if (ratio >= 0.7) return 'text-amber-600 dark:text-amber-400'
+  return 'text-[var(--color-fg)]'
+}
+
+function loadBar(load: number | null | undefined, cores: number) {
+  const ratio = loadRatio(load, cores)
+  if (load == null) return 'bg-[var(--color-border)]'
+  if (ratio >= 1) return 'bg-rose-500'
+  if (ratio >= 0.7) return 'bg-amber-500'
+  return 'bg-slate-500'
+}
+
+function tempRatio(celsius: number | null | undefined) {
+  if (celsius == null || Number.isNaN(celsius)) return 0
+  return Math.max(0, Math.min(1, (celsius - 20) / 80))
 }
 
 export function ServerAuditPage() {
@@ -117,15 +165,14 @@ export function ServerAuditPage() {
   const { user } = useAuth()
   const confirm = useConfirmDialog()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [hosts, setHosts] = useState<ServerAuditHost[]>([])
-  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detail, setDetail] = useState<ServerAuditDetail | null>(null)
-  const [hours, setHours] = useState<Hours>(24)
   const [loading, setLoading] = useState(true)
   const [hostname, setHostname] = useState('')
   const [label, setLabel] = useState('')
-  const [interval, setIntervalMinutes] = useState(15)
+  const [intervalSec, setIntervalSec] = useState(900)
   const [busy, setBusy] = useState(false)
   const [fleetQuery, setFleetQuery] = useState('')
   const [fleetOpen, setFleetOpen] = useState(false)
@@ -133,15 +180,38 @@ export function ServerAuditPage() {
   const [linuxOnly, setLinuxOnly] = useState(true)
   const [logMode, setLogMode] = useState<'err' | 'all'>('err')
   const [hostQuery, setHostQuery] = useState('')
-  const [status, setStatus] = useState<'all' | 'fresh' | 'stale' | 'none' | 'off'>('all')
-  const [sortKey, setSortKey] = useState<'name' | 'temp' | 'cpu' | 'seen'>('temp')
   const [sensorQuery, setSensorQuery] = useState('')
   const [addOpen, setAddOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [hoverMs, setHoverMs] = useState<number | null>(null)
+  const [polledAt, setPolledAt] = useState(() => Date.now())
+  const [now, setNow] = useState(() => Date.now())
+
+  const rangeRaw = Number(searchParams.get('range'))
+  const hours: Hours = rangeRaw === 6 || rangeRaw === 168 ? rangeRaw : 24
+  const statusRaw = searchParams.get('status')
+  const status: Status = statusRaw === 'fresh' || statusRaw === 'stale' || statusRaw === 'none' || statusRaw === 'off' ? statusRaw : 'all'
+  const sortRaw = searchParams.get('sort')
+  const sortKey: SortKey = sortRaw === 'name' || sortRaw === 'cpu' || sortRaw === 'seen' ? sortRaw : 'temp'
+  const sortDir: 'asc' | 'desc' = searchParams.get('dir') === 'asc' ? 'asc' : 'desc'
+  const hostParam = Number(searchParams.get('host'))
+  const selectedId = hosts.some((host) => host.id === hostParam) ? hostParam : (hosts[0]?.id ?? null)
+
+  const setParams = useCallback((patch: Record<string, string | null>) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      for (const [key, value] of Object.entries(patch)) {
+        if (value == null || value === '') next.delete(key)
+        else next.set(key, value)
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
 
   const loadHosts = useCallback(async () => {
     const rows = await api.serverAuditHosts()
     setHosts(rows)
-    setSelectedId((current) => current ?? rows[0]?.id ?? null)
     return rows
   }, [])
 
@@ -179,7 +249,19 @@ export function ServerAuditPage() {
 
   useEffect(() => {
     setLogMode('err')
+    setSettingsOpen(false)
   }, [selectedId])
+
+  useEffect(() => {
+    if (hosts.length === 0) return
+    if (hosts.some((host) => host.id === hostParam)) return
+    setParams({ host: String(hosts[0].id) })
+  }, [hostParam, hosts, setParams])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -197,6 +279,14 @@ export function ServerAuditPage() {
   }, [loadHosts, t, toast])
 
   const hurry = hosts.some((host) => host.collect_requested || !host.last_sample_at)
+  const fastest = hosts.reduce((min, host) => {
+    if (!host.enabled) return min
+    const seconds = intervalSecOf(host)
+    if (seconds <= 0) return min
+    return Math.min(min, seconds)
+  }, 3600)
+  const pollMs = hours >= 168 ? 30_000 : fastest <= 60 ? 5_000 : hurry ? 8_000 : 20_000
+  const remainSec = paused ? null : Math.max(0, Math.ceil((pollMs - (now - polledAt)) / 1000))
 
   useEffect(() => {
     if (selectedId == null) {
@@ -204,18 +294,21 @@ export function ServerAuditPage() {
       return
     }
     let alive = true
-    loadDetail(selectedId, hours).catch((error: unknown) => {
-      if (alive) toast.error(error instanceof Error ? error.message : t('common.error'))
-    })
-    const timer = window.setInterval(() => {
-      void loadDetail(selectedId, hours).catch(() => undefined)
+    const run = () => {
+      setPolledAt(Date.now())
+      loadDetail(selectedId, hours).catch((error: unknown) => {
+        if (alive) toast.error(error instanceof Error ? error.message : t('common.error'))
+      })
       void loadHosts().catch(() => undefined)
-    }, hurry ? 8000 : 20000)
+    }
+    run()
+    if (paused) return () => { alive = false }
+    const timer = window.setInterval(run, pollMs)
     return () => {
       alive = false
       window.clearInterval(timer)
     }
-  }, [hours, hurry, loadDetail, loadHosts, selectedId, t, toast])
+  }, [hours, loadDetail, loadHosts, paused, pollMs, selectedId, t, toast])
 
   const payload = detail?.payload ?? {}
   const os = asRecord(payload.os)
@@ -269,13 +362,14 @@ export function ServerAuditPage() {
       )
     })
     rows.sort((a, b) => {
-      if (sortKey === 'temp') return (b.latest_cpu_temp_c ?? -1) - (a.latest_cpu_temp_c ?? -1)
-      if (sortKey === 'cpu') return (b.latest_cpu_percent ?? -1) - (a.latest_cpu_percent ?? -1)
-      if (sortKey === 'seen') return (b.last_sample_at || '').localeCompare(a.last_sample_at || '')
-      return (a.label || a.hostname).localeCompare(b.label || b.hostname, locale === 'en' ? 'en' : 'ru')
+      const dir = sortDir === 'asc' ? 1 : -1
+      if (sortKey === 'temp') return ((a.latest_cpu_temp_c ?? -1) - (b.latest_cpu_temp_c ?? -1)) * dir
+      if (sortKey === 'cpu') return ((a.latest_cpu_percent ?? -1) - (b.latest_cpu_percent ?? -1)) * dir
+      if (sortKey === 'seen') return (a.last_sample_at || '').localeCompare(b.last_sample_at || '') * dir
+      return (a.label || a.hostname).localeCompare(b.label || b.hostname, locale === 'en' ? 'en' : 'ru') * dir
     })
     return rows
-  }, [hostQuery, hosts, locale, sortKey, status])
+  }, [hostQuery, hosts, locale, sortDir, sortKey, status])
 
   const sensorNeedle = sensorQuery.trim().toLowerCase()
   const shownTemps = sensorNeedle
@@ -302,15 +396,12 @@ export function ServerAuditPage() {
     { label: t('serverAudit.gpu'), color: '#7c3aed', data: (detail?.points ?? []).map((point) => point.gpu_temp_c) },
   ].filter((series) => series.data.some((value) => value != null))
 
-  const labels = useMemo(
-    () => (detail?.points ?? []).map((point) => fmtWhen(point.collected_at, locale)),
-    [detail?.points, locale],
-  )
+  const times = useMemo(() => (detail?.points ?? []).map((point) => point.collected_at), [detail?.points])
 
   function chooseComputer(computer: Computer) {
     const existing = hosts.find((host) => host.hostname.toLowerCase() === computer.hostname.toLowerCase())
     if (existing) {
-      setSelectedId(existing.id)
+      setParams({ host: String(existing.id) })
       setFleetOpen(false)
       return
     }
@@ -328,14 +419,14 @@ export function ServerAuditPage() {
       const created = await api.createServerAuditHost({
         hostname: hostname.trim(),
         label: label.trim() || null,
-        interval_minutes: interval,
+        interval_seconds: intervalSec,
       })
       setHostname('')
       setLabel('')
       setFleetQuery('')
       toast.ok(t('serverAudit.added'))
       await loadHosts()
-      setSelectedId(created.id)
+      setParams({ host: String(created.id) })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'))
     } finally {
@@ -361,7 +452,7 @@ export function ServerAuditPage() {
   async function onInterval(next: number) {
     if (!detail || !canEdit) return
     try {
-      const updated = await api.updateServerAuditHost(detail.id, { interval_minutes: next })
+      const updated = await api.updateServerAuditHost(detail.id, { interval_seconds: next })
       setDetail((current) => (current ? { ...current, ...updated } : current))
       setHosts((current) => current.map((host) => (host.id === updated.id ? { ...host, ...updated } : host)))
       toast.ok(t('serverAudit.saved'))
@@ -410,7 +501,33 @@ export function ServerAuditPage() {
     try {
       await api.deleteServerAuditHost(host.id)
       const rows = await loadHosts()
-      if (selectedId === host.id) setSelectedId(rows.find((row) => row.id !== host.id)?.id ?? rows[0]?.id ?? null)
+      if (selectedId === host.id) setParams({ host: rows[0] ? String(rows[0].id) : null })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('common.error'))
+    }
+  }
+
+  function labelFor(seconds: number) {
+    if (seconds <= 0) return t('serverAudit.manual')
+    if (seconds < 60) return t('serverAudit.everySec', { n: seconds })
+    return t('serverAudit.every', { n: Math.round(seconds / 60) })
+  }
+
+  const cores = Math.max(1, numOf(cpu?.cores) ?? 1)
+  const worstDisk = disks.reduce<{ mount: string; pct: number } | null>((best, row) => {
+    const pct = numOf(row.used_percent)
+    if (pct == null) return best
+    if (!best || pct > best.pct) return { mount: textOf(row.mount), pct }
+    return best
+  }, null)
+  const diskPct = worstDisk?.pct ?? detail?.latest_disk_percent ?? null
+  const diskHint = worstDisk ? worstDisk.mount : undefined
+
+  async function reloadNow() {
+    try {
+      await loadHosts()
+      if (selectedId != null) await loadDetail(selectedId, hours)
+      setPolledAt(Date.now())
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'))
     }
@@ -423,51 +540,62 @@ export function ServerAuditPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
       {confirm.dialog}
-      <header className="flex flex-wrap items-center justify-end gap-2">
+      <div className="chrome-glass-card flex flex-wrap items-center justify-between gap-3 p-3">
         <div className="flex flex-wrap gap-1">
           {([6, 24, 168] as Hours[]).map((value) => (
             <button
               key={value}
               type="button"
-              onClick={() => setHours(value)}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${hours === value ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'}`}
+              onClick={() => setParams({ range: value === 24 ? null : String(value) })}
+              className={`app-chip ${hours === value ? 'app-chip--active' : ''}`}
             >
               {value === 6 ? t('serverAudit.range6') : value === 24 ? t('serverAudit.range24') : t('serverAudit.range7')}
             </button>
           ))}
         </div>
-        {canEdit ? (
-          <button
-            type="button"
-            onClick={() => setAddOpen((open) => !open)}
-            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
-          >
-            {t('serverAudit.addManual')}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-[var(--color-fg-subtle)]">
+            {paused || remainSec == null ? t('serverAudit.pausedHint') : t('serverAudit.nextRefresh', { n: remainSec })}
+          </span>
+          <button type="button" className="app-chip" onClick={() => setPaused((value) => !value)}>
+            {paused ? t('serverAudit.resume') : t('serverAudit.pause')}
           </button>
-        ) : null}
-      </header>
+          <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" onClick={() => void reloadNow()}>
+            {loading ? t('common.loading') : t('common.refresh')}
+          </button>
+          {canEdit ? (
+            <button type="button" className="app-btn app-btn-primary !min-h-0 !px-3 !py-2" onClick={() => setAddOpen((open) => !open)}>
+              {t('serverAudit.addManual')}
+            </button>
+          ) : null}
+        </div>
+      </div>
 
-      <div className="flex flex-wrap gap-3 text-sm">
-        <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
-          {t('common.total')}: <strong>{stats.total}</strong>
-        </span>
-        <span className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-emerald-800 dark:text-emerald-200">
-          {t('serverAudit.statLive')}: <strong>{stats.live}</strong>
-        </span>
-        <span className="rounded-lg bg-amber-500/10 px-3 py-1.5 text-amber-800 dark:text-amber-200">
-          {t('serverAudit.statStale')}: <strong>{stats.stale}</strong>
-        </span>
-        <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
-          {t('serverAudit.statWait')}: <strong>{stats.wait}</strong>
-        </span>
+      <div className="flex flex-wrap gap-2">
+        {([
+          ['all', `${t('common.total')}: ${stats.total}`],
+          ['fresh', `${t('serverAudit.statLive')}: ${stats.live}`],
+          ['stale', `${t('serverAudit.statStale')}: ${stats.stale}`],
+          ['none', `${t('serverAudit.statWait')}: ${stats.wait}`],
+          ['off', t('serverAudit.filterOff')],
+        ] as const).map(([id, text]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setParams({ status: status === id || id === 'all' ? null : id })}
+            className={`app-chip ${status === id || (id === 'all' && status === 'all') ? 'app-chip--active' : ''}`}
+          >
+            {text}
+          </button>
+        ))}
       </div>
 
       {canEdit && addOpen ? (
         <form
           onSubmit={(event) => void onAdd(event)}
-          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+          className="chrome-glass-card p-4"
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-semibold">{t('serverAudit.pickTitle')}</h2>
@@ -497,7 +625,7 @@ export function ServerAuditPage() {
                   }}
                   onBlur={() => window.setTimeout(() => setFleetOpen(false), 150)}
                   placeholder={t('serverAudit.searchFleet')}
-                  className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
+                  className="app-input"
                   required
                   autoComplete="off"
                 />
@@ -546,19 +674,19 @@ export function ServerAuditPage() {
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
                 placeholder={t('serverAudit.labelPh')}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
+                className="app-input"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
               {t('serverAudit.interval')}
               <select
-                value={interval}
-                onChange={(event) => setIntervalMinutes(Number(event.target.value))}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-fg)]"
+                value={intervalSec}
+                onChange={(event) => setIntervalSec(Number(event.target.value))}
+                className="app-input"
               >
                 {INTERVALS.map((value) => (
                   <option key={value} value={value}>
-                    {value === 0 ? t('serverAudit.manual') : t('serverAudit.every', { n: value })}
+                    {labelFor(value)}
                   </option>
                 ))}
               </select>
@@ -567,7 +695,7 @@ export function ServerAuditPage() {
               <button
                 type="submit"
                 disabled={busy || !hostname.trim()}
-                className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="app-btn app-btn-primary !min-h-0"
               >
                 {t('serverAudit.add')}
               </button>
@@ -576,115 +704,81 @@ export function ServerAuditPage() {
         </form>
       ) : null}
 
-      <div className="flex flex-col gap-4">
-        <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
+        <aside className="chrome-glass-card flex max-h-[24rem] flex-col overflow-hidden lg:sticky lg:top-3 lg:max-h-[calc(100vh-6rem)]">
+          <div className="flex flex-col gap-2 border-b border-[var(--color-border)] p-3">
             <input
               value={hostQuery}
               onChange={(event) => setHostQuery(event.target.value)}
               placeholder={t('serverAudit.searchHosts')}
-              className="min-w-[12rem] flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm sm:max-w-xs"
+              className="app-input"
             />
             <div className="flex flex-wrap gap-1">
               {([
-                ['all', t('serverAudit.filterAll')],
-                ['fresh', t('serverAudit.filterLive')],
-                ['none', t('serverAudit.filterWait')],
-                ['stale', t('serverAudit.filterStale')],
-                ['off', t('serverAudit.filterOff')],
-              ] as const).map(([id, label]) => (
+                ['temp', t('serverAudit.sortTemp')],
+                ['cpu', t('serverAudit.sortCpu')],
+                ['seen', t('serverAudit.sortSeen')],
+                ['name', t('serverAudit.sortName')],
+              ] as const).map(([id, text]) => (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setStatus(id)}
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${status === id ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'}`}
+                  onClick={() => {
+                    if (sortKey === id) setParams({ dir: sortDir === 'desc' ? 'asc' : null })
+                    else setParams({ sort: id === 'temp' ? null : id, dir: id === 'name' ? 'asc' : null })
+                  }}
+                  className={`app-chip !px-2.5 !py-1 ${sortKey === id ? 'app-chip--active' : ''}`}
                 >
-                  {label}
+                  {text}{sortKey === id ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
                 </button>
               ))}
             </div>
-            <select
-              value={sortKey}
-              onChange={(event) => setSortKey(event.target.value as 'name' | 'temp' | 'cpu' | 'seen')}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
-            >
-              <option value="temp">{t('serverAudit.sortTemp')}</option>
-              <option value="cpu">{t('serverAudit.sortCpu')}</option>
-              <option value="seen">{t('serverAudit.sortSeen')}</option>
-              <option value="name">{t('serverAudit.sortName')}</option>
-            </select>
-            <button
-              type="button"
-              className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
-              onClick={() => void loadHosts().catch((error: unknown) => toast.error(error instanceof Error ? error.message : t('common.error')))}
-            >
-              {loading ? t('common.loading') : t('common.refresh')}
-            </button>
           </div>
-          {hosts.length === 0 ? (
-            <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.empty')}</p>
-          ) : visibleHosts.length === 0 ? (
-            <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.noMatch')}</p>
-          ) : (
-            <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
-              <table className="app-table min-w-full text-left text-sm">
-                <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
-                  <tr>
-                    <th className="px-3 py-2.5">{t('serverAudit.hostname')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.temp')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.gpu')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.cpu')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.memory')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.disk')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.load')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.interval')}</th>
-                    <th className="px-3 py-2.5">{t('serverAudit.lastSample')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleHosts.map((host) => {
-                    const tone = freshness(host)
-                    const active = host.id === selectedId
-                    return (
-                      <tr
-                        key={host.id}
-                        onClick={() => setSelectedId(host.id)}
-                        className={`cursor-pointer border-t border-[var(--color-border)] ${active ? 'bg-[var(--color-bg-muted)]' : 'hover:bg-[var(--color-bg-muted)]/70'}`}
-                      >
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate font-medium">{host.label || host.hostname}</span>
-                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${host.enabled ? toneClass[tone] : toneClass.none}`}>
-                              {!host.enabled ? t('serverAudit.disabled') : tone === 'fresh' ? t('serverAudit.fresh') : tone === 'stale' ? t('serverAudit.stale') : t('serverAudit.noData')}
-                            </span>
-                          </div>
-                          <div className="truncate text-xs text-[var(--color-fg-subtle)]">
-                            {host.hostname}
-                            {host.ip_address ? ` · ${host.ip_address}` : ''}
-                          </div>
-                        </td>
-                        <td className={`px-3 py-2.5 font-mono ${heatClass(host.latest_cpu_temp_c)}`}>
-                          {fmtTemp(host.latest_cpu_temp_c)}
-                        </td>
-                        <td className={`px-3 py-2.5 font-mono ${heatClass(host.latest_gpu_temp_c)}`}>
-                          {fmtTemp(host.latest_gpu_temp_c)}
-                        </td>
-                        <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_cpu_percent)}</td>
-                        <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_mem_percent)}</td>
-                        <td className="px-3 py-2.5 font-mono">{fmtPct(host.latest_disk_percent)}</td>
-                        <td className="px-3 py-2.5 font-mono">{host.latest_load_1 == null ? '—' : host.latest_load_1.toFixed(2)}</td>
-                        <td className="px-3 py-2.5 text-[var(--color-fg-subtle)]">
-                          {host.interval_minutes ? t('serverAudit.every', { n: host.interval_minutes }) : t('serverAudit.manual')}
-                        </td>
-                        <td className="px-3 py-2.5 text-[var(--color-fg-subtle)]">{fmtWhen(host.last_sample_at, locale)}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {loading && hosts.length === 0 ? (
+              <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('common.loading')}</p>
+            ) : hosts.length === 0 ? (
+              <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.empty')}</p>
+            ) : visibleHosts.length === 0 ? (
+              <p className="px-3 py-6 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.noMatch')}</p>
+            ) : (
+              visibleHosts.map((host) => {
+                const tone = freshness(host)
+                const active = host.id === selectedId
+                return (
+                  <button
+                    key={host.id}
+                    type="button"
+                    onClick={() => setParams({ host: String(host.id) })}
+                    className={`flex w-full flex-col gap-1 border-b border-[var(--color-border)] px-3 py-2.5 text-left ${active ? 'app-table-row-selected' : 'hover:bg-[var(--color-surface-muted)]'}`}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium">{host.label || host.hostname}</span>
+                      <span className={`font-mono text-sm font-semibold ${heatClass(host.latest_cpu_temp_c)}`}>{fmtTemp(host.latest_cpu_temp_c)}</span>
+                    </span>
+                    <span className="flex items-center justify-between gap-2 text-xs text-[var(--color-fg-subtle)]">
+                      <span className="truncate">
+                        {host.hostname}
+                        {host.ip_address ? ` · ${host.ip_address}` : ''}
+                      </span>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${host.enabled ? toneClass[tone] : toneClass.none}`}>
+                        {!host.enabled ? t('serverAudit.disabled') : tone === 'fresh' ? t('serverAudit.fresh') : tone === 'stale' ? t('serverAudit.stale') : t('serverAudit.noData')}
+                      </span>
+                    </span>
+                    <span className="flex gap-3 font-mono text-xs">
+                      <span className={pctClass(host.latest_cpu_percent)}>CPU {fmtPct(host.latest_cpu_percent)}</span>
+                      <span className={pctClass(host.latest_mem_percent)}>RAM {fmtPct(host.latest_mem_percent)}</span>
+                      <span className={pctClass(host.latest_disk_percent)}>{t('serverAudit.disk')} {fmtPct(host.latest_disk_percent)}</span>
+                      {host.latest_gpu_temp_c != null ? (
+                        <span className={heatClass(host.latest_gpu_temp_c)}>GPU {fmtTemp(host.latest_gpu_temp_c)}</span>
+                      ) : null}
+                    </span>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </aside>
 
         <section className="flex min-w-0 flex-col gap-4">
           {!detail ? (
@@ -693,7 +787,8 @@ export function ServerAuditPage() {
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+              <div className="chrome-glass-card p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold">{detail.label || detail.hostname}</h2>
                   <p className="text-sm text-[var(--color-fg-subtle)]">
@@ -713,71 +808,138 @@ export function ServerAuditPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {canEdit ? (
-                    <>
-                      <select
-                        value={detail.interval_minutes}
-                        onChange={(event) => void onInterval(Number(event.target.value))}
-                        className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2 text-sm"
-                      >
-                        {INTERVALS.map((value) => (
-                          <option key={value} value={value}>
-                            {value === 0 ? t('serverAudit.manual') : t('serverAudit.every', { n: value })}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" onClick={() => void onToggle()} className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm">
-                        {detail.enabled ? t('serverAudit.enabled') : t('serverAudit.disabled')}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy || !detail.enabled}
-                        onClick={() => void onCollect()}
-                        className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-                      >
-                        {t('serverAudit.collect')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void onDelete(detail)}
-                        className="rounded-lg border border-red-500/40 px-3 py-2 text-sm text-red-600"
-                      >
-                        {t('serverAudit.remove')}
-                      </button>
-                    </>
+                    <button
+                      type="button"
+                      disabled={busy || !detail.enabled}
+                      onClick={() => void onCollect()}
+                      className="app-btn app-btn-primary !min-h-0 !px-3 !py-2"
+                    >
+                      {t('serverAudit.collect')}
+                    </button>
                   ) : null}
                   {detail.computer_id ? (
                     <Link
                       to={`/computers?computer=${detail.computer_id}`}
-                      className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm no-underline hover:bg-[var(--color-bg-muted)]"
+                      className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2 no-underline"
                     >
                       {t('serverAudit.openComputer')}
                     </Link>
                   ) : null}
+                  {canEdit ? (
+                    <button type="button" className="app-chip" onClick={() => setSettingsOpen((open) => !open)}>
+                      {t('serverAudit.settings')}
+                    </button>
+                  ) : null}
                 </div>
+                </div>
+              {canEdit && settingsOpen ? (
+                <div className="mt-3 grid gap-3 border-t border-[var(--color-border)] pt-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.interval')}
+                    <select
+                      value={intervalSecOf(detail)}
+                      onChange={(event) => void onInterval(Number(event.target.value))}
+                      className="app-input"
+                    >
+                      {INTERVALS.map((value) => (
+                        <option key={value} value={value}>
+                          {labelFor(value)}
+                        </option>
+                      ))}
+                    </select>
+                    {intervalSecOf(detail) > 0 && intervalSecOf(detail) < 60 ? (
+                      <span className="font-normal">{t('serverAudit.intervalFast')}</span>
+                    ) : null}
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.journalCollect')}
+                    <select
+                      value={detail.journal_mode || 'errors'}
+                      onChange={(event) => void onJournal({ journal_mode: event.target.value as 'off' | 'errors' | 'all' })}
+                      className="app-input"
+                    >
+                      <option value="off">{t('serverAudit.journalCollectOff')}</option>
+                      <option value="errors">{t('serverAudit.journalCollectErrors')}</option>
+                      <option value="all">{t('serverAudit.journalCollectAll')}</option>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.journalLines')}
+                    <select
+                      value={detail.journal_lines || 20}
+                      onChange={(event) => void onJournal({ journal_lines: Number(event.target.value) })}
+                      className="app-input"
+                    >
+                      {[0, 10, 20, 40, 80].map((n) => (
+                        <option key={n} value={n}>{n}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                    {t('serverAudit.retain')}
+                    <select
+                      value={detail.retain_days || 14}
+                      onChange={(event) => void onJournal({ retain_days: Number(event.target.value) })}
+                      className="app-input"
+                    >
+                      {[7, 14, 30, 90].map((n) => (
+                        <option key={n} value={n}>{t('serverAudit.retainDays', { n })}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex flex-wrap items-end gap-2 sm:col-span-2 xl:col-span-4">
+                    <button type="button" onClick={() => void onToggle()} className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">
+                      {detail.enabled ? t('serverAudit.enabled') : t('serverAudit.disabled')}
+                    </button>
+                    <button type="button" onClick={() => void onDelete(detail)} className="app-btn app-btn-danger !min-h-0 !px-3 !py-2">
+                      {t('serverAudit.remove')}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {(() => {
+                const notes: { tone: string; text: string }[] = []
+                if (detail.enabled && freshness(detail) === 'stale') notes.push({ tone: 'border-amber-500/40 text-amber-700 dark:text-amber-300', text: t('serverAudit.stale') })
+                if (failed.length > 0) notes.push({ tone: 'border-rose-500/40 text-rose-700 dark:text-rose-300', text: `${t('serverAudit.failed')}: ${failed.length}` })
+                if (packages?.reboot_required) notes.push({ tone: 'border-amber-500/40 text-amber-700 dark:text-amber-300', text: t('serverAudit.reboot') })
+                if (timeInfo?.ntp_synchronized === false) notes.push({ tone: 'border-rose-500/40 text-rose-700 dark:text-rose-300', text: `NTP · ${t('serverAudit.ntpOff')}` })
+                if (notes.length === 0) return null
+                return (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {notes.map((note) => (
+                      <span key={note.text} className={`rounded-full border px-2.5 py-1 text-xs font-medium ${note.tone}`}>{note.text}</span>
+                    ))}
+                  </div>
+                )
+              })()}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-                <Meter label={t('serverAudit.temp')} value={fmtTemp(detail.latest_cpu_temp_c)} ratio={(detail.latest_cpu_temp_c ?? 0) / 100} valueClass={heatClass(detail.latest_cpu_temp_c)} barClass={heatBar(detail.latest_cpu_temp_c)} />
-                <Meter label={t('serverAudit.gpu')} value={fmtTemp(gpuNow)} hint={gpuHint} ratio={(gpuNow ?? 0) / 100} valueClass={heatClass(gpuNow)} barClass={heatBar(gpuNow)} />
-                <Meter label={t('serverAudit.cpu')} value={fmtPct(detail.latest_cpu_percent)} ratio={(detail.latest_cpu_percent ?? 0) / 100} valueClass="text-[var(--color-fg)]" barClass="bg-sky-500" />
-                <Meter label={t('serverAudit.memory')} value={fmtPct(detail.latest_mem_percent)} ratio={(detail.latest_mem_percent ?? 0) / 100} valueClass="text-[var(--color-fg)]" barClass="bg-emerald-500" />
-                <Meter label={t('serverAudit.disk')} value={fmtPct(detail.latest_disk_percent)} ratio={(detail.latest_disk_percent ?? 0) / 100} valueClass="text-[var(--color-fg)]" barClass="bg-amber-500" />
-                <Meter label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} ratio={Math.min((detail.latest_load_1 ?? 0) / 8, 1)} valueClass="text-[var(--color-fg)]" barClass="bg-slate-500" />
+                <Meter label={t('serverAudit.temp')} value={fmtTemp(detail.latest_cpu_temp_c)} ratio={tempRatio(detail.latest_cpu_temp_c)} valueClass={heatClass(detail.latest_cpu_temp_c)} barClass={heatBar(detail.latest_cpu_temp_c)} />
+                <Meter label={t('serverAudit.gpu')} value={fmtTemp(gpuNow)} hint={gpuHint} ratio={tempRatio(gpuNow)} valueClass={heatClass(gpuNow)} barClass={heatBar(gpuNow)} />
+                <Meter label={t('serverAudit.cpu')} value={fmtPct(detail.latest_cpu_percent)} ratio={(detail.latest_cpu_percent ?? 0) / 100} valueClass={pctClass(detail.latest_cpu_percent)} barClass={pctBar(detail.latest_cpu_percent)} />
+                <Meter label={t('serverAudit.memory')} value={fmtPct(detail.latest_mem_percent)} ratio={(detail.latest_mem_percent ?? 0) / 100} valueClass={pctClass(detail.latest_mem_percent)} barClass={pctBar(detail.latest_mem_percent)} />
+                <Meter label={t('serverAudit.disk')} value={fmtPct(diskPct)} hint={diskHint} ratio={(diskPct ?? 0) / 100} valueClass={pctClass(diskPct)} barClass={pctBar(diskPct)} />
+                <Meter label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} hint={`${t('serverAudit.cores')} ${cores}`} ratio={Math.min(loadRatio(detail.latest_load_1, cores), 1)} valueClass={loadClass(detail.latest_load_1, cores)} barClass={loadBar(detail.latest_load_1, cores)} />
               </div>
 
-              <div className="grid gap-3 xl:grid-cols-2">
+              <div className="grid gap-3 xl:grid-cols-2" onMouseLeave={() => setHoverMs(null)}>
                 <ChartFrame title={t('serverAudit.chartTemp')}>
                   {tempSeries.length > 0 ? (
-                    <ServerAuditCharts labels={labels} unit="temp" series={tempSeries} />
+                    <ServerAuditCharts times={times} unit="temp" series={tempSeries} locale={locale} hoverMs={hoverMs} onHover={setHoverMs} threshold={80} />
                   ) : (
                     <ChartEmpty>{t('serverAudit.chartNeed')}</ChartEmpty>
                   )}
                 </ChartFrame>
                 <ChartFrame title={t('serverAudit.chartUse')}>
-                  {labels.length > 0 ? (
+                  {times.length > 0 ? (
                     <ServerAuditCharts
-                      labels={labels}
+                      times={times}
                       unit="percent"
+                      locale={locale}
+                      hoverMs={hoverMs}
+                      onHover={setHoverMs}
+                      threshold={90}
                       series={[
                         { label: t('serverAudit.cpu'), color: '#2563eb', data: detail.points.map((point) => point.cpu_used_percent) },
                         { label: t('serverAudit.memory'), color: '#059669', data: detail.points.map((point) => point.mem_used_percent) },
@@ -789,10 +951,13 @@ export function ServerAuditPage() {
                   )}
                 </ChartFrame>
                 <ChartFrame title={t('serverAudit.chartNet')}>
-                  {labels.length > 0 ? (
+                  {times.length > 0 ? (
                     <ServerAuditCharts
-                      labels={labels}
+                      times={times}
                       unit="rate"
+                      locale={locale}
+                      hoverMs={hoverMs}
+                      onHover={setHoverMs}
                       series={[
                         { label: t('serverAudit.rx'), color: '#0284c7', data: detail.points.map((point) => point.net_rx_bps) },
                         { label: t('serverAudit.tx'), color: '#7c3aed', data: detail.points.map((point) => point.net_tx_bps) },
@@ -803,10 +968,13 @@ export function ServerAuditPage() {
                   )}
                 </ChartFrame>
                 <ChartFrame title={t('serverAudit.chartLoad')}>
-                  {labels.length > 0 ? (
+                  {times.length > 0 ? (
                     <ServerAuditCharts
-                      labels={labels}
+                      times={times}
                       unit="load"
+                      locale={locale}
+                      hoverMs={hoverMs}
+                      onHover={setHoverMs}
                       series={[{ label: t('serverAudit.load'), color: '#475569', data: detail.points.map((point) => point.load_1) }]}
                     />
                   ) : (
@@ -902,49 +1070,9 @@ export function ServerAuditPage() {
                 emptyLabel={t('serverAudit.logsEmpty')}
                 noErrorsLabel={t('serverAudit.logsNoErrors')}
                 sourceLabel={logSource ? t('serverAudit.logsSource', { source: logSource }) : ''}
-                canEdit={canEdit}
-                journalMode={detail.journal_mode || 'errors'}
-                journalLines={detail.journal_lines || 20}
-                retainDays={detail.retain_days || 14}
-                onJournal={(patch) => void onJournal(patch)}
-                keepLabel={t('serverAudit.journalKeep')}
-                offLabel={t('serverAudit.journalOff')}
-                linesLabel={t('serverAudit.journalLines')}
-                retainLabel={t('serverAudit.retain')}
-                daysLabel={(n) => t('serverAudit.retainDays', { n })}
               />
 
               <div className="grid gap-4 lg:grid-cols-2">
-                <Panel title={t('serverAudit.sensors')}>
-                  <div className="border-b border-[var(--color-border)] px-3 py-2">
-                    <input
-                      value={sensorQuery}
-                      onChange={(event) => setSensorQuery(event.target.value)}
-                      placeholder={t('serverAudit.sensorPh')}
-                      className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  {shownTemps.length === 0 ? (
-                    <Empty>{t('serverAudit.noTemp')}</Empty>
-                  ) : (
-                    <SimpleTable
-                      rows={shownTemps.map((row) => [
-                        textOf(row.name),
-                        fmtTemp(numOf(row.celsius)),
-                        row.max != null || row.crit != null ? `${fmtTemp(numOf(row.max))} / ${fmtTemp(numOf(row.crit))}` : textOf(row.source),
-                      ])}
-                    />
-                  )}
-                  {fans.length > 0 ? (
-                    <SimpleTable rows={fans.map((row) => [textOf(row.name), `${textOf(row.rpm)} rpm`])} />
-                  ) : null}
-                  {shownVolts.length > 0 ? (
-                    <SimpleTable
-                      head={[t('serverAudit.voltages'), 'V']}
-                      rows={shownVolts.map((row) => [textOf(row.name), textOf(row.volts)])}
-                    />
-                  ) : null}
-                </Panel>
                 <Panel title={t('serverAudit.disks')}>
                   {disks.length === 0 ? (
                     <Empty>—</Empty>
@@ -1165,16 +1293,6 @@ function JournalPanel({
   emptyLabel,
   noErrorsLabel,
   sourceLabel,
-  canEdit,
-  journalMode,
-  journalLines,
-  retainDays,
-  onJournal,
-  keepLabel,
-  offLabel,
-  linesLabel,
-  retainLabel,
-  daysLabel,
 }: {
   logs: Record<string, unknown>[]
   mode: 'err' | 'all'
@@ -1186,81 +1304,19 @@ function JournalPanel({
   emptyLabel: string
   noErrorsLabel: string
   sourceLabel: string
-  canEdit: boolean
-  journalMode: 'off' | 'errors' | 'all'
-  journalLines: number
-  retainDays: number
-  onJournal: (patch: { journal_mode?: 'off' | 'errors' | 'all'; journal_lines?: number; retain_days?: number }) => void
-  keepLabel: string
-  offLabel: string
-  linesLabel: string
-  retainLabel: string
-  daysLabel: (n: number) => string
 }) {
   const errors = logs.filter((row) => isLogError(String(row.level || '')))
   const shown = mode === 'err' ? errors : logs
   return (
-    <section className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+    <section className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
         <h3 className="text-sm font-semibold">{title}</h3>
         <div className="flex flex-wrap items-center gap-2">
-          {canEdit ? (
-            <>
-              <label className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)]">
-                {keepLabel}
-                <select
-                  value={journalMode}
-                  onChange={(event) => onJournal({ journal_mode: event.target.value as 'off' | 'errors' | 'all' })}
-                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-xs text-[var(--color-fg)]"
-                >
-                  <option value="off">{offLabel}</option>
-                  <option value="errors">{errorsLabel}</option>
-                  <option value="all">{allLabel}</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)]">
-                {linesLabel}
-                <select
-                  value={journalLines}
-                  onChange={(event) => onJournal({ journal_lines: Number(event.target.value) })}
-                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-xs text-[var(--color-fg)]"
-                >
-                  {[0, 10, 20, 40, 80].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-1 text-xs text-[var(--color-fg-subtle)]">
-                {retainLabel}
-                <select
-                  value={retainDays}
-                  onChange={(event) => onJournal({ retain_days: Number(event.target.value) })}
-                  className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-xs text-[var(--color-fg)]"
-                >
-                  {[7, 14, 30, 90].map((n) => (
-                    <option key={n} value={n}>
-                      {daysLabel(n)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          ) : null}
           {sourceLabel ? <span className="text-xs text-[var(--color-fg-subtle)]">{sourceLabel}</span> : null}
-          <button
-            type="button"
-            onClick={() => onMode('err')}
-            className={`rounded-md px-2 py-1 text-xs ${mode === 'err' ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
-          >
+          <button type="button" onClick={() => onMode('err')} className={`app-chip !px-2.5 !py-1 ${mode === 'err' ? 'app-chip--active' : ''}`}>
             {errorsLabel} ({errors.length})
           </button>
-          <button
-            type="button"
-            onClick={() => onMode('all')}
-            className={`rounded-md px-2 py-1 text-xs ${mode === 'all' ? 'bg-[var(--color-primary)] text-white' : 'border border-[var(--color-border)]'}`}
-          >
+          <button type="button" onClick={() => onMode('all')} className={`app-chip !px-2.5 !py-1 ${mode === 'all' ? 'app-chip--active' : ''}`}>
             {allLabel} ({logs.length})
           </button>
         </div>

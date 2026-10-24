@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.auth import get_current_editor_or_superuser, get_current_user
 from app.database import get_db
@@ -27,7 +28,10 @@ from app.server_audit_store import (
     RETAIN_DAYS,
     _link_computer,
     apply_journal_now,
+    bucket_downsample,
     find_audit_host,
+    interval_seconds_of,
+    minutes_mirror,
 )
 
 router = APIRouter(prefix="/server-audit", tags=["server-audit"])
@@ -43,9 +47,18 @@ def _clean_hostname(value: str) -> str:
     return host
 
 
-def _clean_interval(value: int) -> int:
+def _clean_interval_seconds(seconds: int | None, minutes: int | None) -> int:
+    if seconds is not None:
+        value = int(seconds)
+    elif minutes is not None:
+        value = int(minutes) * 60
+    else:
+        value = 900
     if value not in ALLOWED_INTERVALS:
-        raise HTTPException(status_code=400, detail="Интервал: вручную, 5, 15, 30, 60, 180, 360, 720 или 1440 минут")
+        raise HTTPException(
+            status_code=400,
+            detail="Интервал: вручную, 15 или 30 секунд, затем 1, 5, 15, 30, 60, 180, 360, 720 или 1440 минут",
+        )
     return value
 
 
@@ -78,7 +91,8 @@ def _host_out(host: ServerAuditHost, ip: str | None = None) -> ServerAuditHostOu
         label=host.label,
         notes=host.notes,
         enabled=bool(host.enabled),
-        interval_minutes=int(host.interval_minutes or 0),
+        interval_minutes=minutes_mirror(interval_seconds_of(host)),
+        interval_seconds=interval_seconds_of(host),
         collect_requested=bool(host.collect_requested),
         journal_mode=(host.journal_mode or "errors"),
         journal_lines=int(host.journal_lines or 0),
@@ -97,14 +111,9 @@ def _host_out(host: ServerAuditHost, ip: str | None = None) -> ServerAuditHostOu
     )
 
 
-def _downsample(rows: list[ServerAuditSample]) -> list[ServerAuditSample]:
-    if len(rows) <= _POINT_CAP:
-        return rows
-    stride = (len(rows) + _POINT_CAP - 1) // _POINT_CAP
-    picked = rows[::stride]
-    if picked[-1] is not rows[-1]:
-        picked.append(rows[-1])
-    return picked
+def _apply_interval(host: ServerAuditHost, seconds: int) -> None:
+    host.interval_seconds = seconds
+    host.interval_minutes = minutes_mirror(seconds)
 
 
 @router.get("/hosts", response_model=list[ServerAuditHostOut])
@@ -134,9 +143,10 @@ async def create_host(
         label=_clip(body.label, 255),
         notes=_clip(body.notes, 4000),
         enabled=bool(body.enabled),
-        interval_minutes=_clean_interval(int(body.interval_minutes)),
+        interval_minutes=0,
         collect_requested=True,
     )
+    _apply_interval(host, _clean_interval_seconds(body.interval_seconds, body.interval_minutes))
     db.add(host)
     await db.flush()
     await _link_computer(db, host, hostname)
@@ -166,8 +176,12 @@ async def update_host(
         host.label = _clip(data["label"], 255)
     if "notes" in data:
         host.notes = _clip(data["notes"], 4000)
-    if "interval_minutes" in data and data["interval_minutes"] is not None:
-        host.interval_minutes = _clean_interval(int(data["interval_minutes"]))
+    if data.get("interval_seconds") is not None or data.get("interval_minutes") is not None:
+        if data.get("interval_seconds") is not None:
+            seconds = _clean_interval_seconds(int(data["interval_seconds"]), None)
+        else:
+            seconds = _clean_interval_seconds(None, int(data["interval_minutes"]))
+        _apply_interval(host, seconds)
     if "enabled" in data and data["enabled"] is not None:
         host.enabled = bool(data["enabled"])
     if "journal_mode" in data and data["journal_mode"] is not None:
@@ -234,6 +248,22 @@ async def host_detail(
         (
             await db.execute(
                 select(ServerAuditSample)
+                .options(
+                    load_only(
+                        ServerAuditSample.id,
+                        ServerAuditSample.collected_at,
+                        ServerAuditSample.cpu_temp_c,
+                        ServerAuditSample.gpu_temp_c,
+                        ServerAuditSample.cpu_used_percent,
+                        ServerAuditSample.load_1,
+                        ServerAuditSample.mem_used_percent,
+                        ServerAuditSample.swap_used_percent,
+                        ServerAuditSample.disk_used_percent,
+                        ServerAuditSample.net_rx_bps,
+                        ServerAuditSample.net_tx_bps,
+                        ServerAuditSample.uptime_sec,
+                    )
+                )
                 .where(ServerAuditSample.host_id == host.id, ServerAuditSample.collected_at >= since)
                 .order_by(ServerAuditSample.collected_at.asc())
             )
@@ -263,10 +293,10 @@ async def host_detail(
             net_tx_bps=row.net_tx_bps,
             uptime_sec=row.uptime_sec,
         )
-        for row in _downsample(chart_rows)
+        for row in bucket_downsample(chart_rows, _POINT_CAP)
     ]
     in_range = rows[-1] if rows else None
-    source = in_range or latest
+    source = latest if latest is not None and latest.payload_json else (in_range or latest)
     payload: dict = {}
     if source and source.payload_json:
         try:
@@ -278,23 +308,7 @@ async def host_detail(
     ips = await _ips(db, [host])
     base = _host_out(host, ips.get(host.computer_id or 0))
     return ServerAuditDetail(
-        id=base.id,
-        hostname=base.hostname,
-        label=base.label,
-        notes=base.notes,
-        enabled=base.enabled,
-        interval_minutes=base.interval_minutes,
-        collect_requested=base.collect_requested,
-        computer_id=base.computer_id,
-        ip_address=base.ip_address,
-        os_summary=base.os_summary,
-        latest_cpu_temp_c=base.latest_cpu_temp_c,
-        latest_cpu_percent=base.latest_cpu_percent,
-        latest_mem_percent=base.latest_mem_percent,
-        latest_disk_percent=base.latest_disk_percent,
-        latest_load_1=base.latest_load_1,
-        last_sample_at=base.last_sample_at,
-        created_at=base.created_at,
+        **base.model_dump(),
         payload=payload,
         points=points,
         payload_in_range=in_range is not None or latest is None,

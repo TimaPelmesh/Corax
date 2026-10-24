@@ -8,3 +8,5 @@ Type=oneshot
 WorkingDirectory=/opt/corax-agent
 ExecStart=/bin/sh /opt/corax-agent/audit_agent.sh
 Nice=15
+# A 15s schedule stays inside the minute cron and sends several samples before exit.
+TimeoutStartSec=180

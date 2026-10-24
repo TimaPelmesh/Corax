@@ -1772,6 +1772,21 @@ def _migrate_server_audit_journal(sync_conn) -> None:
         )
 
 
+def _migrate_server_audit_interval_seconds(sync_conn) -> None:
+    """Sub-minute collection. Existing minute values become seconds."""
+    if "server_audit_hosts" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "server_audit_hosts")
+    if "interval_seconds" not in cols:
+        sync_conn.execute(text("ALTER TABLE server_audit_hosts ADD COLUMN interval_seconds INTEGER"))
+    sync_conn.execute(
+        text(
+            "UPDATE server_audit_hosts SET interval_seconds = interval_minutes * 60 "
+            "WHERE interval_seconds IS NULL AND interval_minutes IS NOT NULL"
+        )
+    )
+
+
 def _migrate_server_audit_gpu(sync_conn) -> None:
     if "server_audit_hosts" in _table_names(sync_conn):
         cols = _column_names(sync_conn, "server_audit_hosts")
@@ -1894,6 +1909,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-23_server_audit", _migrate_server_audit),
     ("2026-10-23_server_audit_journal", _migrate_server_audit_journal),
     ("2026-10-24_server_audit_gpu", _migrate_server_audit_gpu),
+    ("2026-10-24_server_audit_interval_seconds", _migrate_server_audit_interval_seconds),
 ]
 
 
