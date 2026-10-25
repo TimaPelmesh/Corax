@@ -121,6 +121,17 @@ def test_computers_list_views_and_pagination(
     assert "software_count" not in mhit
     assert isinstance(mhit["tags"], list)
 
+    by_periph = client.get(
+        "/api/v1/computers",
+        headers=auth_headers,
+        params={"view": "list", "limit": 50, "sort": "periph", "sort_dir": "desc", "q": hit["hostname"]},
+    )
+    assert by_periph.status_code == 200, by_periph.text
+    periph_hit = next((x for x in by_periph.json()["items"] if x["id"] == pc_id), None)
+    assert periph_hit is not None
+    assert periph_hit["software_count"] == hit["software_count"]
+    assert periph_hit["peripheral_count"] == hit["peripheral_count"]
+
     page = client.get(
         "/api/v1/computers?view=list&skip=0&limit=1&sort=host&sort_dir=asc",
         headers=auth_headers,

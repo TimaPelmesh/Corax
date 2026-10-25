@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
+from sqlalchemy.orm import load_only
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -172,6 +174,129 @@ def bucket_downsample(rows: list, cap: int = 800) -> list:
                 continue
             seen.add(marker)
             picked.append(row)
+    return picked
+
+
+_CHART_FIELDS = (
+    "id",
+    "collected_at",
+    "cpu_temp_c",
+    "gpu_temp_c",
+    "cpu_used_percent",
+    "load_1",
+    "mem_used_percent",
+    "swap_used_percent",
+    "disk_used_percent",
+    "net_rx_bps",
+    "net_tx_bps",
+    "uptime_sec",
+)
+# One winner per series, plus the first and last point of the bucket.
+_CHART_RANK_KEYS = _BUCKET_KEYS
+
+
+def _chart_sql(rank_keys: tuple[str, ...]) -> str:
+    ranks = [
+        "row_number() OVER (PARTITION BY bucket ORDER BY collected_at ASC) AS rn_first",
+        "row_number() OVER (PARTITION BY bucket ORDER BY collected_at DESC) AS rn_last",
+    ]
+    keep = ["rn_first = 1", "rn_last = 1"]
+    for key in rank_keys:
+        alias = f"rn_{key}"
+        ranks.append(
+            f"row_number() OVER (PARTITION BY bucket ORDER BY {key} DESC NULLS LAST, collected_at) AS {alias}"
+        )
+        keep.append(f"{alias} = 1")
+    fields = ", ".join(_CHART_FIELDS)
+    return f"""
+WITH scoped AS (
+    SELECT {fields}
+    FROM server_audit_samples
+    WHERE host_id = :host_id AND collected_at >= :since
+),
+bounds AS (
+    SELECT min(collected_at) AS t0, max(collected_at) AS t1
+    FROM scoped
+),
+bucketed AS (
+    SELECT s.*,
+           width_bucket(
+               CAST(extract(epoch FROM s.collected_at) AS float8),
+               CAST(extract(epoch FROM b.t0) AS float8),
+               CAST(extract(epoch FROM b.t1) + 0.001 AS float8),
+               :buckets
+           ) AS bucket
+    FROM scoped s
+    CROSS JOIN bounds b
+    WHERE b.t1 > b.t0
+),
+ranked AS (
+    SELECT *,
+           {", ".join(ranks)}
+    FROM bucketed
+)
+SELECT {fields}
+FROM ranked
+WHERE {" OR ".join(keep)}
+ORDER BY collected_at ASC
+"""
+
+
+_CHART_SQL = text(_chart_sql(_CHART_RANK_KEYS))
+
+
+def _chart_row(row) -> SimpleNamespace:
+    data = row._mapping
+    return SimpleNamespace(**{key: data[key] for key in _CHART_FIELDS})
+
+
+async def _load_chart_rows(db: AsyncSession, host_id: int, since: datetime) -> list:
+    columns = [getattr(ServerAuditSample, name) for name in _CHART_FIELDS]
+    rows = (
+        await db.execute(
+            select(ServerAuditSample)
+            .options(load_only(*columns))
+            .where(ServerAuditSample.host_id == host_id, ServerAuditSample.collected_at >= since)
+            .order_by(ServerAuditSample.collected_at.asc())
+        )
+    ).scalars().all()
+    return list(rows)
+
+
+async def load_chart_samples(db: AsyncSession, host_id: int, since: datetime, cap: int = 800) -> list:
+    """Points for one host chart.
+
+    A short range comes back whole, so a small fleet looks the same as before.
+    A long range is reduced in Postgres: each time bucket keeps its ends and the
+    peak of every series, and the process never receives tens of thousands of rows.
+    """
+    total = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ServerAuditSample)
+            .where(ServerAuditSample.host_id == host_id, ServerAuditSample.collected_at >= since)
+        )
+        or 0
+    )
+    if total == 0:
+        return []
+    if total <= cap:
+        return await _load_chart_rows(db, host_id, since)
+    buckets = max(1, cap // (len(_CHART_RANK_KEYS) + 2))
+    picked = [
+        _chart_row(row)
+        for row in (
+            await db.execute(
+                _CHART_SQL,
+                {"host_id": host_id, "since": since, "buckets": buckets},
+            )
+        ).all()
+    ]
+    if not picked:
+        rows = await _load_chart_rows(db, host_id, since)
+        return bucket_downsample(rows, cap)
+    if len(picked) > cap:
+        return bucket_downsample(picked, cap)
     return picked
 
 

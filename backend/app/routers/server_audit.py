@@ -9,7 +9,6 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import load_only
 
 from app.auth import get_current_editor_or_superuser, get_current_user
 from app.database import get_db
@@ -28,8 +27,8 @@ from app.server_audit_store import (
     RETAIN_DAYS,
     _link_computer,
     apply_journal_now,
-    bucket_downsample,
     find_audit_host,
+    load_chart_samples,
     interval_seconds_of,
     minutes_mirror,
 )
@@ -244,31 +243,7 @@ async def host_detail(
 ):
     host = await _host_or_404(db, host_id)
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    rows = list(
-        (
-            await db.execute(
-                select(ServerAuditSample)
-                .options(
-                    load_only(
-                        ServerAuditSample.id,
-                        ServerAuditSample.collected_at,
-                        ServerAuditSample.cpu_temp_c,
-                        ServerAuditSample.gpu_temp_c,
-                        ServerAuditSample.cpu_used_percent,
-                        ServerAuditSample.load_1,
-                        ServerAuditSample.mem_used_percent,
-                        ServerAuditSample.swap_used_percent,
-                        ServerAuditSample.disk_used_percent,
-                        ServerAuditSample.net_rx_bps,
-                        ServerAuditSample.net_tx_bps,
-                        ServerAuditSample.uptime_sec,
-                    )
-                )
-                .where(ServerAuditSample.host_id == host.id, ServerAuditSample.collected_at >= since)
-                .order_by(ServerAuditSample.collected_at.asc())
-            )
-        ).scalars().all()
-    )
+    rows = await load_chart_samples(db, host.id, since, _POINT_CAP)
     latest = (
         await db.execute(
             select(ServerAuditSample)
@@ -293,7 +268,7 @@ async def host_detail(
             net_tx_bps=row.net_tx_bps,
             uptime_sec=row.uptime_sec,
         )
-        for row in bucket_downsample(chart_rows, _POINT_CAP)
+        for row in chart_rows
     ]
     in_range = rows[-1] if rows else None
     source = latest if latest is not None and latest.payload_json else (in_range or latest)

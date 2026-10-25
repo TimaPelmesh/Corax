@@ -316,6 +316,109 @@ async def put_wol_config(
     return _wol_config_out(await get_effective_wol_config(db))
 
 
+def _computer_list_filters(
+    *,
+    q: str | None,
+    tag_ids: list[int],
+    platform: str | None,
+    ping_status: str | None,
+) -> tuple[bool, list]:
+    """Search joins the assignee. Every other filter is a predicate on computers."""
+    joins_user = False
+    wheres: list = []
+    if q and q.strip():
+        joins_user = True
+        needle = like_contains(q)
+        wheres.append(
+            or_(
+                Computer.hostname.ilike(needle, escape="\\"),
+                Computer.ip_address.ilike(needle, escape="\\"),
+                Computer.serial_number.ilike(needle, escape="\\"),
+                Computer.mac_primary.ilike(needle, escape="\\"),
+                Computer.location.ilike(needle, escape="\\"),
+                Computer.model.ilike(needle, escape="\\"),
+                Computer.manufacturer.ilike(needle, escape="\\"),
+                Computer.notes.ilike(needle, escape="\\"),
+                User.username.ilike(needle, escape="\\"),
+                User.full_name.ilike(needle, escape="\\"),
+                Computer.os_name.ilike(needle, escape="\\"),
+            )
+        )
+    if platform == "linux":
+        wheres.append(
+            or_(
+                Computer.os_name.ilike("%linux%"),
+                Computer.os_name.ilike("%debian%"),
+                Computer.os_name.ilike("%ubuntu%"),
+                Computer.os_name.ilike("%centos%"),
+                Computer.os_name.ilike("%rhel%"),
+                Computer.os_name.ilike("%red hat%"),
+                Computer.os_name.ilike("%alma%"),
+                Computer.os_name.ilike("%rocky%"),
+                Computer.os_name.ilike("%suse%"),
+                Computer.os_name.ilike("%fedora%"),
+                Computer.os_name.ilike("%astra%"),
+                Computer.os_name.ilike("%redos%"),
+                Computer.os_name.ilike("%альт%"),
+                Computer.os_name.ilike("%астра%"),
+            )
+        )
+    elif platform == "windows":
+        wheres.append(Computer.os_name.ilike("%windows%"))
+    if tag_ids:
+        tagged_computers = select(computer_tags.c.computer_id).where(computer_tags.c.tag_id.in_(tag_ids))
+        wheres.append(Computer.id.in_(tagged_computers))
+    pst_filter = (ping_status or "").strip().lower()
+    if pst_filter == "online":
+        wheres.append(func.lower(func.coalesce(Computer.ping_status, "")) == "online")
+    elif pst_filter == "offline":
+        wheres.append(func.lower(func.coalesce(Computer.ping_status, "")) == "offline")
+    elif pst_filter == "unknown":
+        wheres.append(
+            or_(
+                Computer.ping_status.is_(None),
+                func.lower(Computer.ping_status) == "unknown",
+                ~func.lower(func.coalesce(Computer.ping_status, "")).in_(("online", "offline")),
+            )
+        )
+    return joins_user, wheres
+
+
+def _with_computer_filters(stmt, *, joins_user: bool, wheres: list):
+    if joins_user:
+        stmt = stmt.outerjoin(User, Computer.assigned_user_id == User.id)
+    if wheres:
+        stmt = stmt.where(*wheres)
+    return stmt
+
+
+async def _counts_for_computers(db: AsyncSession, ids: list[int]) -> tuple[dict[int, int], dict[int, int]]:
+    """Software and peripheral totals for one page, not the whole fleet."""
+    if not ids:
+        return {}, {}
+    software = {
+        int(computer_id): int(count)
+        for computer_id, count in (
+            await db.execute(
+                select(InstalledSoftware.computer_id, func.count())
+                .where(InstalledSoftware.computer_id.in_(ids))
+                .group_by(InstalledSoftware.computer_id)
+            )
+        ).all()
+    }
+    peripherals = {
+        int(computer_id): int(count)
+        for computer_id, count in (
+            await db.execute(
+                select(Peripheral.computer_id, func.count())
+                .where(Peripheral.computer_id.in_(ids))
+                .group_by(Peripheral.computer_id)
+            )
+        ).all()
+    }
+    return software, peripherals
+
+
 @router.get("")
 async def list_computers(
     _: User = Depends(get_current_user),
@@ -336,109 +439,79 @@ async def list_computers(
     sort_dir: Literal["asc", "desc"] = Query("desc"),
     platform: Literal["linux", "windows"] | None = Query(None),
 ):
-    """Fleet list. Never materializes raw_payload/disks_json for list/map views."""
-    sq_sw = (
-        select(InstalledSoftware.computer_id, func.count().label("cnt"))
-        .group_by(InstalledSoftware.computer_id)
-        .subquery()
+    """Fleet list. Never materializes raw_payload/disks_json for list/map views.
+
+    Software and peripheral totals are counted for the page of ids. Sorting by
+    peripheral count is the one path that still aggregates that table, because
+    the order depends on every machine.
+    """
+    joins_user, wheres = _computer_list_filters(
+        q=q, tag_ids=tag_ids, platform=platform, ping_status=ping_status
     )
-    sq_pe = (
-        select(Peripheral.computer_id, func.count().label("cnt"))
-        .group_by(Peripheral.computer_id)
-        .subquery()
+    total = int(
+        await db.scalar(
+            _with_computer_filters(
+                select(func.count()).select_from(Computer),
+                joins_user=joins_user,
+                wheres=wheres,
+            )
+        )
+        or 0
     )
 
     # Column subset — excludes Text blobs (raw_payload, disks_json).
-    cols = [
-        Computer.id,
-        Computer.hostname,
-        Computer.serial_number,
-        Computer.mac_primary,
-        Computer.ip_address,
-        Computer.ping_status,
-        Computer.last_ping_at,
-        Computer.cpu,
-        Computer.ram_gb,
-        Computer.os_name,
-        Computer.os_version,
-        Computer.manufacturer,
-        Computer.model,
-        Computer.location,
-        Computer.gpu_name,
-        Computer.memory_used_percent,
-        Computer.motherboard_manufacturer,
-        Computer.motherboard_product,
-        Computer.last_report_at,
-        Computer.notes,
-        Computer.assigned_user_id,
-        func.coalesce(sq_sw.c.cnt, 0).label("software_count"),
-        func.coalesce(sq_pe.c.cnt, 0).label("peripheral_count"),
-    ]
-    stmt = (
-        select(*cols)
-        .outerjoin(sq_sw, Computer.id == sq_sw.c.computer_id)
-        .outerjoin(sq_pe, Computer.id == sq_pe.c.computer_id)
-    )
-    if q and q.strip():
-        needle = like_contains(q)
-        stmt = stmt.outerjoin(User, Computer.assigned_user_id == User.id).where(
-            or_(
-                Computer.hostname.ilike(needle, escape="\\"),
-                Computer.ip_address.ilike(needle, escape="\\"),
-                Computer.serial_number.ilike(needle, escape="\\"),
-                Computer.mac_primary.ilike(needle, escape="\\"),
-                Computer.location.ilike(needle, escape="\\"),
-                Computer.model.ilike(needle, escape="\\"),
-                Computer.manufacturer.ilike(needle, escape="\\"),
-                Computer.notes.ilike(needle, escape="\\"),
-                User.username.ilike(needle, escape="\\"),
-                User.full_name.ilike(needle, escape="\\"),
-                Computer.os_name.ilike(needle, escape="\\"),
-            )
+    # The floor plan only binds a few fields, so it does not read notes.
+    if view == "map":
+        cols = [
+            Computer.id,
+            Computer.hostname,
+            Computer.serial_number,
+            Computer.mac_primary,
+            Computer.ip_address,
+            Computer.ping_status,
+            Computer.last_ping_at,
+            Computer.cpu,
+            Computer.ram_gb,
+            Computer.os_name,
+            Computer.manufacturer,
+            Computer.model,
+        ]
+    else:
+        cols = [
+            Computer.id,
+            Computer.hostname,
+            Computer.serial_number,
+            Computer.mac_primary,
+            Computer.ip_address,
+            Computer.ping_status,
+            Computer.last_ping_at,
+            Computer.cpu,
+            Computer.ram_gb,
+            Computer.os_name,
+            Computer.os_version,
+            Computer.manufacturer,
+            Computer.model,
+            Computer.location,
+            Computer.gpu_name,
+            Computer.memory_used_percent,
+            Computer.motherboard_manufacturer,
+            Computer.motherboard_product,
+            Computer.last_report_at,
+            Computer.notes,
+            Computer.assigned_user_id,
+        ]
+    sq_pe = None
+    if sort == "periph":
+        sq_pe = (
+            select(Peripheral.computer_id, func.count().label("cnt"))
+            .group_by(Peripheral.computer_id)
+            .subquery()
         )
-    if platform == "linux":
-        stmt = stmt.where(
-            or_(
-                Computer.os_name.ilike("%linux%"),
-                Computer.os_name.ilike("%debian%"),
-                Computer.os_name.ilike("%ubuntu%"),
-                Computer.os_name.ilike("%centos%"),
-                Computer.os_name.ilike("%rhel%"),
-                Computer.os_name.ilike("%red hat%"),
-                Computer.os_name.ilike("%alma%"),
-                Computer.os_name.ilike("%rocky%"),
-                Computer.os_name.ilike("%suse%"),
-                Computer.os_name.ilike("%fedora%"),
-                Computer.os_name.ilike("%astra%"),
-                Computer.os_name.ilike("%redos%"),
-                Computer.os_name.ilike("%альт%"),
-                Computer.os_name.ilike("%астра%"),
-            )
-        )
-    elif platform == "windows":
-        stmt = stmt.where(Computer.os_name.ilike("%windows%"))
-    if tag_ids:
-        tagged_computers = select(computer_tags.c.computer_id).where(
-            computer_tags.c.tag_id.in_(tag_ids)
-        )
-        stmt = stmt.where(Computer.id.in_(tagged_computers))
-    pst_filter = (ping_status or "").strip().lower()
-    if pst_filter == "online":
-        stmt = stmt.where(func.lower(func.coalesce(Computer.ping_status, "")) == "online")
-    elif pst_filter == "offline":
-        stmt = stmt.where(func.lower(func.coalesce(Computer.ping_status, "")) == "offline")
-    elif pst_filter == "unknown":
-        stmt = stmt.where(
-            or_(
-                Computer.ping_status.is_(None),
-                func.lower(Computer.ping_status) == "unknown",
-                ~func.lower(func.coalesce(Computer.ping_status, "")).in_(("online", "offline")),
-            )
-        )
-
-    total = int(
-        await db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
-    )
+        cols.append(func.coalesce(sq_pe.c.cnt, 0).label("peripheral_count"))
+    stmt = select(*cols)
+    if sq_pe is not None:
+        stmt = stmt.outerjoin(sq_pe, Computer.id == sq_pe.c.computer_id)
+    stmt = _with_computer_filters(stmt, joins_user=joins_user, wheres=wheres)
 
     asc = sort_dir == "asc"
     if sort == "host":
@@ -451,8 +524,7 @@ async def list_computers(
         order_col = Computer.last_report_at
     order_expr = order_col.asc().nulls_last() if asc else order_col.desc().nulls_last()
     stmt = stmt.order_by(order_expr, Computer.id).offset(skip).limit(limit)
-    r = await db.execute(stmt)
-    rows = r.all()
+    rows = (await db.execute(stmt)).all()
     ids = [int(row.id) for row in rows]
 
     if view == "map":
@@ -476,6 +548,12 @@ async def list_computers(
             for row in rows
         ]
         return {"items": items, "total": total}
+
+    if sort == "periph":
+        software_counts, _ = await _counts_for_computers(db, ids)
+        peripheral_counts = {int(row.id): int(row.peripheral_count) for row in rows}
+    else:
+        software_counts, peripheral_counts = await _counts_for_computers(db, ids)
 
     tags_by_pc = await _tags_for_computers_bulk(db, ids)
     out: list[ComputerOut] = []
@@ -504,8 +582,8 @@ async def list_computers(
                 last_report_at=row.last_report_at,
                 notes=row.notes,
                 assigned_user_id=row.assigned_user_id,
-                software_count=int(row.software_count),
-                peripheral_count=int(row.peripheral_count),
+                software_count=software_counts.get(int(row.id), 0),
+                peripheral_count=peripheral_counts.get(int(row.id), 0),
                 tags=tags_by_pc.get(int(row.id), []),
             )
         )

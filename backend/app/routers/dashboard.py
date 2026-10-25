@@ -259,12 +259,18 @@ def _normalize_monitor_name(name: str) -> str:
 
 
 async def _dashboard_stamp(db: AsyncSession) -> tuple:
-    computer_n, last_report, last_ping, ticket_n, ticket_updated = (
+    """Inventory + tickets. Ping is left out on purpose.
+
+    The drip pinger rewrites last_ping_at every few seconds. Folding that into
+    the stamp discarded the 45s summary cache, so every home-page open regrouped
+    the whole software catalog and reread every raw payload. Online counts still
+    refresh when the TTL expires.
+    """
+    computer_n, last_report, ticket_n, ticket_updated = (
         await db.execute(
             select(
                 select(func.count()).select_from(Computer).scalar_subquery(),
                 select(func.max(Computer.last_report_at)).scalar_subquery(),
-                select(func.max(Computer.last_ping_at)).scalar_subquery(),
                 select(func.count()).select_from(ServiceRequest).scalar_subquery(),
                 select(func.max(ServiceRequest.updated_at)).scalar_subquery(),
             )
@@ -273,7 +279,6 @@ async def _dashboard_stamp(db: AsyncSession) -> tuple:
     return (
         int(computer_n or 0),
         str(last_report),
-        str(last_ping),
         int(ticket_n or 0),
         str(ticket_updated),
     )

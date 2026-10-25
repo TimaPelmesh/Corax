@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from helpers import sample_inventory, unique_hostname
+from sqlalchemy import select
 from starlette.testclient import TestClient
+
+from app.database import AsyncSessionLocal
+from app.models import Computer
+from app.routers.dashboard import _dashboard_stamp
 
 
 def test_dashboard_summary(client: TestClient, auth_headers: dict[str, str], agent_headers: dict[str, str]):
@@ -183,3 +190,26 @@ def test_dashboard_calendar_includes_plans_and_open_scheduled_requests(
         for item in items
     )
     assert not any(item["id"] == closed_request.json()["id"] for item in items)
+
+
+def test_dashboard_stamp_ignores_ping(client: TestClient, agent_headers: dict[str, str]):
+    hostname = unique_hostname("dash-ping")
+    created = client.post("/api/v1/agent/inventory", json=sample_inventory(hostname), headers=agent_headers)
+    assert created.status_code == 200, created.text
+
+    async def _stamp():
+        async with AsyncSessionLocal() as db:
+            return await _dashboard_stamp(db)
+
+    async def _touch_ping() -> None:
+        async with AsyncSessionLocal() as db:
+            row = (
+                await db.execute(select(Computer).where(Computer.hostname == hostname).limit(1))
+            ).scalar_one()
+            row.last_ping_at = datetime.now(timezone.utc)
+            await db.commit()
+
+    before = client.portal.call(_stamp)
+    client.portal.call(_touch_ping)
+    after = client.portal.call(_stamp)
+    assert before == after
