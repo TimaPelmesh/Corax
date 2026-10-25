@@ -1,8 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 — 2026-10-25
 
-Current product: Docker-first LAN panel. Windows agent is `CORAX-Agent.exe` (tray, collect when the panel asks). Linux agent is the bash ZIP. Bootstrap rule is unchanged: `admin` / `admin123` must be changed on first login.
+Preliminary cut on the same Docker-first LAN install. One FastAPI process, one Postgres, `npm run docker:up`. Bootstrap rule is unchanged: `admin` / `admin123` must be changed on first login. Do not publish the panel on the internet.
+
+### Linux server audit
+
+- One bash ZIP and one token cover the fleet. Hosts are `hostname -s`. The first `corax_send.sh` enrolls the server.
+- The tab shows live charts, sensors, lists, and the journal. **Manage** is a modal: check nginx/sshd, status, restart from a fixed unit list, read an allowlisted file, write only under config directories.
+- Jobs are pulled by the agent. There is no browser shell. Observers do not see job output.
+- Update and audit locks live next to the scripts (`.corax-update.lock`), not in `/tmp`, so `fs.protected_regular` does not block root.
+
+### Also in this cut
+
+Current product: Docker-first LAN panel. Windows agent is `CORAX-Agent.exe` (tray, collect when the panel asks). Linux agent is the bash ZIP.
 
 ### Network map
 

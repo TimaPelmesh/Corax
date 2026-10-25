@@ -33,7 +33,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Left menu',
-          body: 'Sidebar: fleet (dashboard, risks, PCs, software, printers, network, warehouse), tickets, knowledge base. Settings is last: on desktop a second pane slides out to the right (AI agent … HTTPS), no scrollbar.',
+          body: 'Sidebar: fleet (dashboard, risks, PCs, server audit, software, printers, network, warehouse), tickets, knowledge base. Settings is last: on desktop a second pane slides out to the right (AI agent … HTTPS), no scrollbar.',
         },
       ],
       links: [{ to: '/', label: 'Dashboard' }],
@@ -198,13 +198,45 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Typical Linux mistakes',
-          body: 'Launch from /opt/corax/agent/linux is wrong. Put the ZIP in /opt/corax-agent.\nunzip -o over a live agent wipes the token — use update_scripts.sh.\nURL 127.0.0.1 never reaches other hosts. Build on the LAN IP.',
+          body: 'Launch from /opt/corax/agent/linux is wrong. Put the ZIP in /opt/corax-agent.\nunzip -o over a live agent wipes the token — use update_scripts.sh.\nURL 127.0.0.1 never reaches other hosts. Build on the LAN IP.\nPermission denied on /tmp/corax-update.lock is a kernel rule, not missing root. The script must lock inside the agent directory.',
         },
       ],
       links: [
         { to: '/settings/agent-bundle', label: 'Agent build' },
         { to: '/computers', label: 'Computers' },
         { to: '/server-audit', label: 'Server audit' },
+      ],
+    },
+    {
+      id: 'server-audit',
+      title: 'Server audit',
+      summary:
+        'Live Linux metrics and a short action list, on the same token. Not a shell and not Ansible.',
+      steps: [
+        {
+          title: 'One agent for every server',
+          body: 'Copy one ZIP and one agent_env.sh onto each Linux server. The panel tells them apart by hostname -s. Two servers with the same short name collapse into one card. A per-server token is unnecessary: a token with an empty host field is a fleet secret.',
+        },
+        {
+          title: 'How a host shows up',
+          body: 'From /opt/corax-agent: sudo ./corax_send.sh. The first report creates the row. The minute timer then sends a point on Collect now and on the interval. Full inventory (OS, disks, software) still lands in Computers.',
+        },
+        {
+          title: 'What the page shows',
+          body: 'The list on the left is name, address, sample age, CPU, memory, and disk. Color appears only on high values. Charts, sensors, lists, and the journal are on the right. Hot means 80 °C or 90 % load.',
+        },
+        {
+          title: 'Manage',
+          body: 'A button on the host header, editors only. Three tabs.\nActions: nginx -t, sshd -t, status of a listed service, restart only for known names (nginx, sshd, postgres, docker, and a few more). A restart asks for confirmation.\nFiles: show a path from the list, or replace a file under an nginx/apache config directory or /etc/corax.\nCollection: label, interval, journal, retention, and disabling the host.',
+        },
+        {
+          title: 'What the button does not do',
+          body: 'There is no free-form command and no SSH from the browser. sudoers, cron, keys, and shadow cannot be read or written. The agent pulls one job on its next poll and checks the same rules itself. Observers do not see the job list. An old agent without lib/run_jobs.py ignores the jobs field — update the scripts.',
+        },
+      ],
+      links: [
+        { to: '/server-audit', label: 'Server audit' },
+        { to: '/settings/agent-bundle', label: 'Agent build' },
       ],
     },
     {
@@ -517,6 +549,10 @@ export const GUIDE_EN: GuideCopy = {
       title: 'Reliability',
       summary: 'How the panel survives a reboot, an update, and a brief network drop.',
       steps: [
+        {
+          title: 'One process',
+          body: 'The panel is one FastAPI process and one Postgres. There is no Redis and no microservice split. Start is still npm run docker:up. A host chart is folded in SQL instead of loading every sample.',
+        },
         {
           title: 'Docker volumes',
           body: 'Postgres and files live in corax_pgdata, corax_data, corax_backups. npm run docker:down stops containers and keeps the data.',

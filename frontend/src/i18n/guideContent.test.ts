@@ -48,6 +48,7 @@ const REQUIRED_SECTION_IDS = [
   'computers',
   'agent',
   'agent-linux',
+  'server-audit',
   'agent-audit',
   'software',
   'printers',
@@ -158,11 +159,11 @@ describe('filterGuideSections', () => {
   })
 
   it('narrows steps when only a step body matches', () => {
-    const hit = filterGuideSections(guideCopy('ru').sections, 'corax_audit.bat')
+    const hit = filterGuideSections(guideCopy('ru').sections, 'BitLocker')
     expect(hit).toHaveLength(1)
     expect(hit[0]?.id).toBe('agent-audit')
     expect(hit[0]?.steps.length).toBeGreaterThan(0)
-    expect(hit[0]?.steps.every((s) => /corax_audit/i.test(s.title + s.body))).toBe(true)
+    expect(hit[0]?.steps.every((s) => /bitlocker/i.test(s.title + s.body))).toBe(true)
   })
 
   it('returns empty when nothing matches', () => {

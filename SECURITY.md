@@ -9,7 +9,7 @@ Please **do not** open a public issue with exploit details.
 Email the maintainer from the GitHub profile, or open a private security advisory on GitHub:  
 https://github.com/TimaPelmesh/Corax/security/advisories/new
 
-Include the affected version (see the latest `v1.3.0` tag), what you observed, and how to reproduce it on a local Docker stack.
+Include the affected version (see the latest `v1.4.0` tag), what you observed, and how to reproduce it on a local Docker stack.
 
 ## First-run defaults (not production secrets)
 

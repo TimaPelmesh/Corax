@@ -4,7 +4,7 @@ import { api, type Computer, type ServerAuditDetail, type ServerAuditHost, type 
 import { useAuth } from '../AuthContext'
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { useConfirmDialog } from '../components/ConfirmDialog'
-import { useLocale, useT } from '../i18n/LocaleContext'
+import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 import { ServerAuditCharts } from './ServerAuditCharts'
 import { ServerAuditManageModal } from './ServerAuditManage'
@@ -118,6 +118,16 @@ function isHot(host: ServerAuditHost) {
     (host.latest_mem_percent ?? 0) >= 90 ||
     (host.latest_disk_percent ?? 0) >= 90
   )
+}
+
+function ageShort(iso: string | null, now: number, t: (key: MessageKey, vars?: Record<string, string | number>) => string) {
+  if (!iso) return t('serverAudit.noData')
+  const sec = Math.round((now - new Date(iso).getTime()) / 1000)
+  if (!Number.isFinite(sec) || sec < 0) return t('serverAudit.ageNow')
+  if (sec < 45) return t('serverAudit.ageNow')
+  if (sec < 3600) return t('serverAudit.ageMin', { n: Math.max(1, Math.round(sec / 60)) })
+  if (sec < 86400) return t('serverAudit.ageHour', { n: Math.max(1, Math.round(sec / 3600)) })
+  return t('serverAudit.ageDay', { n: Math.max(1, Math.round(sec / 86400)) })
 }
 
 function freshness(host: ServerAuditHost): 'fresh' | 'stale' | 'none' {
@@ -656,12 +666,6 @@ export function ServerAuditPage() {
     }
   }
 
-  const toneClass = {
-    fresh: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-    stale: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-    none: 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]',
-  }
-
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
       {confirm.dialog}
@@ -836,26 +840,36 @@ export function ServerAuditPage() {
               onChange={(event) => setHostQuery(event.target.value)}
               placeholder={t('serverAudit.searchHosts')}
               className="app-input"
+              aria-label={t('serverAudit.searchHosts')}
             />
-            <div className="flex flex-wrap gap-1">
-              {([
-                ['temp', t('serverAudit.sortTemp')],
-                ['cpu', t('serverAudit.sortCpu')],
-                ['seen', t('serverAudit.sortSeen')],
-                ['name', t('serverAudit.sortName')],
-              ] as const).map(([id, text]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => {
-                    if (sortKey === id) setParams({ dir: sortDir === 'desc' ? 'asc' : null })
-                    else setParams({ sort: id === 'temp' ? null : id, dir: id === 'name' ? 'asc' : null })
-                  }}
-                  className={`app-chip !px-2.5 !py-1 ${sortKey === id ? 'app-chip--active' : ''}`}
-                >
-                  {text}{sortKey === id ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-xs tabular-nums text-[var(--color-fg-subtle)]">
+                {visibleHosts.length === hosts.length
+                  ? String(hosts.length)
+                  : t('serverAudit.listCountFiltered', { shown: visibleHosts.length, total: hosts.length })}
+              </span>
+              <select
+                value={sortKey}
+                onChange={(event) => {
+                  const id = event.target.value as SortKey
+                  setParams({ sort: id === 'temp' ? null : id, dir: id === 'name' ? 'asc' : null })
+                }}
+                className="app-input app-select min-w-0 flex-1 !py-1 text-xs"
+                aria-label={t('serverAudit.sortName')}
+              >
+                <option value="temp">{t('serverAudit.sortTemp')}</option>
+                <option value="cpu">{t('serverAudit.sortCpu')}</option>
+                <option value="seen">{t('serverAudit.sortSeen')}</option>
+                <option value="name">{t('serverAudit.sortName')}</option>
+              </select>
+              <button
+                type="button"
+                className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1 text-xs"
+                aria-label={t('serverAudit.sortFlip')}
+                onClick={() => setParams({ dir: sortDir === 'desc' ? 'asc' : null })}
+              >
+                {sortDir === 'asc' ? '↑' : '↓'}
+              </button>
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
@@ -869,33 +883,45 @@ export function ServerAuditPage() {
               visibleHosts.map((host) => {
                 const tone = freshness(host)
                 const active = host.id === selectedId
+                const title = host.label || host.hostname
+                const showHost = Boolean(host.label && host.label !== host.hostname)
+                const meta = [
+                  showHost ? host.hostname : '',
+                  host.ip_address || '',
+                  !host.enabled ? t('serverAudit.disabled') : ageShort(host.last_sample_at, now, t),
+                ].filter(Boolean).join(' · ')
+                const dot = !host.enabled || tone === 'none'
+                  ? 'bg-[var(--color-border)]'
+                  : tone === 'stale'
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500'
+                const tempQuiet = host.latest_cpu_temp_c == null || host.latest_cpu_temp_c < 68
                 return (
                   <button
                     key={host.id}
                     type="button"
+                    aria-current={active ? 'true' : undefined}
                     onClick={() => setParams({ host: String(host.id) })}
-                    className={`flex w-full flex-col gap-0.5 border-b border-[var(--color-border)] px-3 py-2 text-left ${active ? 'app-table-row-selected' : 'hover:bg-[var(--color-surface-muted)]'}`}
+                    className={`grid w-full grid-cols-[0.375rem_minmax(0,1fr)_auto] items-baseline gap-x-2.5 gap-y-0.5 border-b border-[var(--color-border)] px-3 py-2.5 text-left ${active ? 'app-table-row-selected' : 'hover:bg-[var(--color-surface-muted)]'}`}
                   >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">{host.label || host.hostname}</span>
-                      <span className={`font-mono text-sm font-semibold ${heatClass(host.latest_cpu_temp_c)}`}>{fmtTemp(host.latest_cpu_temp_c)}</span>
+                    <span className={`mt-1 h-1.5 w-1.5 self-center rounded-full ${dot}`} />
+                    <span className="truncate text-sm font-medium">{title}</span>
+                    <span className={`font-mono text-xs tabular-nums ${tempQuiet ? 'text-[var(--color-fg-subtle)]' : heatClass(host.latest_cpu_temp_c)}`}>
+                      {fmtTemp(host.latest_cpu_temp_c)}
                     </span>
-                    <span className="flex items-center justify-between gap-2 text-xs text-[var(--color-fg-subtle)]">
-                      <span className="truncate">
-                        {host.hostname}
-                        {host.ip_address ? ` · ${host.ip_address}` : ''}
+                    <span />
+                    <span className="col-span-2 truncate text-xs text-[var(--color-fg-subtle)]">{meta}</span>
+                    <span />
+                    <span className="col-span-2 flex gap-3 font-mono text-[11px] tabular-nums">
+                      <span className={host.latest_cpu_percent != null && host.latest_cpu_percent >= 75 ? pctClass(host.latest_cpu_percent) : 'text-[var(--color-fg-subtle)]'}>
+                        CPU {fmtPct(host.latest_cpu_percent)}
                       </span>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${host.enabled ? toneClass[tone] : toneClass.none}`}>
-                        {!host.enabled ? t('serverAudit.disabled') : tone === 'fresh' ? t('serverAudit.fresh') : tone === 'stale' ? t('serverAudit.stale') : t('serverAudit.noData')}
+                      <span className={host.latest_mem_percent != null && host.latest_mem_percent >= 75 ? pctClass(host.latest_mem_percent) : 'text-[var(--color-fg-subtle)]'}>
+                        RAM {fmtPct(host.latest_mem_percent)}
                       </span>
-                    </span>
-                    <span className="flex gap-3 font-mono text-xs">
-                      <span className={pctClass(host.latest_cpu_percent)}>CPU {fmtPct(host.latest_cpu_percent)}</span>
-                      <span className={pctClass(host.latest_mem_percent)}>RAM {fmtPct(host.latest_mem_percent)}</span>
-                      <span className={pctClass(host.latest_disk_percent)}>{t('serverAudit.disk')} {fmtPct(host.latest_disk_percent)}</span>
-                      {host.latest_gpu_temp_c != null ? (
-                        <span className={heatClass(host.latest_gpu_temp_c)}>GPU {fmtTemp(host.latest_gpu_temp_c)}</span>
-                      ) : null}
+                      <span className={host.latest_disk_percent != null && host.latest_disk_percent >= 75 ? pctClass(host.latest_disk_percent) : 'text-[var(--color-fg-subtle)]'}>
+                        {t('serverAudit.disk')} {fmtPct(host.latest_disk_percent)}
+                      </span>
                     </span>
                   </button>
                 )

@@ -37,9 +37,39 @@ CORAX is a panel for a **trusted local network**. Agents report PCs. The UI trac
 
 | Layer | What it does |
 |------|----------------|
-| Collection | Windows ZIP with CORAX-Agent.exe (tray, collect on panel request) and a Linux bash ZIP. Tokens are HMAC; the Windows agent seals the token with DPAPI. |
-| Panel | Dashboard, Risk Center, computers, software, SNMP printers, network map, floor plan, warehouse, tickets, WikiRAG |
+| Collection | Windows: one `CORAX-Agent.exe` (tray, collect when the panel asks). Linux: one bash ZIP and one token for every server. Tokens are HMAC; the Windows agent seals its token with DPAPI. |
+| Panel | Dashboard, Risk Center, computers, **server audit**, software, SNMP printers, network map, floor plan, warehouse, tickets, WikiRAG |
 | Integrations | LDAP directory, Bitrix24, Zabbix, GLPI CSV, local LLM (Ollama / LM Studio) |
+
+## Stack
+
+One command starts the whole product: `npm run docker:up`. There is no second API process, no Redis, and no microservice split.
+
+| Piece | Role |
+|------|------|
+| FastAPI, one Uvicorn process | Panel API, agent ingest, audit jobs |
+| PostgreSQL 16 (pgvector image) | Inventory, tickets, audit samples, WikiRAG vectors |
+| React 19, Vite, TypeScript | The panel |
+| Docker Compose | `db`, `app`, `db-backup` |
+| Windows agent | `CORAX-Agent.exe` |
+| Linux agent | Bash ZIP. Same `agent_env.sh` on every server |
+
+Charts for a host are folded in Postgres (about 800 points), not loaded as every sample. Grafana remains the tool for open-ended metrics. CORAX does not embed a shell.
+
+## Linux servers
+
+**Server audit** is the live view: temperature, CPU, memory, disk, load, network, journal, sensors. A host appears after the first `corax_send.sh`. The panel tells servers apart by `hostname -s`, so those names must be unique.
+
+**Manage** opens on the host card. It is a short allowlist, not Ansible and not SSH:
+
+- check `nginx -t` and `sshd -t`
+- service status, and restart only for a fixed list of units
+- read a file from a fixed list
+- write a file only under nginx/apache config dirs or `/etc/corax`
+
+Editors confirm a restart or a write. Observers do not see job output. The agent pulls one job on its next poll and checks the same rules locally.
+
+Script updates lock a file inside the agent directory (`.corax-update.lock`), not `/tmp`. A lock in `/tmp` can be rejected by the kernel even for root when another user already created it.
 
 ```bash
 git clone https://github.com/TimaPelmesh/Corax.git
