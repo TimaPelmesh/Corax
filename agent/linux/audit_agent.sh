@@ -325,6 +325,11 @@ else
     log "audit: host disabled"
     exit 0
   fi
+  if [ "$flag" = "yes" ] || [ "$flag" = "no" ]; then
+    if have_cmd python3 && [ -s "${CORAX_WORKDIR}/audit_directive.json" ]; then
+      python3 "$AGENT_ROOT/lib/run_jobs.py" "${CORAX_WORKDIR}/audit_directive.json" || true
+    fi
+  fi
   age=$(stamp_age)
   if [ "$flag" = "yes" ]; then
     log "audit: panel asked, sending"

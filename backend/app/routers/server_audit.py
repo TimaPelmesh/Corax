@@ -18,8 +18,11 @@ from app.schemas import (
     ServerAuditHostCreate,
     ServerAuditHostOut,
     ServerAuditHostUpdate,
+    ServerAuditJobCreate,
+    ServerAuditJobOut,
     ServerAuditPoint,
 )
+from app.server_audit_jobs import action_catalog, enqueue_job, list_jobs
 from app.server_audit_store import (
     ALLOWED_INTERVALS,
     JOURNAL_LINES,
@@ -34,6 +37,51 @@ from app.server_audit_store import (
 )
 
 router = APIRouter(prefix="/server-audit", tags=["server-audit"])
+
+
+@router.get("/actions")
+async def audit_actions(_: User = Depends(get_current_editor_or_superuser)):
+    """Names the agent is willing to run. The panel cannot extend this list."""
+    return action_catalog()
+
+
+@router.get("/hosts/{host_id}/jobs", response_model=list[ServerAuditJobOut])
+async def host_jobs(
+    host_id: int,
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    await _host_or_404(db, host_id)
+    return await list_jobs(db, host_id)
+
+
+@router.post("/hosts/{host_id}/jobs", response_model=ServerAuditJobOut)
+async def host_job_create(
+    host_id: int,
+    body: ServerAuditJobCreate,
+    user: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    host = await _host_or_404(db, host_id)
+    if not host.enabled:
+        raise HTTPException(status_code=400, detail="Сбор на этом хосте выключен, агент задания не заберёт")
+    try:
+        job = await enqueue_job(
+            db,
+            host,
+            user_id=user.id,
+            action=body.action,
+            target=body.target,
+            body=body.body,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await db.commit()
+    rows = await list_jobs(db, host.id, limit=5)
+    found = next((row for row in rows if row["id"] == job.id), None)
+    if found is None:
+        raise HTTPException(status_code=500, detail="Задание не сохранилось")
+    return found
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,253}$")
 _POINT_CAP = 800

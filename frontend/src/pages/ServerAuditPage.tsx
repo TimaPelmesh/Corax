@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, type Computer, type ServerAuditDetail, type ServerAuditHost } from '../api'
+import { api, type Computer, type ServerAuditDetail, type ServerAuditHost, type ServerAuditJob, type ServerAuditJobAction } from '../api'
 import { useAuth } from '../AuthContext'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
+import { ServerAuditActions } from './ServerAuditActions'
 import { ServerAuditCharts } from './ServerAuditCharts'
 
 const INTERVALS = [0, 15, 30, 60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400] as const
@@ -182,7 +183,8 @@ export function ServerAuditPage() {
   const [hostQuery, setHostQuery] = useState('')
   const [sensorQuery, setSensorQuery] = useState('')
   const [addOpen, setAddOpen] = useState(false)
-  const [panel, setPanel] = useState<'charts' | 'sensors' | 'lists' | 'journal' | 'control'>('charts')
+  const [panel, setPanel] = useState<'charts' | 'sensors' | 'lists' | 'journal' | 'actions' | 'control'>('charts')
+  const [jobs, setJobs] = useState<ServerAuditJob[]>([])
   const [draftLabel, setDraftLabel] = useState('')
   const [draftNotes, setDraftNotes] = useState('')
   const [paused, setPaused] = useState(false)
@@ -222,6 +224,11 @@ export function ServerAuditPage() {
     setDetail(row)
     setHosts((current) => current.map((host) => (host.id === row.id ? { ...host, ...row } : host)))
   }, [])
+
+  const loadJobs = useCallback(async (id: number) => {
+    if (!canEdit) return
+    setJobs(await api.serverAuditJobs(id))
+  }, [canEdit])
 
   useEffect(() => {
     if (!canEdit || !fleetOpen) return
@@ -287,7 +294,8 @@ export function ServerAuditPage() {
     }
   }, [loadHosts, t, toast])
 
-  const hurry = hosts.some((host) => host.collect_requested || !host.last_sample_at)
+  const jobHot = jobs.some((job) => job.status === 'pending' || job.status === 'leased')
+  const hurry = jobHot || hosts.some((host) => host.collect_requested || !host.last_sample_at)
   const fastest = hosts.reduce((min, host) => {
     if (!host.enabled) return min
     const seconds = intervalSecOf(host)
@@ -300,6 +308,7 @@ export function ServerAuditPage() {
   useEffect(() => {
     if (selectedId == null) {
       setDetail(null)
+      setJobs([])
       return
     }
     let alive = true
@@ -308,6 +317,9 @@ export function ServerAuditPage() {
       loadDetail(selectedId, hours).catch((error: unknown) => {
         if (alive) toast.error(error instanceof Error ? error.message : t('common.error'))
       })
+      if (canEdit) {
+        loadJobs(selectedId).catch(() => undefined)
+      }
       void loadHosts().catch(() => undefined)
     }
     run()
@@ -317,7 +329,7 @@ export function ServerAuditPage() {
       alive = false
       window.clearInterval(timer)
     }
-  }, [hours, loadDetail, loadHosts, paused, pollMs, selectedId, t, toast])
+  }, [canEdit, hours, loadDetail, loadHosts, loadJobs, paused, pollMs, selectedId, t, toast])
 
   const payload = detail?.payload ?? {}
   const os = asRecord(payload.os)
@@ -444,6 +456,38 @@ export function ServerAuditPage() {
       toast.ok(t('serverAudit.added'))
       await loadHosts()
       setParams({ host: String(created.id) })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('common.error'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onQueue(action: ServerAuditJobAction, target: string, body?: string) {
+    if (!detail || !canEdit) return
+    if (action === 'restart') {
+      const ok = await confirm.ask({
+        title: t('serverAudit.actRestartTitle'),
+        body: t('serverAudit.actRestartBody', { unit: target, host: detail.hostname }),
+        confirmLabel: t('serverAudit.actRestartPick'),
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+    if (action === 'write') {
+      const ok = await confirm.ask({
+        title: t('serverAudit.actWriteTitle'),
+        body: t('serverAudit.actWriteBody', { path: target, host: detail.hostname }),
+        confirmLabel: t('serverAudit.actWrite'),
+        tone: 'danger',
+      })
+      if (!ok) return
+    }
+    setBusy(true)
+    try {
+      await api.createServerAuditJob(detail.id, { action, target, body })
+      setJobs(await api.serverAuditJobs(detail.id))
+      toast.ok(t('serverAudit.actionQueued'))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'))
     } finally {
@@ -900,6 +944,9 @@ export function ServerAuditPage() {
                 <button type="button" onClick={() => setPanel('lists')} className={`app-chip ${panel === 'lists' ? 'app-chip--active' : ''}`}>{t('serverAudit.lists')}</button>
                 <button type="button" onClick={() => setPanel('journal')} className={`app-chip ${panel === 'journal' ? 'app-chip--active' : ''}`}>{t('serverAudit.logs')}</button>
                 {canEdit ? (
+                  <button type="button" onClick={() => setPanel('actions')} className={`app-chip ${panel === 'actions' ? 'app-chip--active' : ''}`}>{t('serverAudit.actions')}</button>
+                ) : null}
+                {canEdit ? (
                   <button type="button" onClick={() => setPanel('control')} className={`app-chip ${panel === 'control' ? 'app-chip--active' : ''}`}>{t('serverAudit.manage')}</button>
                 ) : null}
               </div>
@@ -1204,6 +1251,10 @@ export function ServerAuditPage() {
                 />
               </div>
               </div>
+              ) : null}
+
+              {panel === 'actions' && canEdit && detail ? (
+                <ServerAuditActions jobs={jobs} busy={busy} locale={locale} onQueue={onQueue} />
               ) : null}
 
               {panel === 'control' && canEdit ? (

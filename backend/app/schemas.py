@@ -1662,3 +1662,37 @@ class AgentAuditReport(BaseModel):
     @classmethod
     def strip_nul_bytes(cls, data: Any) -> Any:
         return deep_strip_nul(data)
+
+
+class ServerAuditJobCreate(BaseModel):
+    action: Literal["status", "test", "read", "restart", "write"]
+    target: str = Field(min_length=1, max_length=255)
+    body: str | None = Field(default=None, max_length=32768)
+
+
+class ServerAuditJobOut(BaseModel):
+    id: int
+    action: str
+    target: str
+    status: str
+    exit_code: int | None = None
+    output: str | None = None
+    requested_by: str | None = None
+    created_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    @field_serializer("created_at", "finished_at")
+    def _ser_job(self, value: datetime | None):
+        return _iso_z(value)
+
+
+class AgentAuditJobResult(BaseModel):
+    id: int
+    hostname: str = Field(min_length=1, max_length=255)
+    exit_code: int = 0
+    output: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_job_nul(cls, data: Any) -> Any:
+        return deep_strip_nul(data)

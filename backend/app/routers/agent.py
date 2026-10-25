@@ -19,7 +19,8 @@ from app.models import AgentToken, Computer, DiskVolume, InstalledSoftware, Peri
 from app.gpu_normalize import resolve_gpu_name
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
 from app.peripheral_display import is_noise_peripheral
-from app.schemas import AgentAuditReport, AgentInventoryReport
+from app.schemas import AgentAuditJobResult, AgentAuditReport, AgentInventoryReport
+from app.server_audit_jobs import finish_job, lease_next_job
 from app.server_audit_store import audit_directive, record_audit_sample
 from app.agent_policy import ack_hostname, build_directive, hostnames_match
 from app.agent_bundle import linux_scripts_zip_bytes
@@ -485,7 +486,29 @@ async def agent_audit_directive(
     _ = request
     hn = (hostname or "").strip()
     await verify_agent_token(db, authorization, hn or "directive", any_host=True)
-    return await audit_directive(db, hn)
+    payload = await audit_directive(db, hn)
+    jobs, changed = await lease_next_job(db, hn)
+    payload["jobs"] = jobs
+    if changed:
+        await db.commit()
+    return payload
+
+
+@router.post("/audit-job")
+@limiter.limit(settings.rate_limit_agent)
+async def submit_audit_job(
+    request: Request,
+    result: AgentAuditJobResult,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """Result of one allowlisted job. The agent re-checks the action before running it."""
+    _ = request
+    hn = result.hostname.strip()
+    await verify_agent_token(db, authorization, hn, any_host=True)
+    stored = await finish_job(db, hn, result.id, result.exit_code, result.output)
+    await db.commit()
+    return stored
 
 
 @router.post("/audit")

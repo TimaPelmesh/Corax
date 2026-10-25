@@ -1787,6 +1787,39 @@ def _migrate_server_audit_interval_seconds(sync_conn) -> None:
     )
 
 
+def _migrate_server_audit_jobs(sync_conn) -> None:
+    if "server_audit_hosts" not in _table_names(sync_conn):
+        return
+    if "server_audit_jobs" in _table_names(sync_conn):
+        return
+    sync_conn.execute(
+        text(
+            """
+            CREATE TABLE server_audit_jobs (
+              id INTEGER PRIMARY KEY,
+              host_id INTEGER NOT NULL,
+              requested_by_id INTEGER,
+              action VARCHAR(16) NOT NULL,
+              target VARCHAR(255) NOT NULL,
+              body TEXT,
+              status VARCHAR(16) DEFAULT 'pending',
+              exit_code INTEGER,
+              output TEXT,
+              created_at TIMESTAMP,
+              leased_at TIMESTAMP,
+              finished_at TIMESTAMP
+            )
+            """
+        )
+    )
+    sync_conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_server_audit_jobs_host ON server_audit_jobs (host_id, id)")
+    )
+    sync_conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_server_audit_jobs_status ON server_audit_jobs (host_id, status)")
+    )
+
+
 def _migrate_server_audit_gpu(sync_conn) -> None:
     if "server_audit_hosts" in _table_names(sync_conn):
         cols = _column_names(sync_conn, "server_audit_hosts")
@@ -1910,6 +1943,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-23_server_audit_journal", _migrate_server_audit_journal),
     ("2026-10-24_server_audit_gpu", _migrate_server_audit_gpu),
     ("2026-10-24_server_audit_interval_seconds", _migrate_server_audit_interval_seconds),
+    ("2026-10-25_server_audit_jobs", _migrate_server_audit_jobs),
 ]
 
 

@@ -1395,6 +1395,27 @@ export type ServerAuditDetail = ServerAuditHost & {
   payload_in_range: boolean
 }
 
+export type ServerAuditJobAction = 'status' | 'test' | 'read' | 'restart' | 'write'
+
+export type ServerAuditJob = {
+  id: number
+  action: ServerAuditJobAction | string
+  target: string
+  status: 'pending' | 'leased' | 'done' | 'failed' | 'expired' | string
+  exit_code: number | null
+  output: string | null
+  requested_by: string | null
+  created_at: string | null
+  finished_at: string | null
+}
+
+export type ServerAuditActionCatalog = {
+  tests: string[]
+  restart: string[]
+  read: string[]
+  write_prefixes: string[]
+}
+
 export const api = {
   health: () => request<{ status: string; api: string }>(`${API_PREFIX}/health`),
 
@@ -3237,6 +3258,13 @@ export const api = {
 
   collectServerAuditHost: (id: number) =>
     request<ServerAuditHost>(`${API_PREFIX}/server-audit/hosts/${id}/collect`, { method: 'POST' }),
+
+  serverAuditActions: () => request<ServerAuditActionCatalog>(`${API_PREFIX}/server-audit/actions`),
+
+  serverAuditJobs: (id: number) => request<ServerAuditJob[]>(`${API_PREFIX}/server-audit/hosts/${id}/jobs`),
+
+  createServerAuditJob: (id: number, body: { action: ServerAuditJobAction; target: string; body?: string | null }) =>
+    request<ServerAuditJob>(`${API_PREFIX}/server-audit/hosts/${id}/jobs`, { method: 'POST', json: body }),
 }
 
 export type WikiRagIndexSettings = {
