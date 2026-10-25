@@ -293,9 +293,8 @@ export function ComputersPage() {
     if (!idRaw) return
     const id = Number.parseInt(idRaw, 10)
     if (!Number.isFinite(id) || id <= 0) return
-    if (detailComputerId === id) return
-    openDetail(id)
-  }, [searchParams, detailComputerId])
+    setDetailComputerId((current) => (current === id ? current : id))
+  }, [searchParams])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

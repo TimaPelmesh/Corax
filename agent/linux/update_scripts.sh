@@ -155,7 +155,21 @@ with zipfile.ZipFile(sys.argv[1]) as zf:
 }
 
 if command -v flock >/dev/null 2>&1; then
-  exec 9>/tmp/corax-update.lock
+  # Not /tmp: that directory is sticky and world-writable, so the kernel
+  # (fs.protected_regular) rejects O_CREAT when the lock belongs to another
+  # user. Root is not exempt. The agent directory is not shared that way.
+  lock="$LIVE/.corax-update.lock"
+  if [ ! -e "$lock" ]; then
+    (umask 000; : >"$lock") || {
+      echo "ERROR: cannot create $lock" >&2
+      exit 1
+    }
+  fi
+  chmod 666 "$lock" 2>/dev/null || true
+  exec 9>"$lock" || {
+    echo "ERROR: cannot open $lock" >&2
+    exit 1
+  }
   flock -n 9 || {
     echo "update already running"
     exit 0

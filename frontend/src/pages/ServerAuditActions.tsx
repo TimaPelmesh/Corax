@@ -39,11 +39,13 @@ export function ServerAuditActions({
   jobs,
   busy,
   locale,
+  view,
   onQueue,
 }: {
   jobs: ServerAuditJob[]
   busy: boolean
   locale: string
+  view: 'ops' | 'files'
   onQueue: (action: ServerAuditJobAction, target: string, body?: string) => Promise<void>
 }) {
   const t = useT()
@@ -98,13 +100,9 @@ export function ServerAuditActions({
   const writePath = `${writePrefix}${writeName.trim()}`
 
   return (
-    <div className="flex flex-col gap-3">
-      <section className="chrome-glass-card flex flex-col gap-4 p-4">
-        <div>
-          <h3 className="text-sm font-semibold">{t('serverAudit.actions')}</h3>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.actionsLead')}</p>
-        </div>
-        <div className="grid gap-4 xl:grid-cols-3">
+    <div className="flex flex-col gap-4">
+      {view === 'ops' ? (
+        <div className="grid gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-2">
             <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
               {t('serverAudit.actGroupCheck')}
@@ -172,7 +170,8 @@ export function ServerAuditActions({
             </button>
           </div>
         </div>
-        <div className="grid gap-4 border-t border-[var(--color-border)] pt-4 lg:grid-cols-2">
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
           <div className="flex flex-col gap-2">
             <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
               {t('serverAudit.actRead')}
@@ -235,8 +234,9 @@ export function ServerAuditActions({
             </span>
           </div>
         </div>
-      </section>
+      )}
 
+      {view === 'ops' ? (
       <section className="app-card app-table-shell overflow-hidden p-0">
         <h3 className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-semibold">{t('serverAudit.jobHistory')}</h3>
         {jobs.length === 0 ? (
@@ -276,6 +276,7 @@ export function ServerAuditActions({
           </div>
         )}
       </section>
+      ) : null}
     </div>
   )
 }

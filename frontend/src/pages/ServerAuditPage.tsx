@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { api, type Computer, type ServerAuditDetail, type ServerAuditHost, type ServerAuditJob, type ServerAuditJobAction } from '../api'
 import { useAuth } from '../AuthContext'
+import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
-import { ServerAuditActions } from './ServerAuditActions'
 import { ServerAuditCharts } from './ServerAuditCharts'
+import { ServerAuditManageModal } from './ServerAuditManage'
 
 const INTERVALS = [0, 15, 30, 60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400] as const
 
@@ -192,7 +193,8 @@ export function ServerAuditPage() {
   const [hostQuery, setHostQuery] = useState('')
   const [sensorQuery, setSensorQuery] = useState('')
   const [addOpen, setAddOpen] = useState(false)
-  const [panel, setPanel] = useState<'charts' | 'sensors' | 'lists' | 'journal' | 'actions' | 'control'>('charts')
+  const [panel, setPanel] = useState<'charts' | 'sensors' | 'lists' | 'journal'>('charts')
+  const [manageOpen, setManageOpen] = useState(false)
   const [jobs, setJobs] = useState<ServerAuditJob[]>([])
   const [draftLabel, setDraftLabel] = useState('')
   const [draftNotes, setDraftNotes] = useState('')
@@ -200,6 +202,7 @@ export function ServerAuditPage() {
   const [hoverMs, setHoverMs] = useState<number | null>(null)
   const [polledAt, setPolledAt] = useState(() => Date.now())
   const [now, setNow] = useState(() => Date.now())
+  const [inventoryId, setInventoryId] = useState<number | null>(null)
 
   const rangeRaw = Number(searchParams.get('range'))
   const hours: Hours = rangeRaw === 6 || rangeRaw === 168 ? rangeRaw : 24
@@ -282,6 +285,7 @@ export function ServerAuditPage() {
     setLogMode('err')
     setDraftLabel('')
     setDraftNotes('')
+    setManageOpen(false)
   }, [selectedId])
 
   useEffect(() => {
@@ -324,7 +328,7 @@ export function ServerAuditPage() {
   const listMs = 20_000
   const detailMs = hours >= 168 ? 45_000 : selectedSeconds > 0 && selectedSeconds <= 60 ? 10_000 : selectedWaiting ? 10_000 : 25_000
   const jobMs = jobHot ? 4_000 : 20_000
-  const tickMs = panel === 'actions' && canEdit ? jobMs : chartsLive ? detailMs : listMs
+  const tickMs = manageOpen && canEdit ? jobMs : chartsLive ? detailMs : listMs
   const remainSec = paused ? null : Math.max(0, Math.ceil((tickMs - (now - polledAt)) / 1000))
 
   useEffect(() => {
@@ -362,13 +366,13 @@ export function ServerAuditPage() {
   }, [chartsLive, detailMs, hours, loadDetail, paused, selectedId])
 
   useEffect(() => {
-    if (paused || selectedId == null || !canEdit || panel !== 'actions') return
+    if (paused || selectedId == null || !canEdit || !manageOpen) return
     const timer = window.setInterval(() => {
       setPolledAt(Date.now())
       loadJobs(selectedId).catch(() => undefined)
     }, jobMs)
     return () => window.clearInterval(timer)
-  }, [canEdit, jobMs, loadJobs, panel, paused, selectedId])
+  }, [canEdit, jobMs, loadJobs, manageOpen, paused, selectedId])
 
   const payload = detail?.payload ?? {}
   const os = asRecord(payload.os)
@@ -941,12 +945,27 @@ export function ServerAuditPage() {
                     </button>
                   ) : null}
                   {detail.computer_id ? (
-                    <Link
-                      to={`/computers?computer=${detail.computer_id}`}
-                      className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2 no-underline"
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
+                      onClick={() => setInventoryId(detail.computer_id)}
                     >
                       {t('serverAudit.openComputer')}
-                    </Link>
+                    </button>
+                  ) : null}
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
+                      onClick={() => setManageOpen(true)}
+                    >
+                      {t('serverAudit.manage')}
+                      {jobs.some((job) => job.status === 'pending' || job.status === 'leased') ? (
+                        <span className="rounded-full bg-[var(--color-primary-muted)] px-1.5 text-xs text-[var(--color-primary)]">
+                          {jobs.filter((job) => job.status === 'pending' || job.status === 'leased').length}
+                        </span>
+                      ) : null}
+                    </button>
                   ) : null}
                 </div>
                 </div>
@@ -976,17 +995,28 @@ export function ServerAuditPage() {
                 <Meter label={t('serverAudit.load')} value={detail.latest_load_1 == null ? '—' : detail.latest_load_1.toFixed(2)} hint={`${t('serverAudit.cores')} ${cores}`} ratio={Math.min(loadRatio(detail.latest_load_1, cores), 1)} valueClass={loadClass(detail.latest_load_1, cores)} barClass={loadBar(detail.latest_load_1, cores)} />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => setPanel('charts')} className={`app-chip ${panel === 'charts' ? 'app-chip--active' : ''}`}>{t('serverAudit.chartsTab')}</button>
-                <button type="button" onClick={() => setPanel('sensors')} className={`app-chip ${panel === 'sensors' ? 'app-chip--active' : ''}`}>{t('serverAudit.sensors')}</button>
-                <button type="button" onClick={() => setPanel('lists')} className={`app-chip ${panel === 'lists' ? 'app-chip--active' : ''}`}>{t('serverAudit.lists')}</button>
-                <button type="button" onClick={() => setPanel('journal')} className={`app-chip ${panel === 'journal' ? 'app-chip--active' : ''}`}>{t('serverAudit.logs')}</button>
-                {canEdit ? (
-                  <button type="button" onClick={() => setPanel('actions')} className={`app-chip ${panel === 'actions' ? 'app-chip--active' : ''}`}>{t('serverAudit.actions')}</button>
-                ) : null}
-                {canEdit ? (
-                  <button type="button" onClick={() => setPanel('control')} className={`app-chip ${panel === 'control' ? 'app-chip--active' : ''}`}>{t('serverAudit.manage')}</button>
-                ) : null}
+              <div role="tablist" aria-label={t('serverAudit.chartsTab')} className="flex gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-muted)]/80 p-1">
+                {([
+                  ['charts', t('serverAudit.chartsTab')],
+                  ['sensors', t('serverAudit.sensors')],
+                  ['lists', t('serverAudit.lists')],
+                  ['journal', t('serverAudit.logs')],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={panel === id}
+                    onClick={() => setPanel(id)}
+                    className={`min-h-9 flex-1 rounded-lg px-2 py-1.5 text-sm font-medium ${
+                      panel === id
+                        ? 'bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm ring-1 ring-[var(--color-border)]'
+                        : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)]/60 hover:text-[var(--color-fg)]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
               {panel === 'charts' ? (
@@ -1291,71 +1321,80 @@ export function ServerAuditPage() {
               </div>
               ) : null}
 
-              {panel === 'actions' && canEdit && detail ? (
-                <ServerAuditActions jobs={jobs} busy={busy} locale={locale} onQueue={onQueue} />
-              ) : null}
-
-              {panel === 'control' && canEdit ? (
-                <div className="chrome-glass-card grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <form onSubmit={(event) => void onLabel(event)} className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)] sm:col-span-2 xl:col-span-4">
-                    {t('serverAudit.rename')}
-                    <span className="font-normal">{t('serverAudit.manageHint')}</span>
-                    <div className="flex flex-wrap gap-2">
-                      <input value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder={t('serverAudit.labelPh')} className="app-input min-w-[12rem] flex-1" />
-                      <button type="submit" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">{t('serverAudit.saveLabel')}</button>
+              {canEdit ? (
+                <ServerAuditManageModal
+                  key={detail.id}
+                  open={manageOpen}
+                  hostname={detail.label || detail.hostname}
+                  jobs={jobs}
+                  busy={busy}
+                  locale={locale}
+                  onClose={() => setManageOpen(false)}
+                  onQueue={onQueue}
+                  collect={
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <form onSubmit={(event) => void onLabel(event)} className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)] sm:col-span-2">
+                        {t('serverAudit.rename')}
+                        <span className="font-normal">{t('serverAudit.manageHint')}</span>
+                        <div className="flex flex-wrap gap-2">
+                          <input value={draftLabel} onChange={(event) => setDraftLabel(event.target.value)} placeholder={t('serverAudit.labelPh')} className="app-input min-w-[12rem] flex-1" />
+                          <button type="submit" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">{t('serverAudit.saveLabel')}</button>
+                        </div>
+                        <span className="mt-2 font-medium">{t('serverAudit.hostNotes')}</span>
+                        <textarea value={draftNotes} onChange={(event) => setDraftNotes(event.target.value)} rows={3} className="app-input min-h-[4.5rem] resize-y" />
+                      </form>
+                      <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                        {t('serverAudit.interval')}
+                        <select value={intervalSecOf(detail)} onChange={(event) => void onInterval(Number(event.target.value))} className="app-input app-select">
+                          {INTERVALS.map((value) => (
+                            <option key={value} value={value}>{labelFor(value)}</option>
+                          ))}
+                        </select>
+                        {intervalSecOf(detail) > 0 && intervalSecOf(detail) < 60 ? (
+                          <span className="font-normal">{t('serverAudit.intervalFast')}</span>
+                        ) : null}
+                      </label>
+                      <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                        {t('serverAudit.journalCollect')}
+                        <select value={detail.journal_mode || 'errors'} onChange={(event) => void onJournal({ journal_mode: event.target.value as 'off' | 'errors' | 'all' })} className="app-input app-select">
+                          <option value="off">{t('serverAudit.journalCollectOff')}</option>
+                          <option value="errors">{t('serverAudit.journalCollectErrors')}</option>
+                          <option value="all">{t('serverAudit.journalCollectAll')}</option>
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                        {t('serverAudit.journalLines')}
+                        <select value={detail.journal_lines || 20} onChange={(event) => void onJournal({ journal_lines: Number(event.target.value) })} className="app-input app-select">
+                          {[0, 10, 20, 40, 80].map((n) => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                        {t('serverAudit.retain')}
+                        <select value={detail.retain_days || 14} onChange={(event) => void onJournal({ retain_days: Number(event.target.value) })} className="app-input app-select">
+                          {[7, 14, 30, 90].map((n) => (
+                            <option key={n} value={n}>{t('serverAudit.retainDays', { n })}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
+                        <button type="button" onClick={() => void onToggle()} className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">
+                          {detail.enabled ? t('serverAudit.enabled') : t('serverAudit.disabled')}
+                        </button>
+                        <button type="button" onClick={() => void onDelete(detail)} className="app-btn app-btn-danger !min-h-0 !px-3 !py-2">
+                          {t('serverAudit.remove')}
+                        </button>
+                      </div>
                     </div>
-                    <span className="mt-2 font-medium">{t('serverAudit.hostNotes')}</span>
-                    <textarea value={draftNotes} onChange={(event) => setDraftNotes(event.target.value)} rows={3} className="app-input min-h-[4.5rem] resize-y" />
-                  </form>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.interval')}
-                    <select value={intervalSecOf(detail)} onChange={(event) => void onInterval(Number(event.target.value))} className="app-input app-select">
-                      {INTERVALS.map((value) => (
-                        <option key={value} value={value}>{labelFor(value)}</option>
-                      ))}
-                    </select>
-                    {intervalSecOf(detail) > 0 && intervalSecOf(detail) < 60 ? (
-                      <span className="font-normal">{t('serverAudit.intervalFast')}</span>
-                    ) : null}
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.journalCollect')}
-                    <select value={detail.journal_mode || 'errors'} onChange={(event) => void onJournal({ journal_mode: event.target.value as 'off' | 'errors' | 'all' })} className="app-input app-select">
-                      <option value="off">{t('serverAudit.journalCollectOff')}</option>
-                      <option value="errors">{t('serverAudit.journalCollectErrors')}</option>
-                      <option value="all">{t('serverAudit.journalCollectAll')}</option>
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.journalLines')}
-                    <select value={detail.journal_lines || 20} onChange={(event) => void onJournal({ journal_lines: Number(event.target.value) })} className="app-input app-select">
-                      {[0, 10, 20, 40, 80].map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                    {t('serverAudit.retain')}
-                    <select value={detail.retain_days || 14} onChange={(event) => void onJournal({ retain_days: Number(event.target.value) })} className="app-input app-select">
-                      {[7, 14, 30, 90].map((n) => (
-                        <option key={n} value={n}>{t('serverAudit.retainDays', { n })}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="flex flex-wrap items-end gap-2 sm:col-span-2 xl:col-span-4">
-                    <button type="button" onClick={() => void onToggle()} className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2">
-                      {detail.enabled ? t('serverAudit.enabled') : t('serverAudit.disabled')}
-                    </button>
-                    <button type="button" onClick={() => void onDelete(detail)} className="app-btn app-btn-danger !min-h-0 !px-3 !py-2">
-                      {t('serverAudit.remove')}
-                    </button>
-                  </div>
-                </div>
+                  }
+                />
               ) : null}
             </>
           )}
         </section>
       </div>
+      <ComputerDetailModal computerId={inventoryId} onClose={() => setInventoryId(null)} />
     </div>
   )
 }

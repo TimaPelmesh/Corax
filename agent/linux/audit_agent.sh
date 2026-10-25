@@ -30,8 +30,15 @@ fi
 ensure_nightly_script_update || true
 
 if have_cmd flock; then
-  exec 9>/tmp/corax-audit.lock
-  flock -n 9 || exit 0
+  # Same reason as update_scripts.sh: do not lock in sticky /tmp.
+  lock="$AGENT_ROOT/.corax-audit.lock"
+  if [ ! -e "$lock" ]; then
+    (umask 000; : >"$lock") 2>/dev/null || true
+  fi
+  chmod 666 "$lock" 2>/dev/null || true
+  if exec 9>"$lock"; then
+    flock -n 9 || exit 0
+  fi
 fi
 
 base=${INVENTORY_SERVER:-}
@@ -160,7 +167,13 @@ if ! ensure_workdir; then
 fi
 trap cleanup_workdir EXIT INT TERM
 
-stamp_file=/var/tmp/corax-last-audit
+# /var/tmp is sticky like /tmp, so a stamp owned by another user cannot be
+# replaced, even by root. Keep it next to the scripts and share it (mode 666).
+stamp_file="$AGENT_ROOT/.corax-last-audit"
+if [ ! -f "$stamp_file" ] && [ -r /var/tmp/corax-last-audit ]; then
+  cp /var/tmp/corax-last-audit "$stamp_file" 2>/dev/null || true
+fi
+chmod 666 "$stamp_file" 2>/dev/null || true
 stamp_field() {
   n=$1
   if [ ! -f "$stamp_file" ]; then
@@ -199,6 +212,7 @@ stamp_seconds() {
 
 write_stamp() {
   printf '%s %s s\n' "$(date +%s 2>/dev/null || printf '%s' 0)" "${1:-300}" >"$stamp_file" 2>/dev/null || true
+  chmod 666 "$stamp_file" 2>/dev/null || true
 }
 
 apply_directive() {

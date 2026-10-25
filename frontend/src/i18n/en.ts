@@ -3389,6 +3389,7 @@ export const en: MessageTree = {
     available: 'Available',
     manage: 'Control',
     manageHint: 'Label, schedule, and journal are changed here. The agent on the server picks them up on its next poll.',
+    manageLead: 'Charts stay on the page. This window is only actions, files, and collection for this server.',
     actions: 'Actions',
     actionsLead:
       'The agent picks up one job on its next poll, usually within a minute. The buttons only check a config, show a service status, restart a service from the list, or write a file into a config directory.',
