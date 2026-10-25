@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from app.auth import get_current_editor_or_superuser, get_current_user
 from app.database import get_db
@@ -131,12 +132,12 @@ async def _ips(db: AsyncSession, hosts: list[ServerAuditHost]) -> dict[int, str 
     return {row.id: row.ip_address for row in rows}
 
 
-def _host_out(host: ServerAuditHost, ip: str | None = None) -> ServerAuditHostOut:
+def _host_out(host: ServerAuditHost, ip: str | None = None, *, with_notes: bool = True) -> ServerAuditHostOut:
     return ServerAuditHostOut(
         id=host.id,
         hostname=host.hostname,
         label=host.label,
-        notes=host.notes,
+        notes=host.notes if with_notes else None,
         enabled=bool(host.enabled),
         interval_minutes=minutes_mirror(interval_seconds_of(host)),
         interval_seconds=interval_seconds_of(host),
@@ -169,10 +170,16 @@ async def list_hosts(
     db: AsyncSession = Depends(get_db),
 ):
     hosts = list(
-        (await db.execute(select(ServerAuditHost).order_by(ServerAuditHost.hostname.asc()))).scalars().all()
+        (
+            await db.execute(
+                select(ServerAuditHost)
+                .options(defer(ServerAuditHost.notes))
+                .order_by(ServerAuditHost.hostname.asc())
+            )
+        ).scalars().all()
     )
     ips = await _ips(db, hosts)
-    return [_host_out(host, ips.get(host.computer_id or 0)) for host in hosts]
+    return [_host_out(host, ips.get(host.computer_id or 0), with_notes=False) for host in hosts]
 
 
 @router.post("/hosts", response_model=ServerAuditHostOut)

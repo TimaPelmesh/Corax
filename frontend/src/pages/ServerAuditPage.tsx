@@ -11,7 +11,7 @@ import { ServerAuditCharts } from './ServerAuditCharts'
 const INTERVALS = [0, 15, 30, 60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400] as const
 
 type Hours = 6 | 24 | 168
-type Status = 'all' | 'fresh' | 'stale' | 'none' | 'off'
+type Status = 'all' | 'fresh' | 'stale' | 'none' | 'off' | 'hot'
 type SortKey = 'name' | 'temp' | 'cpu' | 'seen'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -110,6 +110,15 @@ function intervalSecOf(host: { interval_seconds?: number | null; interval_minute
   return Math.max(0, (host.interval_minutes || 0) * 60)
 }
 
+function isHot(host: ServerAuditHost) {
+  return (
+    (host.latest_cpu_temp_c ?? 0) >= 80 ||
+    (host.latest_cpu_percent ?? 0) >= 90 ||
+    (host.latest_mem_percent ?? 0) >= 90 ||
+    (host.latest_disk_percent ?? 0) >= 90
+  )
+}
+
 function freshness(host: ServerAuditHost): 'fresh' | 'stale' | 'none' {
   if (!host.last_sample_at) return 'none'
   const age = Date.now() - new Date(host.last_sample_at).getTime()
@@ -195,7 +204,7 @@ export function ServerAuditPage() {
   const rangeRaw = Number(searchParams.get('range'))
   const hours: Hours = rangeRaw === 6 || rangeRaw === 168 ? rangeRaw : 24
   const statusRaw = searchParams.get('status')
-  const status: Status = statusRaw === 'fresh' || statusRaw === 'stale' || statusRaw === 'none' || statusRaw === 'off' ? statusRaw : 'all'
+  const status: Status = statusRaw === 'fresh' || statusRaw === 'stale' || statusRaw === 'none' || statusRaw === 'off' || statusRaw === 'hot' ? statusRaw : 'all'
   const sortRaw = searchParams.get('sort')
   const sortKey: SortKey = sortRaw === 'name' || sortRaw === 'cpu' || sortRaw === 'seen' ? sortRaw : 'temp'
   const sortDir: 'asc' | 'desc' = searchParams.get('dir') === 'asc' ? 'asc' : 'desc'
@@ -216,6 +225,19 @@ export function ServerAuditPage() {
   const loadHosts = useCallback(async () => {
     const rows = await api.serverAuditHosts()
     setHosts(rows)
+    setDetail((current) => {
+      if (!current) return current
+      const row = rows.find((host) => host.id === current.id)
+      if (!row) return current
+      return {
+        ...current,
+        ...row,
+        notes: current.notes,
+        payload: current.payload,
+        points: current.points,
+        payload_in_range: current.payload_in_range,
+      }
+    })
     return rows
   }, [])
 
@@ -295,15 +317,15 @@ export function ServerAuditPage() {
   }, [loadHosts, t, toast])
 
   const jobHot = jobs.some((job) => job.status === 'pending' || job.status === 'leased')
-  const hurry = jobHot || hosts.some((host) => host.collect_requested || !host.last_sample_at)
-  const fastest = hosts.reduce((min, host) => {
-    if (!host.enabled) return min
-    const seconds = intervalSecOf(host)
-    if (seconds <= 0) return min
-    return Math.min(min, seconds)
-  }, 3600)
-  const pollMs = hours >= 168 ? 30_000 : fastest <= 60 ? 5_000 : hurry ? 8_000 : 20_000
-  const remainSec = paused ? null : Math.max(0, Math.ceil((pollMs - (now - polledAt)) / 1000))
+  const selectedHost = hosts.find((host) => host.id === selectedId) ?? null
+  const chartsLive = panel === 'charts' || panel === 'sensors' || panel === 'lists' || panel === 'journal'
+  const selectedSeconds = selectedHost?.enabled ? intervalSecOf(selectedHost) : 0
+  const selectedWaiting = Boolean(selectedHost?.enabled && (selectedHost.collect_requested || !selectedHost.last_sample_at))
+  const listMs = 20_000
+  const detailMs = hours >= 168 ? 45_000 : selectedSeconds > 0 && selectedSeconds <= 60 ? 10_000 : selectedWaiting ? 10_000 : 25_000
+  const jobMs = jobHot ? 4_000 : 20_000
+  const tickMs = panel === 'actions' && canEdit ? jobMs : chartsLive ? detailMs : listMs
+  const remainSec = paused ? null : Math.max(0, Math.ceil((tickMs - (now - polledAt)) / 1000))
 
   useEffect(() => {
     if (selectedId == null) {
@@ -312,24 +334,41 @@ export function ServerAuditPage() {
       return
     }
     let alive = true
-    const run = () => {
-      setPolledAt(Date.now())
-      loadDetail(selectedId, hours).catch((error: unknown) => {
-        if (alive) toast.error(error instanceof Error ? error.message : t('common.error'))
-      })
-      if (canEdit) {
-        loadJobs(selectedId).catch(() => undefined)
-      }
-      void loadHosts().catch(() => undefined)
-    }
-    run()
-    if (paused) return () => { alive = false }
-    const timer = window.setInterval(run, pollMs)
+    setPolledAt(Date.now())
+    loadDetail(selectedId, hours).catch((error: unknown) => {
+      if (alive) toast.error(error instanceof Error ? error.message : t('common.error'))
+    })
+    if (canEdit) loadJobs(selectedId).catch(() => undefined)
     return () => {
       alive = false
-      window.clearInterval(timer)
     }
-  }, [canEdit, hours, loadDetail, loadHosts, loadJobs, paused, pollMs, selectedId, t, toast])
+  }, [canEdit, hours, loadDetail, loadJobs, selectedId, t, toast])
+
+  useEffect(() => {
+    if (paused) return
+    const timer = window.setInterval(() => {
+      void loadHosts().catch(() => undefined)
+    }, listMs)
+    return () => window.clearInterval(timer)
+  }, [listMs, loadHosts, paused])
+
+  useEffect(() => {
+    if (paused || selectedId == null || !chartsLive) return
+    const timer = window.setInterval(() => {
+      setPolledAt(Date.now())
+      loadDetail(selectedId, hours).catch(() => undefined)
+    }, detailMs)
+    return () => window.clearInterval(timer)
+  }, [chartsLive, detailMs, hours, loadDetail, paused, selectedId])
+
+  useEffect(() => {
+    if (paused || selectedId == null || !canEdit || panel !== 'actions') return
+    const timer = window.setInterval(() => {
+      setPolledAt(Date.now())
+      loadJobs(selectedId).catch(() => undefined)
+    }, jobMs)
+    return () => window.clearInterval(timer)
+  }, [canEdit, jobMs, loadJobs, panel, paused, selectedId])
 
   const payload = detail?.payload ?? {}
   const os = asRecord(payload.os)
@@ -373,6 +412,7 @@ export function ServerAuditPage() {
       live: hosts.filter((host) => host.enabled && freshness(host) === 'fresh').length,
       wait: hosts.filter((host) => host.enabled && freshness(host) === 'none').length,
       stale: hosts.filter((host) => host.enabled && freshness(host) === 'stale').length,
+      hot: hosts.filter((host) => host.enabled && isHot(host)).length,
     }),
     [hosts],
   )
@@ -382,6 +422,8 @@ export function ServerAuditPage() {
     const rows = hosts.filter((host) => {
       if (status === 'off') {
         if (host.enabled) return false
+      } else if (status === 'hot') {
+        if (!host.enabled || !isHot(host)) return false
       } else if (status !== 'all' && (freshness(host) !== status || !host.enabled)) {
         return false
       }
@@ -656,6 +698,7 @@ export function ServerAuditPage() {
           ['fresh', `${t('serverAudit.statLive')}: ${stats.live}`],
           ['stale', `${t('serverAudit.statStale')}: ${stats.stale}`],
           ['none', `${t('serverAudit.statWait')}: ${stats.wait}`],
+          ['hot', `${t('serverAudit.statHot')}: ${stats.hot}`],
           ['off', t('serverAudit.filterOff')],
         ] as const).map(([id, text]) => (
           <button
@@ -827,7 +870,7 @@ export function ServerAuditPage() {
                     key={host.id}
                     type="button"
                     onClick={() => setParams({ host: String(host.id) })}
-                    className={`flex w-full flex-col gap-1 border-b border-[var(--color-border)] px-3 py-2.5 text-left ${active ? 'app-table-row-selected' : 'hover:bg-[var(--color-surface-muted)]'}`}
+                    className={`flex w-full flex-col gap-0.5 border-b border-[var(--color-border)] px-3 py-2 text-left ${active ? 'app-table-row-selected' : 'hover:bg-[var(--color-surface-muted)]'}`}
                   >
                     <span className="flex items-center justify-between gap-2">
                       <span className="truncate text-sm font-medium">{host.label || host.hostname}</span>
@@ -904,11 +947,6 @@ export function ServerAuditPage() {
                     >
                       {t('serverAudit.openComputer')}
                     </Link>
-                  ) : null}
-                  {canEdit ? (
-                    <button type="button" className={`app-chip ${panel === 'control' ? 'app-chip--active' : ''}`} onClick={() => setPanel('control')}>
-                      {t('serverAudit.manage')}
-                    </button>
                   ) : null}
                 </div>
                 </div>
