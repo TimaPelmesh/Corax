@@ -3036,7 +3036,7 @@ export const en: MessageTree = {
     botPhraseSaved: 'Phrases saved',
     botRestarting: 'Restarting the bot service…',
     botApplyMessages: 'Apply to the bot',
-    botPhraseApplied: 'Phrases applied. The bot service restarted — the next chat message uses this text.',
+    botPhraseApplied: 'Phrases applied. The bot’s latest chat message was rewritten. If you are in another dialog, send the bot any word.',
     botPhraseAppliedIdle: 'Phrases are stored for this bot. Connect it so it starts saying them.',
     botPreviewCaption: 'What the person in the chat will see',
     botUseThis: 'Connect this bot',

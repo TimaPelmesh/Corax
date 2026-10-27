@@ -11,6 +11,7 @@ from app.bot_intake import (
     dump_scripts,
     greeting_text,
     intake_step,
+    nudge_text,
     parse_scripts,
     status_text,
     voice_from_phrases,
@@ -280,6 +281,18 @@ def test_applied_phrase_is_what_the_bot_says_next():
         assert "одним сообщением" in ask_text("Анна", cleared)
     finally:
         drop_phrases(15)
+
+
+def test_stock_reminder_speaks_the_greeting():
+    from app.bot_intake import DEFAULT_LINES
+
+    morning = datetime(2026, 10, 26, 6, 0, tzinfo=timezone.utc)
+    stored = voice_from_phrases({"greet_body": "Слушаю вас.", "nudge": DEFAULT_LINES["nudge"]})
+    heard = nudge_text("Анна Петрова", stored, morning)
+    assert heard.startswith("Доброе утро, Анна!")
+    assert "Слушаю вас." in heard
+    custom = nudge_text("Анна", voice_from_phrases({"nudge": "Нажмите кнопку, {name}."}), morning)
+    assert custom == "Нажмите кнопку, Анна."
 
 
 def test_custom_phrase_replaces_only_that_line():

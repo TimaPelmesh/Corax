@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import hash_password
 from app.bot_intake import (
+    CANCEL,
     LEAVE,
     MINE,
     BotVoice,
@@ -516,6 +517,85 @@ async def _remember_keyboard(db: AsyncSession, state_key: str, message_id: str, 
     await db.commit()
 
 
+def _line_for_keyboard(sig: str, voice: BotVoice) -> str:
+    """Text that belongs on the bubble that still shows these buttons."""
+    label = (sig or "").strip()
+    if label == CANCEL:
+        return ask_text("", voice)
+    if label == LEAVE:
+        return greeting_text("", voice)
+    return ""
+
+
+def _personal_dialog(key: str) -> str:
+    if not key.startswith("user:"):
+        return ""
+    user_id = key.split(":", 1)[1].strip()
+    return user_id if user_id.isdigit() else ""
+
+
+async def show_saved_phrases(db: AsyncSession, cfg: Bitrix24Config) -> bool:
+    """Put the phrases just applied into the chat the admin is looking at.
+
+    Bitrix keeps old bubbles. Saving a script does not change them, so the
+    latest greeting (or the ask prompt) is rewritten in place. When that
+    message id is missing, one new greeting is posted into the newest chat.
+    """
+    webhook = (cfg.bot_webhook_url or "").strip()
+    token = (cfg.bot_token or "").strip()
+    if not cfg.bot_id or not webhook or not token:
+        return False
+    voice = _voice(cfg)
+    rows = (
+        await db.scalars(select(BitrixBotDialog).order_by(BitrixBotDialog.updated_at.desc()).limit(8))
+    ).all()
+    for row in rows:
+        message_id = (row.keyboard_message_id or "").strip()
+        label = (row.keyboard_sig or "").strip()
+        body = _line_for_keyboard(label, voice)
+        if not message_id.isdigit() or not body:
+            continue
+        buttons = send_keyboard(CANCEL if label == CANCEL else LEAVE)
+        try:
+            await imbot_call(
+                webhook,
+                "imbot.v2.Chat.Message.update",
+                {
+                    "botId": int(cfg.bot_id),
+                    "botToken": token,
+                    "messageId": int(message_id),
+                    "fields": {"message": body[:4000], "keyboard": buttons},
+                },
+            )
+            log.info("bitrix phrase rewritten message=%s", message_id)
+            return True
+        except ImbotError as exc:
+            log.warning("bitrix phrase update failed code=%s", exc.code)
+    buttons = send_keyboard(LEAVE)
+    text = greeting_text("", voice)
+    for row in rows:
+        dialog_id = _personal_dialog(row.dialog_id or "")
+        if not dialog_id:
+            continue
+        try:
+            result = await imbot_call(
+                webhook,
+                "imbot.v2.Chat.Message.send",
+                {
+                    "botId": int(cfg.bot_id),
+                    "botToken": token,
+                    "dialogId": dialog_id,
+                    "fields": {"message": text[:4000], "keyboard": buttons},
+                },
+            )
+            await _remember_keyboard(db, row.dialog_id, _sent_id(result), keyboard_sig(buttons))
+            log.info("bitrix phrase posted dialog=%s", dialog_id)
+            return True
+        except ImbotError as exc:
+            log.warning("bitrix phrase send failed code=%s", exc.code)
+    return False
+
+
 async def _clear_keyboard(cfg: Bitrix24Config, message_id: str) -> None:
     """Bitrix removes buttons only when keyboard is the string N, not an empty list."""
     if not message_id.isdigit():
@@ -556,12 +636,11 @@ async def _v2_reply(
     attach = attach_keyboard(previous, keyboard)
     if attach and remembered and (remembered.keyboard_message_id or "").strip():
         await _clear_keyboard(cfg, remembered.keyboard_message_id)
-    # Docs: fields.message is the bubble text. fields.keyboard is
-    # {BOT_ID, BUTTONS} on the same message. A bare button list can restyle
-    # the keyboard and leave the previous text in place.
-    fields: dict[str, Any] = {"message": (message or "").strip()[:4000], "urlPreview": False}
+    # imbot.v2.Chat.Message.send: fields.message is the bubble, fields.keyboard
+    # is the button list. The portal already accepts this list and wraps it.
+    fields: dict[str, Any] = {"message": (message or "").strip()[:4000]}
     if attach and fields["message"]:
-        fields["keyboard"] = {"BOT_ID": int(cfg.bot_id), "BUTTONS": attach}
+        fields["keyboard"] = attach
     last_code = ""
     for dialog_id in dialogs:
         try:

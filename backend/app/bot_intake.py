@@ -327,8 +327,17 @@ def ask_text(name: str, voice: BotVoice) -> str:
 
 
 def nudge_text(name: str, voice: BotVoice, moment: datetime | None = None) -> str:
+    """A typed message in an open chat.
+
+    The stock reminder is only the time-of-day line. An edited greeting would
+    never show up there, so the stock reminder speaks the greeting instead.
+    A reminder the admin actually rewrote stays as they wrote it.
+    """
+    custom = (voice.nudge or "").strip()
+    if not custom or custom == DEFAULT_LINES["nudge"]:
+        return greeting_text(name, voice, moment)
     hi = hello(name, voice, moment)
-    return fill_phrase(_pick(voice.nudge, DEFAULT_LINES["nudge"]), hello=hi, name=given_name(name))
+    return fill_phrase(custom, hello=hi, name=given_name(name))
 
 
 def cancel_text(name: str, voice: BotVoice) -> str:

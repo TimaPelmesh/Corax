@@ -34,7 +34,7 @@ from app.imbot_v2 import (
     webhook_host,
 )
 from app.models import Bitrix24Config, User
-from app.routers.bitrix24_bot_handler import _get_or_create_cfg, publish_menu
+from app.routers.bitrix24_bot_handler import _get_or_create_cfg, publish_menu, show_saved_phrases
 
 router = APIRouter(prefix="/settings/bitrix24/bot", tags=["bitrix24-imbot"])
 log = logging.getLogger("corax.bitrix.bot")
@@ -566,6 +566,7 @@ async def save_bot_phrases(
     await db.refresh(row)
     publish_phrases(int(body.bot_id), scripts.get(key, {}))
     if body.apply and row.bot_id == int(body.bot_id):
+        await show_saved_phrases(db, row)
         from app.bitrix_bot_poll import reload_worker
 
         await reload_worker()
