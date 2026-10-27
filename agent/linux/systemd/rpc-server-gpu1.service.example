@@ -1,0 +1,12 @@
+[Unit]
+Description=llama.cpp rpc-server GPU 1
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/rpc-server -H 0.0.0.0 -p 50053
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

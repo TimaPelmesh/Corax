@@ -1,0 +1,218 @@
+"""LAN-only installer pairing. The EXE waits in the tray until an admin approves it."""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import ipaddress
+import secrets
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth import get_current_superuser
+from app.config import settings
+from app.database import get_db
+from app.models import AgentPairing, AgentToken, User
+from app.net_trust import is_private_ip
+from app.ticket_client_identity import client_ip
+
+router = APIRouter(prefix="/agent", tags=["agent-pair"])
+admin_router = APIRouter(prefix="/agent-tokens", tags=["agent-pair"])
+
+_AGENT_TOKEN_PREFIX = "hmac256:"
+
+
+def _hmac_secret(secret: str) -> str:
+    key = (settings.agent_token_pepper or settings.secret_key).encode("utf-8")
+    return hmac.new(key, secret.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _lan_only(request: Request) -> None:
+    ip = client_ip(request)
+    if is_private_ip(ip):
+        return
+    try:
+        if ipaddress.ip_address(ip).is_loopback:
+            return
+    except ValueError:
+        pass
+    if (settings.environment or "").strip().lower() == "test" and ip in {"testclient", ""}:
+        return
+    raise HTTPException(status_code=403, detail="Подключение агента доступно только в локальной сети")
+
+
+def _host_key(name: str) -> str:
+    raw = (name or "").strip().casefold().rstrip(".")
+    return raw.split(".", 1)[0]
+
+
+def pairing_announce_kind(status: str, stored_host: str, announced_host: str, has_token: bool) -> str:
+    """fresh — другой ПК, wait — ждём одобрения, reuse — токен ещё не забран, claimed — уже выдан."""
+    stored = _host_key(stored_host)
+    announced = _host_key(announced_host)
+    if stored and announced and stored != announced:
+        return "fresh"
+    if status == "approved" and has_token:
+        return "reuse"
+    if status == "claimed":
+        return "claimed"
+    if status == "rejected":
+        return "rejected"
+    return "wait"
+
+
+def _mint_agent_token(hostname: str) -> tuple[str, AgentToken]:
+    public_id = secrets.token_hex(4)
+    secret = secrets.token_urlsafe(24)
+    token = f"{public_id}.{secret}"
+    host = (hostname or "").strip()[:255] or None
+    row = AgentToken(
+        public_id_prefix=public_id,
+        token_hash=_AGENT_TOKEN_PREFIX + _hmac_secret(secret),
+        label=f"Установщик {host or 'ПК'}"[:255],
+        allowed_hostname=host,
+    )
+    return token, row
+
+
+class PairAnnounce(BaseModel):
+    public_id: str = Field(min_length=16, max_length=64)
+    hostname: str = Field(default="", max_length=255)
+
+
+class PairClaim(BaseModel):
+    public_id: str = Field(min_length=16, max_length=64)
+
+
+class PairingOut(BaseModel):
+    id: int
+    hostname: str
+    status: str
+    created_at: datetime
+
+
+@router.get("/discover")
+async def discover_server(request: Request):
+    _lan_only(request)
+    return {"product": "corax"}
+
+
+def _pending_payload(hostname: str) -> dict[str, str]:
+    return {"status": "pending", "hostname": hostname}
+
+
+@router.post("/pair/announce")
+async def announce_pairing(body: PairAnnounce, request: Request, db: AsyncSession = Depends(get_db)):
+    _lan_only(request)
+    public_id = body.public_id.strip()
+    hostname = body.hostname.strip()[:255]
+    row = (
+        await db.execute(select(AgentPairing).where(AgentPairing.public_id == public_id))
+    ).scalar_one_or_none()
+    if row is None:
+        row = AgentPairing(public_id=public_id, hostname=hostname, status="pending")
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+        return _pending_payload(row.hostname or hostname)
+    stored_host = row.hostname or ""
+    kind = pairing_announce_kind(row.status, stored_host, hostname, bool(row.token_once))
+    if kind == "reuse":
+        await db.commit()
+        return {"status": "approved", "agent_token": row.token_once}
+    if kind == "rejected":
+        return {"status": "rejected", "hostname": row.hostname or hostname}
+    if kind == "claimed":
+        # The tray asks again every few seconds when it cannot see its token.
+        # Re-open the approval only after a long quiet period, not on each poll.
+        updated = row.updated_at
+        if updated is not None and updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        if updated is not None and datetime.now(timezone.utc) - updated < timedelta(hours=6):
+            return {"status": "claimed", "hostname": row.hostname or hostname}
+    if kind == "wait" and row.status == "pending":
+        return _pending_payload(row.hostname or hostname)
+    row.token_once = None
+    row.hostname = hostname or row.hostname
+    row.status = "pending"
+    await db.commit()
+    await db.refresh(row)
+    return _pending_payload(row.hostname or hostname)
+
+
+@router.post("/pair/claim")
+async def claim_pairing(body: PairClaim, request: Request, db: AsyncSession = Depends(get_db)):
+    _lan_only(request)
+    row = (
+        await db.execute(select(AgentPairing).where(AgentPairing.public_id == body.public_id.strip()))
+    ).scalar_one_or_none()
+    if row is None:
+        return {"status": "unknown"}
+    if row.status == "pending":
+        return _pending_payload(row.hostname or "")
+    if row.status == "rejected":
+        return {"status": "rejected"}
+    if row.status == "approved" and row.token_once:
+        token = row.token_once
+        row.token_once = None
+        row.status = "claimed"
+        await db.commit()
+        return {"status": "claimed", "agent_token": token}
+    return {"status": row.status}
+
+
+@admin_router.get("/pair/pending", response_model=list[PairingOut])
+async def list_pending_pairings(
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (
+        await db.execute(
+            select(AgentPairing)
+            .where(AgentPairing.status == "pending")
+            .order_by(AgentPairing.id.desc())
+        )
+    ).scalars().all()
+    return [
+        PairingOut(id=row.id, hostname=row.hostname or "—", status=row.status, created_at=row.created_at)
+        for row in rows
+    ]
+
+
+@admin_router.post("/pair/{pairing_id}/approve", response_model=PairingOut)
+async def approve_pairing(
+    pairing_id: int,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(AgentPairing, pairing_id)
+    if row is None or row.status != "pending":
+        raise HTTPException(status_code=404, detail="Установщик не найден")
+    if not row.token_once:
+        token, issued = _mint_agent_token(row.hostname)
+        db.add(issued)
+        row.token_once = token
+    row.status = "approved"
+    await db.commit()
+    await db.refresh(row)
+    return PairingOut(id=row.id, hostname=row.hostname or "—", status=row.status, created_at=row.created_at)
+
+
+@admin_router.post("/pair/{pairing_id}/reject", response_model=PairingOut)
+async def reject_pairing(
+    pairing_id: int,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(AgentPairing, pairing_id)
+    if row is None or row.status != "pending":
+        raise HTTPException(status_code=404, detail="Установщик не найден")
+    row.token_once = None
+    row.status = "rejected"
+    await db.commit()
+    await db.refresh(row)
+    return PairingOut(id=row.id, hostname=row.hostname or "—", status=row.status, created_at=row.created_at)

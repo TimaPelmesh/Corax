@@ -1,0 +1,186 @@
+#include "http.hpp"
+#include "util.hpp"
+#include <windows.h>
+#include <winhttp.h>
+#include <exception>
+#pragma comment(lib, "winhttp.lib")
+
+namespace {
+
+HttpResult http_request_impl(const std::string& method, const std::string& base_url, const std::string& path,
+                             const std::string& bearer_token, const std::string& content_type,
+                             const void* body_data, size_t body_size);
+
+bool parse_url(const std::string& url, bool& https, std::wstring& host, INTERNET_PORT& port,
+               std::wstring& path) {
+  std::wstring w = util::widen(url);
+  URL_COMPONENTS uc{};
+  uc.dwStructSize = sizeof(uc);
+  wchar_t hostBuf[256];
+  wchar_t pathBuf[2048];
+  uc.lpszHostName = hostBuf;
+  uc.dwHostNameLength = 256;
+  uc.lpszUrlPath = pathBuf;
+  uc.dwUrlPathLength = 2048;
+  if (!WinHttpCrackUrl(w.c_str(), 0, 0, &uc)) return false;
+  https = (uc.nScheme == INTERNET_SCHEME_HTTPS);
+  host.assign(uc.lpszHostName, uc.dwHostNameLength);
+  port = uc.nPort;
+  path.assign(uc.lpszUrlPath, uc.dwUrlPathLength);
+  if (path.empty()) path = L"/";
+  return true;
+}
+
+}  // namespace
+
+HttpResult http_exchange(const std::string& method, const std::string& base_url, const std::string& path,
+                         const std::string& bearer_token, const std::string& content_type,
+                         const void* body_data, size_t body_size) {
+  // WinHTTP → schannel occasionally raises SEH on certain proxy chains and
+  // captive-portal responses. `_set_se_translator` (installed in worker
+  // threads) makes those surface as std::runtime_error; catch here so the
+  // splash reports a readable "Отправка не удалась" instead of vanishing.
+  try {
+    return http_request_impl(method, base_url, path, bearer_token, content_type, body_data, body_size);
+  } catch (const std::exception& e) {
+    HttpResult r;
+    r.ok = false;
+    r.error = std::string("HTTP crash: ") + e.what();
+    return r;
+  } catch (...) {
+    HttpResult r;
+    r.ok = false;
+    r.error = "HTTP crash: unknown";
+    return r;
+  }
+}
+
+HttpResult http_post_json(const std::string& base_url, const std::string& path,
+                          const std::string& bearer_token, const std::string& json_body) {
+  return http_exchange("POST", base_url, path, bearer_token, "application/json", json_body.data(),
+                       json_body.size());
+}
+
+HttpResult http_post_bytes(const std::string& base_url, const std::string& path,
+                           const std::string& bearer_token, const std::string& content_type,
+                           const void* data, size_t size) {
+  return http_exchange("POST", base_url, path, bearer_token, content_type, data, size);
+}
+
+HttpResult http_get(const std::string& base_url, const std::string& path, const std::string& bearer_token) {
+  return http_exchange("GET", base_url, path, bearer_token, "application/json", nullptr, 0);
+}
+
+namespace {
+HttpResult http_request_impl(const std::string& method, const std::string& base_url, const std::string& path,
+                             const std::string& bearer_token, const std::string& content_type,
+                             const void* body_data, size_t body_size) {
+  HttpResult r;
+  bool https = false;
+  std::wstring host, url_path;
+  INTERNET_PORT port = 0;
+  if (!parse_url(base_url, https, host, port, url_path)) {
+    r.error = "bad server_url (ожидается http://host:port)";
+    return r;
+  }
+  // Append API path
+  std::wstring full_path = url_path;
+  if (!full_path.empty() && full_path.back() == L'/') full_path.pop_back();
+  full_path += util::widen(path);
+
+  HINTERNET session = WinHttpOpen(L"CORAX-Agent/5.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                  WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+  if (!session) {
+    r.error = "WinHttpOpen failed err=" + std::to_string(GetLastError());
+    return r;
+  }
+  WinHttpSetTimeouts(session, 15000, 15000, 60000, 120000);
+  if (https) {
+    // Never disable certificate validation. Require TLS 1.2 even on Windows 7;
+    // an unpatched host must be updated instead of silently falling back.
+    DWORD protocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+    if (!WinHttpSetOption(session, WINHTTP_OPTION_SECURE_PROTOCOLS, &protocols,
+                          sizeof(protocols))) {
+      r.error = "TLS 1.2 is unavailable (install current Windows TLS updates), err=" +
+                std::to_string(GetLastError());
+      WinHttpCloseHandle(session);
+      return r;
+    }
+  }
+
+  HINTERNET connect = WinHttpConnect(session, host.c_str(), port, 0);
+  if (!connect) {
+    r.error = "WinHttpConnect failed err=" + std::to_string(GetLastError());
+    WinHttpCloseHandle(session);
+    return r;
+  }
+
+  DWORD flags = https ? WINHTTP_FLAG_SECURE : 0;
+  const std::wstring verb = util::widen(method);
+  HINTERNET request =
+      WinHttpOpenRequest(connect, verb.c_str(), full_path.c_str(), nullptr, WINHTTP_NO_REFERER,
+                         WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+  if (!request) {
+    r.error = "WinHttpOpenRequest failed err=" + std::to_string(GetLastError());
+    WinHttpCloseHandle(connect);
+    WinHttpCloseHandle(session);
+    return r;
+  }
+  DWORD redirect_off = WINHTTP_DISABLE_REDIRECTS;
+  WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &redirect_off, sizeof(redirect_off));
+
+  std::wstring headers = L"Content-Type: ";
+  headers += util::widen(content_type.empty() ? "application/json" : content_type);
+  headers += L"\r\n";
+  if (!bearer_token.empty()) {
+    headers += L"Authorization: Bearer ";
+    headers += util::widen(bearer_token);
+    headers += L"\r\n";
+  }
+
+  void* body_ptr = (body_data && body_size) ? const_cast<void*>(body_data) : WINHTTP_NO_REQUEST_DATA;
+  DWORD body_len = (body_data && body_size) ? (DWORD)body_size : 0;
+  BOOL ok = WinHttpSendRequest(request, headers.c_str(), (DWORD)headers.size(), body_ptr, body_len, body_len, 0);
+  if (!headers.empty()) SecureZeroMemory(headers.data(), headers.size() * sizeof(wchar_t));
+  if (!ok) {
+    r.error = "WinHttpSendRequest failed err=" + std::to_string(GetLastError());
+    WinHttpCloseHandle(request);
+    WinHttpCloseHandle(connect);
+    WinHttpCloseHandle(session);
+    return r;
+  }
+  ok = WinHttpReceiveResponse(request, nullptr);
+  if (!ok) {
+    r.error = "WinHttpReceiveResponse failed err=" + std::to_string(GetLastError());
+    WinHttpCloseHandle(request);
+    WinHttpCloseHandle(connect);
+    WinHttpCloseHandle(session);
+    return r;
+  }
+
+  DWORD status = 0, sz = sizeof(status);
+  WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                      WINHTTP_HEADER_NAME_BY_INDEX, &status, &sz, WINHTTP_NO_HEADER_INDEX);
+  r.status = (int)status;
+
+  std::string body;
+  for (;;) {
+    DWORD avail = 0;
+    if (!WinHttpQueryDataAvailable(request, &avail)) break;
+    if (!avail) break;
+    std::string chunk(avail, '\0');
+    DWORD read = 0;
+    if (!WinHttpReadData(request, chunk.data(), avail, &read)) break;
+    chunk.resize(read);
+    body += chunk;
+  }
+  r.body = body;
+  r.ok = (status >= 200 && status < 300);
+
+  WinHttpCloseHandle(request);
+  WinHttpCloseHandle(connect);
+  WinHttpCloseHandle(session);
+  if (!r.ok && r.error.empty()) r.error = "HTTP " + std::to_string(status);
+  return r;
+}
+}  // namespace

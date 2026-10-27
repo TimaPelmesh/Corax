@@ -1,0 +1,505 @@
+"""Pull GLPI tickets into CORAX and push CORAX tickets back out."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.glpi_client import (
+    GlpiTicketProbe,
+    GlpiTicketQuery,
+    check_tickets,
+    GlpiCredentials,
+    GlpiOutbound,
+    GlpiPushResult,
+    GlpiTicket,
+    fetch_tickets,
+    glpi_priority_label,
+    glpi_status_label,
+    normalize_base_url,
+    push_tickets,
+)
+from app.models import GlpiConfig, ServiceRequest, User, service_request_assignees
+from app.search_index import index_service_requests
+from app.service_request_import import ImportRecord, _process_batch
+
+_BATCH = 250
+_ERROR_LIMIT = 20
+_CONTENT_SAFE = 20_000
+
+
+@dataclass
+class GlpiSyncResult:
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    failed: int = 0
+    message: str = ""
+    errors: list[str] = field(default_factory=list)
+
+
+def creds_from_row(row: GlpiConfig) -> GlpiCredentials:
+    return GlpiCredentials(
+        base_url=row.base_url or "",
+        api_mode=(row.api_mode or "v2").strip().lower(),
+        grant_type=(row.grant_type or "password").strip().lower(),
+        client_id=row.client_id or "",
+        client_secret=row.client_secret or "",
+        username=row.username or "",
+        password=row.password or "",
+        app_token=row.app_token or "",
+        user_token=row.user_token or "",
+        verify_tls=bool(row.verify_tls),
+    )
+
+
+def ticket_to_record(row_number: int, ticket: GlpiTicket) -> ImportRecord:
+    return ImportRecord(
+        row_number=row_number,
+        title=ticket.title[:255],
+        glpi_id=ticket.glpi_id,
+        description=ticket.content,
+        status=ticket.status,
+        priority=ticket.priority,
+        glpi_status=ticket.status_label,
+        glpi_priority=ticket.priority_label,
+        glpi_updated_at=ticket.updated_at,
+        external_source="glpi",
+        external_id=str(ticket.glpi_id),
+        external_url=ticket.url,
+        requester_name=ticket.requester,
+        category=ticket.category,
+        location=ticket.location,
+        opened_at=ticket.opened_at,
+        closed_at=ticket.closed_at,
+    )
+
+
+def _display_user(user: User | None) -> str | None:
+    if user is None:
+        return None
+    full = (user.full_name or "").strip()
+    if full:
+        return full
+    name = (user.username or "").strip()
+    return name or None
+
+
+def _user_hints(user: User | None) -> list[str]:
+    if user is None:
+        return []
+    keys: list[str] = []
+    for value in (user.username, user.full_name, user.email):
+        text = (value or "").strip()
+        if text and text not in keys:
+            keys.append(text)
+    label = _display_user(user)
+    if label and label not in keys:
+        keys.append(label)
+    return keys
+
+
+async def _ticket_people_map(
+    db: AsyncSession,
+    rows: list[ServiceRequest],
+) -> dict[int, dict[str, Any]]:
+    """Инициатор и первый ответственный для выгрузки в GLPI (в т.ч. закрытых)."""
+    out: dict[int, dict[str, Any]] = {
+        row.id: {
+            "requester": (row.requester_name or "").strip() or None,
+            "assignee": None,
+            "requester_hints": [],
+            "assignee_hints": [],
+        }
+        for row in rows
+    }
+    creator_ids = {row.created_by_id for row in rows if row.created_by_id}
+    creators: dict[int, User] = {}
+    if creator_ids:
+        result = await db.execute(select(User).where(User.id.in_(creator_ids)))
+        creators = {user.id: user for user in result.scalars().all()}
+    for row in rows:
+        creator = creators.get(row.created_by_id)
+        hints = _user_hints(creator)
+        if not out[row.id]["requester"]:
+            out[row.id]["requester"] = _display_user(creator)
+        out[row.id]["requester_hints"] = [
+            item for item in hints if item != out[row.id]["requester"]
+        ]
+
+    request_ids = [row.id for row in rows]
+    if not request_ids:
+        return out
+    assign_q = await db.execute(
+        select(service_request_assignees.c.request_id, User)
+        .join(User, User.id == service_request_assignees.c.user_id)
+        .where(service_request_assignees.c.request_id.in_(request_ids))
+        .order_by(service_request_assignees.c.request_id, User.id)
+    )
+    seen: set[int] = set()
+    extra: dict[int, list[str]] = {row.id: [] for row in rows}
+    for request_id, user in assign_q.all():
+        rid = int(request_id)
+        if rid not in out:
+            continue
+        hints = _user_hints(user)
+        if rid not in seen:
+            seen.add(rid)
+            out[rid]["assignee"] = _display_user(user)
+            out[rid]["assignee_hints"] = [item for item in hints if item != out[rid]["assignee"]]
+        else:
+            extra[rid].extend(item for item in hints if item not in extra[rid])
+    for rid, more in extra.items():
+        if more:
+            existing = list(out[rid]["assignee_hints"])
+            existing.extend(item for item in more if item not in existing)
+            out[rid]["assignee_hints"] = existing
+    return out
+
+
+def filter_tickets_by_glpi_id(tickets: list[GlpiTicket], glpi_ids: list[int] | None) -> list[GlpiTicket]:
+    """None — вся выборка. Список — только отмеченные id, без добора остальных."""
+    if glpi_ids is None:
+        return tickets
+    wanted = {int(item) for item in glpi_ids if int(item) > 0}
+    return [ticket for ticket in tickets if ticket.glpi_id in wanted]
+
+
+async def list_remote_glpi_tickets(
+    db: AsyncSession,
+    creds: GlpiCredentials,
+    *,
+    limit: int,
+) -> list[tuple[GlpiTicket, int | None]]:
+    """Заявки GLPI и id уже созданной заявки CORAX, если связь есть."""
+    tickets = await asyncio.to_thread(fetch_tickets, creds, max(1, min(int(limit), 2000)))
+    ids = [ticket.glpi_id for ticket in tickets]
+    linked: dict[int, int] = {}
+    if ids:
+        rows = await db.execute(
+            select(ServiceRequest.id, ServiceRequest.glpi_id).where(ServiceRequest.glpi_id.in_(ids))
+        )
+        for corax_id, glpi_id in rows.all():
+            if glpi_id is None:
+                continue
+            linked.setdefault(int(glpi_id), int(corax_id))
+    return [(ticket, linked.get(ticket.glpi_id)) for ticket in tickets]
+
+
+async def import_glpi_tickets(
+    creds: GlpiCredentials,
+    *,
+    created_by_id: int,
+    limit: int,
+    glpi_ids: list[int] | None = None,
+) -> GlpiSyncResult:
+    tickets = filter_tickets_by_glpi_id(
+        await asyncio.to_thread(fetch_tickets, creds, max(1, min(int(limit), 2000))),
+        glpi_ids,
+    )
+    if glpi_ids is not None and not tickets:
+        return GlpiSyncResult(message="В загруженной выборке GLPI нет отмеченных заявок")
+    records = [ticket_to_record(index, ticket) for index, ticket in enumerate(tickets, start=1)]
+    created = updated = skipped = 0
+    for offset in range(0, len(records), _BATCH):
+        batch_created, batch_updated, batch_skipped = await _process_batch(
+            records[offset : offset + _BATCH],
+            created_by_id,
+        )
+        created += batch_created
+        updated += batch_updated
+        skipped += batch_skipped
+    return GlpiSyncResult(
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        message=(
+            f"Импорт из GLPI: создано {created}, обновлено {updated}, "
+            f"без изменений {skipped}"
+        ),
+    )
+
+
+async def export_glpi_tickets(
+    db: AsyncSession,
+    creds: GlpiCredentials,
+    *,
+    limit: int,
+    request_ids: list[int] | None = None,
+    mode: str = "recent",
+    fields: frozenset[str] | None = None,
+    on_progress: Callable[[int, int, GlpiPushResult], None] | None = None,
+) -> GlpiSyncResult:
+    """Выгрузка заявок в GLPI.
+
+    Связь — только ``ServiceRequest.glpi_id`` (id заявки в GLPI).
+    CORAX id и GLPI id не совпадают и не должны подставляться друг за друга.
+    Без ``glpi_id`` → CREATE; с ``glpi_id`` → UPDATE этой заявки в GLPI.
+    """
+    bounded = max(1, min(int(limit), 2000))
+    export_mode = (mode or "force_create").strip().lower()
+    if request_ids and export_mode not in {"selected", "selected_update"}:
+        export_mode = "selected"
+
+    force_create = export_mode in {"force_create", "test_one", "new_only", "selected"}
+
+    stmt = select(ServiceRequest)
+    if export_mode in {"selected", "selected_update"}:
+        ids = list(dict.fromkeys(int(item) for item in (request_ids or [])))[:bounded]
+        if not ids:
+            return GlpiSyncResult(message="Укажите id заявок CORAX для выборочной выгрузки")
+        stmt = stmt.where(ServiceRequest.id.in_(ids))
+    elif export_mode == "test_one":
+        stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(1)
+    elif export_mode == "new_only":
+        stmt = (
+            stmt.where(ServiceRequest.glpi_id.is_(None))
+            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
+            .limit(bounded)
+        )
+    elif export_mode == "linked_only":
+        stmt = (
+            stmt.where(ServiceRequest.glpi_id.isnot(None))
+            .order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc())
+            .limit(bounded)
+        )
+    elif export_mode == "force_create":
+        stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(bounded)
+    else:
+        stmt = stmt.order_by(ServiceRequest.updated_at.desc(), ServiceRequest.id.desc()).limit(bounded)
+
+    rows = list((await db.execute(stmt)).scalars().all())
+    if not rows:
+        empty_hint = {
+            "new_only": "Нет заявок без связи с GLPI (все уже с glpi_id)",
+            "linked_only": "Нет заявок, уже связанных с GLPI",
+            "selected": "По указанным id заявки не найдены",
+            "selected_update": "По указанным id заявки не найдены",
+            "test_one": "В CORAX нет заявок для тестовой выгрузки",
+            "force_create": "В CORAX нет заявок для выгрузки в GLPI",
+        }.get(export_mode, "В CORAX нет заявок для выгрузки в GLPI")
+        return GlpiSyncResult(message=empty_hint)
+
+    people = await _ticket_people_map(db, rows)
+    outbound = [
+        GlpiOutbound(
+            corax_id=row.id,
+            glpi_id=None if force_create else row.glpi_id,
+            title=row.title or f"CORAX #{row.id}",
+            content=(row.description or "")[:_CONTENT_SAFE],
+            status=row.status or "open",
+            priority=row.priority or "normal",
+            requester=people[row.id]["requester"],
+            assignee=people[row.id]["assignee"],
+            category=(row.category or "").strip() or None,
+            force_create=force_create,
+            requester_hints=tuple(people[row.id].get("requester_hints") or ()),
+            assignee_hints=tuple(people[row.id].get("assignee_hints") or ()),
+            opened_at=row.opened_at or row.created_at,
+            include=fields,
+        )
+        for row in rows
+    ]
+    results = await asyncio.to_thread(
+        push_tickets,
+        creds,
+        outbound,
+        on_progress=on_progress,
+    )
+    by_id = {row.id: row for row in rows}
+    created = updated = failed = skipped = 0
+    errors: list[str] = []
+    now = datetime.now(timezone.utc)
+    base = normalize_base_url(creds.base_url)
+    for result in results:
+        row = by_id.get(result.corax_id)
+        if result.action == "failed" or result.glpi_id is None or row is None:
+            failed += 1
+            if result.error and len(errors) < _ERROR_LIMIT:
+                linked = f", GLPI #{row.glpi_id}" if row is not None and row.glpi_id else ""
+                action = "UPDATE" if row is not None and row.glpi_id else "CREATE"
+                extra = f" ({result.detail})" if result.detail else ""
+                errors.append(f"#{result.corax_id}{linked} [{action}]: {result.error}{extra}")
+            continue
+        previous = row.glpi_id
+        row.glpi_id = result.glpi_id
+        row.glpi_status = glpi_status_label(row.status)
+        row.glpi_priority = glpi_priority_label(row.priority)
+        row.glpi_updated_at = now
+        row.external_url = f"{base}/front/ticket.form.php?id={result.glpi_id}"[:512]
+        if not (row.external_source or "").strip():
+            row.external_source = "glpi"
+            row.external_id = str(result.glpi_id)
+        elif result.action == "created" and previous and previous != result.glpi_id:
+            row.external_id = str(result.glpi_id)
+            row.external_source = "glpi"
+        if result.action == "created":
+            created += 1
+            if result.detail and len(errors) < _ERROR_LIMIT and "старая связь" in (result.detail or ""):
+                # Informative, not a hard failure — keep in errors list as notice? Better skip.
+                pass
+        else:
+            updated += 1
+    touched = [
+        by_id[result.corax_id]
+        for result in results
+        if result.action != "failed" and result.glpi_id is not None and result.corax_id in by_id
+    ]
+    if touched:
+        await db.flush()
+        await index_service_requests(db, touched)
+    await db.commit()
+    mode_label = {
+        "new_only": "только новые",
+        "linked_only": "только связанные",
+        "selected": "выбранные (CREATE)",
+        "selected_update": "выбранные (UPDATE по CORAX#id)",
+        "recent": "последние",
+        "test_one": "тестовая одна (CREATE)",
+        "force_create": "всегда CREATE",
+    }.get(export_mode, export_mode)
+    message = (
+        f"Выгрузка в GLPI ({mode_label}): создано {created}, обновлено {updated}, "
+        f"ошибок {failed}"
+    )
+    return GlpiSyncResult(
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        failed=failed,
+        message=message,
+        errors=errors,
+    )
+
+
+async def apply_glpi_ticket_links(
+    db: AsyncSession,
+    items: list[tuple[int, int | None]],
+    *,
+    base_url: str | None = None,
+) -> GlpiSyncResult:
+    """Переписать glpi_id у заявок CORAX (снять связь или подставить другой id).
+
+    null → следующая выгрузка сделает CREATE. Число → UPDATE этой заявки в GLPI.
+    """
+    if not items:
+        return GlpiSyncResult(message="Нечего менять")
+    request_ids = list(dict.fromkeys(rid for rid, _ in items))
+    rows = list((await db.execute(select(ServiceRequest).where(ServiceRequest.id.in_(request_ids)))).scalars().all())
+    by_id = {row.id: row for row in rows}
+    base = normalize_base_url(base_url or "") if base_url else ""
+    updated = cleared = skipped = failed = 0
+    errors: list[str] = []
+    touched: list[ServiceRequest] = []
+    for request_id, glpi_id in items:
+        row = by_id.get(request_id)
+        if row is None:
+            failed += 1
+            if len(errors) < _ERROR_LIMIT:
+                errors.append(f"#{request_id}: заявка CORAX не найдена")
+            continue
+        if glpi_id is not None and glpi_id <= 0:
+            failed += 1
+            if len(errors) < _ERROR_LIMIT:
+                errors.append(f"#{request_id}: glpi_id должен быть ≥ 1 или пустым")
+            continue
+        previous = row.glpi_id
+        if previous == glpi_id:
+            skipped += 1
+            continue
+        row.glpi_id = glpi_id
+        if glpi_id is None:
+            cleared += 1
+            if (row.external_source or "").strip().casefold() == "glpi":
+                row.external_id = None
+                row.external_url = None
+                row.external_source = None
+            row.glpi_status = None
+            row.glpi_priority = None
+            row.glpi_updated_at = None
+        else:
+            updated += 1
+            if base:
+                row.external_url = f"{base}/front/ticket.form.php?id={glpi_id}"[:512]
+            if not (row.external_source or "").strip():
+                row.external_source = "glpi"
+            row.external_id = str(glpi_id)
+        touched.append(row)
+    if touched:
+        await db.flush()
+        await index_service_requests(db, touched)
+    await db.commit()
+    message = (
+        f"Связи GLPI: переписано {updated}, снято {cleared}, "
+        f"без изменений {skipped}, ошибок {failed}"
+    )
+    # created = снято (cleared), updated = переписано на новый id
+    return GlpiSyncResult(
+        created=cleared,
+        updated=updated,
+        skipped=skipped,
+        failed=failed,
+        message=message,
+        errors=errors,
+    )
+
+
+def _unknown_corax(corax_id: int) -> GlpiTicketProbe:
+    return GlpiTicketProbe(
+        corax_id=corax_id,
+        stored_glpi_id=None,
+        stored_state="none",
+        marker_glpi_id=None,
+        title_glpi_id=None,
+        suggestion="unknown",
+        detail="заявка CORAX не найдена",
+    )
+
+
+async def preview_glpi_tickets(
+    db: AsyncSession,
+    creds: GlpiCredentials,
+    *,
+    request_ids: list[int] | None = None,
+    glpi_ids: list[int] | None = None,
+) -> list[GlpiTicketProbe]:
+    """Сверить конкретные заявки с GLPI и ничего не записывать."""
+    corax_ids = list(dict.fromkeys(int(item) for item in (request_ids or []) if int(item) > 0))[:50]
+    remote_ids = list(dict.fromkeys(int(item) for item in (glpi_ids or []) if int(item) > 0))[:50]
+    if not corax_ids and not remote_ids:
+        return []
+    rows: list[ServiceRequest] = []
+    if corax_ids:
+        rows = list(
+            (await db.execute(select(ServiceRequest).where(ServiceRequest.id.in_(corax_ids)))).scalars().all()
+        )
+    by_id = {row.id: row for row in rows}
+    queries: list[GlpiTicketQuery] = []
+    probes: list[GlpiTicketProbe] = []
+    linked_glpi: set[int] = set()
+    for corax_id in corax_ids:
+        row = by_id.get(corax_id)
+        if row is None:
+            probes.append(_unknown_corax(corax_id))
+            continue
+        if row.glpi_id:
+            linked_glpi.add(int(row.glpi_id))
+        queries.append(
+            GlpiTicketQuery(corax_id=row.id, glpi_id=row.glpi_id, title=row.title or "")
+        )
+    for glpi_id in remote_ids:
+        if glpi_id in linked_glpi:
+            continue
+        queries.append(GlpiTicketQuery(glpi_id=glpi_id))
+    if queries:
+        probes.extend(await asyncio.to_thread(check_tickets, creds, queries))
+    order = {corax_id: index for index, corax_id in enumerate(corax_ids)}
+    probes.sort(key=lambda item: (0, order.get(item.corax_id or -1, 10_000)) if item.corax_id else (1, item.stored_glpi_id or 0))
+    return probes

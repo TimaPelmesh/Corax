@@ -1,0 +1,504 @@
+.network-map-canvas {
+  background: var(--color-bg-muted);
+}
+
+[data-theme='dark'] .network-map-canvas {
+  background: var(--color-bg-muted);
+}
+
+.network-map-mark {
+  display: block;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.network-map-iso {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgb(30 58 95 / 0.18));
+}
+
+.network-map-mark.is-active .network-map-iso,
+.network-map-mark.is-neighbor .network-map-iso {
+  filter: drop-shadow(0 0 0.35rem color-mix(in srgb, var(--color-primary) 50%, transparent));
+}
+
+.network-map-canvas .react-flow__handle.network-map-jack {
+  width: 12px;
+  height: 14px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 22;
+}
+
+.network-map-canvas .react-flow__handle.network-map-jack::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+
+.network-map-rj45 {
+  pointer-events: none;
+  position: absolute;
+  height: 13px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px 1px 0 0;
+  background: #2f2f2f;
+  border: 1px solid #111;
+  z-index: 3;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+.network-map-rj45::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  right: 1px;
+  height: 2px;
+  background: #4a4a4a;
+}
+
+.network-map-rj45.is-up::before {
+  background: #3dba5a;
+}
+
+.network-map-rj45.is-down::before {
+  background: #5a5a5a;
+}
+
+.network-map-rj45::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 4px;
+  height: 3px;
+  transform: translateX(-50%);
+  background: #0d0d0d;
+}
+
+.network-map-lock {
+  pointer-events: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 7;
+  display: flex;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 2px;
+  padding: 1px;
+}
+
+.network-map-canvas .react-flow__node.is-locked {
+  cursor: default;
+}
+
+.network-map-gear {
+  box-sizing: border-box;
+  border: 2px solid #4c6a92;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.94);
+}
+
+[data-theme='dark'] .network-map-gear {
+  border-color: #9ec1ff;
+  background: rgb(22 22 22 / 0.94);
+}
+
+.network-map-gear.is-bound {
+  border-color: #3f3f46;
+  box-shadow: inset 3px 0 0 #3f3f46;
+}
+
+[data-theme='dark'] .network-map-gear.is-bound {
+  border-color: #d4d4d8;
+  box-shadow: inset 3px 0 0 #d4d4d8;
+}
+
+.network-map-bound {
+  pointer-events: none;
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 6;
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: #3f3f46;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9);
+}
+
+[data-theme='dark'] .network-map-bound {
+  background: #d4d4d8;
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 0.55);
+}
+
+.network-map-bind-pill {
+  display: inline-flex;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 650;
+  color: #27272a;
+  background: #ececee;
+}
+
+[data-theme='dark'] .network-map-bind-pill {
+  color: #f4f4f5;
+  background: #2a2a2e;
+}
+
+.network-map-selection-box {
+  pointer-events: none;
+  position: absolute;
+  inset: -6px;
+  border: 1.5px dashed var(--color-primary);
+  border-radius: 4px;
+  background: transparent;
+  z-index: 1;
+}
+
+.network-map-canvas .react-flow__node.selected,
+.network-map-canvas .react-flow__node.is-pack-selected {
+  z-index: 6;
+}
+
+.network-map-canvas .react-flow__node-equipment.is-pack-selected {
+  z-index: 6;
+}
+
+.network-map-room-fill {
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary) 42%, #8b95a5);
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
+  border-radius: 6px;
+}
+
+.network-map-room-fill.is-room,
+.network-map-room-fill.is-rack {
+  border-color: color-mix(in srgb, var(--color-primary) 42%, #8b95a5);
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+}
+
+.network-map-room-fill.is-selected {
+  border-style: solid;
+  border-color: var(--color-primary);
+}
+
+[data-theme='dark'] .network-map-room-fill {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 48%, #94a3b8);
+}
+
+.network-map-caption {
+  color: var(--color-fg);
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.55);
+}
+
+[data-theme='dark'] .network-map-caption {
+  color: var(--color-fg);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.75);
+}
+
+.network-map-inline-rename {
+  max-width: 100%;
+}
+
+.network-map-canvas .react-flow__edge.is-related .react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 2.6;
+}
+
+.network-map-canvas .react-flow__edge.is-dim .react-flow__edge-path,
+.network-map-canvas .react-flow__edge.is-dim .react-flow__edge-textwrapper {
+  opacity: 0.45;
+}
+
+.network-map-canvas .react-flow__edge.is-related .react-flow__edge-text {
+  fill: #1d4ed8;
+  font-weight: 650;
+}
+
+.network-map-canvas .react-flow__background {
+  opacity: 0.55;
+}
+
+[data-theme='dark'] .network-map-canvas .react-flow__background {
+  opacity: 0.28;
+}
+
+.network-map-canvas .react-flow__node-groupFrame,
+.network-map-canvas .react-flow__node-equipment {
+  overflow: visible !important;
+}
+
+.network-map-canvas .react-flow__node-groupFrame {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.network-map-canvas .react-flow__edges {
+  z-index: 4;
+}
+
+.network-map-canvas .react-flow__edge-path {
+  fill: none !important;
+  stroke: #3b82f6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.network-map-cable-halo {
+  fill: none;
+  pointer-events: none;
+  opacity: 0.18;
+}
+
+.network-map-canvas .react-flow__node-equipment {
+  z-index: 2;
+}
+
+.network-map-canvas .react-flow__controls {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  background: var(--color-surface);
+}
+
+.network-map-canvas .react-flow__controls-button {
+  border-bottom-color: var(--color-border);
+  background: var(--color-surface);
+  width: 26px;
+  height: 26px;
+  fill: var(--color-fg-muted);
+}
+
+.network-map-canvas .react-flow__edge {
+  cursor: pointer;
+}
+
+.network-map-canvas .react-flow__edge-interaction {
+  cursor: pointer;
+}
+
+.network-map-canvas .react-flow__edge.is-cable-selected .react-flow__edge-path,
+.network-map-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 2.8;
+}
+
+.network-map-signal-flow {
+  fill: none;
+  stroke-dasharray: 6 16;
+  stroke-linecap: round;
+  pointer-events: none;
+  animation: network-map-signal-flow 1.35s linear infinite;
+}
+
+.network-map-signal {
+  pointer-events: none;
+}
+
+@keyframes network-map-signal-flow {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .network-map-signal-flow,
+  .network-map-signal {
+    display: none;
+  }
+}
+
+.network-map-canvas.is-exporting .react-flow__handle,
+.network-map-canvas.is-exporting .react-flow__controls,
+.network-map-canvas.is-exporting .network-map-signal,
+.network-map-canvas.is-exporting .network-map-signal-flow,
+.network-map-canvas.is-exporting .network-map-resizer,
+.network-map-canvas.is-exporting .network-map-selection-box,
+.network-map-canvas.is-exporting .network-map-bend {
+  display: none !important;
+}
+
+.network-map-bend {
+  z-index: 24;
+  border: 1.5px solid var(--color-primary);
+  background: var(--color-surface);
+  cursor: grab;
+}
+
+.network-map-bend:active {
+  cursor: grabbing;
+}
+
+.network-map-bend.is-add {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  opacity: 0.85;
+  cursor: pointer;
+  color: var(--color-primary);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.network-map-resizer {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  z-index: 24;
+  border: 1px solid var(--color-surface);
+  background: var(--color-primary);
+  border-radius: 2px;
+  opacity: 0.95;
+}
+
+.network-map-resizer::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
+.network-map-resizer.is-se {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+
+.network-map-resizer.is-sw {
+  left: -4px;
+  bottom: -4px;
+  cursor: nesw-resize;
+}
+
+.network-map-resizer.is-ne {
+  right: -4px;
+  top: -4px;
+  cursor: nesw-resize;
+}
+
+.network-map-resizer.is-nw {
+  left: -4px;
+  top: -4px;
+  cursor: nwse-resize;
+}
+
+.network-map-scenes {
+  min-width: 0;
+}
+
+.network-map-scenes-menu {
+  max-height: min(24rem, 70vh);
+}
+
+.network-map-canvas.is-cabling,
+.network-map-canvas.is-cabling .react-flow__pane,
+.network-map-canvas.is-cabling .react-flow__node {
+  cursor: crosshair !important;
+}
+
+.network-map-canvas.is-cabling .react-flow__handle.network-map-jack {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.network-map-link-hint {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  z-index: 21;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+
+.network-map-toolbar {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+[data-theme='dark'] .network-map-toolbar {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.network-map-dock {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+[data-theme='dark'] .network-map-dock {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.network-map-dock-cat {
+  min-width: 4.4rem;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.network-map-dock-cat.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+
+.network-map-inspector {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card-hover);
+}
+
+.network-map-inspector-overlay .network-map-inspector {
+  border-radius: 18px;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 18px 42px rgb(15 23 42 / 0.18);
+}
+
+[data-theme='dark'] .network-map-inspector-overlay .network-map-inspector {
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.55);
+}
+
+.network-map-inspector-overlay .network-map-inspector button,
+.network-map-inspector-overlay .network-map-inspector input,
+.network-map-inspector-overlay .network-map-inspector select,
+.network-map-inspector-overlay .network-map-inspector textarea {
+  border-radius: 10px;
+}
+
+.network-map-inspector button,
+.network-map-inspector input,
+.network-map-inspector select,
+.network-map-inspector textarea {
+  border-radius: 2px;
+}
+
+.network-map-tray {
+  background: var(--color-surface);
+}
+
+[data-theme='dark'] .network-map-tray {
+  background: var(--color-surface);
+}
+
+.network-map-port-menu,
+.network-map-ctx {
+  border-radius: 2px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.16);
+}

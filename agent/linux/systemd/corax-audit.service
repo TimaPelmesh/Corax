@@ -1,0 +1,16 @@
+[Unit]
+Description=CORAX Linux server audit
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/corax-agent
+ExecStart=/bin/sh /opt/corax-agent/audit_agent.sh --loop
+Restart=always
+RestartSec=5
+Nice=15
+
+[Install]
+WantedBy=multi-user.target

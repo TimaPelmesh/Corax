@@ -1,0 +1,355 @@
+/** Parse agent v3 `extended` block for inline display in computer summary. */
+
+export type PhysicalDiskRow = {
+  name: string
+  media: string | null
+  health: string | null
+  sizeGb: number | null
+  temperatureC: number | null
+  wearPercent: number | null
+  powerOnHours: number | null
+}
+
+export type ExpiringCert = {
+  subject: string
+  daysLeft: number
+}
+
+export type OfficeSummary = {
+  label: string
+  path?: string | null
+}
+
+export type ParsedAgentExtras = {
+  primaryUser: string | null
+  gateways: string[]
+  dnsV4: string[]
+  wifiSsid: string | null
+  physicalDisks: PhysicalDiskRow[]
+  patchIds: string[]
+  patchTotal: number
+  office: OfficeSummary[]
+  securityHint: string | null
+  batteryPercent: number | null
+  gpus: string[]
+  localAdmins: string[]
+  batteryHealthPercent: number | null
+  lastHotfix: string | null
+  uptimeHours: number | null
+  timezone: string | null
+  monitors: string[]
+  ramModules: string[]
+  firewall: string | null
+  defenderHint: string | null
+  listeningPortsCount: number | null
+  scheduledTasksCount: number | null
+  hardErrorsCount: number | null
+  expiringCerts: ExpiringCert[]
+  screenResolution: string | null
+  activation: string | null
+  bios: string | null
+  windowsEdition: string | null
+  deviceDriversCount: number | null
+  firewallRulesCount: number | null
+  securityPosture: string | null
+  problemDevicesCount: number | null
+  localUsersEnabled: number | null
+  sharesCount: number | null
+  loggedOnUsers: string[]
+  usbHistoryCount: number | null
+}
+
+function asObj(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
+}
+
+function asArr(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : []
+}
+
+function s(v: unknown): string | null {
+  if (v == null || v === '') return null
+  return String(v)
+}
+
+function notAProductKey(v: string | null): string | null {
+  if (!v) return null
+  const compact = v.replace(/[-\s]/g, '')
+  if (/^[A-Za-z0-9]{25}$/.test(compact)) return null
+  return v
+}
+
+function isUsefulDns(addr: string) {
+  const a = addr.trim().toLowerCase()
+  if (!a || a.startsWith('127.') || a.startsWith('fe80:') || a.startsWith('fec0:') || a === '::1') return false
+  return true
+}
+
+const GPU_VIRTUAL =
+  /basic\s+(display|render)|standard\s+vga|microsoft\s+remote|remote\s+display|rdp\s+display|mirror(\s+driver)?|virtual\s+(display|desktop|monitor)|indirect\s+display|iddsample|orayidd|usbmmidd|idd\s*(adapter|device|driver)|displaylink|usb\s*(3\.0\s*)?(vga|display|monitor)|usb\s+mobile\s+monitor|spacedesk|parsec|teamviewer|anydesk|tightvnc|ultravnc|realvnc|splashtop|rustdesk|todesk|sunlogin|\boray\b|awesun|dameware|citrix|nomachine|chrome\s+remote|google\s+remote|logmein|gotomypc|connectwise|ammyy|radmin|litemanager|aeroadmin|getscreen|supremo|steam\s+streaming|sunshine|moonlight|frameview|miracast|wireless\s+display|nvidia\s+virtual|amd\s+virtual|radeon\s+sharing|vnc\s+(server|hook|mirror)|hook\s+driver|easy\s+virtual|meta\s+quest|\boculus\b/i
+
+const GPU_DISCRETE =
+  /geforce|\brtx\b|\bgtx\b|quadro|tesla|rtx\s*a\d|radeon\s+(rx|pro|vii|\d)|firepro|\barc\s*a\d|intel\s+arc/i
+
+const GPU_IGP = /iris|uhd\s*graphics|hd\s+graphics|intel\(r\)?\s+graphics|intel.*graphics|radeon\s+graphics|vega\s+\d/i
+
+function gpuScore(name: string, vramGb: number | null): number {
+  const text = name.trim()
+  if (!text || GPU_VIRTUAL.test(text)) return 0
+  let score = 15
+  if (GPU_DISCRETE.test(text)) score = 100
+  else if (GPU_IGP.test(text)) score = 50
+  else if (/nvidia|geforce|amd|radeon|intel|\barc\b/i.test(text)) score = 70
+  if (vramGb != null && vramGb >= 1) score += Math.min(Math.floor(vramGb), 24)
+  return score
+}
+
+function gpuLabel(name: string | null, processor: string | null): string | null {
+  const n = name?.trim() || null
+  const p = processor?.trim() || null
+  if (n && !GPU_VIRTUAL.test(n)) return n
+  if (p && !GPU_VIRTUAL.test(p)) return p
+  return n || p
+}
+
+const OFFICE_VER: Record<string, string> = {
+  '14.0': 'Office 2010',
+  '15.0': 'Office 2013',
+  '16.0': 'Office 2016 / 365',
+}
+
+export function parseAgentExtras(ext: Record<string, unknown> | null | undefined): ParsedAgentExtras | null {
+  if (!ext || Object.keys(ext).length === 0) return null
+
+  const sys = asObj(ext.system)
+  const net = asObj(ext.network)
+  const battery = asObj(ext.battery)
+  const tpm = asObj(ext.tpm)
+
+  let dnsV4 = asArr(net?.dns_v4).map(s).filter((x): x is string => Boolean(x))
+  const dnsLegacy = asArr(net?.dns).map(s).filter((x): x is string => typeof x === 'string' && isUsefulDns(x))
+  if (!dnsV4.length) dnsV4 = dnsLegacy.filter((x) => !x.includes(':'))
+
+  const gateways = asArr(net?.gateways).map(s).filter((x): x is string => Boolean(x))
+  const wifi = asArr(net?.wifi)
+  const wifiSsid = wifi.length ? s(asObj(wifi[0])?.ssid) : null
+
+  const physicalDisks = asArr(ext.physical_disks).map((row) => {
+    const r = asObj(row)
+    if (!r) return null
+    return {
+      name: s(r.friendly_name) ?? 'Диск',
+      media: s(r.media_type),
+      health: s(r.health_status),
+      sizeGb: typeof r.size_gb === 'number' ? r.size_gb : null,
+      temperatureC: typeof r.temperature_c === 'number' && r.temperature_c > 0 ? r.temperature_c : null,
+      wearPercent: typeof r.wear_percent === 'number' && r.wear_percent > 0 ? r.wear_percent : null,
+      powerOnHours: typeof r.power_on_hours === 'number' && r.power_on_hours > 0 ? r.power_on_hours : null,
+    }
+  }).filter((x): x is PhysicalDiskRow => x != null)
+
+  const patches = asArr(ext.patches)
+  const patchIds = patches
+    .map((p) => s(asObj(p)?.hotfix_id))
+    .filter((x): x is string => Boolean(x))
+    .slice(0, 16)
+
+  const office: OfficeSummary[] = []
+  const installs = asArr(ext.office_installs)
+  if (installs.length) {
+    for (const row of installs) {
+      const r = asObj(row)
+      if (!r) continue
+      const ver = s(r.version) ?? ''
+      office.push({
+        label: s(r.label) ?? OFFICE_VER[ver] ?? (ver ? `Office ${ver}` : 'Office'),
+        path: s(r.install_root),
+      })
+    }
+  } else {
+    for (const row of asArr(ext.office)) {
+      const r = asObj(row)
+      if (!r?.install_root && !r?.version) continue
+      if (r.product && !r.install_root) continue
+      const ver = s(r.version) ?? ''
+      office.push({
+        label: OFFICE_VER[ver] ?? (ver ? `Office ${ver}` : 'Office'),
+        path: s(r.install_root),
+      })
+    }
+  }
+
+  const av = asArr(ext.antivirus)
+  const avName = av.length ? s(asObj(av[0])?.display_name) : null
+  const secParts: string[] = []
+  if (tpm?.present === true) secParts.push('TPM')
+  if (ext.secure_boot_enabled === true) secParts.push('Secure Boot')
+  if (ext.pending_reboot === true) secParts.push('Pending reboot')
+  if (avName) secParts.push(avName)
+
+  const gpuRows = asArr(ext.gpus)
+    .map((row) => {
+      const r = asObj(row)
+      if (!r) return null
+      const name = gpuLabel(s(r.name), s(r.video_processor))
+      if (!name) return null
+      const vram = typeof r.vram_gb === 'number' && r.vram_gb > 0 ? r.vram_gb : null
+      return { name, vram, score: gpuScore(name, vram) }
+    })
+    .filter((x): x is { name: string; vram: number | null; score: number } => x != null)
+    .sort((a, b) => b.score - a.score)
+  const seenGpu = new Set<string>()
+  const gpus = gpuRows
+    .filter((row) => row.score > 0)
+    .map((row) => {
+      const key = row.name.toLowerCase()
+      if (seenGpu.has(key)) return null
+      seenGpu.add(key)
+      const vram = row.vram != null ? ` ${row.vram} GB` : ''
+      return `${row.name}${vram}`
+    })
+    .filter((x): x is string => Boolean(x))
+
+  const localAdmins = asArr(ext.local_admins)
+    .map(s)
+    .filter((x): x is string => Boolean(x))
+    .slice(0, 12)
+
+  const batteryHealth =
+    typeof asObj(ext.battery_health)?.health_percent === 'number'
+      ? (asObj(ext.battery_health)!.health_percent as number)
+      : null
+
+  const monitors = asArr(ext.monitors)
+    .map((row) => {
+      const r = asObj(row)
+      if (!r) return null
+      const parts = [s(r.manufacturer), s(r.model)].filter(Boolean)
+      const label = parts.join(' ')
+      const yr = typeof r.year === 'number' && r.year > 1990 ? ` (${r.year})` : ''
+      return label ? `${label}${yr}` : null
+    })
+    .filter((x): x is string => Boolean(x))
+
+  const ramModules = asArr(ext.ram_modules)
+    .map((row) => {
+      const r = asObj(row)
+      if (!r) return null
+      const size = typeof r.size_gb === 'number' ? `${r.size_gb} GB` : ''
+      const speed = typeof r.speed_mhz === 'number' && r.speed_mhz > 0 ? ` ${r.speed_mhz}MHz` : ''
+      const slot = s(r.slot) ? `${s(r.slot)}: ` : ''
+      const label = `${slot}${size}${speed}`.trim()
+      return label || null
+    })
+    .filter((x): x is string => Boolean(x))
+
+  const biosObj = asObj(ext.bios)
+  const biosParts = [
+    notAProductKey(s(biosObj?.vendor) ?? s(ext.bios_vendor)),
+    notAProductKey(s(biosObj?.version) ?? s(ext.bios_version)),
+    notAProductKey(s(biosObj?.release_date) ?? s(ext.bios_date)),
+  ].filter((x): x is string => Boolean(x))
+  const bios = biosParts.length ? biosParts.join(' · ') : null
+
+  const win = asObj(ext.windows)
+  const editionParts = [
+    notAProductKey(s(win?.edition) ?? s(win?.product_name)),
+    notAProductKey(s(win?.display_version)),
+  ].filter((x): x is string => Boolean(x))
+  const windowsEdition = editionParts.length ? editionParts.join(' · ') : null
+
+  let activation = notAProductKey(s(ext.activation))
+  if (!activation && win?.activated === true) activation = 'Licensed'
+  else if (!activation && win?.activated === false) activation = 'Not licensed'
+
+  const fw = asObj(ext.firewall)
+  let firewall: string | null = null
+  if (fw) {
+    const on = Object.entries(fw)
+      .filter(([, v]) => v === true)
+      .map(([k]) => k)
+    const off = Object.keys(fw).filter((k) => fw[k] !== true)
+    firewall = off.length === 0 ? 'on' : on.length === 0 ? 'off' : `${on.join('/')} on`
+  }
+
+  const defender = asObj(ext.defender)
+  let defenderHint: string | null = null
+  if (defender) {
+    const parts: string[] = []
+    if (defender.rtp_enabled === true) parts.push('RTP')
+    if (typeof defender.signature_age_days === 'number') {
+      parts.push(`sig ${defender.signature_age_days}d`)
+    }
+    defenderHint = parts.length ? parts.join(' · ') : null
+  }
+
+  const posture: string[] = []
+  if (ext.rdp_enabled === true) posture.push('RDP on')
+  if (ext.smb1_enabled === true) posture.push('SMB1 on')
+  if (ext.uac_enabled === false) posture.push('UAC off')
+  const securityPosture = posture.length ? posture.join(' · ') : null
+
+  const loggedOnUsers = asArr(ext.logged_on_users)
+    .map(s)
+    .filter((x): x is string => Boolean(x))
+    .slice(0, 12)
+
+  const expiringCerts = asArr(ext.expiring_certs)
+    .map((row) => {
+      const r = asObj(row)
+      if (!r) return null
+      const subject = s(r.subject)
+      if (subject == null || typeof r.days_left !== 'number') return null
+      return { subject, daysLeft: r.days_left }
+    })
+    .filter((x): x is ExpiringCert => x != null)
+    .slice(0, 10)
+
+  return {
+    primaryUser: s(sys?.primary_user),
+    gateways,
+    dnsV4,
+    wifiSsid,
+    physicalDisks,
+    patchIds,
+    patchTotal: patches.length,
+    office,
+    securityHint: secParts.length ? secParts.join(' · ') : null,
+    batteryPercent:
+      typeof battery?.estimated_charge_remaining === 'number'
+        ? battery.estimated_charge_remaining
+        : typeof asObj(ext.battery_health)?.charge_remaining_percent === 'number'
+          ? (asObj(ext.battery_health)!.charge_remaining_percent as number)
+          : null,
+    gpus,
+    localAdmins,
+    batteryHealthPercent: batteryHealth,
+    lastHotfix: s(ext.last_hotfix_id),
+    uptimeHours: typeof ext.uptime_hours === 'number' ? ext.uptime_hours : null,
+    timezone: s(ext.timezone),
+    monitors,
+    ramModules,
+    firewall,
+    defenderHint,
+    listeningPortsCount:
+      typeof ext.listening_ports_count === 'number' ? ext.listening_ports_count : null,
+    scheduledTasksCount:
+      typeof ext.scheduled_tasks_count === 'number' ? ext.scheduled_tasks_count : null,
+    hardErrorsCount: asArr(ext.hard_errors).length || null,
+    expiringCerts,
+    screenResolution: s(ext.screen_resolution),
+    activation,
+    bios,
+    windowsEdition,
+    deviceDriversCount: asArr(ext.device_drivers).length || null,
+    firewallRulesCount: asArr(ext.firewall_rules).length || null,
+    securityPosture,
+    problemDevicesCount: asArr(ext.problem_devices).length || null,
+    localUsersEnabled:
+      typeof ext.local_users_enabled === 'number' ? ext.local_users_enabled : null,
+    sharesCount: asArr(ext.shares).length || null,
+    loggedOnUsers,
+    usbHistoryCount:
+      typeof ext.usb_storage_history_count === 'number' ? ext.usb_storage_history_count : null,
+  }
+}

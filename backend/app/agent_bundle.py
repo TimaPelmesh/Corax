@@ -1,0 +1,269 @@
+"""Build the Linux agent archive. Windows packages come from agent_cpp_build."""
+
+from __future__ import annotations
+
+import io
+import json
+import secrets
+import time
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+import hashlib
+import hmac
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
+from app.models import AgentToken
+from app.schemas import AgentBundleCreate, AgentBundleModules, AgentBundleSchedule
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_AGENT_LINUX_TEMPLATE = _PROJECT_ROOT / "agent" / "linux"
+
+_AGENT_TOKEN_PREFIX = "hmac256:"
+
+_PROFILE_MODULES: dict[str, dict[str, bool]] = {
+    "basic": {
+        "patches": False,
+        "network": False,
+        "domain_sessions": False,
+        "bitlocker": False,
+        "tpm_secureboot": False,
+        "antivirus": False,
+        "startup": False,
+        "services": False,
+        "storage_health": False,
+        "battery": False,
+        "windows_features": False,
+        "office": False,
+        "usb_history": False,
+        "docker_wsl": False,
+        "server_audit": True,
+    },
+    "standard": {
+        "patches": True,
+        "network": True,
+        "domain_sessions": True,
+        "bitlocker": False,
+        "tpm_secureboot": True,
+        "antivirus": True,
+        "startup": True,
+        "services": False,
+        "storage_health": True,
+        "battery": True,
+        "windows_features": False,
+        "office": True,
+        "usb_history": False,
+        "docker_wsl": True,
+        "server_audit": True,
+    },
+    "full": {
+        "patches": True,
+        "network": True,
+        "domain_sessions": True,
+        "bitlocker": True,
+        "tpm_secureboot": True,
+        "antivirus": True,
+        "startup": True,
+        "services": True,
+        "storage_health": True,
+        "battery": True,
+        "windows_features": True,
+        "office": True,
+        "usb_history": True,
+        "docker_wsl": True,
+        "server_audit": True,
+    },
+}
+
+# Files generated at bundle time — skip from template copy
+_GENERATED_NAMES = frozenset({"agent_env.bat", "agent_env.sh", "agent_config.json"})
+
+# Example / local-only files not shipped in bundle
+_SKIP_NAMES = frozenset(
+    {
+        "agent_env.bat.example",
+        "agent_env.sh.example",
+        "agent_config.json.example",
+    }
+)
+
+def _hmac_secret(secret: str) -> str:
+    key = (settings.agent_token_pepper or settings.secret_key).encode("utf-8")
+    return hmac.new(key, secret.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+async def _resolve_agent_token(db: AsyncSession, body: AgentBundleCreate) -> tuple[str, bool]:
+    """Return (token, created_new). Empty token means the EXE must pair and wait for approval."""
+    if not body.create_token:
+        return (body.existing_token or "").strip(), False
+
+    if (body.existing_token or "").strip():
+        return body.existing_token.strip(), False  # type: ignore[union-attr]
+
+    public_id = secrets.token_hex(4)
+    secret = secrets.token_urlsafe(24)
+    token = f"{public_id}.{secret}"
+    row = AgentToken(
+        public_id_prefix=public_id,
+        token_hash=_AGENT_TOKEN_PREFIX + _hmac_secret(secret),
+        label=body.token_label or f"bundle {datetime.now(timezone.utc):%Y-%m-%d}",
+        allowed_hostname=(
+            # One Linux archive, one token, every server. A hostname here would pin the zip to the first machine.
+            "*"
+            if body.target == "linux"
+            else (body.allowed_hostname or "").strip() or None
+        ),
+    )
+    db.add(row)
+    await db.commit()
+    return token, True
+
+
+def _resolve_modules(body: AgentBundleCreate) -> dict[str, bool]:
+    if body.profile == "custom" and body.modules is not None:
+        return body.modules.model_dump()
+    preset = _PROFILE_MODULES.get(body.profile) or _PROFILE_MODULES["full"]
+    if body.profile != "custom" and body.modules is not None:
+        merged = dict(preset)
+        merged.update(body.modules.model_dump())
+        return merged
+    return dict(preset)
+
+
+def _build_agent_config(body: AgentBundleCreate) -> dict:
+    schedule = body.schedule or AgentBundleSchedule()
+    profile_key = "custom" if body.profile == "custom" else "full"
+    return {
+        "agent_version": "3.0.1",
+        "profile": profile_key,
+        "modules": _resolve_modules(body),
+        "limits": {
+            "software_max": 12000,
+            "services_max": 400,
+            "patches_max": 500,
+            "usb_max": 200,
+        },
+        "schedule": {
+            "enabled": schedule.enabled,
+            "mode": schedule.mode,
+            "time": schedule.time,
+            "weekday": schedule.weekday,
+            "task_name": schedule.task_name,
+        },
+        "helpdesk_shortcut": True,
+    }
+
+
+def _write_agent_env_sh(server_url: str, agent_token: str, audit_interval: int | None = None) -> str:
+    lines = [
+        "#!/bin/sh",
+        "# One fleet token. Unpack this same directory on every Linux server.",
+        f'export INVENTORY_SERVER="{server_url.rstrip("/")}"',
+        f'export AGENT_TOKEN="{agent_token}"',
+    ]
+    if audit_interval is not None:
+        lines.append(f'export CORAX_AUDIT_INTERVAL="{int(audit_interval)}"')
+    return "\n".join(lines) + "\n"
+
+
+def _zip_template_file(zf: zipfile.ZipFile, fs_path: Path, arc_name: str) -> None:
+    data = fs_path.read_bytes()
+    if fs_path.suffix in {".sh", ".service", ".timer"} or fs_path.name in {
+        "inventory_agent.sh",
+        "corax_send.sh",
+        "run_console.sh",
+        "install_cron.sh",
+        "update_scripts.sh",
+    }:
+        data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    if arc_name.endswith(".sh") or arc_name in {
+        "inventory_agent.sh",
+        "corax_send.sh",
+        "run_console.sh",
+        "install_cron.sh",
+        "update_scripts.sh",
+    }:
+        info = zipfile.ZipInfo(arc_name)
+        info.date_time = time.localtime(fs_path.stat().st_mtime)[:6]
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o755 << 16
+        zf.writestr(info, data)
+        return
+    zf.writestr(arc_name, data)
+
+
+def linux_scripts_zip_bytes() -> bytes:
+    """Current Linux scripts only. No URL and no token — the host keeps agent_env.sh."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for fs_path, arc_name in _iter_template_files(_AGENT_LINUX_TEMPLATE):
+            _zip_template_file(zf, fs_path, arc_name)
+    return buf.getvalue()
+
+
+def _build_linux_zip(body: AgentBundleCreate, server: str, token: str) -> tuple[bytes, str]:
+    profile_key = "custom" if body.profile == "custom" else "full"
+    config = _build_agent_config(body)
+    config["agent_version"] = "3.7.0-linux"
+    # Windows-only modules stay off by default on Linux profiles unless custom
+    if body.profile != "custom":
+        mods = config.get("modules") or {}
+        for k in ("bitlocker", "windows_features", "office", "usb_history", "antivirus"):
+            mods[k] = False
+        config["modules"] = mods
+    env_sh = _write_agent_env_sh(server, token, body.audit_interval_seconds)
+    config_json = json.dumps(config, ensure_ascii=False, indent=2)
+    schedule = body.schedule or AgentBundleSchedule()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    filename = f"corax-agent-linux-{profile_key}-{stamp}.zip"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for fs_path, arc_name in _iter_template_files(_AGENT_LINUX_TEMPLATE):
+            _zip_template_file(zf, fs_path, arc_name)
+        zf.writestr("agent_env.sh", env_sh.encode("utf-8"))
+        zf.writestr("agent_config.json", config_json.encode("utf-8"))
+        if schedule.enabled:
+            # cron snippet with chosen time
+            hh, mm = (schedule.time or "09:00").split(":", 1)
+            cron = (
+                f"{mm} {hh} * * 1 root /bin/sh /opt/corax-agent/run_console.sh "
+                f">> /var/log/corax-agent.log 2>&1\n"
+            )
+            zf.writestr("cron.d/corax-agent", cron.encode("utf-8"))
+    return buf.getvalue(), filename
+
+
+def _iter_template_files(template_dir: Path) -> list[tuple[Path, str]]:
+    if not template_dir.is_dir():
+        raise FileNotFoundError(f"Agent template not found: {template_dir}")
+    out: list[tuple[Path, str]] = []
+    for path in sorted(template_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if "__pycache__" in path.parts or path.suffix == ".pyc":
+            continue
+        if path.name in _GENERATED_NAMES or path.name in _SKIP_NAMES:
+            continue
+        arc = path.relative_to(template_dir).as_posix()
+        out.append((path, arc))
+    return out
+
+
+async def build_agent_bundle_zip(db: AsyncSession, body: AgentBundleCreate) -> tuple[bytes, str]:
+    server = body.server_url.strip().rstrip("/")
+    if not server.lower().startswith(("http://", "https://")):
+        raise ValueError("server_url должен начинаться с http:// или https://")
+
+    if body.target == "linux":
+        token, _ = await _resolve_agent_token(db, body)
+        if not token:
+            raise ValueError("Linux-агенту нужен токен: включите create_token или передайте existing_token")
+        return _build_linux_zip(body, server, token)
+
+    from app.agent_cpp_build import build_cpp_agent_exe
+
+    token, _ = await _resolve_agent_token(db, body)
+    return build_cpp_agent_exe(body, token)

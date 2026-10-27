@@ -1,0 +1,12 @@
+[Unit]
+Description=CORAX Linux audit poll (samples only when the panel asks)
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=60s
+AccuracySec=15s
+Persistent=true
+Unit=corax-audit.service
+
+[Install]
+WantedBy=timers.target
