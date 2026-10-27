@@ -3049,7 +3049,7 @@ export const ru = {
     botMsgCancel: 'Отмена',
     botMsgHelp: 'Помощь',
     botMsgOff: 'Приём выключен',
-    botMsgPlaceholders: 'Пустое поле оставляет стандартную фразу — она серым видна в поле. В своём тексте: {id}, {name}, {hello}, {wish}, {mark}, {verb}, {label}, {title}.',
+    botMsgPlaceholders: 'В поле уже лежит фраза, которую бот отправит. Измените её и нажмите «Применить в боте». Метки: {id}, {name}, {hello}, {wish}, {mark}, {verb}, {label}, {title}.',
     botResetPhrase: 'Вернуть стандартный текст',
     botGreetBody: 'Основная фраза',
     botGreetTail: 'Строка про кнопку',

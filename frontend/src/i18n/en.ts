@@ -3051,7 +3051,7 @@ export const en: MessageTree = {
     botMsgCancel: 'Cancel',
     botMsgHelp: 'Help',
     botMsgOff: 'Intake is off',
-    botMsgPlaceholders: 'An empty field keeps the standard phrase, shown in grey in the field. Your text may use {id}, {name}, {hello}, {wish}, {mark}, {verb}, {label} and {title}.',
+    botMsgPlaceholders: 'The field already contains the phrase the bot will send. Edit it and press Apply to the bot. Tokens: {id}, {name}, {hello}, {wish}, {mark}, {verb}, {label}, {title}.',
     botResetPhrase: 'Restore the standard text',
     botGreetBody: 'Main line',
     botGreetTail: 'Line about the button',

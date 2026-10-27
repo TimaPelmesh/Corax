@@ -556,9 +556,12 @@ async def _v2_reply(
     attach = attach_keyboard(previous, keyboard)
     if attach and remembered and (remembered.keyboard_message_id or "").strip():
         await _clear_keyboard(cfg, remembered.keyboard_message_id)
-    fields: dict[str, Any] = {"message": message[:4000]}
-    if attach:
-        fields["keyboard"] = attach
+    # Docs: fields.message is the bubble text. fields.keyboard is
+    # {BOT_ID, BUTTONS} on the same message. A bare button list can restyle
+    # the keyboard and leave the previous text in place.
+    fields: dict[str, Any] = {"message": (message or "").strip()[:4000], "urlPreview": False}
+    if attach and fields["message"]:
+        fields["keyboard"] = {"BOT_ID": int(cfg.bot_id), "BUTTONS": attach}
     last_code = ""
     for dialog_id in dialogs:
         try:

@@ -115,24 +115,32 @@ function phrasesEqual(left: BitrixBotPhrases, right: BitrixBotPhrases) {
   return keys.every((key) => String(left[key] || '') === String(right[key] || ''))
 }
 
+function shown(phrases: BitrixBotPhrases): BitrixBotPhrases {
+  const next: BitrixBotPhrases = { ...phrases }
+  ;(Object.keys(PLACEHOLDER) as PhraseKey[]).forEach((key) => {
+    if (!String(next[key] || '').trim() && PLACEHOLDER[key]) next[key] = PLACEHOLDER[key]
+  })
+  return next
+}
+
 function fullPhrases(raw: BitrixBotPhrases | undefined, fallback: BitrixBotSettings | null, id: number): BitrixBotPhrases {
   if (raw) {
-    return {
+    return shown({
       ...BLANK,
       ...raw,
       greet_daypart: raw.greet_daypart !== false,
       close_notice: raw.close_notice !== false,
-    }
+    })
   }
   if (fallback && fallback.bot_id === id) {
-    return {
+    return shown({
       ...BLANK,
       greet_daypart: fallback.greet_daypart !== false,
       close_notice: fallback.close_notice !== false,
       greeting_note: fallback.greeting_note || '',
-    }
+    })
   }
-  return { ...BLANK }
+  return shown({ ...BLANK })
 }
 
 const TOKENS: Record<string, string[]> = {
@@ -1005,7 +1013,7 @@ export function BitrixBotPanel({
                         className={btn}
                         onClick={() => {
                           const next = { ...phrases }
-                          for (const field of currentKind.fields) next[field] = ''
+                          for (const field of currentKind.fields) next[field] = PLACEHOLDER[field] || ''
                           edit(next)
                         }}
                       >
