@@ -25,6 +25,7 @@ from app.server_audit_store import audit_directive, record_audit_sample
 from app.agent_policy import ack_hostname, build_directive, hostnames_match
 from app.agent_bundle import linux_scripts_zip_bytes
 from app.linux_install import installer_source
+from app.windows_install import claim_windows_exe
 from app.agent_release import release_file, release_meta
 from app.search_index import sync_computer
 
@@ -504,6 +505,30 @@ async def download_linux_install(
         content=body,
         media_type="text/x-python; charset=utf-8",
         headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/windows-installer")
+@limiter.limit(settings.rate_limit_agent)
+async def download_windows_installer(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    authorization: str | None = Header(None),
+):
+    """One stamped EXE staged by a LAN push. The PC downloads it and does not keep the URL."""
+    _ = request
+    await verify_agent_token(db, authorization, "directive", any_host=True)
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    data = claim_windows_exe(token)
+    if not data:
+        raise HTTPException(status_code=404, detail="Установщик уже забран или устарел")
+    return Response(
+        content=data,
+        media_type="application/vnd.microsoft.portable-executable",
+        headers={
+            "Content-Disposition": 'attachment; filename="CORAX-Agent.exe"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

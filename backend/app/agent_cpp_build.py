@@ -324,8 +324,11 @@ def _cpp_public_config(body: AgentBundleCreate, server: str) -> dict:
     }
 
 
-def build_cpp_agent_exe(body: AgentBundleCreate, token: str) -> tuple[bytes, str]:
-    """One Windows EXE. Server URL is stamped; a token is optional until the panel approves the PC."""
+def build_cpp_agent_exe(body: AgentBundleCreate, token: str, *, quiet: bool = False) -> tuple[bytes, str]:
+    """One Windows EXE. Server URL is stamped; a token is optional until the panel approves the PC.
+
+    quiet=True is the remote push: no splash, later launches stay in the tray.
+    """
     server = body.server_url.strip().rstrip("/")
     if not server.lower().startswith(("http://", "https://")):
         raise ValueError("server_url должен начинаться с http:// или https://")
@@ -333,6 +336,8 @@ def build_cpp_agent_exe(body: AgentBundleCreate, token: str) -> tuple[bytes, str
 
     embed = _cpp_public_config(body, server)
     embed["agent_version"] = AGENT_RELEASE_VERSION
+    if quiet:
+        embed["silent"] = True
     if secret:
         embed["agent_token"] = secret
 

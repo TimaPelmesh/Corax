@@ -13,7 +13,8 @@ from app.database import get_db
 from app.linux_install import InstallError, installer_source, one_command, push_over_ssh
 from app.local_ip import advertise_lan_ipv4, list_lan_ipv4, pick_primary_lan_ipv4, _private_ipv4
 from app.models import User
-from app.schemas import AgentBundleCreate, AgentBundleLanIpOut, LinuxSshInstallIn
+from app.schemas import AgentBundleCreate, AgentBundleLanIpOut, LinuxSshInstallIn, WindowsWinrmInstallIn
+from app.windows_install import WindowsInstallError, discard_windows_exe, push_over_winrm, stage_windows_exe
 
 router = APIRouter(prefix="/agent-bundles", tags=["agent-bundles"])
 
@@ -144,5 +145,53 @@ async def linux_ssh_install(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except InstallError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    result["token"] = token
+    return result
+
+
+@router.post("/windows-winrm")
+async def windows_winrm_install(
+    body: WindowsWinrmInstallIn,
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """Install the tray agent on one LAN PC. The password is not stored."""
+    from app.agent_bundle import _resolve_agent_token
+    from app.agent_cpp_build import build_cpp_agent_exe
+
+    prepared = body.model_copy(update={"target": "windows", "create_token": True})
+    try:
+        token, _created = await _resolve_agent_token(db, prepared)
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Не удалось создать токен агента (сбой id в PostgreSQL после миграции). "
+                "Перезапустите API или выполните: python scripts/fix_pg_sequences.py"
+            ),
+        ) from exc
+    if not token:
+        raise HTTPException(status_code=400, detail="Агенту нужен токен")
+    try:
+        exe, _name = build_cpp_agent_exe(prepared, token, quiet=True)
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    stage_windows_exe(token, exe)
+    try:
+        result = await asyncio.to_thread(
+            push_over_winrm,
+            body.winrm_host,
+            body.winrm_port,
+            body.winrm_user,
+            body.winrm_password,
+            body.server_url,
+            token,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except WindowsInstallError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        discard_windows_exe(token)
     result["token"] = token
     return result

@@ -1456,6 +1456,13 @@ export type LinuxSshInstallResult = {
   token?: string
 }
 
+export type WindowsWinrmInstallResult = {
+  ok: boolean
+  exit_code: number
+  output: string
+  token?: string
+}
+
 export type SearchResult = {
   entity_type: string
   entity_id: number
@@ -2800,6 +2807,20 @@ export const api = {
     body: AgentBundleCreateBody & { ssh_host: string; ssh_port: number; ssh_user: string; ssh_password: string },
   ) =>
     request<LinuxSshInstallResult>(`${API_PREFIX}/agent-bundles/linux-ssh`, {
+      method: 'POST',
+      json: body,
+      timeout_ms: 180_000,
+    }),
+
+  windowsWinrmInstall: (
+    body: AgentBundleCreateBody & {
+      winrm_host: string
+      winrm_port: number
+      winrm_user: string
+      winrm_password: string
+    },
+  ) =>
+    request<WindowsWinrmInstallResult>(`${API_PREFIX}/agent-bundles/windows-winrm`, {
       method: 'POST',
       json: body,
       timeout_ms: 180_000,

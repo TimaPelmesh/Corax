@@ -709,6 +709,13 @@ class LinuxSshInstallIn(AgentBundleCreate):
     ssh_password: str = Field(min_length=1, max_length=256)
 
 
+class WindowsWinrmInstallIn(AgentBundleCreate):
+    winrm_host: str = Field(min_length=1, max_length=255)
+    winrm_port: int = Field(default=5985, ge=1, le=65535)
+    winrm_user: str = Field(min_length=1, max_length=128)
+    winrm_password: str = Field(min_length=1, max_length=256)
+
+
 class LdapConfigOut(BaseModel):
     enabled: bool
     allow_anonymous: bool

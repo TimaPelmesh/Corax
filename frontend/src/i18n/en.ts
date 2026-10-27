@@ -3288,6 +3288,15 @@ export const en: MessageTree = {
     installSshPassword: 'Password',
     installSshBusy: 'Installing…',
     installSshOk: 'Service is running',
+    installWinrm: 'Install over the network',
+    installWinrmHint:
+      'A computer on the local network and an administrator account. The password is not stored. The person at the PC sees no window: the agent sits in the tray.',
+    installWinrmHost: 'Computer',
+    installWinrmPort: 'WinRM port',
+    installWinrmUser: 'Administrator',
+    installWinrmPassword: 'Password',
+    installWinrmBusy: 'Installing…',
+    installWinrmOk: 'The agent is installed and sitting in the tray',
     downloadCpp: 'Download portable ZIP',
     deploymentTitle: 'Deployment',
     deployStep1:

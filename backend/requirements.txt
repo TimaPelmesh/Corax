@@ -16,6 +16,7 @@ puresnmp>=2.0.0
 psutil==6.1.0
 requests==2.32.3
 paramiko==3.5.1
+pywinrm==0.5.0
 cairosvg==2.7.1
 slowapi==0.1.9
 # Тесты (CI и npm run test:backend)

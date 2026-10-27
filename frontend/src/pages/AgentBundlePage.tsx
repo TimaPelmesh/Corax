@@ -78,6 +78,12 @@ export function AgentBundlePage() {
   const [sshPassword, setSshPassword] = useState('')
   const [sshBusy, setSshBusy] = useState(false)
   const [sshOutput, setSshOutput] = useState('')
+  const [winHost, setWinHost] = useState('')
+  const [winPort, setWinPort] = useState('5985')
+  const [winUser, setWinUser] = useState('')
+  const [winPassword, setWinPassword] = useState('')
+  const [winBusy, setWinBusy] = useState(false)
+  const [winOutput, setWinOutput] = useState('')
   const [scheduleMode, setScheduleMode] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('WEEKLY')
   const [scheduleTime, setScheduleTime] = useState('09:00')
   const [fleetMode, setFleetMode] = useState<'on_demand' | 'daily' | 'weekly'>('on_demand')
@@ -274,6 +280,47 @@ export function AgentBundlePage() {
       toast.error(ex instanceof Error ? ex.message : t('agentBundle.buildError'))
     } finally {
       setSshBusy(false)
+    }
+  }
+
+  async function onWinrmInstall() {
+    if (!requireServer()) return
+    const port = Number(winPort)
+    if (!winHost.trim() || !winUser.trim() || !winPassword || !Number.isInteger(port) || port < 1 || port > 65535) {
+      toast.error(t('agentBundle.buildError'))
+      return
+    }
+    setWinBusy(true)
+    setWinOutput('')
+    try {
+      const result = await api.windowsWinrmInstall({
+        server_url: buildAgentServerUrl(serverHost, serverPort, urlScheme),
+        target: 'windows',
+        profile: showExtended ? level : 'full',
+        create_token: true,
+        token_label: tokenLabel.trim() || t('agentBundle.defaultTokenLabelWin10'),
+        modules: showModules ? modules : undefined,
+        schedule: {
+          enabled: scheduleEnabled,
+          mode: scheduleMode,
+          time: scheduleTime,
+          weekday: 'MON',
+          task_name: 'CORAX-Agent',
+        },
+        winrm_host: winHost.trim(),
+        winrm_port: port,
+        winrm_user: winUser.trim(),
+        winrm_password: winPassword,
+      })
+      setWinPassword('')
+      setWinOutput(result.output || String(result.exit_code))
+      if (result.ok) toast.ok(t('agentBundle.installWinrmOk'))
+      else toast.error((result.output || t('agentBundle.buildError')).split('\n')[0]?.slice(0, 240) || t('agentBundle.buildError'))
+    } catch (ex) {
+      setWinPassword('')
+      toast.error(ex instanceof Error ? ex.message : t('agentBundle.buildError'))
+    } finally {
+      setWinBusy(false)
     }
   }
 
@@ -848,6 +895,53 @@ export function AgentBundlePage() {
                 ) : null}
               </div>
             ) : (
+            <>
+            <div className="mt-3 space-y-3">
+              <p className="text-sm leading-relaxed">{t('agentBundle.installWinrmHint')}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
+                  {t('agentBundle.installWinrmHost')}
+                  <input className="app-input" value={winHost} placeholder="192.168.1.20" onChange={(event) => setWinHost(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                </label>
+                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
+                  {t('agentBundle.installWinrmPort')}
+                  <input className="app-input" value={winPort} onChange={(event) => setWinPort(event.target.value)} inputMode="numeric" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                </label>
+                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
+                  {t('agentBundle.installWinrmUser')}
+                  <input className="app-input" value={winUser} placeholder="CORP\\admin" onChange={(event) => setWinUser(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                </label>
+                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
+                  {t('agentBundle.installWinrmPassword')}
+                  <input
+                    className="app-input"
+                    type="password"
+                    value={winPassword}
+                    onChange={(event) => setWinPassword(event.target.value)}
+                    autoComplete="new-password"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void onWinrmInstall()
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                className="app-btn app-btn-secondary"
+                disabled={winBusy || lanLoading || !serverHost.trim() || !winHost.trim() || !winPassword}
+                onClick={() => void onWinrmInstall()}
+              >
+                {winBusy ? t('agentBundle.installWinrmBusy') : t('agentBundle.installWinrm')}
+              </button>
+              {winOutput ? (
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)]">
+                  {winOutput}
+                </pre>
+              ) : null}
+            </div>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">
               <li>{t('agentBundle.deployStep1')}</li>
               <li>
@@ -857,6 +951,7 @@ export function AgentBundlePage() {
               <li>{t('agentBundle.deployStep3Win10')}</li>
               <li>{t('agentBundle.deployStep4')}</li>
             </ol>
+            </>
             )}
           </div>
         </div>

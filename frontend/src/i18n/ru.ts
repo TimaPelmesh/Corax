@@ -3286,6 +3286,15 @@ export const ru = {
     installSshPassword: 'Пароль',
     installSshBusy: 'Ставлю…',
     installSshOk: 'Служба запущена',
+    installWinrm: 'Поставить по сети',
+    installWinrmHint:
+      'Компьютер в локальной сети, учётка администратора. Пароль не сохраняется. Окон у сотрудника не будет: агент молча встанет в трей.',
+    installWinrmHost: 'Компьютер',
+    installWinrmPort: 'Порт WinRM',
+    installWinrmUser: 'Администратор',
+    installWinrmPassword: 'Пароль',
+    installWinrmBusy: 'Ставлю…',
+    installWinrmOk: 'Агент поставлен и сидит в трее',
     downloadCpp: 'Скачать portable ZIP',
     deploymentTitle: 'Развёртывание',
     deployStep1:
