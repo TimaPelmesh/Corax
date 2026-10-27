@@ -105,15 +105,6 @@ def remote_script(server: str, token: str) -> str:
     return f"""
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-add-type @"
-using System.Net;
-using System.Security.Cryptography.X509Certificates;
-public class CoraxPanelTrust : ICertificatePolicy {{
-  public bool CheckValidationResult(ServicePoint s, X509Certificate c, WebRequest r, int p) {{ return true; }}
-}}
-"@
-[System.Net.ServicePointManager]::CertificatePolicy = New-Object CoraxPanelTrust
 $dir = Join-Path $env:TEMP 'CORAX'
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $exe = Join-Path $dir 'CORAX-Agent.exe'
@@ -175,7 +166,7 @@ def _start_quietly(host: str, domain: str, user: str, password: str) -> int:
     from impacket.dcerpc.v5.dcomrt import DCOMConnection
     from impacket.dcerpc.v5.dtypes import NULL
 
-    dcom = DCOMConnection(host, user, password, domain, oxidResolver=True)
+    dcom = DCOMConnection(host, user, password, domain, oxidResolver=False)
     try:
         interface = dcom.CoCreateInstanceEx(CLSID_WbemLevel1Login, IID_IWbemLevel1Login)
         login = IWbemLevel1Login(interface)

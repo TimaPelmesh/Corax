@@ -1,19 +1,14 @@
 #include "pair_lan.hpp"
 #include "util.hpp"
 
-#include <winsock2.h>
 #include <windows.h>
 #include <winhttp.h>
-#include <iphlpapi.h>
 #include <wincrypt.h>
 
 #include <cstdio>
 #include <string>
-#include <vector>
 
 #pragma comment(lib, "winhttp.lib")
-#pragma comment(lib, "iphlpapi.lib")
-#pragma comment(lib, "ws2_32.lib")
 
 namespace {
 
@@ -92,46 +87,10 @@ std::string http_exchange(const std::wstring& method, const std::string& url, co
   return response;
 }
 
-std::vector<std::string> local_ipv4() {
-  std::vector<std::string> ips;
-  ULONG size = 16 * 1024;
-  std::vector<unsigned char> buf(size);
-  if (GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
-                           nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data()), &size) != NO_ERROR) {
-    return ips;
-  }
-  for (auto* adapter = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data()); adapter; adapter = adapter->Next) {
-    if (adapter->OperStatus != IfOperStatusUp) continue;
-    for (auto* unicast = adapter->FirstUnicastAddress; unicast; unicast = unicast->Next) {
-      auto* sa = reinterpret_cast<sockaddr_in*>(unicast->Address.lpSockaddr);
-      if (!sa || sa->sin_family != AF_INET) continue;
-      unsigned long addr = ntohl(sa->sin_addr.S_un.S_addr);
-      unsigned a = (addr >> 24) & 255;
-      unsigned b = (addr >> 16) & 255;
-      if (a == 10 || a == 127 || (a == 192 && b == 168) || (a == 172 && b >= 16 && b <= 31)) {
-        char text[32];
-        sprintf_s(text, "%u.%u.%u.%u", a, b, (addr >> 8) & 255, addr & 255);
-        ips.emplace_back(text);
-      }
-    }
-  }
-  return ips;
-}
-
 std::string find_server(const std::function<void(const std::string&)>& status) {
-  status("Ищем сервер CORAX в локальной сети…");
-  for (const std::string& ip : local_ipv4()) {
-    int last_dot = (int)ip.find_last_of('.');
-    if (last_dot < 0) continue;
-    std::string prefix = ip.substr(0, last_dot + 1);
-    for (int host = 1; host < 255; ++host) {
-      if (host % 32 == 1) status("Ищем сервер CORAX в локальной сети…");
-      std::string candidate = prefix + std::to_string(host);
-      if (candidate == ip) continue;
-      std::string body = http_exchange(L"GET", "http://" + candidate + ":3000/api/v1/agent/discover", "", 250);
-      if (body.find("corax") != std::string::npos) return "http://" + candidate + ":3000";
-    }
-  }
+  // Do not probe the subnet. A sweep of :3000 is a port scan, and the office
+  // network then cuts that PC off the internet.
+  status("Адрес сервера CORAX должен быть вшит в агент.");
   return "";
 }
 
