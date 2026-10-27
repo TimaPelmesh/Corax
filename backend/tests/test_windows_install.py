@@ -1,7 +1,9 @@
 from app.windows_install import (
+    agent_launch_command,
     assert_lan_host,
     claim_windows_exe,
     remote_script,
+    split_account,
     stage_windows_exe,
 )
 
@@ -23,6 +25,14 @@ def test_remote_script_is_a_hidden_install():
     assert "--silent" in script
     assert "WindowStyle Hidden" in script
     assert "http://192.168.1.10:3000/api/v1/agent/windows-installer" in script
+
+
+def test_smb_starts_only_the_agent():
+    assert split_account(r"CORP\admin") == ("CORP", "admin")
+    assert split_account("admin@corp.local") == ("corp.local", "admin")
+    command = agent_launch_command()
+    assert command == r'"C:\ProgramData\CORAX\Agent\CORAX-Agent.exe" --install --silent'
+    assert "cmd" not in command.lower()
 
 
 def test_staged_exe_can_be_claimed_once():

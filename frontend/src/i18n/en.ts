@@ -3290,7 +3290,10 @@ export const en: MessageTree = {
     installSshOk: 'Service is running',
     installWinrm: 'Install over the network',
     installWinrmHint:
-      'A computer on the local network and an administrator account. The password is not stored. The person at the PC sees no window: the agent sits in the tray.',
+      'Two ways, both local network only. The file share is the antivirus style: the file is placed in the computer’s admin folder and started from here. WinRM is for when remote PowerShell is open. The person at the PC sees no window. The password is not stored.',
+    installWinMethod: 'How to install',
+    installWinSmb: 'SMB file share, ports 445 and 135',
+    installWinWinrm: 'WinRM, port 5985',
     installWinrmHost: 'Computer',
     installWinrmPort: 'WinRM port',
     installWinrmUser: 'Administrator',

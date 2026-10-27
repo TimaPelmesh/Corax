@@ -14,7 +14,13 @@ from app.linux_install import InstallError, installer_source, one_command, push_
 from app.local_ip import advertise_lan_ipv4, list_lan_ipv4, pick_primary_lan_ipv4, _private_ipv4
 from app.models import User
 from app.schemas import AgentBundleCreate, AgentBundleLanIpOut, LinuxSshInstallIn, WindowsWinrmInstallIn
-from app.windows_install import WindowsInstallError, discard_windows_exe, push_over_winrm, stage_windows_exe
+from app.windows_install import (
+    WindowsInstallError,
+    discard_windows_exe,
+    push_over_smb,
+    push_over_winrm,
+    stage_windows_exe,
+)
 
 router = APIRouter(prefix="/agent-bundles", tags=["agent-bundles"])
 
@@ -176,22 +182,36 @@ async def windows_winrm_install(
         exe, _name = build_cpp_agent_exe(prepared, token, quiet=True)
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    stage_windows_exe(token, exe)
-    try:
-        result = await asyncio.to_thread(
-            push_over_winrm,
-            body.winrm_host,
-            body.winrm_port,
-            body.winrm_user,
-            body.winrm_password,
-            body.server_url,
-            token,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except WindowsInstallError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    finally:
-        discard_windows_exe(token)
+    if body.method == "smb":
+        try:
+            result = await asyncio.to_thread(
+                push_over_smb,
+                body.winrm_host,
+                body.winrm_user,
+                body.winrm_password,
+                exe,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except WindowsInstallError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    else:
+        stage_windows_exe(token, exe)
+        try:
+            result = await asyncio.to_thread(
+                push_over_winrm,
+                body.winrm_host,
+                body.winrm_port,
+                body.winrm_user,
+                body.winrm_password,
+                body.server_url,
+                token,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except WindowsInstallError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        finally:
+            discard_windows_exe(token)
     result["token"] = token
     return result

@@ -78,6 +78,7 @@ export function AgentBundlePage() {
   const [sshPassword, setSshPassword] = useState('')
   const [sshBusy, setSshBusy] = useState(false)
   const [sshOutput, setSshOutput] = useState('')
+  const [winMethod, setWinMethod] = useState<'winrm' | 'smb'>('smb')
   const [winHost, setWinHost] = useState('')
   const [winPort, setWinPort] = useState('5985')
   const [winUser, setWinUser] = useState('')
@@ -307,6 +308,7 @@ export function AgentBundlePage() {
           weekday: 'MON',
           task_name: 'CORAX-Agent',
         },
+        method: winMethod,
         winrm_host: winHost.trim(),
         winrm_port: port,
         winrm_user: winUser.trim(),
@@ -898,15 +900,24 @@ export function AgentBundlePage() {
             <>
             <div className="mt-3 space-y-3">
               <p className="text-sm leading-relaxed">{t('agentBundle.installWinrmHint')}</p>
+              <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
+                {t('agentBundle.installWinMethod')}
+                <select className="app-input app-select" value={winMethod} onChange={(event) => setWinMethod(event.target.value === 'winrm' ? 'winrm' : 'smb')}>
+                  <option value="smb">{t('agentBundle.installWinSmb')}</option>
+                  <option value="winrm">{t('agentBundle.installWinWinrm')}</option>
+                </select>
+              </label>
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
                   {t('agentBundle.installWinrmHost')}
                   <input className="app-input" value={winHost} placeholder="192.168.1.20" onChange={(event) => setWinHost(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
                 </label>
-                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                  {t('agentBundle.installWinrmPort')}
-                  <input className="app-input" value={winPort} onChange={(event) => setWinPort(event.target.value)} inputMode="numeric" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
-                </label>
+                {winMethod === 'winrm' ? (
+                  <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
+                    {t('agentBundle.installWinrmPort')}
+                    <input className="app-input" value={winPort} onChange={(event) => setWinPort(event.target.value)} inputMode="numeric" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                  </label>
+                ) : null}
                 <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
                   {t('agentBundle.installWinrmUser')}
                   <input className="app-input" value={winUser} placeholder="CORP\\admin" onChange={(event) => setWinUser(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />

@@ -2814,6 +2814,7 @@ export const api = {
 
   windowsWinrmInstall: (
     body: AgentBundleCreateBody & {
+      method?: 'winrm' | 'smb'
       winrm_host: string
       winrm_port: number
       winrm_user: string

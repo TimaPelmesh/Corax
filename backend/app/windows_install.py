@@ -124,6 +124,108 @@ exit $proc.ExitCode
 """.strip()
 
 
+_AGENT_EXE = r"C:\ProgramData\CORAX\Agent\CORAX-Agent.exe"
+_AGENT_SHARE_PATH = r"ProgramData\CORAX\Agent\CORAX-Agent.exe"
+
+
+def split_account(value: str) -> tuple[str, str]:
+    """DOMAIN\\user or user@domain. A bare name is a local account."""
+    user = clean_winrm_user(value)
+    if "\\" in user:
+        domain, name = user.split("\\", 1)
+        if not domain or not name:
+            raise ValueError("Некорректный пользователь")
+        return domain, name
+    if "@" in user:
+        name, domain = user.split("@", 1)
+        if not name or not domain:
+            raise ValueError("Некорректный пользователь")
+        return domain, name
+    return "", user
+
+
+def agent_launch_command() -> str:
+    """The only program a remote install is allowed to start."""
+    return f'"{_AGENT_EXE}" --install --silent'
+
+
+def _upload(conn, data: bytes) -> None:
+    for folder in (r"ProgramData\CORAX", r"ProgramData\CORAX\Agent"):
+        try:
+            conn.createDirectory("C$", folder)
+        except Exception:
+            pass
+    view = memoryview(data)
+    offset = 0
+
+    def reader(size: int) -> bytes:
+        nonlocal offset
+        if offset >= len(view):
+            return b""
+        chunk = bytes(view[offset : offset + size])
+        offset += len(chunk)
+        return chunk
+
+    conn.putFile("C$", _AGENT_SHARE_PATH, reader)
+
+
+def _start_quietly(host: str, domain: str, user: str, password: str) -> int:
+    """Start the copied agent through WMI. It is not a service, so SCM cannot host it."""
+    from impacket.dcerpc.v5.dcom.wmi import CLSID_WbemLevel1Login, IID_IWbemLevel1Login, IWbemLevel1Login
+    from impacket.dcerpc.v5.dcomrt import DCOMConnection
+    from impacket.dcerpc.v5.dtypes import NULL
+
+    dcom = DCOMConnection(host, user, password, domain, oxidResolver=True)
+    try:
+        interface = dcom.CoCreateInstanceEx(CLSID_WbemLevel1Login, IID_IWbemLevel1Login)
+        login = IWbemLevel1Login(interface)
+        services = login.NTLMLogin("//./root/cimv2", NULL, NULL)
+        login.RemRelease()
+        process, _ = services.GetObject("Win32_Process")
+        created = process.Create(agent_launch_command(), r"C:\ProgramData\CORAX\Agent", None)
+        code = int(getattr(created, "ReturnValue", 1) or 0)
+        if code != 0:
+            raise WindowsInstallError(f"Компьютер не запустил агент (код {code})")
+        return int(getattr(created, "ProcessId", 0) or 0)
+    finally:
+        try:
+            dcom.disconnect()
+        except Exception:
+            pass
+
+
+def push_over_smb(host: str, user: str, password: str, exe: bytes) -> dict:
+    """Copy the agent into C$ and start it. Same idea as an antivirus console."""
+    host = assert_lan_host(host)
+    password = clean_winrm_password(password)
+    domain, name = split_account(user)
+    if not exe.startswith(b"MZ"):
+        raise ValueError("Файл агента повреждён")
+    try:
+        from impacket.smbconnection import SMBConnection
+        from impacket.dcerpc.v5.dcom.wmi import CLSID_WbemLevel1Login, IID_IWbemLevel1Login  # noqa: F401
+    except ImportError as exc:
+        raise WindowsInstallError("На сервере Corax нет пакета impacket") from exc
+    try:
+        conn = SMBConnection(host, host, sess_port=445)
+        conn.login(name, password, domain)
+        try:
+            _upload(conn, exe)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        pid = _start_quietly(host, domain, name, password)
+    except WindowsInstallError:
+        raise
+    except Exception as exc:
+        raise WindowsInstallError(
+            "Общая папка не открылась. Нужны учётка администратора и порты 445 и 135."
+        ) from exc
+    return {"ok": True, "exit_code": 0, "output": f"запущен, pid {pid}" if pid else "запущен"}
+
+
 def _redact(text: str, *secrets: str) -> str:
     for secret in secrets:
         if secret:
