@@ -479,8 +479,7 @@ def send_keyboard(*labels: str) -> list[dict[str, str]]:
                 "TEXT": title,
                 "ACTION": "SEND",
                 "ACTION_VALUE": title,
-                "BG_COLOR": "#2f5f98" if primary else "#eef2f6",
-                "TEXT_COLOR": "#ffffff" if primary else "#243044",
+                "BG_COLOR_TOKEN": "primary" if primary else "secondary",
                 "DISPLAY": "LINE",
             }
         )

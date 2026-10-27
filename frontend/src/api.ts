@@ -2284,7 +2284,7 @@ export const api = {
     request<BitrixBotSettings>(`${API_PREFIX}/settings/bitrix24/bot/mode`, { method: 'POST', json: { event_mode } }),
   unregisterBitrixBot: (bot_id: number) =>
     request<BitrixBotSettings>(`${API_PREFIX}/settings/bitrix24/bot/unregister`, { method: 'POST', json: { bot_id } }),
-  saveBitrixBotPhrases: (body: BitrixBotPhrases & { bot_id: number }) =>
+  saveBitrixBotPhrases: (body: BitrixBotPhrases & { bot_id: number; apply?: boolean }) =>
     request<BitrixBotSettings>(`${API_PREFIX}/settings/bitrix24/bot/phrases`, { method: 'PUT', json: body }),
 
   zabbixConfig: () => request<ZabbixConfig>(`${API_PREFIX}/settings/zabbix`),

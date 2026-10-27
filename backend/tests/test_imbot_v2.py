@@ -263,6 +263,25 @@ def test_greeting_uses_the_name_and_the_time_of_day():
     assert greeting_text("Анна", voice, evening).startswith("Добрый вечер, Анна!")
 
 
+def test_applied_phrase_is_what_the_bot_says_next():
+    from app.bot_intake import drop_phrases, phrases_for_bot, publish_phrases
+
+    raw = dump_scripts({"15": {"ask": "старое"}})
+    publish_phrases(15, {"ask": "Опишите, что сломалось."})
+    try:
+        voice = voice_from_phrases(
+            phrases_for_bot(raw, 15, greet_daypart=True, greeting_note="", close_notice=True)
+        )
+        assert ask_text("Анна", voice) == "Опишите, что сломалось."
+        publish_phrases(15, {})
+        cleared = voice_from_phrases(
+            phrases_for_bot(raw, 15, greet_daypart=True, greeting_note="", close_notice=True)
+        )
+        assert "одним сообщением" in ask_text("Анна", cleared)
+    finally:
+        drop_phrases(15)
+
+
 def test_custom_phrase_replaces_only_that_line():
     morning = datetime(2026, 10, 26, 6, 0, tzinfo=timezone.utc)
     voice = voice_from_phrases({"ask": "Опишите проблему.", "accepted": "Заявка {id} создана.", "greet_body": "Слушаю."})

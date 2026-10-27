@@ -183,12 +183,6 @@ async def _b24_user_display_name(user_id: int) -> str | None:
     return name or None
 
 
-def _mention_user(user_id: int, label: str) -> str:
-    # Bitrix IM supports BB-codes in MESSAGE; user mention is commonly done with [USER=id]Name[/USER].
-    safe = (label or "").strip() or "пользователь"
-    return f"[USER={user_id}]{safe}[/USER]"
-
-
 def _token_matches(expected: str, got: str) -> bool:
     import hashlib
     import hmac as hmac_mod
@@ -442,7 +436,9 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
     )
     if step == "skip":
         return {"ok": True, "event": event["event"], "note": step}
-    await db.refresh(cfg)
+    fresh = await db.get(Bitrix24Config, 1, populate_existing=True)
+    if fresh is not None:
+        cfg = fresh
     voice = _voice(cfg)
     if step == "off":
         await _v2_reply(cfg, event, off_text(voice), db=db, state_key=phase_key)
@@ -747,7 +743,6 @@ async def handler(
     now = datetime.now(timezone.utc)
     title = bitrix_title(msg_text)
     requester_name: str | None = None
-    mention: str | None = None
     from_user_id: int | None = None
     if from_user_id_raw and str(from_user_id_raw).strip().isdigit():
         try:
@@ -758,7 +753,6 @@ async def handler(
         display = await _b24_user_display_name(from_user_id)
         if display:
             requester_name = display
-            mention = _mention_user(from_user_id, display)
 
     row = ServiceRequest(
         title=title,
@@ -801,7 +795,7 @@ async def handler(
             if not dialog_norm:
                 raise RuntimeError("dialog_id missing")
 
-            greet_name = mention or "пользователь"
+            voice = _voice(cfg)
             keyboard = {
                 "BOT_ID": str(settings.bitrix24_bot_id),
                 "BUTTONS": [
@@ -821,7 +815,7 @@ async def handler(
                     "BOT_ID": str(settings.bitrix24_bot_id),
                     "CLIENT_ID": settings.bitrix24_bot_client_id,
                     "DIALOG_ID": dialog_norm,
-                    "MESSAGE": f"Здравствуйте, {greet_name}! ✅ Заявка создана #{row.id}",
+                    "MESSAGE": accepted_text(row.id, msg_text, name=requester_name or "", voice=voice),
                     # Bitrix expects KEYBOARD as JSON string.
                     "KEYBOARD": json.dumps(keyboard, ensure_ascii=False),
                 },

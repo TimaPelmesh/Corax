@@ -157,6 +157,22 @@ def dump_scripts(scripts: dict) -> str:
     return json.dumps(parse_scripts(json.dumps(scripts)), ensure_ascii=False)
 
 
+# Lines just saved in this process. The poller may still hold an older row
+# until its next read; the chat must speak the text the admin applied.
+_applied: dict[str, dict] = {}
+
+
+def publish_phrases(bot_id: int, phrases: dict | None) -> None:
+    """Remember this bot's lines so the next reply uses them immediately."""
+    if not bot_id:
+        return
+    _applied[str(int(bot_id))] = dict(phrases or {})
+
+
+def drop_phrases(bot_id: int) -> None:
+    _applied.pop(str(int(bot_id)), None)
+
+
 def phrases_for_bot(
     raw: str | None,
     bot_id: int | None,
@@ -165,11 +181,17 @@ def phrases_for_bot(
     greeting_note: str,
     close_notice: bool,
 ) -> dict:
-    """Stored lines for this id, or the older single set while it still belongs to this bot."""
-    scripts = parse_scripts(raw)
+    """Stored lines for this id, or the older single set while it still belongs to this bot.
+
+    A phrase published in this process wins over the row the caller loaded.
+    An empty published set means the built-in lines, not a stale script.
+    """
     if not bot_id:
         return {}
     key = str(int(bot_id))
+    if key in _applied:
+        return dict(_applied[key])
+    scripts = parse_scripts(raw)
     if key in scripts:
         return scripts[key]
     return normalize_phrases(

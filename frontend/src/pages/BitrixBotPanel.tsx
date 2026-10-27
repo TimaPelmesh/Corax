@@ -115,36 +115,37 @@ function phrasesEqual(left: BitrixBotPhrases, right: BitrixBotPhrases) {
   return keys.every((key) => String(left[key] || '') === String(right[key] || ''))
 }
 
-function withDefaults(phrases: BitrixBotPhrases): BitrixBotPhrases {
-  const next: BitrixBotPhrases = { ...phrases }
-  ;(Object.keys(PLACEHOLDER) as PhraseKey[]).forEach((key) => {
-    if (!String(next[key] || '').trim() && PLACEHOLDER[key]) next[key] = PLACEHOLDER[key]
-  })
-  return next
-}
-
 function fullPhrases(raw: BitrixBotPhrases | undefined, fallback: BitrixBotSettings | null, id: number): BitrixBotPhrases {
   if (raw) {
-    return withDefaults({
+    return {
       ...BLANK,
       ...raw,
       greet_daypart: raw.greet_daypart !== false,
       close_notice: raw.close_notice !== false,
-    })
+    }
   }
   if (fallback && fallback.bot_id === id) {
-    return withDefaults({
+    return {
       ...BLANK,
       greet_daypart: fallback.greet_daypart !== false,
       close_notice: fallback.close_notice !== false,
       greeting_note: fallback.greeting_note || '',
-    })
+    }
   }
-  return withDefaults({ ...BLANK })
+  return { ...BLANK }
 }
 
-function hasPhraseText(snapshot: BitrixBotPhrases) {
-  return (Object.keys(PLACEHOLDER) as PhraseKey[]).some((key) => String(snapshot[key] || '').trim())
+const TOKENS: Record<string, string[]> = {
+  greet: [],
+  ask: ['{name}'],
+  accepted: ['{id}', '{name}'],
+  closed: ['{id}', '{name}', '{mark}', '{verb}', '{wish}', '{farewell}'],
+  status: ['{id}', '{mark}', '{label}', '{title}'],
+  none: [],
+  nudge: ['{hello}', '{name}'],
+  cancel: ['{name}'],
+  help: [],
+  off: [],
 }
 
 function daypart(hour: number) {
@@ -362,9 +363,10 @@ export function BitrixBotPanel({
   const [pickQuery, setPickQuery] = useState('')
   const [busy, setBusy] = useState(false)
   const [listed, setListed] = useState(false)
-  const [phraseStatus, setPhraseStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [phraseStatus, setPhraseStatus] = useState<'idle' | 'saving' | 'saved' | 'restarting'>('idle')
   const boot = useRef(false)
   const draftRef = useRef<{ id: number; phrases: BitrixBotPhrases } | null>(null)
+  const saveSeq = useRef(0)
   const fieldRefs = useRef<Partial<Record<PhraseKey, HTMLTextAreaElement | null>>>({})
   const kindRef = useRef(KINDS[0])
   const live = useRef({ bot, bots, scripts })
@@ -375,11 +377,12 @@ export function BitrixBotPanel({
     setScripts(row.scripts || {})
   }, [])
 
-  const persist = useCallback((id: number, snapshot: BitrixBotPhrases) => {
-    if (!hasPhraseText(snapshot)) return Promise.resolve(true)
-    setPhraseStatus('saving')
+  const persist = useCallback((id: number, snapshot: BitrixBotPhrases, apply = false) => {
+    const seq = ++saveSeq.current
+    setPhraseStatus(apply ? 'restarting' : 'saving')
     return api.saveBitrixBotPhrases({
       bot_id: id,
+      apply,
       greet_daypart: snapshot.greet_daypart !== false,
       close_notice: snapshot.close_notice !== false,
       greeting_note: snapshot.greeting_note || '',
@@ -395,11 +398,13 @@ export function BitrixBotPanel({
       no_ticket: snapshot.no_ticket || '',
       status: snapshot.status || '',
     }).then((next) => {
+      if (seq !== saveSeq.current) return false
       setBot(next)
       setScripts(next.scripts || {})
       setPhraseStatus('saved')
       return true
     }).catch((error) => {
+      if (seq !== saveSeq.current) return false
       setPhraseStatus('idle')
       toast.error(error instanceof Error ? error.message : t('settingsBitrix.saveFailed'))
       return false
@@ -540,13 +545,13 @@ export function BitrixBotPanel({
   async function applyMessages() {
     if (!selectedId) return
     const snapshot = phrases
-    draftRef.current = { id: selectedId, phrases: snapshot }
+    draftRef.current = null
     setBusy(true)
     try {
-      const saved = await persist(selectedId, snapshot)
-      if (saved) toast.ok(t('settingsBitrix.botSaved'))
+      const saved = await persist(selectedId, snapshot, true)
+      const speaks = Boolean(bot?.bot_id && bot.bot_id === selectedId)
+      if (saved) toast.ok(speaks ? t('settingsBitrix.botPhraseApplied') : t('settingsBitrix.botPhraseAppliedIdle'))
     } finally {
-      if (draftRef.current?.id === selectedId && draftRef.current.phrases === snapshot) draftRef.current = null
       setBusy(false)
     }
   }
@@ -697,6 +702,23 @@ export function BitrixBotPanel({
       if (fieldRefs.current[field] === active) return field
     }
     return kindRef.current.fields[0]
+  }
+
+  function insertAt(field: PhraseKey, token: string) {
+    const current = String(phrases[field] || '')
+    const el = fieldRefs.current[field]
+    const start = el?.selectionStart ?? current.length
+    const end = el?.selectionEnd ?? current.length
+    const limit = field === 'greeting_note' ? 400 : 800
+    const next = `${current.slice(0, start)}${token}${current.slice(end)}`.slice(0, limit)
+    edit({ ...phrases, [field]: next })
+    window.requestAnimationFrame(() => {
+      const node = fieldRefs.current[field]
+      if (!node) return
+      const caret = Math.min(start + token.length, limit)
+      node.focus()
+      node.setSelectionRange(caret, caret)
+    })
   }
 
   function wrap(field: PhraseKey, open: string, close: string) {
@@ -890,14 +912,15 @@ export function BitrixBotPanel({
               <p className="text-sm text-[var(--color-fg-subtle)]">{t('settingsBitrix.botSelectHint')}</p>
             ) : (
               <>
-                <p className="mb-3 text-sm text-[var(--color-fg-subtle)]">{bound ? t('settingsBitrix.botActivePhrases') : t('settingsBitrix.botIdlePhrases')}</p>
+                <p className="mb-1 text-sm text-[var(--color-fg-subtle)]">{bound ? t('settingsBitrix.botActivePhrases') : t('settingsBitrix.botIdlePhrases')}</p>
+                <p className="mb-3 text-[12px] leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botMsgPlaceholders')}</p>
                 <div className="grid gap-4 md:grid-cols-[210px_minmax(0,1fr)]">
                   <div className="flex gap-1 overflow-x-auto md:flex-col">
                     {KINDS.map((item) => (
                       <button
                         key={item.id}
                         type="button"
-                        className={`shrink-0 rounded-lg px-3 py-2 text-left text-sm ${kind === item.id ? 'bg-[var(--color-primary)] font-medium text-white' : 'hover:bg-[var(--color-bg-muted)]'}`}
+                        className={`shrink-0 rounded-lg px-3 py-2 text-left text-sm ${kind === item.id ? 'bg-[var(--color-bg-muted)] font-medium text-[var(--color-fg)] ring-1 ring-[var(--color-border)]' : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-bg-muted)]'}`}
                         onClick={() => setKind(item.id)}
                       >
                         {t(item.label)}
@@ -906,6 +929,7 @@ export function BitrixBotPanel({
                   </div>
                   <div className="space-y-3">
                     <div className="rounded-2xl bg-[var(--color-bg-muted)]/70 px-3 py-3">
+                      <div className="mb-2 text-[12px] font-medium text-[var(--color-fg-subtle)]">{t('settingsBitrix.botPreviewCaption')}</div>
                       <div className="flex items-end gap-2">
                         <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-semibold text-white" style={{ background: circle }}>
                           {avatarPreview ? <img src={avatarPreview} alt="" className="h-full w-full object-cover" /> : (displayName.trim().slice(0, 1) || 'Б').toUpperCase()}
@@ -942,6 +966,21 @@ export function BitrixBotPanel({
                         </span>
                       </label>
                     ) : null}
+                    {(TOKENS[currentKind.id] || []).length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(TOKENS[currentKind.id] || []).map((token) => (
+                          <button
+                            key={token}
+                            type="button"
+                            className="rounded-full bg-[var(--color-bg-muted)] px-2.5 py-1 font-mono text-[12px] text-[var(--color-fg)] hover:bg-[var(--color-border)]"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => insertAt(focusedField(), token)}
+                          >
+                            {token}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="flex flex-wrap gap-1.5">
                       <button type="button" className={btn} onMouseDown={(event) => event.preventDefault()} onClick={() => wrap(focusedField(), '[b]', '[/b]')}>{t('settingsBitrix.botFormatBold')}</button>
                       <button type="button" className={btn} onMouseDown={(event) => event.preventDefault()} onClick={() => wrap(focusedField(), '[i]', '[/i]')}>{t('settingsBitrix.botFormatItalic')}</button>
@@ -949,13 +988,13 @@ export function BitrixBotPanel({
                       <button type="button" className={btn} onMouseDown={(event) => event.preventDefault()} onClick={() => wrap(focusedField(), `[color=${circle}]`, '[/color]')}>{t('settingsBitrix.botFormatColor')}</button>
                     </div>
                     {currentKind.fields.map((field) => (
-                      <Field key={field} label={t(FIELD_LABEL[field])} hint={field === 'greeting_note' ? t('settingsBitrix.botGreetingNoteHint') : t('settingsBitrix.botMsgPlaceholders')}>
+                      <Field key={field} label={t(FIELD_LABEL[field])} hint={field === 'greeting_note' ? t('settingsBitrix.botGreetingNoteHint') : undefined}>
                         <textarea
                           ref={(node) => { fieldRefs.current[field] = node }}
-                          className="app-input min-h-24"
+                          className="app-input min-h-28 leading-relaxed"
                           maxLength={field === 'greeting_note' ? 400 : 800}
                           value={String(phrases[field] || '')}
-                          placeholder={field === 'greeting_note' ? t('settingsBitrix.botGreetingNotePlaceholder') : ''}
+                          placeholder={field === 'greeting_note' ? t('settingsBitrix.botGreetingNotePlaceholder') : PLACEHOLDER[field]}
                           onChange={(event) => edit({ ...phrases, [field]: event.target.value })}
                         />
                       </Field>
@@ -966,7 +1005,7 @@ export function BitrixBotPanel({
                         className={btn}
                         onClick={() => {
                           const next = { ...phrases }
-                          for (const field of currentKind.fields) next[field] = PLACEHOLDER[field] || ''
+                          for (const field of currentKind.fields) next[field] = ''
                           edit(next)
                         }}
                       >
@@ -974,10 +1013,16 @@ export function BitrixBotPanel({
                       </button>
                       <div className="flex items-center gap-3">
                         <span className="text-[12px] text-[var(--color-fg-subtle)]">
-                          {phraseStatus === 'saving' ? t('settingsBitrix.botPhraseSaving') : phraseStatus === 'saved' ? t('settingsBitrix.botPhraseSaved') : ''}
+                          {phraseStatus === 'restarting'
+                            ? t('settingsBitrix.botRestarting')
+                            : phraseStatus === 'saving'
+                              ? t('settingsBitrix.botPhraseSaving')
+                              : phraseStatus === 'saved'
+                                ? t('settingsBitrix.botPhraseSaved')
+                                : ''}
                         </span>
                         <button type="button" className={btnPrimary} disabled={busy || !selectedId} onClick={() => void applyMessages()}>
-                          {t('settingsBitrix.botProfile')}
+                          {t('settingsBitrix.botApplyMessages')}
                         </button>
                       </div>
                     </div>

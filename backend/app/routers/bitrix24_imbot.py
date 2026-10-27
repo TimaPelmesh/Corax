@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_superuser
-from app.bot_intake import dump_scripts, normalize_phrases, parse_scripts
+from app.bot_intake import drop_phrases, dump_scripts, normalize_phrases, parse_scripts, publish_phrases
 from app.database import get_db
 from app.imbot_v2 import (
     BACKGROUNDS,
@@ -121,6 +121,7 @@ class BotDrop(BaseModel):
 
 class BotPhrasesIn(BaseModel):
     bot_id: int
+    apply: bool = False
     greet_daypart: bool | None = None
     close_notice: bool | None = None
     greeting_note: str | None = Field(default=None, max_length=400)
@@ -543,12 +544,16 @@ async def save_bot_phrases(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    """Store one bot's replies. Only the bot Corax is bound to says them in chat."""
+    """Store one bot's replies. Only the bot Corax is bound to says them in chat.
+
+    apply=true restarts the queue reader so the next chat message is guaranteed
+    to use this text, even if the reader still held the previous row.
+    """
     if body.bot_id <= 0:
         raise HTTPException(status_code=400, detail="Укажите бота")
     row = await _get_or_create_cfg(db)
     scripts = parse_scripts(row.bot_scripts_json)
-    clean = normalize_phrases(body.model_dump(exclude={"bot_id"}, exclude_none=True))
+    clean = normalize_phrases(body.model_dump(exclude={"bot_id", "apply"}, exclude_none=True))
     key = str(int(body.bot_id))
     if clean:
         scripts[key] = clean
@@ -559,6 +564,11 @@ async def save_bot_phrases(
         _mirror_phrases(row, clean)
     await db.commit()
     await db.refresh(row)
+    publish_phrases(int(body.bot_id), scripts.get(key, {}))
+    if body.apply and row.bot_id == int(body.bot_id):
+        from app.bitrix_bot_poll import reload_worker
+
+        await reload_worker()
     return _out(row, _panel_origin(request))
 
 
@@ -583,6 +593,7 @@ async def unregister_bot(
         _raise(exc)
     scripts = parse_scripts(row.bot_scripts_json)
     scripts.pop(str(int(body.bot_id)), None)
+    drop_phrases(int(body.bot_id))
     row.bot_scripts_json = dump_scripts(scripts)
     if row.bot_id == int(body.bot_id):
         row.bot_id = None

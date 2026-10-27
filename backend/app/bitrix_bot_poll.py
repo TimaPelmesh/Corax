@@ -30,6 +30,9 @@ class BitrixBotPoller:
         self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
 
+    def running(self) -> bool:
+        return self._task is not None and not self._task.done()
+
     async def start(self) -> None:
         if self._task and not self._task.done():
             return
@@ -46,6 +49,11 @@ class BitrixBotPoller:
                 pass
             self._task = None
 
+    async def restart(self) -> None:
+        """Stop the queue reader and start it again so the next pull uses fresh settings."""
+        await self.stop()
+        await self.start()
+
     async def _loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -60,6 +68,24 @@ class BitrixBotPoller:
 
 
 bitrix_bot_poller = BitrixBotPoller()
+_reload_lock = asyncio.Lock()
+
+
+async def reload_worker() -> None:
+    """Restart the bot reader after an applied phrase change.
+
+    Fetch mode and the command menu are registered again on the next pull.
+    A process that never started the reader is left alone.
+    """
+    async with _reload_lock:
+        global _fetch_switched
+        was_running = bitrix_bot_poller.running()
+        _fetch_switched = False
+        _menu_published.clear()
+        if not was_running:
+            return
+        log.info("bitrix bot worker restart")
+        await bitrix_bot_poller.restart()
 
 
 def next_offset(result: dict[str, Any], events: list[Any]) -> int | None:
@@ -103,7 +129,7 @@ async def _ensure_fetch(cfg: Bitrix24Config) -> None:
 
 
 async def poll_once(db: AsyncSession) -> None:
-    cfg = await db.get(Bitrix24Config, 1)
+    cfg = await db.get(Bitrix24Config, 1, populate_existing=True)
     if cfg is None or not _bot_talks(cfg):
         return
     if not (cfg.bot_webhook_url or "").strip() or not (cfg.bot_token or "").strip():
