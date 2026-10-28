@@ -367,6 +367,7 @@ InstallResult install_agent() {
   bool replaced = false;
   if (!same_path(self, dest_exe)) {
     bool had_previous = GetFileAttributesW(dest_exe.c_str()) != INVALID_FILE_ATTRIBUTES;
+    if (had_previous) stop_previous_agent(dest_exe);
     bool copied = CopyFileW(self.c_str(), dest_exe.c_str(), FALSE) == TRUE;
     if (!copied && had_previous) {
       stop_previous_agent(dest_exe);

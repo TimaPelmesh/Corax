@@ -18,6 +18,7 @@ from app.database import get_db
 from app.models import AgentToken, Computer, DiskVolume, InstalledSoftware, Peripheral, User
 from app.gpu_normalize import resolve_gpu_name
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
+from app.os_normalize import correct_windows_11_name
 from app.peripheral_display import is_noise_peripheral
 from app.schemas import AgentAuditJobResult, AgentAuditReport, AgentInventoryReport
 from app.server_audit_jobs import finish_job, lease_next_job
@@ -329,7 +330,11 @@ async def submit_inventory(
             pc.ip_address = ip_from_agent
         pc.cpu = report.cpu
         pc.ram_gb = report.ram_gb
-        pc.os_name = report.os_name
+        pc.os_name = correct_windows_11_name(
+            report.os_name,
+            report.os_version,
+            family=(ext or {}).get("os_family") if isinstance(ext, dict) else None,
+        )
         pc.os_version = report.os_version
         pc.manufacturer = mfr
         pc.model = model
@@ -360,7 +365,11 @@ async def submit_inventory(
             ip_address=ip_from_agent,
             cpu=report.cpu,
             ram_gb=report.ram_gb,
-            os_name=report.os_name,
+            os_name=correct_windows_11_name(
+                report.os_name,
+                report.os_version,
+                family=(ext or {}).get("os_family") if isinstance(ext, dict) else None,
+            ),
             os_version=report.os_version,
             manufacturer=mfr,
             model=model,

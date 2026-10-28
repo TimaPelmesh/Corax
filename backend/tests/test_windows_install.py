@@ -4,6 +4,7 @@ from app.windows_install import (
     claim_windows_exe,
     copy_targets,
     explain_remote_failure,
+    replace_commands,
     remote_script,
     split_account,
     stage_windows_exe,
@@ -49,6 +50,10 @@ def test_smb_starts_only_the_agent():
     dropped = agent_launch_command(local)
     assert dropped == r'"C:\Windows\Temp\CORAX-Agent.exe" --install --silent'
     assert "cmd" not in dropped.lower()
+    prelude = replace_commands()
+    assert prelude[-1] == r"C:\Windows\System32\taskkill.exe /F /IM CORAX-Agent.exe"
+    assert all("cmd" not in command.lower() for command in prelude)
+    assert all(command.startswith("C:\\Windows\\System32\\") for command in prelude)
 
 
 def test_open_port_is_not_blamed_for_a_rejected_login():

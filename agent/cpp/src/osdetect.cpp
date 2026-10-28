@@ -53,6 +53,18 @@ OsInfo detect_os() {
         typ == REG_SZ) {
       info.product_name = util::narrow(buf);
     }
+    wchar_t build_buf[32];
+    DWORD build_cb = sizeof(build_buf);
+    if (RegQueryValueExW(key, L"CurrentBuild", nullptr, &typ, (LPBYTE)build_buf, &build_cb) ==
+            ERROR_SUCCESS &&
+        typ == REG_SZ) {
+      int reg_build = _wtoi(build_buf);
+      if (reg_build > info.build) {
+        info.build = reg_build;
+        info.version = std::to_string(info.major ? info.major : 10) + "." +
+                       std::to_string(info.minor) + "." + std::to_string(info.build);
+      }
+    }
     DWORD install_type_sz = sizeof(buf);
     if (RegQueryValueExW(key, L"InstallationType", nullptr, &typ, (LPBYTE)buf, &install_type_sz) ==
             ERROR_SUCCESS &&
@@ -81,4 +93,15 @@ OsInfo detect_os() {
   info.supports_bitlocker_wmi = info.supports_storage_api;
   info.supports_security_center2 = (info.major >= 6);
   return info;
+}
+
+std::string os_display_name(const OsInfo& os) {
+  std::string name = os.product_name.empty() ? "Windows" : os.product_name;
+  if (os.is_server || os.family == "server" || os.build < 22000) return name;
+  std::string low = util::to_lower(name);
+  if (low.find("windows 11") != std::string::npos || low.find("server") != std::string::npos) return name;
+  auto pos = low.find("windows 10");
+  if (pos == std::string::npos) return name;
+  name.replace(pos, std::string("windows 10").size(), "Windows 11");
+  return name;
 }

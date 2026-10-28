@@ -222,6 +222,12 @@ _COPY_TARGETS = (
 )
 _LAUNCH_EXES = {item[2] for item in _COPY_TARGETS} | {_AGENT_EXE}
 _LAUNCH_DIRS = {item[3] for item in _COPY_TARGETS} | {r"C:\ProgramData\CORAX\Agent"}
+# Fixed commands. They only stop this agent's own task and process before the new file is written.
+_REPLACE_COMMANDS = (
+    r'C:\Windows\System32\schtasks.exe /End /TN "CORAX Agent"',
+    r'C:\Windows\System32\schtasks.exe /End /TN "CORAX Agent Tray"',
+    r"C:\Windows\System32\taskkill.exe /F /IM CORAX-Agent.exe",
+)
 
 
 def split_account(value: str) -> tuple[str, str]:
@@ -242,6 +248,10 @@ def split_account(value: str) -> tuple[str, str]:
 
 def copy_targets() -> tuple[tuple[str, str, str, str], ...]:
     return _COPY_TARGETS
+
+
+def replace_commands() -> tuple[str, ...]:
+    return _REPLACE_COMMANDS
 
 
 def agent_launch_command(exe: str | None = None) -> str:
@@ -297,6 +307,12 @@ def _start_quietly(host: str, domain: str, user: str, password: str, exe: str, c
         if exe not in _LAUNCH_EXES or cwd not in _LAUNCH_DIRS:
             raise WindowsInstallError("Некорректный путь запуска")
         process, _ = services.GetObject("Win32_Process")
+        for command in _REPLACE_COMMANDS:
+            try:
+                process.Create(command, r"C:\Windows\System32", None)
+            except Exception:
+                log.warning("windows install could not stop the previous agent")
+        time.sleep(1.5)
         created = process.Create(agent_launch_command(exe), cwd, None)
         code = int(getattr(created, "ReturnValue", 1) or 0)
         if code != 0:

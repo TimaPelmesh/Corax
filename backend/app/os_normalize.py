@@ -41,6 +41,37 @@ _EDITION_SHORT: tuple[tuple[re.Pattern[str], str], ...] = (
 
 _MS_PREFIX_RE = re.compile(r"^microsoft\s+", re.I)
 _SPACE_RE = re.compile(r"\s+")
+_WIN10_RE = re.compile(r"\bwindows\s+10\b", re.I)
+_WIN11_RE = re.compile(r"\bwindows\s+11\b", re.I)
+_SERVER_RE = re.compile(r"server|сервер", re.I)
+# First Windows 10 build is 10240. Windows 11 starts at 22000.
+_BUILD_RE = re.compile(r"\b(\d{5})\b")
+
+
+def windows_build_number(version: str | None) -> int | None:
+    """Highest Windows build in a version string such as ``10.0.26100 build 26100``."""
+    nums = [int(n) for n in _BUILD_RE.findall(version or "") if int(n) >= 10240]
+    return max(nums) if nums else None
+
+
+def correct_windows_11_name(
+    name: str | None,
+    version: str | None = None,
+    *,
+    family: str | None = None,
+) -> str | None:
+    """Registry ProductName stays ``Windows 10`` on Windows 11. The build number does not."""
+    raw = (name or "").strip()
+    fam = family.strip().lower() if isinstance(family, str) else ""
+    if not raw or _SERVER_RE.search(raw) or fam == "server":
+        return name
+    build = windows_build_number(version)
+    is_11 = fam == "win11" or (build is not None and build >= 22000)
+    if not is_11 or _WIN11_RE.search(raw):
+        return raw
+    if not _WIN10_RE.search(raw):
+        return raw
+    return _WIN10_RE.sub("Windows 11", raw, count=1)
 
 
 def normalize_os_display(name: str | None) -> str:

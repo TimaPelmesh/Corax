@@ -282,7 +282,7 @@ std::string build_minimal_inventory_payload(const AgentConfig& cfg, const OsInfo
   j.null_value();
   j.key("ram_gb");
   j.value(0.0);
-  std::string os_name = os.product_name.empty() ? "Windows" : os.product_name;
+  std::string os_name = os_display_name(os);
   std::string os_version = os.version + " build " + std::to_string(os.build);
   put_str(j, "os_name", os_name);
   put_str(j, "os_version", os_version);
@@ -383,7 +383,7 @@ std::string build_inventory_payload_full(const AgentConfig& cfg, const OsInfo& o
     mem_pct = (int)ms.dwMemoryLoad;
   }
 
-  std::string os_name = os.product_name.empty() ? "Windows" : os.product_name;
+  std::string os_name = os_display_name(os);
   std::string os_version = os.version + " build " + std::to_string(os.build);
 
   j.key("hostname");

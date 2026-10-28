@@ -16,3 +16,6 @@ struct OsInfo {
 };
 
 OsInfo detect_os();
+
+// ProductName in the registry stays "Windows 10 …" on Windows 11. Build >= 22000 is 11.
+std::string os_display_name(const OsInfo& os);
