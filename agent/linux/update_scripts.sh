@@ -52,7 +52,7 @@ apply_tree() {
       fi
       ensure_background_loop || true
     elif command -v systemctl >/dev/null 2>&1; then
-      systemctl restart corax-audit.service >/dev/null 2>&1 || true
+      restart_audit_service >/dev/null 2>&1 || true
     fi
   fi
   echo "Done. agent_env.sh was not replaced."

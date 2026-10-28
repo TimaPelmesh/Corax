@@ -46,6 +46,40 @@ _SKIP_MOUNT_PREFIX = ("/proc", "/sys", "/dev", "/run", "/snap")
 _SKIP_BLOCK = ("loop", "ram", "fd", "sr", "zram", "dm-")
 
 
+def _abandon(proc: subprocess.Popen) -> None:
+    """Stop waiting. A child stuck in the kernel must not freeze the sampler."""
+    if os.name != "nt":
+        try:
+            os.killpg(proc.pid, 9)
+        except OSError:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+    else:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    try:
+        proc.communicate(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _popen(argv: list[str], stderr: int) -> subprocess.Popen:
+    kwargs: dict = {
+        "stdout": subprocess.PIPE,
+        "stderr": stderr,
+        "stdin": subprocess.DEVNULL,
+        "text": True,
+        "env": {**os.environ, "LC_ALL": "C", "SYSTEMD_PAGER": "cat", "PAGER": "cat"},
+    }
+    if os.name != "nt":
+        kwargs["start_new_session"] = True
+    return subprocess.Popen(argv, **kwargs)
+
+
 def _read(path: str, limit: int = 200_000) -> str:
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
@@ -54,19 +88,32 @@ def _read(path: str, limit: int = 200_000) -> str:
         return ""
 
 
+def _read_slow(path: str, timeout: float = 0.5) -> str:
+    """sysfs `speed` calls into the NIC driver and can sleep forever."""
+    if not re.fullmatch(r"/sys/class/net/[A-Za-z0-9_.:-]{1,15}/speed", path):
+        return ""
+    return _run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write(open(sys.argv[1], encoding='utf-8', errors='replace').read(32))",
+            path,
+        ],
+        timeout=timeout,
+    ).strip()
+
+
 def _run(argv: list[str], timeout: float = 3.0) -> str:
     try:
-        proc = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            env={**os.environ, "LC_ALL": "C"},
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        proc = _popen(argv, subprocess.DEVNULL)
+    except OSError:
         return ""
-    return proc.stdout or ""
+    try:
+        stdout, _stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _abandon(proc)
+        return ""
+    return stdout or ""
 
 
 def _hostname() -> str:
@@ -83,16 +130,11 @@ def _hostname() -> str:
 
 
 def _hostname_fqdn() -> str:
+    # socket.getfqdn() uses the system resolver and has no timeout.
     out = _run(["hostname", "-f"], timeout=2).strip()
-    if out and " " not in out and out != "localhost":
+    if out and " " not in out and "." in out and out != "localhost":
         return out[:255]
-    try:
-        fqdn = socket.getfqdn().strip()
-    except OSError:
-        fqdn = ""
-    if not fqdn or fqdn == "localhost":
-        return ""
-    return fqdn[:255]
+    return ""
 
 
 def _os_release() -> dict[str, str]:
@@ -682,7 +724,7 @@ def _network(rates: dict[str, tuple[float, float]], counters: dict[str, tuple[in
         rx_b, tx_b = counters.get(name, (0, 0))
         rx_bps, tx_bps = rates.get(name, (0.0, 0.0))
         mac = _read(f"/sys/class/net/{name}/address").strip()
-        speed = _read(f"/sys/class/net/{name}/speed").strip()
+        speed = _read_slow(f"/sys/class/net/{name}/speed")
         state = _read(f"/sys/class/net/{name}/operstate").strip()
         speed_mbps = int(speed) if speed.lstrip("-").isdigit() and int(speed) > 0 else None
         rows.append(
@@ -784,6 +826,22 @@ def _gpu_procs() -> dict[int, float]:
     return out
 
 
+_UID_CACHE: dict[int, str] = {}
+
+
+def _user_name(uid: int) -> str:
+    """NSS (SSSD, LDAP) can block getpwuid forever. Resolve outside this process."""
+    cached = _UID_CACHE.get(uid)
+    if cached is not None:
+        return cached
+    text = _run(["getent", "passwd", str(uid)], timeout=0.8)
+    name = text.split(":", 1)[0].strip()[:32]
+    if not name or any(ch.isspace() for ch in name):
+        name = str(uid)
+    _UID_CACHE[uid] = name
+    return name
+
+
 def _proc_identity(pid: int) -> tuple[str, str, float] | None:
     try:
         status = Path(f"/proc/{pid}/status").read_text(encoding="utf-8", errors="replace")
@@ -806,14 +864,7 @@ def _proc_identity(pid: int) -> tuple[str, str, float] | None:
                     rss_kb = float(bits[1])
                 except ValueError:
                     rss_kb = 0.0
-    user = "?"
-    if uid is not None:
-        try:
-            import pwd
-
-            user = pwd.getpwuid(uid).pw_name[:32]
-        except (KeyError, OSError):
-            user = str(uid)
+    user = _user_name(uid) if uid is not None else "?"
     return user, name or str(pid), round(rss_kb / 1024.0, 1)
 
 

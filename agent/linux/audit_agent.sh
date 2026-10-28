@@ -7,6 +7,10 @@
 
 set -eu
 
+# An SSH session must not stay on stdin. A full PTY buffer, or a command
+# that waits for a terminal, freezes the sampler after the first replies.
+exec </dev/null
+
 AGENT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 export AGENT_ROOT
 unset CORAX_WORKDIR 2>/dev/null || true
@@ -363,8 +367,25 @@ else:
 }
 
 if [ "$mode" = "loop" ]; then
+  # The tick is a second copy of this script. Without this it takes the
+  # lock the parent already holds and exits, so the loop sleeps forever.
+  export CORAX_AUDIT_INSIDE_LOOP=1
+  tick_timeout=none
+  if have_cmd timeout && timeout 1 true >/dev/null 2>&1; then
+    tick_timeout=plain
+    if timeout -k 1 1 true >/dev/null 2>&1; then
+      tick_timeout=kill
+    fi
+  fi
   while :; do
-    CORAX_AUDIT_INSIDE_LOOP=1 /bin/sh "$0" --tick || true
+    if have_cmd systemd-notify; then
+      systemd-notify WATCHDOG=1 2>/dev/null || true
+    fi
+    case "$tick_timeout" in
+      kill) CORAX_AUDIT_INSIDE_LOOP=1 timeout -k 5 300 /bin/sh "$0" --tick || true ;;
+      plain) CORAX_AUDIT_INSIDE_LOOP=1 timeout 300 /bin/sh "$0" --tick || true ;;
+      *) CORAX_AUDIT_INSIDE_LOOP=1 /bin/sh "$0" --tick || true ;;
+    esac
     kind=pace
     sec=15
     if [ -f "$AGENT_ROOT/.corax-audit-interval" ]; then

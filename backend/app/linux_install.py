@@ -175,37 +175,51 @@ def _check_login(host: str, port: int, user: str, password: str) -> tuple[str, i
     return host, port, user, password
 
 
+def _abort_channel(channel) -> None:
+    try:
+        channel.close()
+    except Exception:
+        pass
+
+
 def _collect(stdout, timeout: float) -> tuple[int, str]:
-    """Read a PTY session until it exits. stderr is already on the same channel."""
+    """Read the session until it exits.
+
+    recv_ready() stays false while a PTY still holds output. The remote
+    command then blocks on write and the channel never reports an exit.
+    Always read with a short timeout, and treat an empty read as EOF.
+    """
     channel = stdout.channel
-    channel.settimeout(1.0)
+    channel.settimeout(0.4)
     out = bytearray()
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + max(1.0, timeout)
     while True:
-        if channel.recv_ready():
-            chunk = channel.recv(65536)
-            if chunk:
-                out += chunk
-                if len(out) > 200_000:
-                    out = out[-200_000:]
-        if channel.exit_status_ready() and not channel.recv_ready():
-            break
         if time.monotonic() > deadline:
-            try:
-                channel.close()
-            except Exception:
-                pass
+            _abort_channel(channel)
             raise InstallError("Команда не ответила. Проверьте пароль sudo и что SSH до хоста доходит.")
-        if not channel.recv_ready():
-            time.sleep(0.05)
-    code = channel.recv_exit_status()
-    while channel.recv_ready():
-        chunk = channel.recv(65536)
+        try:
+            chunk = channel.recv(65536)
+        except TimeoutError:
+            if channel.exit_status_ready():
+                break
+            continue
+        except Exception:
+            break
         if not chunk:
             break
         out += chunk
-    text = out.decode("utf-8", "replace")
-    return code, text
+        if len(out) > 200_000:
+            del out[:-200_000]
+    status_deadline = time.monotonic() + 1.0
+    while not channel.exit_status_ready() and time.monotonic() < status_deadline:
+        time.sleep(0.05)
+    code = 1
+    if channel.exit_status_ready():
+        try:
+            code = int(channel.recv_exit_status())
+        except Exception:
+            code = 1
+    return code, out.decode("utf-8", "replace")
 
 
 @contextmanager
@@ -228,6 +242,9 @@ def _ssh_client(host: str, port: int, user: str, password: str):
             allow_agent=False,
             look_for_keys=False,
         )
+        transport = client.get_transport()
+        if transport is not None:
+            transport.set_keepalive(10)
         yield client
     except InstallError:
         raise
@@ -245,14 +262,17 @@ def _run(client, command: str, password: str, *, sudo: bool, timeout: float) -> 
     if sudo:
         command = "sudo -S -p '' " + command
     stdin, stdout, _stderr = client.exec_command(command, timeout=timeout, get_pty=True)
-    if sudo:
-        stdin.write(password + "\n")
-        stdin.flush()
     try:
-        stdin.close()
-    except Exception:
-        pass
-    code, text = _collect(stdout, timeout)
+        if sudo:
+            stdin.write(password + "\n")
+            stdin.flush()
+        try:
+            stdin.close()
+        except Exception:
+            pass
+        code, text = _collect(stdout, timeout)
+    finally:
+        _abort_channel(stdout.channel)
     text = _redact(text, password).strip()
     if not text:
         text = f"(команда завершилась без текста, код {code})"

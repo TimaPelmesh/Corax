@@ -247,6 +247,23 @@ ensure_nightly_script_update() {
 
 # One long-running sampler. The panel interval (or CORAX_AUDIT_INTERVAL) is the
 # clock. A minute cron cannot keep a 15s schedule.
+restart_audit_service() {
+  if ! have_cmd systemctl; then
+    return 1
+  fi
+  # A sampler stuck in the kernel makes "systemctl restart" wait forever.
+  # That is the SSH install/update session: two lines, then silence.
+  if have_cmd timeout && timeout 1 true >/dev/null 2>&1; then
+    if timeout -k 1 1 true >/dev/null 2>&1; then
+      timeout -k 5 40 systemctl restart corax-audit.service >/dev/null 2>&1
+      return $?
+    fi
+    timeout 40 systemctl restart corax-audit.service >/dev/null 2>&1
+    return $?
+  fi
+  systemctl restart corax-audit.service >/dev/null 2>&1
+}
+
 install_audit_loop() {
   root=${AGENT_ROOT:-}
   reload=0
@@ -264,7 +281,7 @@ install_audit_loop() {
   # The old timer fires every 60s. Mask it or a 15s host stays on the minute.
   systemctl disable --now corax-audit.timer >/dev/null 2>&1 || true
   systemctl mask corax-audit.timer >/dev/null 2>&1 || true
-  if [ -f "$dest" ] && grep -F "ExecStart=$want" "$dest" >/dev/null 2>&1 && grep -F "StartLimitIntervalSec=0" "$dest" >/dev/null 2>&1; then
+  if [ -f "$dest" ] && grep -F "ExecStart=$want" "$dest" >/dev/null 2>&1 && grep -F "WatchdogSec=420" "$dest" >/dev/null 2>&1 && grep -F "StandardInput=null" "$dest" >/dev/null 2>&1; then
     if [ "$reload" -eq 0 ] && systemctl is-active --quiet corax-audit.service; then
       return 0
     fi
@@ -282,6 +299,13 @@ WorkingDirectory=$root
 ExecStart=$want
 Restart=always
 RestartSec=5
+TimeoutStopSec=20
+KillMode=mixed
+WatchdogSec=420
+NotifyAccess=all
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
 Nice=15
 
 [Install]
@@ -294,7 +318,7 @@ EOF
     systemctl daemon-reload >/dev/null 2>&1 || return 1
   fi
   systemctl enable corax-audit.service >/dev/null 2>&1 || return 1
-  systemctl restart corax-audit.service >/dev/null 2>&1 || return 1
+  restart_audit_service >/dev/null 2>&1 || return 1
   log "audit loop installed ($dest)"
   return 0
 }
@@ -318,7 +342,7 @@ ensure_background_loop() {
     flock -u 8
     exec 8>&-
   fi
-  nohup /bin/sh "$root/audit_agent.sh" --loop >>/var/log/corax-audit.log 2>&1 &
+  nohup /bin/sh "$root/audit_agent.sh" --loop >>/var/log/corax-audit.log 2>&1 </dev/null &
   log "audit loop started in the background"
   return 0
 }

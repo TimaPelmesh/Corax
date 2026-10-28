@@ -10,6 +10,13 @@ WorkingDirectory=/opt/corax-agent
 ExecStart=/bin/sh /opt/corax-agent/audit_agent.sh --loop
 Restart=always
 RestartSec=5
+TimeoutStopSec=20
+KillMode=mixed
+WatchdogSec=420
+NotifyAccess=all
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
 Nice=15
 
 [Install]

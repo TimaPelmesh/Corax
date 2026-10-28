@@ -135,6 +135,45 @@ def _writable(path: str) -> bool:
     return any(path.startswith(prefix) for prefix in _WRITE_PREFIXES)
 
 
+def _detach_self_restart(argv: list[str]) -> list[str]:
+    """systemctl restart of this service waits for the caller, which is the service."""
+    idx = None
+    for i, arg in enumerate(argv):
+        if os.path.basename(arg) == "systemctl":
+            idx = i
+            break
+    if idx is None or idx + 2 >= len(argv):
+        return argv
+    if argv[idx + 1] != "restart" or "--no-block" in argv:
+        return argv
+    if _base(argv[idx + 2]) not in {"corax-audit", "corax-agent"}:
+        return argv
+    return [*argv[: idx + 1], "--no-block", *argv[idx + 1 :]]
+
+
+def _abandon(proc) -> None:
+    """A timed-out child in uninterruptible sleep must not keep the sampler waiting."""
+    import signal
+
+    if os.name != "nt":
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+    else:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    try:
+        proc.communicate(timeout=1)
+    except Exception:
+        pass
+
+
 def _run(argv: list[str], timeout: float = 25) -> tuple[int, str]:
     import subprocess
 
@@ -142,18 +181,26 @@ def _run(argv: list[str], timeout: float = 25) -> tuple[int, str]:
         tool = os.path.basename(argv[0])
         if tool in {"systemctl", "journalctl", "nginx", "sshd", "docker"} and argv[0] != "sudo":
             argv = ["sudo", "-n", *argv]
+    argv = _detach_self_restart(argv)
+    kwargs: dict = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "stdin": subprocess.DEVNULL,
+        "text": True,
+        "env": {**os.environ, "LC_ALL": "C", "SYSTEMD_PAGER": "cat", "PAGER": "cat"},
+    }
+    if os.name != "nt":
+        kwargs["start_new_session"] = True
     try:
-        proc = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            env={**os.environ, "LC_ALL": "C"},
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        proc = subprocess.Popen(argv, **kwargs)
+    except OSError as exc:
         return 1, str(exc)[:_OUT_MAX]
-    text = ((proc.stdout or "") + (proc.stderr or ""))[:_OUT_MAX]
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _abandon(proc)
+        return 1, f"timeout after {int(timeout)}s"
+    text = ((stdout or "") + (stderr or ""))[:_OUT_MAX]
     return int(proc.returncode or 0), text
 
 
