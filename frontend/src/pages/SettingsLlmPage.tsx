@@ -1,39 +1,69 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type WikiRagLmStudioStatus } from '../api'
-import { IconActivity } from '../components/icons'
+import { api, type LlmServerSetting, type WikiRagLmStudioStatus } from '../api'
+import { IconActivity, IconClose } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { SystemPromptEditor } from '../components/wikirag/SystemPromptEditor'
 import { useT } from '../i18n/LocaleContext'
 import {
   detectProviderFromUrl,
   loadWikiRagLmSettings,
+  sameLmEndpoint,
   saveWikiRagLmSettings,
   subscribeWikiRagLmSettings,
   wikiRagLmSettingsEqual,
-  withProvider,
-  type LlmProvider,
   type WikiRagLmSettings,
 } from '../lib/wikiragLmSettings'
-import { SystemPromptEditor } from '../components/wikirag/SystemPromptEditor'
 import { useToast } from '../ToastContext'
 
-const PANEL = 'rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]'
-
+const PANEL = 'overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]'
 const CTX_PRESETS = [0, 4096, 8192, 16384, 32768] as const
+
+type Probe = { ok: boolean; models: string[]; detail?: string }
+
+function stampServers(rows: LlmServerSetting[]): string {
+  return JSON.stringify(
+    rows.map((row) => ({ id: row.id, label: row.label.trim(), base_url: row.base_url.trim() })),
+  )
+}
+
+function freshId(): string {
+  const bytes = new Uint8Array(4)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function providerMark(url: string): string {
+  const low = url.toLowerCase()
+  if (low.includes('11434') || low.includes('ollama')) return 'Ollama'
+  if (low.includes('1234') || low.includes('lmstudio') || low.includes('lm-studio')) return 'LM Studio'
+  return 'API'
+}
 
 export function SettingsLlmPage() {
   const t = useT()
   const toast = useToast()
   const [settings, setSettings] = useState<WikiRagLmSettings>(() => loadWikiRagLmSettings())
+  const [servers, setServers] = useState<LlmServerSetting[]>([])
+  const [embedBaseUrl, setEmbedBaseUrl] = useState('')
   const [status, setStatus] = useState<WikiRagLmStudioStatus | null>(null)
-  const [models, setModels] = useState<string[]>([])
-  const [checking, setChecking] = useState(false)
+  const [probes, setProbes] = useState<Record<string, Probe>>({})
+  const [busy, setBusy] = useState<string[]>([])
   const [embedModel, setEmbedModel] = useState('bge-m3')
   const [savingEmbed, setSavingEmbed] = useState(false)
   const [lmContextTokens, setLmContextTokens] = useState(0)
   const [effectiveLmContext, setEffectiveLmContext] = useState(16384)
   const [savingContext, setSavingContext] = useState(false)
+  const [serversConfigured, setServersConfigured] = useState(true)
+  const [ready, setReady] = useState(false)
+  const [focusId, setFocusId] = useState<string | null>(null)
   const settingsRef = useRef(settings)
+  const rowsRef = useRef(servers)
+  const embedRef = useRef(embedBaseUrl)
+  const savedKey = useRef('[]')
+  const seeded = useRef(false)
   settingsRef.current = settings
+  rowsRef.current = servers
+  embedRef.current = embedBaseUrl
 
   useEffect(() => {
     return subscribeWikiRagLmSettings(() => {
@@ -47,63 +77,216 @@ export function SettingsLlmPage() {
   }, [settings])
 
   useEffect(() => {
+    let cancelled = false
     void api
       .wikiRagIndexSettings()
       .then((s) => {
+        if (cancelled) return
+        const list = s.llm_servers ?? []
+        setServers(list)
+        setServersConfigured(Boolean(s.llm_servers_configured))
+        savedKey.current = stampServers(list)
+        setEmbedBaseUrl((s.embed_base_url || '').trim())
         setEmbedModel((s.embed_model || 'bge-m3').trim() || 'bge-m3')
         setLmContextTokens(Number.isFinite(s.lm_context_tokens) ? s.lm_context_tokens : 0)
         setEffectiveLmContext(
           Number.isFinite(s.effective_lm_context_tokens) ? s.effective_lm_context_tokens : 16384,
         )
+        setReady(true)
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (!cancelled) setReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const check = useCallback(
-    async (notify = false) => {
-      const current = settingsRef.current
-      setChecking(true)
+  const probe = useCallback(
+    async (url: string, opts?: { chat?: boolean; notify?: boolean }) => {
+      const target = url.trim()
+      if (!target) return
+      setBusy((prev) => [...prev.filter((item) => !sameLmEndpoint(item, target)), target])
       try {
+        const current = settingsRef.current
         const st = await api.wikiRagLmStudioStatus({
-          base_url: current.baseUrl,
-          model: current.model || undefined,
+          base_url: target,
+          model: opts?.chat ? current.model || undefined : undefined,
         })
-        setStatus(st)
-        setModels(st.models ?? [])
-        const picked = st.selected_model || (st.models.length === 1 ? st.models[0] : '') || ''
-        if (picked) {
-          setSettings((s) => {
-            if (s.model === picked) return s
-            if (!s.model || (st.models.length === 1 && picked)) return { ...s, model: picked }
-            if (st.models.length && !st.models.includes(s.model)) {
-              const alt = st.models.find((m) => m === s.model || m.includes(s.model) || s.model.includes(m))
-              if (alt && alt !== s.model) return { ...s, model: alt }
-            }
-            return s
-          })
+        const next: Probe = { ok: Boolean(st.ok), models: st.models ?? [], detail: st.detail || undefined }
+        const reported = (st.base_url || target).trim()
+        setProbes((prev) => ({ ...prev, [target]: next, [reported]: next }))
+        if (opts?.chat) {
+          setStatus(st)
+          const picked = st.selected_model || (st.models.length === 1 ? st.models[0] : '') || ''
+          if (picked) {
+            setSettings((s) => {
+              if (!sameLmEndpoint(s.baseUrl, target) && !sameLmEndpoint(s.baseUrl, reported)) return s
+              if (s.model === picked) return s
+              if (!s.model || st.models.length === 1) return { ...s, model: picked }
+              if (st.models.length && !st.models.includes(s.model)) {
+                const alt = st.models.find((m) => m === s.model || m.includes(s.model) || s.model.includes(m))
+                if (alt && alt !== s.model) return { ...s, model: alt }
+              }
+              return s
+            })
+          }
         }
-        if (notify) {
+        if (opts?.notify) {
           if (st.ok) toast.info(t('settingsLlm.checkOk'))
           else toast.info(st.detail || t('settingsLlm.checkFail'))
         }
       } catch (e) {
-        setStatus({ ok: false, models: [], detail: e instanceof Error ? e.message : 'error' })
-        if (notify) toast.info(e instanceof Error ? e.message : t('settingsLlm.checkFail'))
+        const detail = e instanceof Error ? e.message : 'error'
+        setProbes((prev) => ({ ...prev, [target]: { ok: false, models: [], detail } }))
+        if (opts?.chat) setStatus({ ok: false, models: [], detail })
+        if (opts?.notify) toast.info(detail || t('settingsLlm.checkFail'))
       } finally {
-        setChecking(false)
+        setBusy((prev) => prev.filter((item) => !sameLmEndpoint(item, target)))
       }
     },
     [t, toast],
   )
 
   useEffect(() => {
-    void check(false)
-  }, [check, settings.provider, settings.baseUrl])
+    if (!ready) return
+    void probe(settingsRef.current.baseUrl, { chat: true })
+  }, [probe, ready])
 
-  function setProvider(provider: LlmProvider) {
-    setSettings((s) => withProvider(s, provider))
-    setModels([])
-    setStatus(null)
+  useEffect(() => {
+    if (!ready || !embedBaseUrl) return
+    void probe(embedBaseUrl)
+  }, [embedBaseUrl, probe, ready])
+
+  const persist = useCallback(
+    async (list: LlmServerSetting[], opts?: { quiet?: boolean }) => {
+      const readyRows = list
+        .filter((row) => row.base_url.trim())
+        .map((row) => ({ id: row.id, label: row.label.trim(), base_url: row.base_url.trim() }))
+      if (stampServers(readyRows) === savedKey.current) return true
+      const previous = rowsRef.current
+      try {
+        const res = await api.updateWikiRagIndexSettings({ llm_servers: readyRows })
+        const saved = res.llm_servers ?? []
+        savedKey.current = stampServers(saved)
+        setServers((current) => {
+          const drafts = current.filter((row) => !row.base_url.trim() && !saved.some((item) => item.id === row.id))
+          return [...saved, ...drafts]
+        })
+        for (const server of saved) {
+          const old = previous.find((row) => row.id === server.id)
+          if (!old) continue
+          if (
+            sameLmEndpoint(old.base_url, settingsRef.current.baseUrl) &&
+            server.base_url !== settingsRef.current.baseUrl
+          ) {
+            setSettings((s) => ({
+              ...s,
+              baseUrl: server.base_url,
+              provider: detectProviderFromUrl(server.base_url),
+            }))
+          }
+          if (
+            embedRef.current &&
+            sameLmEndpoint(old.base_url, embedRef.current) &&
+            server.base_url !== embedRef.current
+          ) {
+            const updated = await api.updateWikiRagIndexSettings({ embed_base_url: server.base_url })
+            const nextUrl = (updated.embed_base_url || '').trim()
+            embedRef.current = nextUrl
+            setEmbedBaseUrl(nextUrl)
+          }
+        }
+        if (!opts?.quiet) toast.ok(t('settingsLlm.serversSaved'))
+        return true
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
+        return false
+      }
+    },
+    [t, toast],
+  )
+
+  useEffect(() => {
+    if (!ready || seeded.current) return
+    seeded.current = true
+    if (serversConfigured || servers.length || !settingsRef.current.baseUrl.trim()) return
+    void persist(
+      [{ id: freshId(), label: t('settingsLlm.chatRole'), base_url: settingsRef.current.baseUrl }],
+      { quiet: true },
+    )
+  }, [persist, ready, servers.length, serversConfigured, t])
+
+  useEffect(() => {
+    if (!focusId) return
+    document.getElementById(`llm-url-${focusId}`)?.focus()
+    setFocusId(null)
+  }, [focusId, servers])
+
+  function probeFor(url: string): Probe | undefined {
+    return Object.entries(probes).find(([key]) => sameLmEndpoint(key, url))?.[1]
+  }
+
+  function isBusy(url: string): boolean {
+    return busy.some((item) => sameLmEndpoint(item, url))
+  }
+
+  function patchRow(id: string, patch: Partial<LlmServerSetting>) {
+    setServers((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+  }
+
+  function onRowBlur(event: React.FocusEvent<HTMLLIElement>) {
+    const next = event.relatedTarget
+    if (next instanceof Node && event.currentTarget.contains(next)) return
+    void persist(rowsRef.current)
+  }
+
+  function addServer() {
+    if (servers.length >= 12) return
+    const draft = servers.find((row) => !row.base_url.trim())
+    if (draft) {
+      setFocusId(draft.id)
+      return
+    }
+    const id = freshId()
+    setServers((prev) => [...prev, { id, label: '', base_url: '' }])
+    setFocusId(id)
+  }
+
+  function removeServer(id: string) {
+    const previous = rowsRef.current
+    const next = previous.filter((row) => row.id !== id)
+    setServers(next)
+    void persist(next).then((ok) => {
+      if (!ok) setServers(previous)
+    })
+  }
+
+  function chooseChat(id: string) {
+    const server = servers.find((row) => row.id === id)
+    if (!server) return
+    setSettings((s) => ({
+      ...s,
+      baseUrl: server.base_url,
+      provider: detectProviderFromUrl(server.base_url),
+      model: sameLmEndpoint(s.baseUrl, server.base_url) ? s.model : '',
+    }))
+    void probe(server.base_url, { chat: true })
+  }
+
+  async function chooseEmbed(id: string) {
+    const server = servers.find((row) => row.id === id)
+    const url = server?.base_url ?? (id.startsWith('http') ? id : '')
+    const previous = embedBaseUrl
+    setEmbedBaseUrl(url)
+    try {
+      const res = await api.updateWikiRagIndexSettings({ embed_base_url: url })
+      setEmbedBaseUrl((res.embed_base_url || '').trim())
+      toast.ok(t('settingsLlm.embedSaved'))
+    } catch (e) {
+      setEmbedBaseUrl(previous)
+      toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
+    }
   }
 
   async function onSaveEmbedModel(next: string) {
@@ -137,23 +320,16 @@ export function SettingsLlmPage() {
     }
   }
 
-  const embedOptions = models.includes(embedModel) || !embedModel ? models : [embedModel, ...models]
-
-  const providers = [
-    {
-      id: 'lm_studio' as const,
-      title: t('wikirag.chat.providerLmStudio'),
-      hint: t('wikirag.chat.providerLmStudioHint'),
-    },
-    {
-      id: 'ollama' as const,
-      title: t('wikirag.chat.providerOllama'),
-      hint: t('wikirag.chat.providerOllamaHint'),
-    },
-  ]
+  const chatServer = servers.find((row) => sameLmEndpoint(row.base_url, settings.baseUrl))
+  const embedServer = servers.find((row) => embedBaseUrl && sameLmEndpoint(row.base_url, embedBaseUrl))
+  const chatModels = probeFor(settings.baseUrl)?.models ?? []
+  const embedModels = embedBaseUrl ? (probeFor(embedBaseUrl)?.models ?? []) : []
+  const chatOptions = chatModels.includes(settings.model) || !settings.model ? chatModels : [settings.model, ...chatModels]
+  const embedOptions = embedModels.includes(embedModel) || !embedModel ? embedModels : [embedModel, ...embedModels]
+  const chatBusy = isBusy(settings.baseUrl)
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-3">
       <PageHeader
         icon={<IconActivity className="h-6 w-6" />}
         title={t('titles.llm')}
@@ -174,214 +350,296 @@ export function SettingsLlmPage() {
             <button
               type="button"
               className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              disabled={checking}
-              onClick={() => void check(true)}
+              disabled={chatBusy || !settings.baseUrl.trim()}
+              onClick={() => void probe(settings.baseUrl, { chat: true, notify: true })}
             >
-              {checking ? t('settingsLlm.checking') : t('wikirag.chat.checkConnection')}
+              {chatBusy ? t('settingsLlm.checking') : t('wikirag.chat.checkConnection')}
             </button>
           </div>
         }
       />
 
-      {status && !status.ok ? (
-        <div className="app-alert app-alert-muted">
-          <p className="font-medium text-[var(--color-fg)]">{t('settingsLlm.offlineTitle')}</p>
-          <p className="mt-1 text-xs leading-relaxed">{t('settingsLlm.offlineBody')}</p>
-          {status.detail ? <p className="mt-1 font-mono text-[11px] text-[var(--color-fg-subtle)]">{status.detail}</p> : null}
-        </div>
-      ) : null}
-
-      {status?.ok ? (
-        <div className={`${PANEL} px-4 py-2.5 text-sm text-[var(--color-fg-muted)]`}>
-          <span className="font-medium text-[var(--color-fg)]">{t('settingsLlm.onlineTitle')}</span>
-          <span className="mx-2 text-[var(--color-fg-subtle)]">·</span>
-          {[status.selected_model || settings.model, status.base_url || settings.baseUrl].filter(Boolean).join(' · ')}
-        </div>
-      ) : null}
-
-      <section className={`${PANEL} space-y-3 p-4 sm:p-5`}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.connection')}</h2>
-          <div className="inline-flex rounded-md border border-[var(--color-border)] p-0.5">
-            {providers.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setProvider(opt.id)}
-                className={`rounded px-2.5 py-1 text-[11px] font-semibold transition ${
-                  settings.provider === opt.id
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
-                }`}
-              >
-                {opt.title}
-              </button>
-            ))}
-          </div>
-        </div>
-        <p className="text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
-          {providers.find((p) => p.id === settings.provider)?.hint}
+      {status && !status.ok && status.detail ? (
+        <p className="truncate text-[11px] text-[var(--color-fg-muted)]" title={status.detail}>
+          {status.detail}
         </p>
-        <label className="block">
-            <span className="app-label">{t('wikirag.chat.lmBaseUrl')}</span>
-            <input
-              id="settings-llm-url"
-              type="text"
-              value={settings.baseUrl}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  model: '',
-                  baseUrl: e.target.value,
-                  provider: detectProviderFromUrl(e.target.value || s.baseUrl),
-                }))
-              }
-              onBlur={() => void check(false)}
-              placeholder={
-                settings.provider === 'ollama' ? 'http://192.168.1.10:11434/v1' : 'http://192.168.1.10:1234/v1'
-              }
-              className="app-input mt-1 !min-h-9 font-mono text-sm"
-            />
-            <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
-              {settings.provider === 'ollama' ? t('wikirag.chat.ollamaHelp') : t('wikirag.chat.lmHelp')}
-            </p>
-          </label>
+      ) : null}
 
-          <label className="block">
-            <span className="app-label">{t('settingsLlm.chatModel')}</span>
-            <select
-              id="settings-llm-model"
-              value={settings.model}
-              onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
-              className="app-input mt-1 !min-h-9 text-sm"
-              disabled={!models.length}
+      <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.85fr)]">
+        <section className={PANEL}>
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.servers')}</h2>
+            <button
+              type="button"
+              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg)] disabled:opacity-40"
+              disabled={servers.length >= 12}
+              onClick={addServer}
             >
-              {!models.length ? (
-                <option value="">{t('wikirag.chat.loadModelHint')}</option>
-              ) : (
-                <>
-                  {models.length > 1 && !settings.model ? (
-                    <option value="">{t('wikirag.chat.autoModel')}</option>
-                  ) : null}
-                  {models.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
-            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.chatModelHint')}</p>
-          </label>
-
-          <label className="block">
-            <span className="app-label">{t('settingsLlm.embedModel')}</span>
-            <select
-              id="settings-embed-model"
-              value={embedModel}
-              disabled={savingEmbed}
-              onChange={(e) => void onSaveEmbedModel(e.target.value)}
-              className="app-input mt-1 !min-h-9 text-sm"
-            >
-              {!embedOptions.length ? (
-                <option value={embedModel || 'bge-m3'}>{embedModel || 'bge-m3'}</option>
-              ) : (
-                embedOptions.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))
-              )}
-            </select>
-            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.embedModelHint')}</p>
-          </label>
-
-          <label className="block">
-            <span className="app-label">{t('settingsLlm.contextTokens')}</span>
-            <select
-              id="settings-llm-context"
-              value={String(lmContextTokens)}
-              disabled={savingContext}
-              onChange={(e) => void onSaveLmContext(Number(e.target.value))}
-              className="app-input mt-1 !min-h-9 text-sm"
-            >
-              {(CTX_PRESETS.includes(lmContextTokens as (typeof CTX_PRESETS)[number])
-                ? CTX_PRESETS
-                : [lmContextTokens, ...CTX_PRESETS]
-              ).map((n) => (
-                <option key={n} value={n}>
-                  {n === 0 ? t('settingsLlm.contextAuto') : String(n)}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.contextTokensHint')}</p>
-            {lmContextTokens === 0 ? (
-              <p className="mt-1 text-[11px] text-[var(--color-fg-muted)]">
-                {t('settingsLlm.contextEffective', { n: effectiveLmContext })}
-              </p>
-            ) : null}
-          </label>
-
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-0.5">
-            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-[var(--color-fg)]">
-              <input
-                type="checkbox"
-                checked={settings.includeCorax}
-                onChange={(e) => setSettings((s) => ({ ...s, includeCorax: e.target.checked }))}
-                className="rounded border-[var(--color-border)] text-[var(--color-primary)]"
-              />
-              {t('wikirag.chat.includeCorax')}
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-[var(--color-fg)]">
-              {t('settingsLlm.responseMode')}
-              <select
-                value={settings.responseMode}
-                onChange={(e) =>
-                  setSettings((s) => ({ ...s, responseMode: e.target.value as 'fast' | 'detailed' }))
-                }
-                className="app-input !min-h-8 !w-auto !px-2 !py-1 text-xs"
-              >
-                <option value="fast">{t('settingsLlm.responseFast')}</option>
-                <option value="detailed">{t('settingsLlm.responseDetailed')}</option>
-              </select>
-            </label>
-        </div>
-      </section>
-
-      <section className={`${PANEL} space-y-3 p-4 sm:p-5`}>
-        <SystemPromptEditor />
-      </section>
-
-      <section className={`${PANEL} space-y-3 p-4 sm:p-5`}>
-          {settings.provider === 'ollama' ? (
-            <>
-              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.ollamaSetupTitle')}</h2>
-              <ol className="list-decimal space-y-1.5 pl-4 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-                <li>{t('settingsLlm.ollamaStep1')}</li>
-                <li>{t('settingsLlm.ollamaStep2')}</li>
-                <li>{t('settingsLlm.ollamaStep3')}</li>
-                <li>{t('settingsLlm.ollamaStep4')}</li>
-                <li>{t('settingsLlm.ollamaStep5')}</li>
-              </ol>
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-2.5 font-mono text-[11px] text-[var(--color-fg)]">
-                <div>ollama pull bge-m3</div>
-                <div className="mt-0.5">ollama pull llama3.2</div>
-                <div className="mt-0.5">set OLLAMA_HOST=0.0.0.0:11434</div>
-                <div className="mt-0.5">ollama serve</div>
-              </div>
-              <p className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.ollamaDockerHint')}</p>
-            </>
+              {t('settingsLlm.addServer')}
+            </button>
+          </div>
+          {servers.length ? (
+            <ul className="max-h-52 overflow-auto px-2 py-1">
+              {servers.map((row) => {
+                const hit = row.base_url.trim() ? probeFor(row.base_url) : undefined
+                return (
+                  <li
+                    key={row.id}
+                    className="grid grid-cols-[minmax(5.5rem,7.5rem)_minmax(0,1fr)_auto] items-center gap-1.5 py-1"
+                    onBlur={onRowBlur}
+                  >
+                    <input
+                      aria-label={t('settingsLlm.serverNamePh')}
+                      value={row.label}
+                      placeholder={t('settingsLlm.serverNamePh')}
+                      onChange={(e) => patchRow(row.id, { label: e.target.value })}
+                      className="app-input !min-h-8 text-xs"
+                    />
+                    <input
+                      id={`llm-url-${row.id}`}
+                      aria-label={t('settingsLlm.serverUrlPh')}
+                      value={row.base_url}
+                      placeholder={t('settingsLlm.serverUrlPh')}
+                      onChange={(e) => patchRow(row.id, { base_url: e.target.value })}
+                      className="app-input !min-h-8 font-mono text-xs"
+                    />
+                    <div className="flex items-center gap-1">
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          hit?.ok
+                            ? 'bg-[var(--color-primary)]'
+                            : hit
+                              ? 'bg-[var(--color-fg-subtle)]'
+                              : 'bg-[var(--color-border)]'
+                        }`}
+                        title={hit?.detail || providerMark(row.base_url)}
+                      />
+                      <span className="hidden w-14 truncate text-[10px] text-[var(--color-fg-subtle)] sm:inline">
+                        {row.base_url.trim() ? providerMark(row.base_url) : ''}
+                      </span>
+                      <button
+                        type="button"
+                        title={t('settingsLlm.checkOne')}
+                        aria-label={t('settingsLlm.checkOne')}
+                        disabled={!row.base_url.trim() || isBusy(row.base_url)}
+                        onClick={() =>
+                          void probe(row.base_url, {
+                            chat: sameLmEndpoint(row.base_url, settings.baseUrl),
+                            notify: true,
+                          })
+                        }
+                        className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)] disabled:opacity-40"
+                      >
+                        <IconActivity className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        title={t('settingsLlm.removeServer')}
+                        aria-label={t('settingsLlm.removeServer')}
+                        onClick={() => removeServer(row.id)}
+                        className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]"
+                      >
+                        <IconClose className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
           ) : (
-            <>
-              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.lmSetupTitle')}</h2>
-              <ol className="list-decimal space-y-1.5 pl-4 text-sm leading-relaxed text-[var(--color-fg-muted)]">
-                <li>{t('settingsLlm.lmStep1')}</li>
-                <li>{t('settingsLlm.lmStep2')}</li>
-                <li>{t('settingsLlm.lmStep3')}</li>
-              </ol>
-            </>
+            <p className="px-3 py-4 text-xs text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p>
           )}
         </section>
+
+        <div className="grid gap-3">
+          <section className={PANEL}>
+            <div className="border-b border-[var(--color-border)] px-3 py-2">
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.chatRole')}</h2>
+              <p className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.chatSeparate')}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3">
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.roleServer')}</span>
+                <select
+                  id="settings-llm-server"
+                  value={chatServer?.id ?? (settings.baseUrl ? '__current' : '')}
+                  onChange={(e) => chooseChat(e.target.value)}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                  disabled={!servers.length}
+                >
+                  {!chatServer && settings.baseUrl ? (
+                    <option value="__current">{settings.baseUrl}</option>
+                  ) : null}
+                  {servers
+                    .filter((row) => row.base_url.trim())
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.label || row.base_url}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.chatModel')}</span>
+                <select
+                  id="settings-llm-model"
+                  value={settings.model}
+                  onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                  disabled={!chatOptions.length}
+                >
+                  {!chatOptions.length ? (
+                    <option value="">{t('wikirag.chat.loadModelHint')}</option>
+                  ) : (
+                    <>
+                      {chatOptions.length > 1 && !settings.model ? (
+                        <option value="">{t('wikirag.chat.autoModel')}</option>
+                      ) : null}
+                      {chatOptions.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </label>
+              <label className="block min-w-0">
+                <span className="app-label" title={t('settingsLlm.contextTokensHint')}>
+                  {t('settingsLlm.contextShort')}
+                </span>
+                <select
+                  id="settings-llm-context"
+                  value={String(lmContextTokens)}
+                  disabled={savingContext}
+                  onChange={(e) => void onSaveLmContext(Number(e.target.value))}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  {(CTX_PRESETS.includes(lmContextTokens as (typeof CTX_PRESETS)[number])
+                    ? CTX_PRESETS
+                    : [lmContextTokens, ...CTX_PRESETS]
+                  ).map((n) => (
+                    <option key={n} value={n}>
+                      {n === 0 ? t('settingsLlm.contextAuto') : String(n)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.responseMode')}</span>
+                <select
+                  value={settings.responseMode}
+                  onChange={(e) =>
+                    setSettings((s) => ({ ...s, responseMode: e.target.value as 'fast' | 'detailed' }))
+                  }
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  <option value="fast">{t('settingsLlm.responseFast')}</option>
+                  <option value="detailed">{t('settingsLlm.responseDetailed')}</option>
+                </select>
+              </label>
+              <label className="col-span-2 inline-flex cursor-pointer items-center gap-2 text-xs text-[var(--color-fg)]">
+                <input
+                  type="checkbox"
+                  checked={settings.includeCorax}
+                  onChange={(e) => setSettings((s) => ({ ...s, includeCorax: e.target.checked }))}
+                  className="rounded border-[var(--color-border)] text-[var(--color-primary)]"
+                />
+                {t('wikirag.chat.includeCorax')}
+              </label>
+              {lmContextTokens === 0 ? (
+                <p className="col-span-2 text-[11px] text-[var(--color-fg-muted)]">
+                  {t('settingsLlm.contextEffective', { n: effectiveLmContext })}
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className={PANEL}>
+            <div className="border-b border-[var(--color-border)] px-3 py-2">
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.embedRole')}</h2>
+              <p className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.embedSeparate')}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3">
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.roleServer')}</span>
+                <select
+                  id="settings-embed-server"
+                  value={embedServer?.id ?? (embedBaseUrl || '')}
+                  onChange={(e) => void chooseEmbed(e.target.value)}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  <option value="">{t('settingsLlm.embedInherit')}</option>
+                  {embedBaseUrl && !embedServer ? <option value={embedBaseUrl}>{embedBaseUrl}</option> : null}
+                  {servers
+                    .filter((row) => row.base_url.trim())
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.label || row.base_url}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.embedModelShort')}</span>
+                <select
+                  id="settings-embed-model"
+                  value={embedModel}
+                  disabled={savingEmbed}
+                  onChange={(e) => void onSaveEmbedModel(e.target.value)}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  {!embedOptions.length ? (
+                    <option value={embedModel || 'bge-m3'}>{embedModel || 'bge-m3'}</option>
+                  ) : (
+                    embedOptions.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <details className={PANEL}>
+        <summary className="cursor-pointer list-none px-3 py-2 text-sm font-semibold text-[var(--color-fg)]">
+          {t('settingsLlm.promptFold')}
+        </summary>
+        <div className="border-t border-[var(--color-border)] px-3 py-2">
+          <SystemPromptEditor compact />
+        </div>
+      </details>
+
+      <details className={PANEL}>
+        <summary className="cursor-pointer list-none px-3 py-2 text-sm font-semibold text-[var(--color-fg)]">
+          {t('settingsLlm.setupFold')}
+        </summary>
+        <div className="grid gap-3 border-t border-[var(--color-border)] px-3 py-2 md:grid-cols-2">
+          <div>
+            <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.ollamaSetupTitle')}</h3>
+            <ol className="mt-1 list-decimal space-y-1 pl-4 text-[11px] leading-snug text-[var(--color-fg-muted)]">
+              <li>{t('settingsLlm.ollamaStep1')}</li>
+              <li>{t('settingsLlm.ollamaStep2')}</li>
+              <li>{t('settingsLlm.ollamaStep3')}</li>
+              <li>{t('settingsLlm.ollamaStep4')}</li>
+              <li>{t('settingsLlm.ollamaStep5')}</li>
+            </ol>
+            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.ollamaDockerHint')}</p>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.lmSetupTitle')}</h3>
+            <ol className="mt-1 list-decimal space-y-1 pl-4 text-[11px] leading-snug text-[var(--color-fg-muted)]">
+              <li>{t('settingsLlm.lmStep1')}</li>
+              <li>{t('settingsLlm.lmStep2')}</li>
+              <li>{t('settingsLlm.lmStep3')}</li>
+            </ol>
+          </div>
+        </div>
+      </details>
     </div>
   )
 }

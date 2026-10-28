@@ -3081,6 +3081,8 @@ export const api = {
   updateWikiRagIndexSettings: (body: {
     auto_index?: boolean
     embed_model?: string
+    embed_base_url?: string
+    llm_servers?: LlmServerSetting[]
     lm_context_tokens?: number
     system_prompt?: string
   }) =>
@@ -3605,9 +3607,18 @@ export const api = {
   llmScrape: () => request<{ stored: number; failed: number }>(`${API_PREFIX}/llm/scrape`, { method: 'POST' }),
 }
 
+export type LlmServerSetting = {
+  id: string
+  label: string
+  base_url: string
+}
+
 export type WikiRagIndexSettings = {
   auto_index: boolean
   embed_model: string
+  embed_base_url: string
+  llm_servers: LlmServerSetting[]
+  llm_servers_configured: boolean
   lm_context_tokens: number
   effective_lm_context_tokens: number
   system_prompt: string

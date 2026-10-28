@@ -23,6 +23,13 @@ export function detectProviderFromUrl(url: string): LlmProvider {
   return 'lm_studio'
 }
 
+/** Same endpoint with or without a trailing slash and /v1. */
+export function sameLmEndpoint(a: string, b: string): boolean {
+  const norm = (url: string) => url.trim().replace(/\/+$/, '').replace(/\/v1$/i, '').toLowerCase()
+  const left = norm(a)
+  return left !== '' && left === norm(b)
+}
+
 export function wikiRagLmSettingsEqual(a: WikiRagLmSettings, b: WikiRagLmSettings): boolean {
   return (
     a.provider === b.provider &&

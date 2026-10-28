@@ -21,7 +21,7 @@ from app.config import settings
 from app.models import WikiRagChunk, WikiRagDocument
 from app.observability import get_logger
 from app.wikirag_content import context_keywords, extract_plaintext
-from app.wikirag_lm import normalize_lm_base_url
+from app.wikirag_lm import normalize_lm_base_url, rewrite_lm_base_url_for_runtime
 from app.wikirag_pgvector import embed_dims, search_by_vector, store_embedding_vecs_bulk
 
 log = get_logger(__name__)
@@ -71,8 +71,12 @@ _CORAX_MD_HEADING_RE = re.compile(
 
 
 def embed_base_url() -> str:
-    override = (settings.wiki_rag_embed_base_url or "").strip()
-    return normalize_lm_base_url(override or None)
+    """Embeddings use the panel's own server when one is saved, otherwise env."""
+    from app.wikirag_options import get_embed_base_url
+
+    chosen = get_embed_base_url()
+    env = (settings.wiki_rag_embed_base_url or "").strip()
+    return rewrite_lm_base_url_for_runtime(normalize_lm_base_url(chosen or env or None))
 
 
 def embed_model() -> str:

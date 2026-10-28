@@ -262,6 +262,9 @@ export function WikiRagPage() {
         api.wikiRagIndexSettings().catch(() => ({
           auto_index: false,
           embed_model: 'bge-m3',
+          embed_base_url: '',
+          llm_servers: [],
+          llm_servers_configured: false,
           lm_context_tokens: 0,
           effective_lm_context_tokens: 16384,
           system_prompt: '',

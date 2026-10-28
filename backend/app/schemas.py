@@ -1156,9 +1156,18 @@ class WikiRagIndexImportOut(BaseModel):
     detail: str | None = None
 
 
+class LlmServerSetting(BaseModel):
+    id: str = Field(min_length=4, max_length=16, pattern=r"^[a-z0-9]+$")
+    label: str = Field(default="", max_length=64)
+    base_url: str = Field(min_length=8, max_length=512)
+
+
 class WikiRagIndexSettingsOut(BaseModel):
     auto_index: bool = False
     embed_model: str = "bge-m3"
+    embed_base_url: str = ""
+    llm_servers: list[LlmServerSetting] = Field(default_factory=list)
+    llm_servers_configured: bool = False
     # 0 = авто (макс. модели). Ручной override из веб-морды / .env.
     lm_context_tokens: int = 0
     effective_lm_context_tokens: int = 16384
@@ -1169,6 +1178,8 @@ class WikiRagIndexSettingsOut(BaseModel):
 class WikiRagIndexSettingsUpdate(BaseModel):
     auto_index: bool | None = None
     embed_model: str | None = Field(default=None, max_length=256)
+    embed_base_url: str | None = Field(default=None, max_length=512)
+    llm_servers: list[LlmServerSetting] | None = Field(default=None, max_length=12)
     lm_context_tokens: int | None = Field(default=None, ge=0, le=32768)
     system_prompt: str | None = Field(default=None, max_length=8000)
 

@@ -91,11 +91,16 @@ from app.wikirag_index import (
 from app.wikirag_index_queue import wikirag_index_queue
 from app.wikirag_options import (
     get_auto_index,
+    get_embed_base_url,
     get_embed_model,
+    get_llm_servers,
+    llm_servers_configured,
     get_lm_context_tokens,
     get_system_prompt,
     set_auto_index,
+    set_embed_base_url,
     set_embed_model,
+    set_llm_servers,
     set_lm_context_tokens,
     set_system_prompt,
 )
@@ -1411,6 +1416,9 @@ def _index_settings_out() -> WikiRagIndexSettingsOut:
     return WikiRagIndexSettingsOut(
         auto_index=get_auto_index(),
         embed_model=get_embed_model(),
+        embed_base_url=get_embed_base_url(),
+        llm_servers=get_llm_servers(),
+        llm_servers_configured=llm_servers_configured(),
         lm_context_tokens=configured,
         effective_lm_context_tokens=ollama_num_ctx(),
         system_prompt=custom or WIKIRAG_SYSTEM_RAG,
@@ -1472,6 +1480,16 @@ async def patch_index_settings(
         set_auto_index(bool(body.auto_index))
     if body.embed_model is not None:
         set_embed_model(body.embed_model)
+    if "embed_base_url" in body.model_fields_set:
+        try:
+            set_embed_base_url(body.embed_base_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if body.llm_servers is not None:
+        try:
+            set_llm_servers([item.model_dump() for item in body.llm_servers])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if body.lm_context_tokens is not None:
         set_lm_context_tokens(body.lm_context_tokens)
     if "system_prompt" in body.model_fields_set:

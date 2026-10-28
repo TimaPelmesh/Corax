@@ -49,7 +49,7 @@ export function SystemPromptEditor({ compact = false }: { compact?: boolean }) {
           value={text}
           disabled={!loaded || saving}
           maxLength={8000}
-          rows={compact ? 7 : 12}
+          rows={compact ? 5 : 12}
           onChange={(event) => setText(event.target.value)}
           className="app-input mt-1 w-full resize-y font-mono text-xs leading-relaxed"
         />

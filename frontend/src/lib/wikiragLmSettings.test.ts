@@ -4,6 +4,7 @@ import {
   DEFAULT_OLLAMA_URL,
   detectProviderFromUrl,
   loadWikiRagLmSettings,
+  sameLmEndpoint,
   saveWikiRagLmSettings,
   withProvider,
   WIKIRAG_LM_SETTINGS_KEY,
@@ -17,6 +18,12 @@ describe('wikiragLmSettings', () => {
   it('detects ollama from port 11434', () => {
     expect(detectProviderFromUrl('http://192.168.1.5:11434/v1')).toBe('ollama')
     expect(detectProviderFromUrl('http://127.0.0.1:1234/v1')).toBe('lm_studio')
+  })
+
+  it('treats /v1 and a trailing slash as the same server', () => {
+    expect(sameLmEndpoint('http://10.0.0.5:11434', 'http://10.0.0.5:11434/v1/')).toBe(true)
+    expect(sameLmEndpoint('http://10.0.0.5:11434/v1', 'http://10.0.0.8:1234/v1')).toBe(false)
+    expect(sameLmEndpoint('', 'http://10.0.0.5:11434/v1')).toBe(false)
   })
 
   it('switches provider to matching default URL', () => {
