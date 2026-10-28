@@ -43,6 +43,13 @@ def test_build_row_skips_lazy_user_and_null_hostname():
     assert row["os_summary"] == "Microsoft Windows 10 Pro"
 
 
+def test_computer_matches_gpu():
+    pc = Computer(hostname="pc1", gpu_name="NVIDIA GeForce RTX 3060 / Intel(R) UHD Graphics 730")
+    assert computer_matches_segment(pc, kind="gpu", name="NVIDIA GeForce RTX 3060")
+    assert computer_matches_segment(pc, kind="gpu", name="Intel(R) UHD Graphics 730")
+    assert not computer_matches_segment(pc, kind="gpu", name="Microsoft Remote Display Adapter")
+
+
 def test_computer_matches_unknown_kind():
     pc = Computer(hostname="pc1", os_name="Windows 10")
     assert computer_matches_segment(pc, kind="nope", name="x") is False

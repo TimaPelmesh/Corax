@@ -17,6 +17,7 @@ from app.oem_normalize import (
 )
 from app.os_normalize import aggregate_os_counts
 from app.software_families import classify_software_name, office_labels_from_payload
+from app.gpu_normalize import catalog_gpu_counts
 from app.physical_disks import (
     aggregate_physical_disks,
     aggregate_pc_disk_catalog,
@@ -939,7 +940,7 @@ _SEGMENT_KINDS = (
     "os|manufacturer|system_model|motherboard|ram|cpu|monitor|physical_disk|software|software_family|peripheral|peripheral_kind|hostname"
 )
 _CATALOG_KINDS = (
-    "software|peripheral|cpu|os|manufacturer|system_model|motherboard|ram|physical_disk"
+    "software|peripheral|cpu|gpu|os|manufacturer|system_model|motherboard|ram|physical_disk"
 )
 
 
@@ -1131,6 +1132,14 @@ async def unified_catalog(
             qlow = qv.lower()
             buckets = [b for b in buckets if qlow in b.name.lower()]
         return buckets[:limit]
+
+    if kind == "gpu":
+        gpu_r = await db.execute(select(Computer.gpu_name))
+        merged = catalog_gpu_counts([row[0] for row in gpu_r.all()])
+        if qv:
+            qlow = qv.lower()
+            merged = [(n, c) for n, c in merged if qlow in n.lower()]
+        return [DashboardNameCount(name=n, count=c) for n, c in merged[:limit]]
 
     # physical_disk
     pd_r = await db.execute(select(Computer.raw_payload))

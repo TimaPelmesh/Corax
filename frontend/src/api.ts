@@ -573,6 +573,7 @@ export type CatalogKind =
   | 'software'
   | 'peripheral'
   | 'cpu'
+  | 'gpu'
   | 'os'
   | 'manufacturer'
   | 'system_model'

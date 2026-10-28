@@ -17,6 +17,7 @@ from app.oem_normalize import (
     system_model_display_label,
 )
 from app.os_normalize import os_matches_display
+from app.gpu_normalize import gpu_catalog_names
 from app.physical_disks import (
     disk_rows_from_raw_payload,
     disk_variant_label,
@@ -123,6 +124,8 @@ def computer_matches_segment(
     if kind == "cpu":
         raw = (c.cpu or "").strip()
         return raw == name or (len(name) >= 12 and raw.startswith(name))
+    if kind == "gpu":
+        return name in gpu_catalog_names(c.gpu_name)
     if kind == "monitor":
         return bool(monitor_names and name in monitor_names)
     if kind == "physical_disk":
@@ -274,6 +277,7 @@ async def fetch_segment_computers(
         "motherboard",
         "ram",
         "cpu",
+        "gpu",
         "monitor",
         "physical_disk",
     }:

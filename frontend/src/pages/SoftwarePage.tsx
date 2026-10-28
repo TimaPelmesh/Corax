@@ -48,6 +48,7 @@ export function SoftwarePage() {
       { kind: 'peripheral', label: t('software.kinds.peripheral') },
       { kind: 'os', label: t('software.kinds.os') },
       { kind: 'cpu', label: t('software.kinds.cpu') },
+      { kind: 'gpu', label: t('software.kinds.gpu') },
       { kind: 'ram', label: t('software.kinds.ram') },
       { kind: 'physical_disk', label: t('software.kinds.physical_disk') },
       { kind: 'manufacturer', label: t('software.kinds.manufacturer') },
@@ -148,11 +149,13 @@ export function SoftwarePage() {
   const nameColumnLabel =
     kind === 'ram'
       ? t('software.columns.ram')
-      : kind === 'physical_disk'
-        ? t('software.columns.disk')
-        : kind === 'motherboard'
-          ? t('software.columns.motherboard')
-          : t('software.columns.name')
+      : kind === 'gpu'
+        ? t('software.columns.gpu')
+        : kind === 'physical_disk'
+          ? t('software.columns.disk')
+          : kind === 'motherboard'
+            ? t('software.columns.motherboard')
+            : t('software.columns.name')
 
   const activeKeys = useMemo(() => new Set(filters.map(filterKey)), [filters])
 

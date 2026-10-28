@@ -134,7 +134,7 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           to: '/software',
           icon: IconSoftware,
           labelKey: 'nav.software',
-          keywords: ['каталог', 'софт', 'программы', 'apps'],
+          keywords: ['каталог', 'софт', 'программы', 'apps', 'видеокарта', 'gpu'],
           badgeKey: 'software',
         },
         {

@@ -221,7 +221,7 @@ export const en: MessageTree = {
     dashboardSettingsSubtitle: 'The top 6 stat tiles and tickets chart stay fixed. Toggle the other blocks on or off here.',
     computersSubtitle: 'PC fleet and inventory cards',
     softwareSubtitle:
-      'Fleet catalog with multi-filters: combine OS, CPU, software and more at once (AND logic).',
+      'Fleet catalog with multi-filters: combine OS, CPU, graphics card, software and more at once (AND logic).',
     printersSubtitle:
       'LAN SNMP discovery and polling: model, counters, supplies. Click a row for the full printer card.',
     networkSubtitle:
@@ -615,6 +615,7 @@ export const en: MessageTree = {
       software: 'Software',
       peripheral: 'Devices',
       cpu: 'Processors',
+      gpu: 'Graphics cards',
       os: 'OS',
       manufacturer: 'Manufacturers',
       system_model: 'PC models',
@@ -640,6 +641,7 @@ export const en: MessageTree = {
       ram: 'RAM size',
       disk: 'Disk',
       motherboard: 'Motherboard',
+      gpu: 'Graphics card',
     },
     hostSort: {
       host: 'Name',

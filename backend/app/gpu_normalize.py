@@ -119,6 +119,35 @@ def resolve_gpu_name(reported: str | None, extended: dict[str, Any] | None = Non
     return " / ".join(names)[:512] if names else None
 
 
+def gpu_catalog_names(raw: str | None) -> list[str]:
+    """One stored field can hold two cards joined by ' / '. Virtual adapters stay out."""
+    text = (raw or "").strip()
+    if not text:
+        return []
+    parts = [part.strip() for part in text.split(" / ") if part.strip()]
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        if is_virtual_gpu_name(part):
+            continue
+        key = " ".join(part.casefold().split())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(part)
+    return out
+
+
+def catalog_gpu_counts(names: list[str | None]) -> list[tuple[str, int]]:
+    from collections import Counter
+
+    counts: Counter[str] = Counter()
+    for raw in names:
+        for part in gpu_catalog_names(raw):
+            counts[part] += 1
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0].casefold()))
+
+
 def _as_text(value: object) -> str | None:
     if value is None:
         return None

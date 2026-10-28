@@ -1,4 +1,4 @@
-from app.gpu_normalize import gpu_score, is_virtual_gpu_name, resolve_gpu_name
+from app.gpu_normalize import catalog_gpu_counts, gpu_catalog_names, gpu_score, is_virtual_gpu_name, resolve_gpu_name
 
 
 def test_virtual_adapters_are_rejected():
@@ -48,3 +48,21 @@ def test_resolve_drops_software_driver_when_that_is_all_wmi_sent():
 
 def test_discrete_outscores_igp():
     assert gpu_score("NVIDIA GeForce GTX 1660", 6) > gpu_score("Intel(R) UHD Graphics 630", 0.1)
+
+
+def test_catalog_splits_two_cards_and_drops_virtual():
+    assert gpu_catalog_names("NVIDIA GeForce RTX 3060 / Intel(R) UHD Graphics 730") == [
+        "NVIDIA GeForce RTX 3060",
+        "Intel(R) UHD Graphics 730",
+    ]
+    assert gpu_catalog_names("Microsoft Remote Display Adapter") == []
+    counts = catalog_gpu_counts(
+        [
+            "NVIDIA GeForce RTX 3060 / Intel(R) UHD Graphics 730",
+            "NVIDIA GeForce RTX 3060",
+            "Parsec Virtual Display Adapter",
+            None,
+        ]
+    )
+    assert counts[0] == ("NVIDIA GeForce RTX 3060", 2)
+    assert ("Intel(R) UHD Graphics 730", 1) in counts
