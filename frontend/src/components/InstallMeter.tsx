@@ -11,7 +11,7 @@ function prefersReducedMotion(): boolean {
 
 function stepState(index: number, current: number, status: InstallRunStatus): StepState {
   if (status === 'ok') return 'done'
-  if (status === 'fail') return index === current ? 'fail' : index < current ? 'passed' : 'wait'
+  if (status === 'fail') return 'wait'
   if (index === current) return 'now'
   if (index < current) return 'passed'
   return 'wait'

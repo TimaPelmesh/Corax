@@ -31,6 +31,7 @@ describe('InstallMeter', () => {
     view.rerender(<InstallMeter status="fail" steps={steps} doneLabel="Done" failLabel="Failed" />)
     expect(screen.getByRole('progressbar')).toBeInTheDocument()
     expect(screen.getByText('Failed')).toBeInTheDocument()
+    expect(screen.queryByText('!')).not.toBeInTheDocument()
   })
 
   it('renders nothing before an install starts', () => {

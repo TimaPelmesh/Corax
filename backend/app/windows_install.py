@@ -9,6 +9,7 @@ that already ships with Corax.
 from __future__ import annotations
 
 import ipaddress
+import logging
 import re
 import socket
 import time
@@ -23,8 +24,103 @@ _STAGE_SECONDS = 600
 _staged: dict[str, tuple[float, bytes]] = {}
 
 
+log = logging.getLogger(__name__)
+
+
 class WindowsInstallError(Exception):
     pass
+
+
+_LOGON_STATUS = {
+    0xC0000064,  # no such user
+    0xC000006A,  # wrong password
+    0xC000006D,  # logon failure
+    0xC000006E,  # account restriction
+    0xC000006F,  # invalid logon hours
+    0xC0000071,  # password expired
+    0xC0000072,  # account disabled
+    0xC000015B,  # logon type not granted
+    0xC0000234,  # locked out
+}
+_ACCESS_STATUS = {
+    0xC0000022,  # access denied
+    0xC0000061,  # privilege not held
+}
+_MISSING_STATUS = {
+    0xC0000034,  # object name not found
+    0xC00000CC,  # bad network name
+}
+
+
+def _nt_status(exc: BaseException) -> int | None:
+    code = getattr(exc, "error", None)
+    if not isinstance(code, int):
+        getter = getattr(exc, "getErrorCode", None)
+        if callable(getter):
+            try:
+                code = getter()
+            except Exception:
+                code = None
+    if isinstance(code, int):
+        return code & 0xFFFFFFFF
+    return None
+
+
+def _refused(exc: BaseException) -> bool:
+    errno = getattr(exc, "errno", None)
+    if errno in (111, 10061):
+        return True
+    text = str(exc).lower()
+    return "connection refused" in text or "10061" in text
+
+
+def _timed_out(exc: BaseException) -> bool:
+    if isinstance(exc, TimeoutError):
+        return True
+    errno = getattr(exc, "errno", None)
+    if errno in (110, 10060):
+        return True
+    text = str(exc).lower()
+    return "timed out" in text or "timeout" in text
+
+
+def explain_remote_failure(exc: BaseException, stage: str) -> str:
+    """Say what actually stopped. Do not blame a port that already accepted a session."""
+    status = _nt_status(exc)
+    if stage == "connect":
+        if _refused(exc):
+            return "Порт 445 отказал в подключении."
+        if _timed_out(exc):
+            return "Порт 445 не ответил вовремя."
+        return "Сессия SMB не открылась. Если порт 445 слушает, дело не в закрытом порте."
+    if stage == "login":
+        if status in _LOGON_STATUS:
+            return "Порт 445 открыт, но учётка не вошла. Проверьте имя и пароль. Локального администратора пишите как КОМПЬЮТЕР\\пользователь."
+        if _refused(exc) or _timed_out(exc):
+            return "Порт 445 оборвал вход."
+        return "Порт 445 ответил, но вход не прошёл."
+    if stage == "copy":
+        if status in _ACCESS_STATUS:
+            return (
+                "Вход прошёл, порт 445 открыт, но служебная папка C$ не пустила запись. "
+                "Нужна учётка администратора. На рабочей Windows эта папка часто выключена, "
+                "а права локального администратора режутся при входе по сети."
+            )
+        if status in _MISSING_STATUS:
+            return "Вход прошёл, но служебная папка C$ на компьютере не открыта."
+        if status in _LOGON_STATUS:
+            return "Запись в служебную папку не прошла: учётка не принята."
+        return "Вход прошёл, записать агент в служебную папку не удалось."
+    if status in _ACCESS_STATUS:
+        return (
+            "Агент уже скопирован. Порт 135 слушает, но запуск отклонили: "
+            "у учётки нет права запускать процессы или закрыт диапазон RPC."
+        )
+    if _refused(exc):
+        return "Агент уже скопирован, но порт 135 отказал в запуске."
+    if _timed_out(exc):
+        return "Агент уже скопирован. Порт 135 не довёл запуск до конца: чаще не отвечает диапазон RPC."
+    return "Агент уже скопирован, запустить его удалённо не удалось. Открытый порт 135 этого не гарантирует."
 
 
 def _private(ip: str) -> bool:
@@ -199,21 +295,35 @@ def push_over_smb(host: str, user: str, password: str, exe: bytes) -> dict:
         raise WindowsInstallError("На сервере Corax нет пакета impacket") from exc
     try:
         conn = SMBConnection(host, host, sess_port=445)
+    except Exception as exc:
+        log.warning("windows install connect failed: %s", type(exc).__name__)
+        raise WindowsInstallError(explain_remote_failure(exc, "connect")) from exc
+    try:
         conn.login(name, password, domain)
+    except Exception as exc:
+        log.warning("windows install login failed: %s", type(exc).__name__)
         try:
-            _upload(conn, exe)
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            conn.close()
+        except Exception:
+            pass
+        raise WindowsInstallError(explain_remote_failure(exc, "login")) from exc
+    try:
+        _upload(conn, exe)
+    except Exception as exc:
+        log.warning("windows install copy failed: %s", type(exc).__name__)
+        raise WindowsInstallError(explain_remote_failure(exc, "copy")) from exc
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    try:
         pid = _start_quietly(host, domain, name, password)
     except WindowsInstallError:
         raise
     except Exception as exc:
-        raise WindowsInstallError(
-            "Общая папка не открылась. Нужны учётка администратора и порты 445 и 135."
-        ) from exc
+        log.warning("windows install start failed: %s", type(exc).__name__)
+        raise WindowsInstallError(explain_remote_failure(exc, "start")) from exc
     return {"ok": True, "exit_code": 0, "output": f"запущен, pid {pid}" if pid else "запущен"}
 
 

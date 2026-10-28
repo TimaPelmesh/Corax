@@ -286,9 +286,11 @@ export function AgentBundlePage() {
         toast.error((result.output || t('agentBundle.buildError')).split('\n')[0]?.slice(0, 240) || t('agentBundle.buildError'))
       }
     } catch (ex) {
+      const message = ex instanceof Error ? ex.message : t('agentBundle.buildError')
       setSshPassword('')
+      setSshOutput(message)
       setSshRun('fail')
-      toast.error(ex instanceof Error ? ex.message : t('agentBundle.buildError'))
+      toast.error(message.slice(0, 240))
     } finally {
       setSshBusy(false)
     }
@@ -335,9 +337,11 @@ export function AgentBundlePage() {
         toast.error((result.output || t('agentBundle.buildError')).split('\n')[0]?.slice(0, 240) || t('agentBundle.buildError'))
       }
     } catch (ex) {
+      const message = ex instanceof Error ? ex.message : t('agentBundle.buildError')
       setWinPassword('')
+      setWinOutput(message)
       setWinRun('fail')
-      toast.error(ex instanceof Error ? ex.message : t('agentBundle.buildError'))
+      toast.error(message.slice(0, 240))
     } finally {
       setWinBusy(false)
     }
@@ -918,7 +922,11 @@ export function AgentBundlePage() {
                     t('agentBundle.installMeterSshApply'),
                   ]}
                   doneLabel={t('agentBundle.installMeterSshDone')}
-                  failLabel={t('agentBundle.installMeterFail')}
+                  failLabel={
+                    sshRun === 'fail' && sshOutput.trim()
+                      ? sshOutput.trim().split('\n')[0].slice(0, 220)
+                      : t('agentBundle.installMeterFail')
+                  }
                 />
                 <button
                   type="button"
@@ -1004,7 +1012,11 @@ export function AgentBundlePage() {
                     t('agentBundle.installMeterApply'),
                   ]}
                   doneLabel={t('agentBundle.installMeterDone')}
-                  failLabel={t('agentBundle.installMeterFail')}
+                  failLabel={
+                    winRun === 'fail' && winOutput.trim()
+                      ? winOutput.trim().split('\n')[0].slice(0, 220)
+                      : t('agentBundle.installMeterFail')
+                  }
                 />
                 <button
                   type="button"

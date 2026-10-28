@@ -2,10 +2,20 @@ from app.windows_install import (
     agent_launch_command,
     assert_lan_host,
     claim_windows_exe,
+    explain_remote_failure,
     remote_script,
     split_account,
     stage_windows_exe,
 )
+
+
+class _StatusError(Exception):
+    def __init__(self, code: int):
+        super().__init__("session")
+        self.error = code
+
+    def getErrorCode(self):
+        return self.error
 
 
 def test_lan_host_rejects_public_and_loopback():
@@ -33,6 +43,31 @@ def test_smb_starts_only_the_agent():
     command = agent_launch_command()
     assert command == r'"C:\ProgramData\CORAX\Agent\CORAX-Agent.exe" --install --silent'
     assert "cmd" not in command.lower()
+
+
+def test_open_port_is_not_blamed_for_a_rejected_login():
+    text = explain_remote_failure(_StatusError(0xC000006D), "login")
+    assert "учётка не вошла" in text
+    assert "445 и 135" not in text
+
+
+def test_copy_denial_says_the_share_not_the_port():
+    text = explain_remote_failure(_StatusError(0xC0000022), "copy")
+    assert "C$" in text
+    assert "закрыт" not in text
+    assert "445 и 135" not in text
+
+
+def test_start_failure_does_not_claim_the_share_failed():
+    text = explain_remote_failure(TimeoutError("timed out"), "start")
+    assert "уже скопирован" in text
+    assert "445 и 135" not in text
+
+
+def test_refused_port_is_named_only_when_the_socket_refused():
+    text = explain_remote_failure(ConnectionRefusedError(111, "Connection refused"), "connect")
+    assert "445" in text
+    assert "отказал" in text
 
 
 def test_staged_exe_can_be_claimed_once():
