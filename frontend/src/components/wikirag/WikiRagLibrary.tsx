@@ -387,7 +387,13 @@ export function WikiRagLibrary({
   }
 
   async function onDeleteFile(row: WikiRagDocumentRow) {
-    if (!confirm(t('wikirag.documents.deleteConfirm', { name: row.original_filename }))) return
+    const ok = await ask({
+      title: t('wikirag.documents.deleteConfirm', { name: row.original_filename }),
+      body: '',
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
+    })
+    if (!ok) return
     setBusy(true)
     try {
       await api.deleteWikiRagDocument(row.id)

@@ -644,7 +644,7 @@ export function WikiRagPage() {
       {knowledgeOpen
         ? createPortal(
             <div
-              className="app-modal-layer wikirag-modal-backdrop fixed inset-0 z-[200] flex justify-end bg-slate-950/40 backdrop-blur-[2px]"
+              className="app-modal-layer wikirag-modal-backdrop fixed inset-0 z-[200] flex justify-end bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] backdrop-blur-[2px]"
               role="dialog"
               aria-modal
               aria-label={t('wikirag.library.title')}
@@ -1049,7 +1049,7 @@ export function WikiRagPage() {
       {modalDoc
         ? createPortal(
             <div
-              className="app-modal-layer wikirag-modal-backdrop fixed inset-0 z-[210] flex items-stretch justify-center bg-slate-900/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+              className="app-modal-layer wikirag-modal-backdrop fixed inset-0 z-[210] flex items-stretch justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-0 backdrop-blur-sm sm:items-center sm:p-4"
               role="dialog"
               aria-modal
               onClick={() => setModalDocId(null)}

@@ -356,6 +356,9 @@ def test_upsert_creates_when_stale_link_has_no_update_rights_and_title_missing()
             return httpx.Response(200, json={"cfg_glpi": {"version": "10.0.18"}})
         if path.endswith("/killSession"):
             return httpx.Response(200, json=[True])
+        # Заявка на месте, но UPDATE запрещён — не путать с «missing» (GET 404).
+        if request.method == "GET" and path.endswith("/Ticket/158"):
+            return httpx.Response(200, json={"id": 158, "name": "Уникальная тема CORAX", "status": 1})
         if request.method == "PUT" and path.endswith("/Ticket/158"):
             return httpx.Response(403, json=["ERROR_RIGHT", "You don't have permission to perform this action."])
         if request.method == "GET" and path.endswith("/Ticket"):

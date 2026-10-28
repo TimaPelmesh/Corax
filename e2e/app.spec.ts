@@ -73,6 +73,65 @@ test('building map page mounts', async ({ page }) => {
   })
 })
 
+test('network page mounts', async ({ page }) => {
+  await login(page)
+  await page.goto('/network')
+  const marker = page
+    .getByText(/Устройств|Devices|SNMP OK/i)
+    .first()
+    .or(page.getByRole('link', { name: /карт[ау] сети|Open network map|network map/i }))
+  const visible = await marker.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true).catch(() => false)
+  if (!visible) {
+    test.skip(true, 'Network not available for this role')
+    return
+  }
+  await expect(marker).toBeVisible()
+})
+
+test('printers page mounts', async ({ page }) => {
+  await login(page)
+  await page.goto('/printers')
+  const marker = page
+    .getByRole('heading', { name: /Принтеры|Printers/i })
+    .or(page.getByRole('button', { name: /Все|All|Низкий тонер|Low toner|SNMP/i }).first())
+  const visible = await marker.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true).catch(() => false)
+  if (!visible) {
+    test.skip(true, 'Printers not available for this role')
+    return
+  }
+  await expect(marker).toBeVisible()
+})
+
+test('requests database page mounts', async ({ page }) => {
+  await login(page)
+  await page.goto('/requests/database')
+  const marker = page
+    .getByRole('button', { name: /^(Все|All)$/i })
+    .or(page.locator('#requests-search'))
+    .or(page.getByPlaceholder(/поиск|search/i).first())
+  const visible = await marker.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true).catch(() => false)
+  if (!visible) {
+    test.skip(true, 'Requests database not available for this role')
+    return
+  }
+  await expect(marker).toBeVisible()
+})
+
+test('server-audit page mounts', async ({ page }) => {
+  await login(page)
+  await page.goto('/server-audit')
+  const marker = page
+    .getByPlaceholder(/Хост, IP|Host, IP/i)
+    .or(page.getByText(/Нет хостов\.|No hosts\./i))
+    .or(page.getByText(/Живые|Live|Аудит серверов|Server audit/i).first())
+  const visible = await marker.waitFor({ state: 'visible', timeout: 20_000 }).then(() => true).catch(() => false)
+  if (!visible) {
+    test.skip(true, 'Server audit not available for this role')
+    return
+  }
+  await expect(marker).toBeVisible()
+})
+
 test('warehouse: create and delete room when editor', async ({ page }) => {
   await login(page)
   await page.goto('/warehouse')

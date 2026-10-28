@@ -41,12 +41,21 @@ export WAREHOUSE_DATABASE_URL=$DATABASE_URL
 
 ```bash
 npm test                 # backend + frontend
-npm run test:backend     # pytest
+npm run test:backend     # pytest (sets PYTHONUTF8=1; prefers repo .venv)
 npm run test:frontend    # vitest
 npm run test:e2e         # Playwright (builds the UI and starts run.py on :3000)
 ```
 
-`ENVIRONMENT=test` disables background schedulers. Map export tests: Linux `libcairo2`; Windows usually has `cairosvg`.
+`ENVIRONMENT=test` disables background schedulers. Map export tests: Linux `libcairo2`; without native cairo, SVG export tests skip.
+
+On Windows, keep `.env` as UTF-8. `npm run test:backend` forces `PYTHONUTF8=1` so cp1251 consoles do not break dotenv. Optional local venv:
+
+```bash
+py -3 -m venv .venv
+.\.venv\Scripts\pip install -r backend\requirements.txt pytest pytest-asyncio
+```
+
+Full API pytest still needs Docker Postgres on `127.0.0.1:5433` (see env vars above).
 
 Before a PR: `npm test` (and `npm run test:e2e` / `npm run build` if you touched the UI).
 

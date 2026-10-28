@@ -4,7 +4,7 @@ Patterns taken from shared components (`ConfirmDialog`, `AppModal`, `AppFold`, `
 
 ## Page chrome
 
-- **`PageHeader`**: title is `sr-only` (`h1`). Navigation already names the page; only useful **actions** belong in the header row.
+- **`PageHeader`**: title is `sr-only` (`h1`). Navigation already names the page; only useful **actions** belong in the header row. Optional **subtitle** renders as muted text under the actions row when provided.
 - Keep the first useful control reachable without hunting through decorative chrome.
 
 ## Folds / disclosure

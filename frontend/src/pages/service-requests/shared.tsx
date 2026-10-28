@@ -61,7 +61,11 @@ export function readDatabasePageSize(): (typeof DB_PAGE_SIZE_OPTIONS)[number] {
 }
 
 export function sortArrow(active: boolean) {
-  return <span className={`ml-1 ${active ? 'text-[var(--color-fg-muted)]' : 'text-slate-300'}`}>{active ? '↓' : '↕'}</span>
+  return (
+    <span className={`ml-1 ${active ? 'text-[var(--color-fg-muted)]' : 'text-[var(--color-fg-subtle)]'}`}>
+      {active ? '↓' : '↕'}
+    </span>
+  )
 }
 
 export function getAppScrollContainer(): HTMLElement | null {
@@ -390,7 +394,7 @@ export function CategoryPicker({
                   }}
                   title={node.path}
                 >
-                  <span className="shrink-0 text-[10px] text-slate-300" aria-hidden>
+                  <span className="shrink-0 text-[10px] text-[var(--color-fg-subtle)]" aria-hidden>
                     {depth > 0 ? '└' : '●'}
                   </span>
                   <span className="min-w-0 truncate">
@@ -1028,12 +1032,12 @@ export function DirectoryAssigneesPicker({
           {selectedUsers.map((u) => (
             <span
               key={u.id}
-              className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--color-surface-muted)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-fg)] ring-1 ring-slate-200/80"
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--color-surface-muted)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-fg)] ring-1 ring-[var(--color-border)]"
             >
               <span className="truncate">{userDirectoryLabel(u)}</span>
               <button
                 type="button"
-                className="shrink-0 rounded-full px-1 leading-none text-[var(--color-fg-muted)] hover:bg-slate-200 hover:text-[var(--color-fg)]"
+                className="shrink-0 rounded-full px-1 leading-none text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
                 onClick={() => toggle(u.id)}
                 aria-label={t('requests.assigneesPicker.remove', { name: userDirectoryLabel(u) })}
               >

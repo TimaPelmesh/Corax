@@ -1,4 +1,4 @@
-import { createPortal } from 'react-dom'
+import { AppModal } from '../../components/ui/AppModal'
 
 type Props = {
   title: string
@@ -25,35 +25,21 @@ export function CloseTicketDialog({
   onCancel,
   onConfirm,
 }: Props) {
-  return createPortal(
-    <div
-      className="app-modal-layer fixed inset-0 z-[200] flex items-end justify-center bg-black/45 p-3 backdrop-blur-[2px] sm:items-center sm:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-label={dialogAria}
-      onClick={() => {
-        if (!saving) onCancel()
-      }}
-    >
-      <div
-        className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--color-fg)]">{heading}</h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-fg-muted)]">{hint}</p>
-        <p className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 px-3.5 py-3 text-sm font-medium text-[var(--color-fg)]">
-          {title}
-        </p>
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button type="button" disabled={saving} className="app-btn app-btn-secondary !min-h-9" onClick={onCancel}>
-            {cancelLabel}
-          </button>
-          <button type="button" disabled={saving} className="app-btn app-btn-primary !min-h-9" onClick={onConfirm}>
-            {saving ? confirmingLabel : confirmLabel}
-          </button>
-        </div>
+  void dialogAria
+  return (
+    <AppModal open title={heading} onClose={() => { if (!saving) onCancel() }} size="sm">
+      <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">{hint}</p>
+      <p className="mt-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 px-3.5 py-3 text-sm font-medium text-[var(--color-fg)]">
+        {title}
+      </p>
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <button type="button" disabled={saving} className="app-btn app-btn-secondary !min-h-9" onClick={onCancel}>
+          {cancelLabel}
+        </button>
+        <button type="button" disabled={saving} className="app-btn app-btn-primary !min-h-9" onClick={onConfirm}>
+          {saving ? confirmingLabel : confirmLabel}
+        </button>
       </div>
-    </div>,
-    document.body,
+    </AppModal>
   )
 }

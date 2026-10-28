@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { api, type Bitrix24Config } from '../api'
 import { useAuth } from '../AuthContext'
-import { IconClose, IconKey } from '../components/icons'
+import { IconKey } from '../components/icons'
+import { AppModal } from '../components/ui/AppModal'
 import { BitrixBotPanel } from './BitrixBotPanel'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -117,74 +117,67 @@ export function SettingsBitrix24Page() {
           onIncomingSettings={() => setIncomingOpen(true)}
         />
       )}
-      {incomingOpen && cfg
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={() => setIncomingOpen(false)}>
-              <div
-                className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl sm:rounded-2xl"
-                role="dialog"
-                aria-modal="true"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">{t('settingsBitrix.incomingOpen')}</h2>
-                    <p className="mt-1 text-sm text-[var(--color-fg-subtle)]">{t('settingsBitrix.webhookDescription')}</p>
-                  </div>
-                  <button type="button" aria-label={t('common.close')} onClick={() => setIncomingOpen(false)}>
-                    <IconClose className="h-6 w-6" />
-                  </button>
-                </div>
-                <div className="space-y-4 text-sm">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={cfg.enabled} disabled={saving} onChange={(e) => void save({ enabled: e.target.checked })} />
-                    {t('settingsBitrix.enableIncoming')}
-                  </label>
-                  <div>
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium text-[var(--color-fg-muted)]">{t('settingsBitrix.secretLabel')}</span>
-                      <button type="button" className="text-xs font-semibold text-[var(--color-fg-muted)]" disabled={saving} title={t('settingsBitrix.generateSecretTitle')} onClick={() => void save({ incoming_secret: genSecret() })}>
-                        {t('settingsBitrix.generateSecret')}
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      <input className="app-input font-mono text-[13px]" value={cfg.incoming_secret} placeholder={t('settingsBitrix.secretPlaceholder')} onChange={(e) => setCfg({ ...cfg, incoming_secret: e.target.value })} />
-                      <button type="button" className={edge} disabled={saving} onClick={() => void save({ incoming_secret: cfg.incoming_secret })}>
-                        <IconKey className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('settingsBitrix.secretHelp')}</p>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block text-xs font-medium text-[var(--color-fg-muted)]">
-                      {t('settingsBitrix.defaultCategoryLabel')}
-                      <input className="app-input mt-1" value={cfg.default_category} onChange={(e) => setCfg({ ...cfg, default_category: e.target.value })} onBlur={() => void save({ default_category: cfg.default_category })} />
-                    </label>
-                    <label className="block text-xs font-medium text-[var(--color-fg-muted)]">
-                      {t('settingsBitrix.defaultPriorityLabel')}
-                      <select className="app-input mt-1" value={cfg.default_priority} onChange={(e) => void save({ default_priority: e.target.value })}>
-                        <option value="low">low</option>
-                        <option value="normal">normal</option>
-                        <option value="high">high</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div>
-                    <div className="break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 p-3 font-mono text-[12px]">{webhookUrl}</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button type="button" className={edge} onClick={() => void copyWebhook()}>{t('settingsBitrix.copyUrl')}</button>
-                      <button type="button" className={edge} disabled={testing || saving} onClick={() => void runTest()}>
-                        {testing ? t('settingsBitrix.testing') : t('settingsBitrix.sendTest')}
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-xs leading-relaxed text-[var(--color-fg-subtle)]">{handlerUrlHint}. {t('settingsBitrix.handlerTokenHint')}</p>
-                </div>
+      <AppModal
+        open={Boolean(incomingOpen && cfg)}
+        onClose={() => setIncomingOpen(false)}
+        size="md"
+        title={
+          <>
+            {t('settingsBitrix.incomingOpen')}
+            <span className="mt-1 block text-sm font-normal text-[var(--color-fg-subtle)]">
+              {t('settingsBitrix.webhookDescription')}
+            </span>
+          </>
+        }
+      >
+        {cfg ? (
+          <div className="space-y-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={cfg.enabled} disabled={saving} onChange={(e) => void save({ enabled: e.target.checked })} />
+              {t('settingsBitrix.enableIncoming')}
+            </label>
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-[var(--color-fg-muted)]">{t('settingsBitrix.secretLabel')}</span>
+                <button type="button" className="text-xs font-semibold text-[var(--color-fg-muted)]" disabled={saving} title={t('settingsBitrix.generateSecretTitle')} onClick={() => void save({ incoming_secret: genSecret() })}>
+                  {t('settingsBitrix.generateSecret')}
+                </button>
               </div>
-            </div>,
-            document.body,
-          )
-        : null}
+              <div className="flex gap-2">
+                <input className="app-input font-mono text-[13px]" value={cfg.incoming_secret} placeholder={t('settingsBitrix.secretPlaceholder')} onChange={(e) => setCfg({ ...cfg, incoming_secret: e.target.value })} />
+                <button type="button" className={edge} disabled={saving} onClick={() => void save({ incoming_secret: cfg.incoming_secret })}>
+                  <IconKey className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('settingsBitrix.secretHelp')}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-medium text-[var(--color-fg-muted)]">
+                {t('settingsBitrix.defaultCategoryLabel')}
+                <input className="app-input mt-1" value={cfg.default_category} onChange={(e) => setCfg({ ...cfg, default_category: e.target.value })} onBlur={() => void save({ default_category: cfg.default_category })} />
+              </label>
+              <label className="block text-xs font-medium text-[var(--color-fg-muted)]">
+                {t('settingsBitrix.defaultPriorityLabel')}
+                <select className="app-input mt-1" value={cfg.default_priority} onChange={(e) => void save({ default_priority: e.target.value })}>
+                  <option value="low">low</option>
+                  <option value="normal">normal</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+            </div>
+            <div>
+              <div className="break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 p-3 font-mono text-[12px]">{webhookUrl}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" className={edge} onClick={() => void copyWebhook()}>{t('settingsBitrix.copyUrl')}</button>
+                <button type="button" className={edge} disabled={testing || saving} onClick={() => void runTest()}>
+                  {testing ? t('settingsBitrix.testing') : t('settingsBitrix.sendTest')}
+                </button>
+              </div>
+            </div>
+            <p className="text-xs leading-relaxed text-[var(--color-fg-subtle)]">{handlerUrlHint}. {t('settingsBitrix.handlerTokenHint')}</p>
+          </div>
+        ) : null}
+      </AppModal>
     </div>
   )
 }

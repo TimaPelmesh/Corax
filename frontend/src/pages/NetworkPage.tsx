@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
   api,
@@ -8,8 +7,8 @@ import {
   type NetworkPollConfig,
 } from '../api'
 import { useAuth } from '../AuthContext'
-import { IconClose } from '../components/icons'
 import { NetworkDeviceDetailModal } from '../components/NetworkDeviceDetailModal'
+import { AppModal } from '../components/ui/AppModal'
 import { useLocale } from '../i18n/LocaleContext'
 import type { MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -511,130 +510,116 @@ export function NetworkPage() {
         />
       ) : null}
 
-      {cfgOpen && cfg
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-              <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl">
-                <div className="mb-4 flex items-start justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold">{t('network.snmpCfgTitle')}</h2>
-                    <p className="text-sm text-[var(--color-fg-subtle)]">{t('network.snmpCfgSub')}</p>
-                  </div>
-                  <button type="button" onClick={() => setCfgOpen(false)} aria-label={t('common.close')}>
-                    <IconClose className="h-6 w-6" />
-                  </button>
-                </div>
-                <div className="space-y-3 text-sm">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={cfg.poll_enabled}
-                      onChange={(e) => setCfg({ ...cfg, poll_enabled: e.target.checked })}
-                    />
-                    {t('network.pollEnabled')}
-                  </label>
-                  <label className="block">
-                    {t('network.community')}
-                    <input
-                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
-                      value={cfg.snmp_community}
-                      onChange={(e) => setCfg({ ...cfg, snmp_community: e.target.value })}
-                    />
-                  </label>
-                  <label className="block">
-                    {t('network.cidrList')}
-                    <textarea
-                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 font-mono text-xs"
-                      rows={3}
-                      placeholder="192.168.1.0/24, 10.0.0.0/24"
-                      value={cidrText}
-                      onChange={(e) => setCidrText(e.target.value)}
-                    />
-                    <span className="mt-1 block text-xs text-[var(--color-fg-subtle)]">{t('network.cidrHint')}</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block">
-                      {t('network.timeoutSec')}
-                      <input
-                        type="number"
-                        className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
-                        value={cfg.snmp_timeout_seconds}
-                        onChange={(e) => setCfg({ ...cfg, snmp_timeout_seconds: Number(e.target.value) })}
-                      />
-                    </label>
-                    <label className="block">
-                      {t('network.concurrency')}
-                      <input
-                        type="number"
-                        className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
-                        value={cfg.poll_concurrency}
-                        onChange={(e) => setCfg({ ...cfg, poll_concurrency: Number(e.target.value) })}
-                      />
-                    </label>
-                  </div>
-                </div>
-                <div className="mt-5 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setCfgOpen(false)}
-                    className="rounded-lg border border-[var(--color-border)] px-3 py-2"
-                  >
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={cfgBusy || !canEdit}
-                    onClick={() => void saveCfg()}
-                    className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-white disabled:opacity-50"
-                  >
-                    {t('common.save')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
-
-      {addOpen
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-              <div className="w-full max-w-sm rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-xl">
-                <h2 className="mb-3 text-lg font-semibold">{t('network.addTitle')}</h2>
-                <label className="mb-3 block text-sm">
-                  {t('network.addIp')}
+      <AppModal
+        open={Boolean(cfgOpen && cfg)}
+        onClose={() => setCfgOpen(false)}
+        size="md"
+        title={
+          <>
+            {t('network.snmpCfgTitle')}
+            <span className="mt-1 block text-sm font-normal text-[var(--color-fg-subtle)]">{t('network.snmpCfgSub')}</span>
+          </>
+        }
+      >
+        {cfg ? (
+          <>
+            <div className="space-y-3 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={cfg.poll_enabled}
+                  onChange={(e) => setCfg({ ...cfg, poll_enabled: e.target.checked })}
+                />
+                {t('network.pollEnabled')}
+              </label>
+              <label className="block">
+                {t('network.community')}
+                <input
+                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
+                  value={cfg.snmp_community}
+                  onChange={(e) => setCfg({ ...cfg, snmp_community: e.target.value })}
+                />
+              </label>
+              <label className="block">
+                {t('network.cidrList')}
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 font-mono text-xs"
+                  rows={3}
+                  placeholder="192.168.1.0/24, 10.0.0.0/24"
+                  value={cidrText}
+                  onChange={(e) => setCidrText(e.target.value)}
+                />
+                <span className="mt-1 block text-xs text-[var(--color-fg-subtle)]">{t('network.cidrHint')}</span>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  {t('network.timeoutSec')}
                   <input
-                    className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 font-mono"
-                    value={addIp}
-                    onChange={(e) => setAddIp(e.target.value)}
-                  />
-                </label>
-                <label className="mb-4 block text-sm">
-                  {t('network.addHostname')}
-                  <input
+                    type="number"
                     className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
-                    value={addHostname}
-                    onChange={(e) => setAddHostname(e.target.value)}
+                    value={cfg.snmp_timeout_seconds}
+                    onChange={(e) => setCfg({ ...cfg, snmp_timeout_seconds: Number(e.target.value) })}
                   />
                 </label>
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setAddOpen(false)} className="rounded-lg border px-3 py-2 text-sm">
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={addBusy || !addIp.trim()}
-                    onClick={() => void submitAdd()}
-                    className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm text-white disabled:opacity-50"
-                  >
-                    {t('common.add')}
-                  </button>
-                </div>
+                <label className="block">
+                  {t('network.concurrency')}
+                  <input
+                    type="number"
+                    className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
+                    value={cfg.poll_concurrency}
+                    onChange={(e) => setCfg({ ...cfg, poll_concurrency: Number(e.target.value) })}
+                  />
+                </label>
               </div>
-            </div>,
-            document.body,
-          )
-        : null}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setCfgOpen(false)} className="app-btn app-btn-secondary">
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={cfgBusy || !canEdit}
+                onClick={() => void saveCfg()}
+                className="app-btn app-btn-primary"
+              >
+                {t('common.save')}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </AppModal>
+
+      <AppModal open={addOpen} onClose={() => setAddOpen(false)} size="sm" title={t('network.addTitle')}>
+        <label className="mb-3 block text-sm">
+          {t('network.addIp')}
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 font-mono"
+            value={addIp}
+            onChange={(e) => setAddIp(e.target.value)}
+          />
+        </label>
+        <label className="mb-4 block text-sm">
+          {t('network.addHostname')}
+          <input
+            className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
+            value={addHostname}
+            onChange={(e) => setAddHostname(e.target.value)}
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => setAddOpen(false)} className="app-btn app-btn-secondary">
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            disabled={addBusy || !addIp.trim()}
+            onClick={() => void submitAdd()}
+            className="app-btn app-btn-primary"
+          >
+            {t('common.add')}
+          </button>
+        </div>
+      </AppModal>
 
     </div>
   )

@@ -230,7 +230,7 @@ export function ServiceRequestsPage() {
       // If asc/desc pair is provided, show ↑ or ↓ depending on active key, otherwise ↕.
       if (sortKey === asc) return <span className="ml-1 text-[var(--color-fg-muted)]">↑</span>
       if (sortKey === desc) return <span className="ml-1 text-[var(--color-fg-muted)]">↓</span>
-      return <span className="ml-1 text-slate-300">↕</span>
+      return <span className="ml-1 text-[var(--color-fg-subtle)]">↕</span>
     },
     [sortKey],
   )
@@ -1916,8 +1916,8 @@ export function ServiceRequestsPage() {
                   onClick={() => setFilterStatus(tab.id)}
                   className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                     active
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] ring-1 ring-slate-200 hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
+                      ? 'app-btn app-btn-primary !min-h-0 rounded-full px-3.5 py-1.5 text-xs'
+                      : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] ring-1 ring-[var(--color-border)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
                   }`}
                 >
                   {tab.label}
@@ -1930,7 +1930,7 @@ export function ServiceRequestsPage() {
             <button
               type="button"
               onClick={openCreateForm}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white shadow-sm hover:opacity-95"
+              className="app-btn app-btn-primary !min-h-9 shrink-0 gap-1.5"
             >
               <IconPencil className="h-3.5 w-3.5" />
               {t('requests.create.newTitle')}
@@ -2112,7 +2112,7 @@ export function ServiceRequestsPage() {
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-900"
+                        className="app-btn app-btn-primary !min-h-9 text-xs"
                         onClick={() => setReportOpen(false)}
                       >
                         {t('common.close')}
@@ -2314,7 +2314,7 @@ export function ServiceRequestsPage() {
                                       ) : null}
                                       {row.external_source === 'bitrix24' ? (
                                         <span
-                                          className="inline-flex translate-y-[-1px] items-center rounded-md bg-neutral-950 px-1.5 py-0.5 text-[10px] font-bold tracking-[0.12em] text-white"
+                                          className="inline-flex translate-y-[-1px] items-center rounded-md bg-[var(--color-fg)] px-1.5 py-0.5 text-[10px] font-bold tracking-[0.12em] text-[var(--color-bg)]"
                                           title={row.external_id ? `Bitrix24: ${row.external_id}` : 'Bitrix24'}
                                         >
                                           B24
@@ -2343,7 +2343,7 @@ export function ServiceRequestsPage() {
                               <td className="whitespace-nowrap px-3 py-3 text-xs">
                                 <span
                                   className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                                    STATUS_PILL[row.status] ?? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-1 ring-slate-200'
+                                    STATUS_PILL[row.status] ?? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-1 ring-[var(--color-border)]'
                                   }`}
                                 >
                                   {requestStatusLabel(row.status)}

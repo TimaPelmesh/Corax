@@ -15,6 +15,7 @@ import { parseAgentExtras } from '../computerAgentExtras'
 import { useT, type MessageKey } from '../i18n/LocaleContext'
 import { groupPeripheralsForDisplay } from '../peripheralDisplay'
 import { useToast } from '../ToastContext'
+import { useConfirmDialog } from './ConfirmDialog'
 import { IconClose } from './icons'
 import { ComputerZabbixStatus } from './ComputerZabbixStatus'
 import { RemoteConnectMenu } from './RemoteConnectMenu'
@@ -137,6 +138,7 @@ export function ComputerDetailModal({
 }: Props) {
   const t = useT()
   const toast = useToast()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const { user } = useAuth()
   const [detail, setDetail] = useState<ComputerDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -348,13 +350,13 @@ export function ComputerDetailModal({
 
   const deletePc = useCallback(async () => {
     if (!detail || !user?.is_superuser) return
-    if (
-      !confirm(
-        t('computerDetail.deleteConfirm', { hostname: detail.hostname }),
-      )
-    ) {
-      return
-    }
+    const ok = await ask({
+      title: t('computerDetail.deletePc'),
+      body: t('computerDetail.deleteConfirm', { hostname: detail.hostname }),
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
+    })
+    if (!ok) return
     const id = detail.id
     toast.busy(t('computerDetail.deleting'))
     onDeleted?.(id)
@@ -367,7 +369,7 @@ export function ComputerDetailModal({
       toast.error(e instanceof Error ? e.message : t('computerDetail.deleteFailed'))
       onChangedRef.current?.()
     }
-  }, [detail, user?.is_superuser, onDeleted, onClose, t, toast])
+  }, [ask, detail, user?.is_superuser, onDeleted, onClose, t, toast])
 
   const refreshWol = useCallback(async () => {
     if (!detail || !user) return
@@ -444,13 +446,12 @@ export function ComputerDetailModal({
   const wakePc = useCallback(async () => {
     if (!detail || !wolStatus?.user_may_wake || wolBusy || !isOffline) return
     const mac = detail.mac_primary ?? '—'
-    if (
-      !confirm(
-        t('computerDetail.wolWakeConfirm', { hostname: detail.hostname, mac }),
-      )
-    ) {
-      return
-    }
+    const ok = await ask({
+      title: t('computerDetail.wolWake'),
+      body: t('computerDetail.wolWakeConfirm', { hostname: detail.hostname, mac }),
+      confirmLabel: t('common.confirm'),
+    })
+    if (!ok) return
     setWolBusy(true)
     try {
       const res = await api.wakeComputer(detail.id)
@@ -464,13 +465,13 @@ export function ComputerDetailModal({
     } finally {
       setWolBusy(false)
     }
-  }, [detail, wolStatus?.user_may_wake, wolBusy, isOffline, refreshWol, checkPing, t, toast])
+  }, [ask, detail, wolStatus?.user_may_wake, wolBusy, isOffline, refreshWol, checkPing, t, toast])
 
   if (!computerId) return null
 
   return createPortal(
     <div
-      className={`fixed inset-0 ${overlayZClass} flex items-stretch justify-center bg-slate-900/40 p-0 sm:items-center sm:p-3`}
+      className={`fixed inset-0 ${overlayZClass} flex items-stretch justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-0 sm:items-center sm:p-3`}
       role="dialog"
       aria-modal
       onClick={onClose}
@@ -1181,6 +1182,7 @@ export function ComputerDetailModal({
           </>
         ) : null}
       </div>
+      {confirmDialog}
     </div>,
     document.body,
   )

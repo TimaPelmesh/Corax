@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type RequestCategoryTreeNode } from '../api'
 import { useAuth } from '../AuthContext'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { IconTrash } from '../components/icons'
 import { filterCategoryTree } from '../requestCategories'
 import { useT } from '../i18n/LocaleContext'
@@ -318,6 +319,7 @@ function TreeNodeRow({
 export function SettingsCategoriesPage() {
   const t = useT()
   const toast = useToast()
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const { user } = useAuth()
   const [tree, setTree] = useState<RequestCategoryTreeNode[]>([])
   const [newRootName, setNewRootName] = useState('')
@@ -428,7 +430,13 @@ export function SettingsCategoriesPage() {
     const msg = hasChildren
       ? t('settingsCategories.deleteConfirmWithChildren', { label })
       : t('settingsCategories.deleteConfirmSingle', { label })
-    if (!confirm(msg)) return
+    const ok = await ask({
+      title: t('common.delete'),
+      body: msg,
+      confirmLabel: t('common.delete'),
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
       await api.deleteRequestCategory(id)
       if (addingUnderId === id) cancelAddChild()
@@ -563,6 +571,7 @@ export function SettingsCategoriesPage() {
           {t('settingsCategories.readonlyHint')}
         </p>
       ) : null}
+      {confirmDialog}
     </div>
   )
 }

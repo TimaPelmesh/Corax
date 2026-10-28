@@ -13,6 +13,9 @@ def svg_export_available() -> tuple[bool, str | None]:
         import cairosvg  # noqa: F401
     except ImportError:
         return False, "Установите cairosvg: pip install cairosvg (и libcairo2 на Linux)."
+    except OSError as exc:
+        # cairosvg imports, but native cairo DLL/so is missing (common on Windows CI/dev).
+        return False, f"cairosvg установлен, но cairo недоступен: {exc}"
     return True, None
 
 

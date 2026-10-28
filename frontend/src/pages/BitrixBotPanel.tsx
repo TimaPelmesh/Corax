@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { api, type BitrixBotCard, type BitrixBotPhrases, type BitrixBotSettings } from '../api'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { IconSearch, IconTrash } from '../components/icons'
+import { AppModal } from '../components/ui/AppModal'
 import { StatusPill } from '../components/ui/StatusPill'
 import { useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -1156,20 +1157,13 @@ export function BitrixBotPanel({
           </div>
         ) : null}
 
-        {connectOpen ? (
-          <div
-            className="fixed inset-0 z-[160] flex items-end justify-center bg-black/45 p-3 backdrop-blur-[2px] sm:items-center sm:p-6"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('settingsBitrix.botConnectTab')}
-            onMouseDown={() => setConnectOpen(false)}
-          >
-          <div className="max-h-[min(90vh,40rem)] w-full max-w-xl overflow-y-auto rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-              <h2 className="text-base font-semibold text-[var(--color-fg)]">{t('settingsBitrix.botConnectTab')}</h2>
-              <button type="button" className={btn} onClick={() => setConnectOpen(false)}>{t('common.close')}</button>
-            </div>
-          <div className="space-y-4 p-4">
+        <AppModal
+          open={connectOpen}
+          onClose={() => setConnectOpen(false)}
+          size="lg"
+          title={t('settingsBitrix.botConnectTab')}
+        >
+          <div className="space-y-4">
             <Field label={t('settingsBitrix.botWebhook')} hint={t('settingsBitrix.botWebhookHint')}>
               <input className="app-input font-mono" type="password" autoComplete="off" value={webhook} placeholder={bot?.webhook_host || 'https://portal/rest/1/…'} onChange={(event) => setWebhook(event.target.value)} />
             </Field>
@@ -1266,9 +1260,7 @@ export function BitrixBotPanel({
               </button>
             </div>
           </div>
-          </div>
-          </div>
-        ) : null}
+        </AppModal>
       </section>
     </div>
   )

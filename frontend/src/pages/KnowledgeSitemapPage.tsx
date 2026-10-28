@@ -32,6 +32,7 @@ import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { PrinterDetailModal } from '../components/PrinterDetailModal'
 import { useComputerPingLive } from '../hooks/useComputerPingLive'
 import { useConfirmDialog } from '../components/ConfirmDialog'
+import { AppModal } from '../components/ui/AppModal'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -2587,131 +2588,111 @@ export function KnowledgeSitemapPage() {
           />
         </div>
       ) : null}
-      {pcLinkDialogOpen && selectedMarker?.kind === 'pc' ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_70px_-24px_rgba(2,6,23,0.5)]">
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-              <div>
-                <div className="text-sm font-semibold text-[var(--color-fg)]">Привязка к парку ПК</div>
-                <div className="text-xs text-[var(--color-fg-muted)]">Название объекта на карте не изменяется</div>
-              </div>
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
-                onClick={() => setPcLinkDialogOpen(false)}
-              >
-                Закрыть
-              </button>
+      <AppModal
+        open={Boolean(pcLinkDialogOpen && selectedMarker?.kind === 'pc')}
+        title="Привязка к парку ПК"
+        onClose={() => setPcLinkDialogOpen(false)}
+        size="lg"
+      >
+        {pcLinkDialogOpen && selectedMarker?.kind === 'pc' ? (
+          <>
+            <p className="mb-3 text-xs text-[var(--color-fg-muted)]">Название объекта на карте не изменяется</p>
+            <input
+              value={pcLinkQuery}
+              onChange={(e) => setPcLinkQuery(e.target.value)}
+              className="app-input"
+              placeholder="Введите начало: hostname / serial / model"
+              autoFocus
+            />
+            <div className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
+              {filteredPcDirectory.map((pc) => (
+                <button
+                  key={pc.id}
+                  type="button"
+                  className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
+                  onClick={() => {
+                    updateMarker(selectedMarker.id, {
+                      meta: {
+                        ...selectedMarker.meta,
+                        computer_id: String(pc.id),
+                        employee_extension: selectedMarker.meta?.employee_extension ?? '',
+                      },
+                    })
+                    setPcLinkDialogOpen(false)
+                  }}
+                >
+                  <div className="font-semibold">{pc.hostname}</div>
+                  <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
+                    {pc.os_name || 'OS —'} · RAM {pc.ram_gb != null ? `${pc.ram_gb} GB` : '—'} · SN {pc.serial_number || '—'}
+                  </div>
+                  <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
+                    Теги: {pc.tags?.map((t) => t.name).join(', ') || '—'}
+                  </div>
+                </button>
+              ))}
+              {filteredPcDirectory.length === 0 ? (
+                <div className="app-empty-state py-4 text-sm">Ничего не найдено</div>
+              ) : null}
             </div>
-            <div className="p-4">
-              <input
-                value={pcLinkQuery}
-                onChange={(e) => setPcLinkQuery(e.target.value)}
-                className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
-                placeholder="Введите начало: hostname / serial / model"
-                autoFocus
-              />
-              <div className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
-                {filteredPcDirectory.map((pc) => (
+          </>
+        ) : null}
+      </AppModal>
+      <AppModal
+        open={Boolean(printerLinkDialogOpen && selectedMarker?.kind === 'printer')}
+        title={t('sitemap.printerLink')}
+        onClose={() => setPrinterLinkDialogOpen(false)}
+        size="lg"
+      >
+        {printerLinkDialogOpen && selectedMarker?.kind === 'printer' ? (
+          <>
+            <p className="mb-3 text-xs text-[var(--color-fg-muted)]">{t('sitemap.printerLinkHint')}</p>
+            <input
+              value={printerLinkQuery}
+              onChange={(e) => setPrinterLinkQuery(e.target.value)}
+              className="app-input"
+              placeholder={t('sitemap.printerSearchPlaceholder')}
+              autoFocus
+            />
+            <div className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
+              {filteredPrinterDirectory.map((printer) => {
+                const toner = printerLowestTonerPercent(printer)
+                return (
                   <button
-                    key={pc.id}
+                    key={printer.id}
                     type="button"
                     className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
                     onClick={() => {
                       updateMarker(selectedMarker.id, {
                         meta: {
                           ...selectedMarker.meta,
-                          computer_id: String(pc.id),
-                          employee_extension: selectedMarker.meta?.employee_extension ?? '',
+                          printer_id: String(printer.id),
+                          model: printer.snmp_model || printer.name || '',
+                          ip: printer.ip_address || '',
                         },
+                        label: selectedMarker.label || printerDisplayName(printer),
                       })
-                      setPcLinkDialogOpen(false)
+                      setPrinterLinkDialogOpen(false)
                     }}
                   >
-                    <div className="font-semibold">{pc.hostname}</div>
+                    <div className="font-semibold">{printerDisplayName(printer)}</div>
                     <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
-                      {pc.os_name || 'OS —'} · RAM {pc.ram_gb != null ? `${pc.ram_gb} GB` : '—'} · SN {pc.serial_number || '—'}
+                      {printer.ip_address || 'IP —'}
+                      {printer.page_count != null ? ` · ${printer.page_count} стр.` : ''}
+                      {toner != null ? ` · тонер ${toner}%` : ''}
                     </div>
-                    <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">Теги: {pc.tags?.map((t) => t.name).join(', ') || '—'}</div>
+                    <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
+                      {printer.location || '—'} · {(printer.poll_status || 'unknown').toLowerCase()}
+                    </div>
                   </button>
-                ))}
-                {filteredPcDirectory.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-fg-muted)]">
-                    Ничего не найдено
-                  </div>
-                ) : null}
-              </div>
+                )
+              })}
+              {filteredPrinterDirectory.length === 0 ? (
+                <div className="app-empty-state py-4 text-sm">{t('sitemap.printerNothingFound')}</div>
+              ) : null}
             </div>
-          </div>
-        </div>
-      ) : null}
-      {printerLinkDialogOpen && selectedMarker?.kind === 'printer' ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_24px_70px_-24px_rgba(2,6,23,0.5)]">
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-              <div>
-                <div className="text-sm font-semibold text-[var(--color-fg)]">{t('sitemap.printerLink')}</div>
-                <div className="text-xs text-[var(--color-fg-muted)]">{t('sitemap.printerLinkHint')}</div>
-              </div>
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)]"
-                onClick={() => setPrinterLinkDialogOpen(false)}
-              >
-                Закрыть
-              </button>
-            </div>
-            <div className="p-4">
-              <input
-                value={printerLinkQuery}
-                onChange={(e) => setPrinterLinkQuery(e.target.value)}
-                className="h-10 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-fg)] outline-none transition focus:border-neutral-400"
-                placeholder={t('sitemap.printerSearchPlaceholder')}
-                autoFocus
-              />
-              <div className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
-                {filteredPrinterDirectory.map((printer) => {
-                  const toner = printerLowestTonerPercent(printer)
-                  return (
-                    <button
-                      key={printer.id}
-                      type="button"
-                      className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-left text-sm text-[var(--color-fg)] transition hover:bg-[var(--color-surface-muted)]"
-                      onClick={() => {
-                        updateMarker(selectedMarker.id, {
-                          meta: {
-                            ...selectedMarker.meta,
-                            printer_id: String(printer.id),
-                            model: printer.snmp_model || printer.name || '',
-                            ip: printer.ip_address || '',
-                          },
-                          label: selectedMarker.label || printerDisplayName(printer),
-                        })
-                        setPrinterLinkDialogOpen(false)
-                      }}
-                    >
-                      <div className="font-semibold">{printerDisplayName(printer)}</div>
-                      <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
-                        {printer.ip_address || 'IP —'}
-                        {printer.page_count != null ? ` · ${printer.page_count} стр.` : ''}
-                        {toner != null ? ` · тонер ${toner}%` : ''}
-                      </div>
-                      <div className="mt-0.5 text-xs text-[var(--color-fg-muted)]">
-                        {printer.location || '—'} · {(printer.poll_status || 'unknown').toLowerCase()}
-                      </div>
-                    </button>
-                  )
-                })}
-                {filteredPrinterDirectory.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-fg-muted)]">
-                    {t('sitemap.printerNothingFound')}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </AppModal>
       <PrinterDetailModal
         printer={printerDetail}
         onClose={() => setPrinterDetail(null)}

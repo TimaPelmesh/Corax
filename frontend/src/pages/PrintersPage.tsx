@@ -7,9 +7,10 @@ import {
   type PrinterSupply,
 } from '../api'
 import { useAuth } from '../AuthContext'
-import { IconClose, IconPencil } from '../components/icons'
+import { IconPencil } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { PrinterDetailModal } from '../components/PrinterDetailModal'
+import { AppModal } from '../components/ui/AppModal'
 import {
   hasLowToner,
   partitionSupplies,
@@ -967,25 +968,20 @@ export function PrintersPage() {
         </div>
       </div>
 
-      {cfgOpen && cfg && canEdit ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-3 sm:items-center">
-          <div className="app-card w-full max-w-2xl p-0">
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
-              <div>
-                <h2 className="text-lg font-bold text-[var(--color-fg)]">{t('printers.snmpCfgTitle')}</h2>
-                <p className="mt-1 text-sm text-[var(--color-fg-muted)]">{t('printers.snmpCfgSub')}</p>
-              </div>
-              <button
-                type="button"
-                className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
-                onClick={() => setCfgOpen(false)}
-                aria-label={t('common.close')}
-              >
-                <IconClose className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2">
+      <AppModal
+        open={Boolean(cfgOpen && cfg && canEdit)}
+        onClose={() => setCfgOpen(false)}
+        size="lg"
+        title={
+          <>
+            {t('printers.snmpCfgTitle')}
+            <span className="mt-1 block text-sm font-normal text-[var(--color-fg-muted)]">{t('printers.snmpCfgSub')}</span>
+          </>
+        }
+      >
+        {cfg ? (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <label className="flex items-center gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm">
                 <input type="checkbox" checked={cfg.poll_enabled} onChange={(e) => setCfg({ ...cfg, poll_enabled: e.target.checked })} />
                 {t('printers.pollEnabled')}
@@ -1033,8 +1029,7 @@ export function PrintersPage() {
                 />
               </label>
             </div>
-
-            <div className="flex justify-end gap-2 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)] px-5 py-4">
+            <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="app-btn app-btn-secondary" onClick={() => setCfgOpen(false)} disabled={cfgBusy}>
                 {t('common.cancel')}
               </button>
@@ -1042,62 +1037,49 @@ export function PrintersPage() {
                 {cfgBusy ? t('common.loading') : t('common.save')}
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </AppModal>
 
-      {addOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-3 sm:items-center">
-          <div className="app-card w-full max-w-md p-4">
-            <div className="mb-3 flex items-start justify-between">
-              <h2 className="text-lg font-bold">{t('printers.addTitle')}</h2>
-              <button type="button" className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]" onClick={() => setAddOpen(false)}>
-                <IconClose className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <label className="block">
-                <span className="app-label">{t('printers.addName')}</span>
-                <input value={addName} onChange={(e) => setAddName(e.target.value)} className="app-input" placeholder="HP" />
-              </label>
-              <label className="block">
-                <span className="app-label">{t('printers.addIp')}</span>
-                <input value={addIp} onChange={(e) => setAddIp(e.target.value)} placeholder="192.168.1.50" className="app-input font-mono" required />
-              </label>
-              <label className="block">
-                <span className="app-label">{t('printers.addLocation')}</span>
-                <input value={addLocation} onChange={(e) => setAddLocation(e.target.value)} className="app-input" />
-              </label>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="app-btn app-btn-secondary" onClick={() => setAddOpen(false)}>
-                {t('common.cancel')}
-              </button>
-              <button type="button" disabled={addBusy || !addName.trim() || !addIp.trim()} className="app-btn app-btn-primary" onClick={() => void submitAdd()}>
-                {addBusy ? t('common.loading') : t('common.add')}
-              </button>
-            </div>
-          </div>
+      <AppModal open={addOpen} onClose={() => setAddOpen(false)} size="sm" title={t('printers.addTitle')}>
+        <div className="space-y-3">
+          <label className="block">
+            <span className="app-label">{t('printers.addName')}</span>
+            <input value={addName} onChange={(e) => setAddName(e.target.value)} className="app-input" placeholder="HP" />
+          </label>
+          <label className="block">
+            <span className="app-label">{t('printers.addIp')}</span>
+            <input value={addIp} onChange={(e) => setAddIp(e.target.value)} placeholder="192.168.1.50" className="app-input font-mono" required />
+          </label>
+          <label className="block">
+            <span className="app-label">{t('printers.addLocation')}</span>
+            <input value={addLocation} onChange={(e) => setAddLocation(e.target.value)} className="app-input" />
+          </label>
         </div>
-      ) : null}
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="app-btn app-btn-secondary" onClick={() => setAddOpen(false)}>
+            {t('common.cancel')}
+          </button>
+          <button type="button" disabled={addBusy || !addName.trim() || !addIp.trim()} className="app-btn app-btn-primary" onClick={() => void submitAdd()}>
+            {addBusy ? t('common.loading') : t('common.add')}
+          </button>
+        </div>
+      </AppModal>
 
-      {deleteTarget ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-          <div className="app-card w-full max-w-md border-blue-200 p-4 shadow-2xl ring-1 ring-blue-100">
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-blue-800">{t('printers.deleteTitle')}</h2>
-                <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-                  {deleteTarget.ids.length === 1
-                    ? t('printers.deleteOne')
-                    : t('printers.deleteMany', { n: deleteTarget.ids.length })}
-                </p>
-              </div>
-              <button type="button" className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]" onClick={() => setDeleteTarget(null)}>
-                <IconClose className="h-5 w-5" />
-              </button>
-            </div>
-            <ul className="mb-4 max-h-40 overflow-y-auto rounded-xl border border-red-100 bg-blue-50/50 px-3 py-2 text-sm text-[var(--color-fg)]">
+      <AppModal
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        size="sm"
+        title={t('printers.deleteTitle')}
+      >
+        {deleteTarget ? (
+          <>
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              {deleteTarget.ids.length === 1
+                ? t('printers.deleteOne')
+                : t('printers.deleteMany', { n: deleteTarget.ids.length })}
+            </p>
+            <ul className="mt-3 mb-4 max-h-40 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 px-3 py-2 text-sm text-[var(--color-fg)]">
               {deleteTarget.labels.slice(0, 12).map((label) => (
                 <li key={label} className="truncate py-0.5">
                   {label}
@@ -1115,9 +1097,9 @@ export function PrintersPage() {
                 {deleteBusy ? t('common.loading') : t('common.delete')}
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </AppModal>
 
       <PrinterDetailModal
         printer={detailPrinter}

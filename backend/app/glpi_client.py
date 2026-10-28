@@ -240,6 +240,20 @@ def _is_permission_error(exc: Exception) -> bool:
     )
 
 
+def _is_gone_error(exc: Exception) -> bool:
+    """UPDATE/GET вернул отсутствие объекта (404 / not found), а не отказ в правах."""
+    text = str(exc).casefold()
+    return any(
+        token in text
+        for token in (
+            "http 404",
+            "not found",
+            "не найден",
+            "не найдена",
+        )
+    )
+
+
 def _is_asset_update_blocked(exc: Exception) -> bool:
     """UPDATE ПК/устройства недоступен: права, сущность или общий ERROR_API."""
     return _is_permission_error(exc)
@@ -1619,6 +1633,8 @@ class _Session:
         """Связь по glpi_id, хвосту CORAX#id в теме или точному названию → UPDATE, иначе CREATE.
 
         force_create=True — всегда новая заявка (как тестовая), без UPDATE и без поиска по теме.
+        Известный glpi_id сначала UPDATE (GET 404 ещё не значит «нет» — UPDATE может пройти).
+        Если UPDATE вернул 404 — ищем CORAX#id / тему и перепривязываем, иначе CREATE.
         """
         title = _title_with_marker(item.title or "", item.corax_id)
         if item.force_create:
@@ -1630,11 +1646,9 @@ class _Session:
                 detail="принудительный CREATE",
             )
 
-        target_id = item.glpi_id
+        target_id = item.glpi_id if item.glpi_id and item.glpi_id > 0 else None
         matched_by = "id" if target_id else None
         stale_id: int | None = None
-        # A known glpi_id is updated even when GET says 404. UPDATE returns the
-        # real 403 or 404; dropping the id here created a second ticket instead.
         if target_id is None:
             target_id = self.find_ticket_id_by_marker(item.corax_id)
             if target_id is not None:
@@ -1659,9 +1673,8 @@ class _Session:
                     detail=note,
                 )
             except GlpiClientError as exc:
-                # UPDATE недоступен / HTTP 500 сущности — создаём новую, не конфликтуем.
                 text = str(exc).casefold()
-                gone = "http 404" in text or "not found" in text
+                gone = _is_gone_error(exc)
                 if not (
                     _is_permission_error(exc)
                     or "http 500" in text
@@ -1669,6 +1682,31 @@ class _Session:
                     or gone
                 ):
                     raise
+                # Битая связь по id: не CREATE сразу — сначала CORAX#id / тема.
+                if gone and matched_by == "id":
+                    stale_id = target_id
+                    relink_id = self.find_ticket_id_by_marker(item.corax_id)
+                    via = "corax_id"
+                    if relink_id is None:
+                        relink_id = self.find_ticket_id_by_title(item.title or "")
+                        via = "title"
+                    if relink_id is None:
+                        relink_id = self.find_ticket_id_by_title(title)
+                    if relink_id is not None:
+                        self.update_ticket(replace(item, glpi_id=relink_id, title=title))
+                        return GlpiPushResult(
+                            corax_id=item.corax_id,
+                            glpi_id=relink_id,
+                            action="updated",
+                            detail=f"GLPI #{stale_id} нет, сопоставлено по {via}",
+                        )
+                    created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
+                    return GlpiPushResult(
+                        corax_id=item.corax_id,
+                        glpi_id=created_id,
+                        action="created",
+                        detail=f"GLPI #{stale_id} нет, старая связь, создана новая #{created_id}",
+                    )
                 created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
                 return GlpiPushResult(
                     corax_id=item.corax_id,
@@ -1680,14 +1718,11 @@ class _Session:
                 )
 
         created_id = self.create_ticket(replace(item, glpi_id=None, title=title))
-        detail = "новая заявка"
-        if stale_id is not None:
-            detail = f"GLPI #{stale_id} нет, создана новая #{created_id}"
         return GlpiPushResult(
             corax_id=item.corax_id,
             glpi_id=created_id,
             action="created",
-            detail=detail,
+            detail="новая заявка",
         )
 
     def list_computers(self, limit: int) -> list[GlpiComputer]:
@@ -2965,8 +3000,12 @@ class _Session:
             payload = None
         text = _message_from_payload(payload) if payload is not None else (response.text or "")
         cleaned = _redact(text or fallback, self.creds)
-        friendly = _friendly(cleaned)
-        return friendly or fallback
+        friendly = _friendly(cleaned) or fallback
+        # Сохраняем код статуса для эвристик (gone / permission), даже если тело — путь API.
+        status_tag = f"HTTP {response.status_code}"
+        if response.status_code >= 400 and status_tag.casefold() not in friendly.casefold():
+            return f"{friendly} ({status_tag})"
+        return friendly
 
 
 def _sends(item: GlpiOutbound, name: str) -> bool:

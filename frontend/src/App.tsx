@@ -182,6 +182,7 @@ export default function App() {
         <Route path="software" element={<SoftwarePage />} />
         <Route path="computers" element={<ComputersPage />} />
         <Route path="server-audit" element={<ServerAuditPage />} />
+        {/* Legacy LlmCluster/Chat/Topology UI lives on /server-audit (page files kept). */}
         <Route path="llm-cluster" element={<Navigate to="/server-audit" replace />} />
         <Route path="llm-cluster/*" element={<Navigate to="/server-audit" replace />} />
         <Route path="printers" element={<PrintersPage />} />
@@ -208,6 +209,7 @@ export default function App() {
         <Route path="settings/agent-bundle" element={<AgentBundlePage />} />
         <Route path="settings/wol" element={<SettingsWolPage />} />
         <Route path="settings/https" element={<SettingsHttpsPage />} />
+        {/* Legacy KnowledgeBasePage UI lives on /knowledge-base/wikirag (page file kept). */}
         <Route path="knowledge-base" element={<Navigate to="/knowledge-base/wikirag" replace />} />
         <Route path="knowledge-base/sitemap" element={<KnowledgeSitemapPage />} />
         <Route path="knowledge-base/guide" element={<GuidePage />} />

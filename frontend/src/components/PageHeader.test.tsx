@@ -22,4 +22,16 @@ describe('PageHeader', () => {
     const { container } = render(<PageHeader title="Empty" />)
     expect(container.querySelector('.flex.flex-wrap')).toBeNull()
   })
+
+  it('renders a muted subtitle when provided', () => {
+    render(<PageHeader title="Computers" subtitle="Fleet inventory" />)
+    const sub = screen.getByText('Fleet inventory')
+    expect(sub.tagName).toBe('P')
+    expect(sub).toHaveClass('text-[var(--color-fg-muted)]')
+  })
+
+  it('omits subtitle when not provided', () => {
+    const { container } = render(<PageHeader title="Empty" />)
+    expect(container.querySelector('p')).toBeNull()
+  })
 })

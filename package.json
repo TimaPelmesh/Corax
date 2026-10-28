@@ -7,7 +7,7 @@
     "build": "npm run build --prefix frontend",
     "install:frontend": "npm install --prefix frontend",
     "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "cd backend && python -m pytest -q",
+    "test:backend": "node scripts/run_backend_tests.js",
     "test:frontend": "npm run test --prefix frontend",
     "test:e2e": "playwright test",
     "test:all": "npm run test && npm run test:e2e",
