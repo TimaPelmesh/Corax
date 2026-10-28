@@ -27,9 +27,9 @@ export function SettingsIndexPage() {
 
   return (
     <div>
-      <h1 className="page-title">{t('titles.settings')}</h1>
-      <p className="mt-1 max-w-xl text-sm text-[var(--color-fg-muted)]">{t('pages.settingsSubtitle')}</p>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <h1 className="sr-only">{t('titles.settings')}</h1>
+      <p className="max-w-xl text-sm text-[var(--color-fg-muted)]">{t('pages.settingsSubtitle')}</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
           const Icon = item.icon
           const purposeKey = PURPOSE_KEY[item.to]
@@ -37,7 +37,7 @@ export function SettingsIndexPage() {
             <Link
               key={item.to}
               to={item.to}
-              className="flex items-start gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 no-underline shadow-[var(--shadow-card)] transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
+              className="app-card flex items-start gap-3 px-4 py-3.5 no-underline transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
             >
               <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-muted)] text-[var(--color-primary)]">
                 <Icon className="h-4 w-4" />

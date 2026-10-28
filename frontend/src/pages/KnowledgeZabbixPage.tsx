@@ -2,30 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type ZabbixHostRow, type ZabbixOverview, type ZabbixProblem } from '../api'
 import { useAuth } from '../AuthContext'
+import { PageHeader } from '../components/PageHeader'
+import { TableSkeleton } from '../components/Skeleton'
 import { formatZabbixClock } from '../components/zabbix/zabbixUi'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
+import { hostKeys, normalizeZabbixHref, severityClass, severityRank } from './knowledgeZabbixModel'
 
 type Tab = 'problems' | 'hosts'
-
-function hostKeys(value: string) {
-  const raw = value.trim().toLowerCase()
-  if (!raw) return []
-  const short = raw.split('.')[0]
-  return short && short !== raw ? [raw, short] : [raw]
-}
-
-function severityRank(value: number) {
-  return Number.isFinite(value) ? value : 0
-}
-
-function severityClass(value: number) {
-  if (value >= 5) return 'bg-rose-50 text-rose-800 dark:bg-rose-500/15 dark:text-rose-100'
-  if (value >= 4) return 'bg-amber-50 text-amber-900 dark:bg-amber-500/15 dark:text-amber-100'
-  if (value >= 3) return 'bg-orange-50 text-orange-900 dark:bg-orange-500/15 dark:text-orange-100'
-  if (value >= 2) return 'bg-sky-50 text-sky-900 dark:bg-sky-500/15 dark:text-sky-100'
-  return 'bg-[var(--color-bg-muted)] text-[var(--color-fg-muted)]'
-}
 
 export function KnowledgeZabbixPage() {
   const t = useT()
@@ -134,84 +118,73 @@ export function KnowledgeZabbixPage() {
 
   const enabled = Boolean(overview?.enabled)
   const available = Boolean(overview?.available)
-  const zabbixHref = useMemo(() => {
-    const raw = (overview?.ui_url || '').trim()
-    if (!raw) return ''
-    if (/^https?:\/\//i.test(raw)) return raw
-    if (/^[a-zA-Z0-9.-]+(:\d+)?(\/.*)?$/.test(raw)) return `http://${raw}`
-    return ''
-  }, [overview?.ui_url])
+  const zabbixHref = useMemo(() => normalizeZabbixHref(overview?.ui_url), [overview?.ui_url])
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
-      <h1 className="sr-only">{t('titles.zabbixData')}</h1>
-
-      <header className="flex flex-wrap items-center justify-end gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-[var(--color-border)] p-0.5">
-            {(
-              [
-                ['problems', t('zabbixUi.tabProblems'), problemsTotal],
-                ['hosts', t('zabbixUi.tabHosts'), hostsTotal],
-              ] as const
-            ).map(([id, label, total]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                  tab === id
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
-                }`}
-              >
-                {label}
-                {total != null ? <span className="ml-1 opacity-80">({total})</span> : null}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            {loading ? t('zabbixUi.loading') : t('zabbixUi.refresh')}
-          </button>
-          <Link
-            to="/risks"
-            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium no-underline hover:bg-[var(--color-bg-muted)]"
-          >
-            {t('zabbixUi.riskLink')}
-          </Link>
-          {user?.is_superuser ? (
-            <Link
-              to="/settings/zabbix"
-              className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium no-underline hover:bg-[var(--color-bg-muted)]"
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+      <PageHeader
+        title={t('titles.zabbixData')}
+        actions={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+            <div className="inline-flex w-full rounded-lg border border-[var(--color-border)] p-0.5 sm:w-auto">
+              {(
+                [
+                  ['problems', t('zabbixUi.tabProblems'), problemsTotal],
+                  ['hosts', t('zabbixUi.tabHosts'), hostsTotal],
+                ] as const
+              ).map(([id, label, total]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTab(id)}
+                  className={`min-w-0 flex-1 rounded-md px-3 py-1.5 text-sm font-medium sm:flex-none ${
+                    tab === id
+                      ? 'bg-[var(--color-primary)] text-white'
+                      : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]'
+                  }`}
+                >
+                  {label}
+                  {total != null ? <span className="ml-1 opacity-80">({total})</span> : null}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="app-btn app-btn-secondary w-full !min-h-9 sm:w-auto"
+              onClick={() => void load()}
+              disabled={loading}
             >
-              {t('zabbixUi.settings')}
+              {loading ? t('zabbixUi.loading') : t('zabbixUi.refresh')}
+            </button>
+            <Link to="/risks" className="app-btn app-btn-secondary w-full !min-h-9 no-underline sm:w-auto">
+              {t('zabbixUi.riskLink')}
             </Link>
-          ) : null}
-          {zabbixHref ? (
-            <a
-              href={zabbixHref}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white no-underline"
-            >
-              {t('zabbixUi.openZabbix')}
-            </a>
-          ) : null}
-        </div>
-      </header>
+            {user?.is_superuser ? (
+              <Link to="/settings/zabbix" className="app-btn app-btn-secondary w-full !min-h-9 no-underline sm:w-auto">
+                {t('zabbixUi.settings')}
+              </Link>
+            ) : null}
+            {zabbixHref ? (
+              <a
+                href={zabbixHref}
+                target="_blank"
+                rel="noreferrer"
+                className="app-btn app-btn-primary w-full !min-h-9 no-underline sm:w-auto"
+              >
+                {t('zabbixUi.openZabbix')}
+              </a>
+            ) : null}
+          </div>
+        }
+      />
 
       {!enabled ? (
-        <p className="text-sm text-[var(--color-fg-muted)]">{t('zabbixUi.kbDisabled')}</p>
+        <p className="app-empty-state">{t('zabbixUi.kbDisabled')}</p>
       ) : !available ? (
-        <p className="text-sm text-[var(--color-fg-muted)]">{overview?.message || t('zabbixUi.unavailable')}</p>
+        <p className="app-empty-state">{overview?.message || t('zabbixUi.unavailable')}</p>
       ) : (
         <>
-          <div className="flex flex-wrap gap-3 text-sm">
+          <div className="flex flex-wrap gap-2 text-sm">
             <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
               {t('zabbixUi.hosts')}: <strong>{overview?.hosts_total ?? '—'}</strong>
             </span>
@@ -227,12 +200,12 @@ export function KnowledgeZabbixPage() {
 
           <p className="text-sm text-[var(--color-fg-muted)]">{t('zabbixUi.kbIntro')}</p>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={t('zabbixUi.searchPlaceholder')}
-              className="min-w-[12rem] flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm sm:max-w-xs"
+              className="app-input min-w-0 w-full flex-1 sm:max-w-xs"
             />
             {q.trim() ? (
               <button type="button" className="text-sm font-medium text-[var(--color-primary)]" onClick={() => setQ('')}>
@@ -270,15 +243,19 @@ export function KnowledgeZabbixPage() {
             </div>
           ) : null}
 
-          {tab === 'problems' ? (
-            <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)]">
+          {loading && problems.length === 0 && hosts.length === 0 ? (
+            <div className="app-card app-table-shell overflow-hidden p-0">
+              <TableSkeleton rows={8} cols={4} />
+            </div>
+          ) : tab === 'problems' ? (
+            <div className="app-card app-table-shell overflow-x-auto p-0">
               <table className="app-table w-full min-w-[40rem] border-collapse text-left text-sm">
-                <thead className="bg-[var(--color-bg-muted)] text-[13px] font-medium text-[var(--color-fg-subtle)]">
+                <thead className="app-table-head">
                   <tr>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colSeverity')}</th>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colProblem')}</th>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colHosts')}</th>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colWhen')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colSeverity')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colProblem')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colHosts')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colWhen')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -290,10 +267,7 @@ export function KnowledgeZabbixPage() {
                     </tr>
                   ) : (
                     filteredProblems.map((p) => (
-                      <tr
-                        key={p.eventid || `${p.name}-${p.clock}`}
-                        className="border-b border-[var(--color-border)]/70 hover:bg-[var(--color-bg-muted)]/50"
-                      >
+                      <tr key={p.eventid || `${p.name}-${p.clock}`} className="app-table-row border-b border-[var(--color-border)]/70">
                         <td className="px-3 py-2 align-top">
                           <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${severityClass(severityRank(p.severity))}`}>
                             {p.severity_label || '—'}
@@ -308,7 +282,12 @@ export function KnowledgeZabbixPage() {
                               {(p.hosts || []).map((name) => {
                                 const id = computerIdFor([name])
                                 return id ? (
-                                  <Link key={name} to={`/computers?computer=${id}`} className="font-medium text-[var(--color-primary)] no-underline hover:underline" title={t('zabbixUi.openComputer')}>
+                                  <Link
+                                    key={name}
+                                    to={`/computers?computer=${id}`}
+                                    className="font-medium text-[var(--color-primary)] no-underline hover:underline"
+                                    title={t('zabbixUi.openComputer')}
+                                  >
                                     {name}
                                   </Link>
                                 ) : (
@@ -330,14 +309,14 @@ export function KnowledgeZabbixPage() {
               </table>
             </div>
           ) : (
-            <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)]">
+            <div className="app-card app-table-shell overflow-x-auto p-0">
               <table className="app-table w-full min-w-[36rem] border-collapse text-left text-sm">
-                <thead className="bg-[var(--color-bg-muted)] text-[13px] font-medium text-[var(--color-fg-subtle)]">
+                <thead className="app-table-head">
                   <tr>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colName')}</th>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colHost')}</th>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colIp')}</th>
-                    <th className="px-3 py-2 font-semibold">{t('zabbixUi.colStatus')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colName')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colHost')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colIp')}</th>
+                    <th className="px-3 py-2.5 font-medium">{t('zabbixUi.colStatus')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -349,16 +328,17 @@ export function KnowledgeZabbixPage() {
                     </tr>
                   ) : (
                     filteredHosts.map((h) => (
-                      <tr
-                        key={h.hostid || h.host}
-                        className="border-b border-[var(--color-border)]/70 hover:bg-[var(--color-bg-muted)]/50"
-                      >
+                      <tr key={h.hostid || h.host} className="app-table-row border-b border-[var(--color-border)]/70">
                         <td className="px-3 py-2 font-medium text-[var(--color-fg)]">
                           {(() => {
                             const id = computerIdFor([h.host, h.name])
                             const label = h.name || '—'
                             return id ? (
-                              <Link to={`/computers?computer=${id}`} className="text-[var(--color-primary)] no-underline hover:underline" title={t('zabbixUi.openComputer')}>
+                              <Link
+                                to={`/computers?computer=${id}`}
+                                className="text-[var(--color-primary)] no-underline hover:underline"
+                                title={t('zabbixUi.openComputer')}
+                              >
                                 {label}
                               </Link>
                             ) : (

@@ -28,6 +28,7 @@ export function ConfirmDialog({
 }: DialogProps) {
   const t = useT()
   const titleId = useId()
+  const bodyId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
   const onCloseRef = useRef(onClose)
@@ -68,6 +69,8 @@ export function ConfirmDialog({
 
   if (!open) return null
 
+  const hasBody = Boolean(body)
+
   return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-4"
@@ -78,13 +81,18 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={hasBody ? bodyId : undefined}
         className="w-full max-w-md rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id={titleId} className="text-base font-semibold text-[var(--color-fg)]">
           {title}
         </h2>
-        {body ? <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-fg-muted)]">{body}</p> : null}
+        {hasBody ? (
+          <p id={bodyId} className="mt-2 whitespace-pre-line text-sm leading-6 text-[var(--color-fg-muted)]">
+            {body}
+          </p>
+        ) : null}
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="app-btn app-btn-secondary !min-h-9">
             {t('common.cancel')}

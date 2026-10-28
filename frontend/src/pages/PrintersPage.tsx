@@ -8,7 +8,16 @@ import {
 } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconClose, IconPencil } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
 import { PrinterDetailModal } from '../components/PrinterDetailModal'
+import {
+  hasLowToner,
+  partitionSupplies,
+  printerStatusChip,
+  supplyTone,
+  tonerShort,
+} from '../components/printerSupplies'
+import { TableSkeleton } from '../components/Skeleton'
 import { useLocale } from '../i18n/LocaleContext'
 import type { MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -72,75 +81,6 @@ function formatSchedulerShort(
     : t('printers.autoEvery', { mins })
 }
 
-/** Тонер/картридж — цветная метка; остальное из SNMP (печка, фильтр, developer…) — сервис, без «цвета тонера». */
-function isTonerSupply(name: string): boolean {
-  const s = name.toLowerCase()
-  if (
-    /(?:imaging unit|imageur|drum|фотобарабан|барабан|photoconductor)/i.test(s) ||
-    /(?:fuser|fusing|печь|fuse)/i.test(s) ||
-    /(?:filter|фильтр|ozone|озон|paper dust|remover|waste|бункер|отработ)/i.test(s) ||
-    /(?:developer|transfer|belt|kit|maintenance)/i.test(s)
-  ) {
-    return false
-  }
-  return /(?:toner|cartridge|тонер|картридж|черн|cyan|magenta|yellow|голуб|жёлт|желт|пурпур|\bcf\d{3}|\bce40)/i.test(
-    s,
-  )
-}
-
-function partitionSupplies(supplies: PrinterSupply[]) {
-  const toners: PrinterSupply[] = []
-  const service: PrinterSupply[] = []
-  for (const s of supplies) {
-    if (isTonerSupply(s.name)) toners.push(s)
-    else service.push(s)
-  }
-  const byName = (a: PrinterSupply, b: PrinterSupply) => a.name.localeCompare(b.name, 'ru')
-  const tonerOrder = (name: string) => {
-    const s = name.toLowerCase()
-    if (/black|черн|ce400|cf410|cf226/i.test(s)) return 0
-    if (/cyan|голуб|ce401|cf411/i.test(s)) return 1
-    if (/magenta|пурпур|ce403|cf413/i.test(s)) return 2
-    if (/yellow|жёлт|желт|ce402|cf412/i.test(s)) return 3
-    return 4
-  }
-  toners.sort((a, b) => tonerOrder(a.name) - tonerOrder(b.name) || byName(a, b))
-  service.sort(byName)
-  return { toners, service }
-}
-
-function supplyTone(name: string): { dot: string; text: string; track: string; fill: string } {
-  const s = name.toLowerCase()
-  if (/(cyan|голуб|ce401a|cf411)/i.test(s)) {
-    return { dot: 'bg-cyan-500', text: 'text-cyan-700', track: 'bg-cyan-50', fill: 'bg-cyan-500' }
-  }
-  if (/(magenta|пурпур|маджент|ce403a|cf413)/i.test(s)) {
-    return { dot: 'bg-fuchsia-500', text: 'text-fuchsia-700', track: 'bg-fuchsia-50', fill: 'bg-fuchsia-500' }
-  }
-  if (/(yellow|желт|жёлт|ce402a|cf412)/i.test(s)) {
-    return { dot: 'bg-yellow-400', text: 'text-yellow-700', track: 'bg-yellow-50', fill: 'bg-yellow-400' }
-  }
-  if (/(black|ч[её]рн|carbon|ce400a|ce400x|cf410|cf226)/i.test(s)) {
-    return { dot: 'bg-slate-950', text: 'text-[var(--color-fg)]', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-900' }
-  }
-  return { dot: 'bg-slate-400', text: 'text-[var(--color-fg-muted)]', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400' }
-}
-
-function hasLowToner(supplies: PrinterSupply[] | undefined) {
-  return (supplies ?? []).some(
-    (s) => isTonerSupply(s.name) && s.level_percent != null && s.level_percent <= 15,
-  )
-}
-
-function tonerShort(name: string) {
-  const s = name.toLowerCase()
-  if (/black|черн/.test(s)) return 'K'
-  if (/cyan|голуб/.test(s)) return 'C'
-  if (/magenta|пурпур/.test(s)) return 'M'
-  if (/yellow|жёлт|желт/.test(s)) return 'Y'
-  return name.length > 10 ? `${name.slice(0, 9)}…` : name
-}
-
 function SuppliesCell({ supplies }: { supplies: PrinterSupply[] }) {
   const { toners } = partitionSupplies(supplies)
   if (!toners.length) {
@@ -156,13 +96,17 @@ function SuppliesCell({ supplies }: { supplies: PrinterSupply[] }) {
           <div key={s.name} className="min-w-0" title={s.name}>
             <div className="flex items-baseline justify-between gap-2">
               <span className={`text-[11px] font-semibold ${tone.text}`}>{tonerShort(s.name)}</span>
-              <span className={`font-mono text-sm font-semibold tabular-nums ${low ? 'text-blue-700' : 'text-[var(--color-fg)]'}`}>
+              <span
+                className={`font-mono text-sm font-semibold tabular-nums ${
+                  low ? 'text-[var(--color-warning-fg)]' : 'text-[var(--color-fg)]'
+                }`}
+              >
                 {pct != null ? `${pct}%` : '—'}
               </span>
             </div>
             <div className={`mt-0.5 h-1.5 overflow-hidden rounded-full ${tone.track}`}>
               <div
-                className={`h-full rounded-full ${low ? 'bg-blue-600' : tone.fill}`}
+                className={`h-full rounded-full ${low ? 'bg-[var(--color-warning-fg)]' : tone.fill}`}
                 style={{ width: `${Math.max(pct != null ? 4 : 0, pct ?? 0)}%` }}
               />
             </div>
@@ -685,8 +629,10 @@ export function PrintersPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-end gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        title={t('titles.printers')}
+        actions={
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
           <div
             className="inline-flex max-w-[min(100%,18rem)] items-center gap-1.5 rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-fg-muted)]"
             title={sched?.last_run_summary?.message || undefined}
@@ -696,8 +642,8 @@ export function PrintersPage() {
                 sched?.running_now || pollBusy
                   ? 'bg-[var(--color-primary)]'
                   : sched?.poll_enabled
-                    ? 'bg-emerald-500'
-                    : 'bg-amber-500'
+                    ? 'bg-[var(--color-success-fg)]'
+                    : 'bg-[var(--color-warning-fg)]'
               }`}
               aria-hidden
             />
@@ -709,21 +655,21 @@ export function PrintersPage() {
                 type="button"
                 onClick={() => void pollAll()}
                 disabled={pollBusy || sched?.running_now}
-                className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="app-btn app-btn-primary w-full !min-h-9 sm:w-auto"
               >
                 {pollBusyLabel}
               </button>
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
-                className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
+                className="app-btn app-btn-secondary w-full !min-h-9 sm:w-auto"
               >
                 {t('printers.addManual')}
               </button>
               {selected.size > 0 ? (
                 <button
                   type="button"
-                  className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                  className="app-btn app-btn-danger w-full !min-h-9 sm:w-auto"
                   onClick={() =>
                     setDeleteTarget({
                       ids: [...selected],
@@ -736,11 +682,11 @@ export function PrintersPage() {
               ) : null}
             </>
           ) : null}
-          <div className="relative" ref={moreMenuRef}>
+          <div className="relative w-full sm:w-auto" ref={moreMenuRef}>
             <button
               type="button"
               onClick={() => setColsOpen((v) => !v)}
-              className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
+              className="app-btn app-btn-secondary w-full !min-h-9 sm:w-auto"
               aria-expanded={colsOpen}
             >
               {t('printers.moreActions')}
@@ -814,14 +760,15 @@ export function PrintersPage() {
               </div>
             ) : null}
           </div>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
-      <div className="flex flex-wrap gap-3 text-sm">
+      <div className="flex flex-wrap gap-2 text-sm">
         <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
           {t('common.total')}: <strong>{stats.total}</strong>
         </span>
-        <span className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-emerald-800 dark:text-emerald-200">
+        <span className="rounded-lg bg-[var(--color-success-bg)] px-3 py-1.5 text-[var(--color-success-fg)]">
           {t('printers.available')}: <strong>{stats.online}</strong>
         </span>
         <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
@@ -830,7 +777,7 @@ export function PrintersPage() {
         <span
           className={`rounded-lg px-3 py-1.5 ${
             stats.lowToner
-              ? 'bg-amber-500/10 text-amber-900 dark:text-amber-200'
+              ? 'bg-[var(--color-warning-bg)] text-[var(--color-warning-fg)]'
               : 'bg-[var(--color-bg-muted)]'
           }`}
         >
@@ -838,14 +785,14 @@ export function PrintersPage() {
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <input
           id="printer-search"
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t('printers.searchPlaceholder')}
-          className="min-w-[12rem] flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm sm:max-w-xs"
+          className="app-input min-w-0 w-full flex-1 sm:max-w-xs"
         />
         <div className="flex flex-wrap gap-1">
           {(Object.keys(FILTER_KEYS) as FilterChip[]).map((key) => (
@@ -867,9 +814,12 @@ export function PrintersPage() {
 
       <div
         key={`printers-${filter}`}
-        className="app-card app-table-shell app-fade-swap overflow-hidden p-0 shadow-[0_4px_24px_-8px_rgb(15_23_42_/_0.12)]"
+        className="app-card app-table-shell app-fade-swap overflow-hidden p-0"
       >
-        <div className="-mx-0 overflow-x-auto overscroll-x-contain">
+        <div className="overflow-x-auto overscroll-x-contain">
+          {loading && filteredRows.length === 0 ? (
+            <TableSkeleton rows={8} cols={Math.min(5, colCount)} />
+          ) : (
           <table className="app-table min-w-[720px] w-full max-sm:min-w-[32rem] text-left text-sm">
             <thead className="app-table-head">
               <tr>
@@ -893,13 +843,7 @@ export function PrintersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
-              {loading ? (
-                <tr>
-                  <td colSpan={colCount} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
-                    {t('common.loading')}
-                  </td>
-                </tr>
-              ) : filteredRows.length === 0 ? (
+              {filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={colCount} className="px-4 py-12 text-center">
                     <p className="text-sm font-medium text-[var(--color-fg)]">{t('common.nothingFound')}</p>
@@ -922,24 +866,24 @@ export function PrintersPage() {
                   const labelPrinter = isLabelPrinter(r)
                   const snmpBadge =
                     r.snmp_status === 'ok'
-                      ? { text: 'SNMP OK', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-[var(--color-border)]' }
+                      ? { text: 'SNMP OK', cls: printerStatusChip('ok') }
                       : r.snmp_status === 'error'
-                        ? { text: 'snmp err', cls: 'bg-[var(--color-surface-muted)] text-rose-700 ring-[var(--color-border)] dark:text-rose-300' }
+                        ? { text: 'snmp err', cls: printerStatusChip('error') }
                         : r.snmp_status === 'skipped'
-                          ? { text: 'SNMP —', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-[var(--color-border)]' }
-                          : { text: 'SNMP ?', cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-[var(--color-border)]' }
+                          ? { text: 'SNMP —', cls: printerStatusChip('skipped') }
+                          : { text: 'SNMP ?', cls: printerStatusChip('unknown') }
                   const pollBadge =
                     r.poll_status === 'online'
-                      ? { text: t('printers.statusOnline'), cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-[var(--color-border)]' }
+                      ? { text: t('printers.statusOnline'), cls: printerStatusChip('online') }
                       : r.poll_status === 'offline'
-                        ? { text: t('printers.statusOffline'), cls: 'bg-[var(--color-surface-muted)] text-amber-800 ring-[var(--color-border)] dark:text-amber-200' }
-                        : { text: t('printers.statusUnknown'), cls: 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-[var(--color-border)]' }
+                        ? { text: t('printers.statusOffline'), cls: printerStatusChip('offline') }
+                        : { text: t('printers.statusUnknown'), cls: printerStatusChip('unknown') }
                   return (
                     <tr
                       key={r.id}
                       className={`app-table-row cursor-pointer ${
                         labelPrinter
-                          ? 'bg-sky-50/90 hover:bg-sky-100/80 dark:bg-sky-950/40 dark:hover:bg-sky-950/60'
+                          ? 'bg-[var(--color-info-bg)]/70 hover:bg-[var(--color-info-bg)]'
                           : ''
                       }`}
                       onClick={() => setDetailPrinter(r)}
@@ -1019,12 +963,13 @@ export function PrintersPage() {
               )}
             </tbody>
           </table>
+          )}
         </div>
       </div>
 
       {cfgOpen && cfg && canEdit ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-          <div className="app-card w-full max-w-2xl p-0 shadow-2xl ring-1 ring-white/40">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-3 sm:items-center">
+          <div className="app-card w-full max-w-2xl p-0">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
               <div>
                 <h2 className="text-lg font-bold text-[var(--color-fg)]">{t('printers.snmpCfgTitle')}</h2>
@@ -1102,8 +1047,8 @@ export function PrintersPage() {
       ) : null}
 
       {addOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-          <div className="app-card w-full max-w-md p-4 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-3 sm:items-center">
+          <div className="app-card w-full max-w-md p-4">
             <div className="mb-3 flex items-start justify-between">
               <h2 className="text-lg font-bold">{t('printers.addTitle')}</h2>
               <button type="button" className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]" onClick={() => setAddOpen(false)}>

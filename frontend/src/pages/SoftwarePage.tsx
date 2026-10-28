@@ -10,8 +10,10 @@ import {
 import { useAuth } from '../AuthContext'
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { IconDetails } from '../components/icons'
+import { Skeleton, TableSkeleton } from '../components/Skeleton'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
+import { catalogFilterKey } from './knowledgeZabbixModel'
 
 function kindBtnClass(active: boolean) {
   return `w-full rounded-md px-2.5 py-1.5 text-left text-[13px] transition ${
@@ -22,7 +24,7 @@ function kindBtnClass(active: boolean) {
 }
 
 function filterKey(f: CatalogFilterItem) {
-  return `${f.kind}::${f.name}`
+  return catalogFilterKey(f.kind, f.name)
 }
 
 export function SoftwarePage() {
@@ -163,17 +165,20 @@ export function SoftwarePage() {
     <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col overflow-auto lg:overflow-hidden">
       <h1 className="sr-only">{t('titles.software')}</h1>
       <div className="grid min-h-0 flex-1 items-stretch gap-3 overflow-hidden lg:grid-cols-[13.25rem_minmax(0,1fr)_minmax(18rem,22rem)]">
-        <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+        <aside className="app-panel flex min-h-0 flex-col overflow-hidden !p-0">
           <p className="border-b border-[var(--color-border)] px-3 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-subtle)]">
             {t('software.filtersRail')}
           </p>
-          <nav className="flex flex-col gap-0.5 overflow-auto p-1.5" aria-label={t('software.filtersRail')}>
+          <nav
+            className="flex gap-1 overflow-x-auto p-1.5 lg:flex-col lg:gap-0.5 lg:overflow-auto"
+            aria-label={t('software.filtersRail')}
+          >
             {catalogSections.map((s) => (
               <button
                 key={s.kind}
                 type="button"
                 onClick={() => setKind(s.kind)}
-                className={kindBtnClass(kind === s.kind)}
+                className={`${kindBtnClass(kind === s.kind)} shrink-0 whitespace-nowrap lg:w-full lg:whitespace-normal`}
                 aria-pressed={kind === s.kind}
               >
                 {s.label}
@@ -215,24 +220,24 @@ export function SoftwarePage() {
           ) : null}
         </aside>
 
-        <section
-          key={`sw-${kind}`}
-          className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
-        >
-          <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+        <section key={`sw-${kind}`} className="app-panel flex min-h-0 flex-col overflow-hidden !p-0">
+          <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2 sm:flex-row sm:items-center">
             <input
               id="sw-search"
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('software.searchPlaceholder')}
-              className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-muted)] px-2.5 py-1.5 text-sm outline-none focus:border-[var(--color-primary)]"
+              className="app-input min-w-0 w-full flex-1 !min-h-9"
             />
             <span className="shrink-0 text-xs tabular-nums text-[var(--color-fg-subtle)]">
               {loading ? t('software.refreshing') : t('software.rowsCount', { count: rows.length })}
             </span>
           </div>
           <div className="app-table-shell min-h-0 flex-1 overflow-auto overscroll-contain">
+            {loading && rows.length === 0 ? (
+              <TableSkeleton rows={10} cols={2} />
+            ) : (
             <table className="app-table min-w-full text-left text-sm">
               <thead className="sticky top-0 z-10 border-b border-[var(--color-border)] bg-[var(--color-surface)] text-[12px] font-medium text-[var(--color-fg-subtle)]">
                 <tr>
@@ -241,7 +246,7 @@ export function SoftwarePage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 && !loading ? (
+                {rows.length === 0 ? (
                   <tr>
                     <td colSpan={2} className="px-3 py-12 text-center text-[var(--color-fg-subtle)]">
                       <p>{query.trim() ? t('software.emptySearch') : t('software.empty')}</p>
@@ -254,12 +259,6 @@ export function SoftwarePage() {
                           {t('common.downloadAgent')}
                         </Link>
                       ) : null}
-                    </td>
-                  </tr>
-                ) : loading && rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={2} className="px-3 py-12 text-center text-[var(--color-fg-subtle)]">
-                      {t('common.loading')}
                     </td>
                   </tr>
                 ) : (

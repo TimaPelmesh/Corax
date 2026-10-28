@@ -4,6 +4,8 @@ import { api, type User, type WolConfig } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconPcs } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { Skeleton } from '../components/Skeleton'
+import { StatusPill } from '../components/ui/StatusPill'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -25,14 +27,18 @@ export function SettingsWolPage() {
   const [users, setUsers] = useState<User[]>([])
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       const [c, u] = await Promise.all([api.wolConfig(), api.users()])
       setCfg(normalizeWolConfig(c))
       setUsers(u.filter((x) => x.is_active && !x.is_ldap && x.role !== 'directory'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('common.error'))
+      const msg = e instanceof Error ? e.message : t('common.error')
+      setLoadError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -73,22 +79,47 @@ export function SettingsWolPage() {
         icon={<IconPcs className="h-7 w-7" />}
         title={t('titles.wol')}
         subtitle={t('pages.wolSubtitle')}
+        actions={
+          cfg ? (
+            <StatusPill tone={cfg.force_disabled ? 'warning' : 'success'}>
+              {cfg.force_disabled ? t('settingsWol.statusForcedOff') : t('settingsWol.statusReady')}
+            </StatusPill>
+          ) : null
+        }
       />
 
-      {loading || !cfg ? (
-        <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
+      {loading ? (
+        <div className="space-y-3" role="status" aria-busy="true">
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <span className="sr-only">{t('common.loading')}</span>
+        </div>
+      ) : loadError || !cfg ? (
+        <section className="app-panel space-y-3">
+          <p className="text-sm text-[var(--color-fg)]">{loadError || t('common.error')}</p>
+          <button
+            type="button"
+            className="app-btn app-btn-primary w-full sm:w-auto"
+            onClick={() => {
+              setLoading(true)
+              void load()
+            }}
+          >
+            {t('common.refresh')}
+          </button>
+        </section>
       ) : (
         <div className="space-y-4">
           {cfg.force_disabled ? (
             <div className="app-alert app-alert-warning text-sm">{t('settingsWol.forceOff')}</div>
           ) : null}
 
-          <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+          <section className="app-panel">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsWol.operators')}</h2>
             <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('settingsWol.operatorsHint')}</p>
             <div className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
               {users.length === 0 ? (
-                <p className="px-2 py-3 text-sm text-[var(--color-fg-muted)]">{t('settingsWol.noUsers')}</p>
+                <div className="app-empty-state !py-6">{t('settingsWol.noUsers')}</div>
               ) : (
                 users.map((u) => (
                   <label
@@ -119,14 +150,14 @@ export function SettingsWolPage() {
             </p>
           </section>
 
-          <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
+          <section className="app-panel">
             <label className="block text-sm text-[var(--color-fg)]">
               {t('settingsWol.cooldown')}
               <input
                 type="number"
                 min={0}
                 max={3600}
-                className="app-input mt-1 max-w-[10rem]"
+                className="app-input mt-1 w-full max-w-[10rem]"
                 value={cfg.cooldown_seconds}
                 disabled={saving}
                 onChange={(e) => {

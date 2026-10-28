@@ -6,6 +6,9 @@ import { useAuth } from '../AuthContext'
 import { InstallMeter, type InstallRunStatus } from '../components/InstallMeter'
 import { IconKey } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { Skeleton } from '../components/Skeleton'
+import { AppFold } from '../components/ui/AppFold'
+import { StatusPill } from '../components/ui/StatusPill'
 import { useT } from '../i18n/LocaleContext'
 import { buildAgentServerUrl, schemeFromTls, type AgentUrlScheme } from '../lib/agentServerUrl'
 import { useToast } from '../ToastContext'
@@ -190,7 +193,13 @@ export function AgentBundlePage() {
   )
 
   if (authLoading) {
-    return <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
+    return (
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4" role="status" aria-busy="true">
+        <Skeleton className="h-14 w-full max-w-md rounded-xl" />
+        <Skeleton className="h-64 w-full rounded-xl" />
+        <span className="sr-only">{t('common.loading')}</span>
+      </div>
+    )
   }
 
   if (!user?.is_superuser) {
@@ -429,7 +438,7 @@ export function AgentBundlePage() {
         onSubmit={(e) => void onSubmit(e)}
         className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,22rem)] xl:grid-cols-[minmax(0,1fr)_24rem]"
       >
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] min-w-0 space-y-5 p-5">
+        <div className="app-panel min-w-0 space-y-5">
           <h2 className="text-sm font-semibold text-[var(--color-fg)]">
             {t('agentBundle.parametersTitle')}
           </h2>
@@ -493,14 +502,11 @@ export function AgentBundlePage() {
           </p>
           <p className="text-xs text-[var(--color-fg-subtle)]">{t('agentBundle.schemeHint')}</p>
           {urlScheme === 'http' ? (
-            <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
+            <div className="app-alert app-alert-warning text-xs leading-relaxed">
               {t('agentBundle.insecureHttpWarning')}
             </div>
           ) : (
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-400/35 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {t('agentBundle.secureTransport')}
-            </div>
+            <StatusPill tone="success">{t('agentBundle.secureTransport')}</StatusPill>
           )}
 
           {platform === 'windows' ? (
@@ -668,10 +674,10 @@ export function AgentBundlePage() {
                 </div>
               ) : null}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button
                 type="button"
-                className="app-btn"
+                className="app-btn w-full sm:w-auto"
                 disabled={fleetBusy}
                 onClick={() => {
                   setFleetBusy(true)
@@ -692,7 +698,7 @@ export function AgentBundlePage() {
               </button>
               <button
                 type="button"
-                className="app-btn app-btn-primary"
+                className="app-btn app-btn-primary w-full sm:w-auto"
                 disabled={fleetBusy}
                 onClick={() => {
                   setFleetBusy(true)
@@ -771,7 +777,7 @@ export function AgentBundlePage() {
         </div>
 
         <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6">
-          <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <div className="app-card overflow-hidden">
             <div className="border-b border-[var(--color-border)] px-5 py-4">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">
                 {t('agentBundle.buildTitle')}
@@ -853,7 +859,7 @@ export function AgentBundlePage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <div className="app-card overflow-hidden">
             <div className="border-b border-[var(--color-border)] px-5 py-4">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">
                 {t('agentBundle.deploymentTitle')}
@@ -937,7 +943,15 @@ export function AgentBundlePage() {
                   {sshBusy ? t('agentBundle.installSshBusy') : t('agentBundle.installSsh')}
                 </button>
                 {sshOutput ? (
-                  <pre className={`max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)] ${sshRun === 'fail' ? 'border-red-400/50' : sshRun === 'ok' ? 'border-emerald-400/50' : 'border-[var(--color-border)]'}`}>
+                  <pre
+                    className={`max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)] ${
+                      sshRun === 'fail'
+                        ? 'border-[var(--color-error-border)]'
+                        : sshRun === 'ok'
+                          ? 'border-[var(--color-success-border)]'
+                          : 'border-[var(--color-border)]'
+                    }`}
+                  >
                     {sshOutput}
                   </pre>
                 ) : null}
@@ -1028,15 +1042,20 @@ export function AgentBundlePage() {
                   {winBusy ? t('agentBundle.installWinrmBusy') : t('agentBundle.installWinrm')}
                 </button>
                 {winOutput ? (
-                  <pre className={`max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)] ${winRun === 'fail' ? 'border-red-400/50' : winRun === 'ok' ? 'border-emerald-400/50' : 'border-[var(--color-border)]'}`}>
+                  <pre
+                    className={`max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)] ${
+                      winRun === 'fail'
+                        ? 'border-[var(--color-error-border)]'
+                        : winRun === 'ok'
+                          ? 'border-[var(--color-success-border)]'
+                          : 'border-[var(--color-border)]'
+                    }`}
+                  >
                     {winOutput}
                   </pre>
                 ) : null}
-                <details className="rounded-xl border border-[var(--color-border)] px-3.5 py-2.5">
-                  <summary className="cursor-pointer text-xs font-medium text-[var(--color-fg-muted)]">
-                    {t('agentBundle.installManualToggle')}
-                  </summary>
-                  <ol className="mt-3 list-decimal space-y-2 pl-4 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                <AppFold title={t('agentBundle.installManualToggle')}>
+                  <ol className="list-decimal space-y-2 pl-4 text-xs leading-relaxed text-[var(--color-fg-muted)]">
                     <li>{t('agentBundle.deployStep1')}</li>
                     <li>
                       {t('agentBundle.deployStep2Before')}{' '}
@@ -1045,7 +1064,7 @@ export function AgentBundlePage() {
                     <li>{t('agentBundle.deployStep3Win10')}</li>
                     <li>{t('agentBundle.deployStep4')}</li>
                   </ol>
-                </details>
+                </AppFold>
               </div>
             )}
           </div>

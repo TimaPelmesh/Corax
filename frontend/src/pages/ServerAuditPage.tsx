@@ -4,6 +4,7 @@ import { api, type Computer, type ServerAuditDetail, type ServerAuditHost, type 
 import { useAuth } from '../AuthContext'
 import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { useConfirmDialog } from '../components/ConfirmDialog'
+import { AppFold } from '../components/ui/AppFold'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 import { ServerAuditCharts } from './ServerAuditCharts'
@@ -187,7 +188,7 @@ function loadBar(load: number | null | undefined, cores: number) {
   if (load == null) return 'bg-[var(--color-border)]'
   if (ratio >= 1) return 'bg-rose-500'
   if (ratio >= 0.7) return 'bg-amber-500'
-  return 'bg-slate-500'
+  return 'bg-[var(--color-primary)]'
 }
 
 function tempRatio(celsius: number | null | undefined) {
@@ -1643,22 +1644,16 @@ function Fold({
     setShown(open)
   }, [open])
   return (
-    <details
+    <AppFold
+      title={title}
       open={shown}
-      onToggle={(event) => setShown(event.currentTarget.open)}
-      className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]"
+      onOpenChange={setShown}
+      summaryExtra={
+        count != null ? <span className="text-sm font-normal text-[var(--color-fg-subtle)]">{count}</span> : null
+      }
     >
-      <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
-        <span className="flex items-center justify-between gap-3">
-          <span>
-            {title}
-            {count != null ? <span className="ml-2 font-normal text-[var(--color-fg-subtle)]">{count}</span> : null}
-          </span>
-          <span aria-hidden className="text-xs text-[var(--color-fg-subtle)]">▾</span>
-        </span>
-      </summary>
-      <div className="max-h-72 overflow-auto border-t border-[var(--color-border)]">{children}</div>
-    </details>
+      <div className="max-h-72 overflow-auto">{children}</div>
+    </AppFold>
   )
 }
 
@@ -1669,7 +1664,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 function SimpleTable({ head, rows }: { head?: string[]; rows: string[][] }) {
   if (rows.length === 0) return <Empty>—</Empty>
   return (
-    <table className="w-full text-left text-xs">
+    <table className="app-table w-full text-left text-xs">
       {head ? (
         <thead className="text-[var(--color-fg-subtle)]">
           <tr>

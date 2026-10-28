@@ -7,6 +7,7 @@ import { useConfirmDialog } from './ConfirmDialog'
 import { useLocale, useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 import { IconClose, IconPencil } from './icons'
+import { partitionSupplies, printerStatusChip, supplyTone } from './printerSupplies'
 
 function fmtWhen(iso: string | null | undefined, locale: 'ru' | 'en') {
   if (!iso) return '—'
@@ -27,60 +28,6 @@ function displayTitle(row: NetworkPrinter) {
   const name = row.name?.trim() || ''
   if (name) return name
   return row.snmp_model?.trim() || row.ip_address || ''
-}
-
-function isTonerSupply(name: string): boolean {
-  const s = name.toLowerCase()
-  if (
-    /(?:imaging unit|imageur|drum|фотобарабан|барабан|photoconductor)/i.test(s) ||
-    /(?:fuser|fusing|печь|fuse)/i.test(s) ||
-    /(?:filter|фильтр|ozone|озон|paper dust|remover|waste|бункер|отработ)/i.test(s) ||
-    /(?:developer|transfer|belt|kit|maintenance|батарея|battery)/i.test(s)
-  ) {
-    return false
-  }
-  // Ribbon — основной расходник этикеточных принтеров (показываем как «тонер»/расходник).
-  return /(?:toner|cartridge|тонер|картридж|черн|cyan|magenta|yellow|голуб|жёлт|желт|пурпур|\bcf\d{3}|\bce40|ribbon|лента)/i.test(
-    s,
-  )
-}
-
-function partitionSupplies(supplies: PrinterSupply[]) {
-  const toners: PrinterSupply[] = []
-  const service: PrinterSupply[] = []
-  for (const s of supplies) {
-    if (isTonerSupply(s.name)) toners.push(s)
-    else service.push(s)
-  }
-  const byName = (a: PrinterSupply, b: PrinterSupply) => a.name.localeCompare(b.name, 'ru')
-  const tonerOrder = (name: string) => {
-    const s = name.toLowerCase()
-    if (/black|черн|ce400|cf410|cf226/i.test(s)) return 0
-    if (/cyan|голуб|ce401|cf411/i.test(s)) return 1
-    if (/magenta|пурпур|ce403|cf413/i.test(s)) return 2
-    if (/yellow|жёлт|желт|ce402|cf412/i.test(s)) return 3
-    return 4
-  }
-  toners.sort((a, b) => tonerOrder(a.name) - tonerOrder(b.name) || byName(a, b))
-  service.sort(byName)
-  return { toners, service }
-}
-
-function supplyTone(name: string): { dot: string; track: string; fill: string; text: string } {
-  const s = name.toLowerCase()
-  if (/(cyan|голуб|ce401a|cf411)/i.test(s)) {
-    return { dot: 'bg-cyan-500', track: 'bg-cyan-50', fill: 'bg-cyan-500', text: 'text-cyan-800' }
-  }
-  if (/(magenta|пурпур|маджент|ce403a|cf413)/i.test(s)) {
-    return { dot: 'bg-fuchsia-500', track: 'bg-fuchsia-50', fill: 'bg-fuchsia-500', text: 'text-fuchsia-800' }
-  }
-  if (/(yellow|желт|жёлт|ce402a|cf412)/i.test(s)) {
-    return { dot: 'bg-yellow-400', track: 'bg-yellow-50', fill: 'bg-yellow-400', text: 'text-yellow-800' }
-  }
-  if (/(black|ч[её]рн|carbon|ce400a|ce400x|cf410|cf226)/i.test(s)) {
-    return { dot: 'bg-slate-950', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-900', text: 'text-[var(--color-fg)]' }
-  }
-  return { dot: 'bg-slate-400', track: 'bg-[var(--color-surface-muted)]', fill: 'bg-slate-400', text: 'text-[var(--color-fg)]' }
 }
 
 function SupplyCard({ s, colored }: { s: PrinterSupply; colored: boolean }) {
@@ -106,7 +53,7 @@ function SupplyCard({ s, colored }: { s: PrinterSupply; colored: boolean }) {
       </div>
       <div className={`mt-1 h-1 w-full overflow-hidden rounded-full ${tone.track}`}>
         <div
-          className={`h-full rounded-full ${low && colored ? 'bg-amber-500' : tone.fill}`}
+          className={`h-full rounded-full ${low && colored ? 'bg-[var(--color-warning-fg)]' : tone.fill}`}
           style={{
             width: `${s.level_percent != null ? Math.max(4, Math.min(100, s.level_percent)) : s.level_raw === -3 ? 40 : 0}%`,
           }}
@@ -241,29 +188,30 @@ export function PrinterDetailModal({
 
   const pollBadge =
     row.poll_status === 'online'
-      ? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-slate-200'
+      ? printerStatusChip('online')
       : row.poll_status === 'offline'
-        ? 'bg-amber-50 text-amber-900 ring-amber-200'
-        : 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-slate-200'
+        ? printerStatusChip('offline')
+        : printerStatusChip('unknown')
   const snmpBadge =
     row.snmp_status === 'ok'
-      ? 'bg-[var(--color-surface-muted)] text-[var(--color-fg)] ring-slate-200'
+      ? printerStatusChip('ok')
       : row.snmp_status === 'error'
-        ? 'bg-rose-50 text-rose-800 ring-rose-200'
-        : 'bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)] ring-slate-200'
+        ? printerStatusChip('error')
+        : printerStatusChip('unknown')
 
   return createPortal(
     <div
-      className={`fixed inset-0 ${overlayZClass} flex items-stretch justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4`}
+      className={`fixed inset-0 ${overlayZClass} flex items-stretch justify-center bg-[color-mix(in_srgb,var(--color-bg)_50%,black)] p-0 sm:items-center sm:p-3`}
       role="dialog"
       aria-modal
+      aria-labelledby="printer-detail-title"
       onClick={onClose}
     >
       <div
-        className="app-card flex max-h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] shadow-none sm:max-h-[min(92dvh,720px)] sm:max-w-[min(920px,calc(100vw-1.5rem))] sm:rounded-xl sm:border sm:border-[var(--color-border)] sm:p-4"
+        className="pc-card-shell app-card relative z-10 flex max-h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))] shadow-none sm:max-h-[min(92dvh,720px)] sm:max-w-[min(920px,calc(100vw-1.5rem))] sm:rounded-xl sm:border sm:border-[var(--color-border)] sm:p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-border)] pb-2">
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--color-border)] px-1 pb-3 sm:px-2 sm:pb-4">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <div className="min-w-0 flex-1">
@@ -288,7 +236,9 @@ export function PrinterDetailModal({
                     }}
                   />
                 ) : (
-                  <h2 className="truncate text-base font-semibold text-[var(--color-fg)]">{title}</h2>
+                  <h2 id="printer-detail-title" className="truncate text-lg font-semibold text-[var(--color-fg)]">
+                    {title}
+                  </h2>
                 )}
               </div>
               {canEdit ? (
@@ -372,9 +322,9 @@ export function PrinterDetailModal({
           >
             <IconClose className="h-4 w-4" />
           </button>
-        </div>
+        </header>
 
-        <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-2">
+        <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden px-1 sm:px-2 lg:grid-cols-2">
           <section className="app-scroll flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto">
             <h3 className="text-sm font-medium text-[var(--color-fg)]">{t('printerDetail.device')}</h3>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 [&_dd]:break-words [&_dd]:text-sm [&_dd]:leading-5 [&_dd]:text-[var(--color-fg)] [&_dt]:text-xs [&_dt]:leading-4 [&_dt]:text-[var(--color-fg-muted)]">
@@ -455,7 +405,7 @@ export function PrinterDetailModal({
               {row.snmp_error ? (
                 <div className="min-w-0 col-span-2">
                   <dt>{t('printerDetail.snmpError')}</dt>
-                  <dd className="break-words text-rose-700" title={row.snmp_error}>{row.snmp_error}</dd>
+                  <dd className="break-words text-[var(--color-error-fg)]" title={row.snmp_error}>{row.snmp_error}</dd>
                 </div>
               ) : null}
             </dl>
@@ -480,13 +430,13 @@ export function PrinterDetailModal({
                     placeholder={t('printerDetail.notesPlaceholder')}
                   />
                 </label>
-                <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-                  <button type="button" className="app-btn app-btn-primary !min-h-0 !px-3 !py-1.5 text-sm" disabled={saving} onClick={() => void saveMeta()}>
+                <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <button type="button" className="app-btn app-btn-primary w-full !min-h-9 sm:w-auto" disabled={saving} onClick={() => void saveMeta()}>
                     {saving ? t('printerDetail.saving') : t('common.save')}
                   </button>
                   <button
                     type="button"
-                    className="app-btn app-btn-secondary !min-h-0 !px-3 !py-1.5 text-sm"
+                    className="app-btn app-btn-secondary w-full !min-h-9 sm:w-auto"
                     disabled={polling || !row.ip_address}
                     onClick={() => void pollNow()}
                   >
@@ -494,7 +444,7 @@ export function PrinterDetailModal({
                   </button>
                   <button
                     type="button"
-                    className="app-btn app-btn-danger !min-h-0 !px-3 !py-1.5 text-sm"
+                    className="app-btn app-btn-danger w-full !min-h-9 sm:w-auto"
                     disabled={deleting}
                     onClick={() => {
                       if (!row) return

@@ -4,6 +4,8 @@ import { api, type TlsMode, type TlsStatus } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconLock } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { Skeleton } from '../components/Skeleton'
+import { StatusPill } from '../components/ui/StatusPill'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -173,12 +175,16 @@ export function SettingsHttpsPage() {
       />
 
       {loading ? (
-        <p className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</p>
+        <div className="space-y-3" role="status" aria-busy="true">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <span className="sr-only">{t('common.loading')}</span>
+        </div>
       ) : loadError || !status ? (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3 p-5">
+        <div className="app-panel space-y-3">
           <p className="text-sm text-[var(--color-fg)]">{loadError || t('common.error')}</p>
           <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsHttps.apiMissingHint')}</p>
-          <button type="button" className="app-btn app-btn-primary" onClick={() => void load()}>
+          <button type="button" className="app-btn app-btn-primary w-full sm:w-auto" onClick={() => void load()}>
             {t('common.refresh')}
           </button>
         </div>
@@ -198,18 +204,18 @@ export function SettingsHttpsPage() {
             <div className="app-alert app-alert-warning text-sm">{t('settingsHttps.devBlocked')}</div>
           ) : null}
 
-          <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <section className="app-panel !p-4 sm:!p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.mode')}</h2>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-md border border-[var(--color-border)] p-0.5">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="inline-flex w-full rounded-md border border-[var(--color-border)] p-0.5 sm:w-auto">
                   {MODES.map((m) => (
                     <button
                       key={m}
                       type="button"
                       disabled={busy}
                       onClick={() => setPickMode(m)}
-                      className={`rounded px-2.5 py-1 text-[11px] font-semibold transition ${
+                      className={`min-w-0 flex-1 rounded px-2.5 py-1.5 text-[11px] font-semibold transition sm:flex-none ${
                         pickMode === m
                           ? 'bg-[var(--color-primary)] text-white'
                           : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
@@ -221,7 +227,7 @@ export function SettingsHttpsPage() {
                 </div>
                 <button
                   type="button"
-                  className="app-btn app-btn-primary !px-2.5 !py-1 text-[11px]"
+                  className="app-btn app-btn-primary w-full !px-2.5 !py-1.5 text-[11px] sm:w-auto"
                   disabled={busy || pickMode === status.mode}
                   onClick={() => void applyMode()}
                 >
@@ -233,7 +239,7 @@ export function SettingsHttpsPage() {
           </section>
 
           <div className={`grid gap-4 ${pickMode === 'http' ? '' : 'lg:grid-cols-2'}`}>
-            <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3 p-5">
+            <section className="app-panel space-y-3">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.status')}</h2>
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
                 <div>
@@ -244,20 +250,26 @@ export function SettingsHttpsPage() {
                 </div>
                 <div>
                   <dt className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsHttps.agentScheme')}</dt>
-                  <dd className="mt-0.5 font-mono font-medium text-[var(--color-fg)]">
-                    {(status.agent_scheme || 'http').toUpperCase()}
+                  <dd className="mt-1">
+                    <StatusPill tone={(status.agent_scheme || 'http') === 'https' ? 'success' : 'warning'}>
+                      {(status.agent_scheme || 'http').toUpperCase()}
+                    </StatusPill>
                   </dd>
                 </div>
                 <div>
                   <dt className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsHttps.flag')}</dt>
-                  <dd className="mt-0.5 font-medium text-[var(--color-fg)]">
-                    {status.enabled ? t('settingsHttps.on') : t('settingsHttps.off')}
+                  <dd className="mt-1">
+                    <StatusPill tone={status.enabled ? 'success' : 'neutral'}>
+                      {status.enabled ? t('settingsHttps.on') : t('settingsHttps.off')}
+                    </StatusPill>
                   </dd>
                 </div>
                 <div>
                   <dt className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsHttps.process')}</dt>
-                  <dd className="mt-0.5 font-medium text-[var(--color-fg)]">
-                    {status.active ? t('settingsHttps.listeningHttps') : t('settingsHttps.listeningHttp')}
+                  <dd className="mt-1">
+                    <StatusPill tone={status.active ? 'success' : 'neutral'}>
+                      {status.active ? t('settingsHttps.listeningHttps') : t('settingsHttps.listeningHttp')}
+                    </StatusPill>
                   </dd>
                 </div>
                 {status.not_after ? (
@@ -279,11 +291,11 @@ export function SettingsHttpsPage() {
                 </p>
               ) : null}
               <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsHttps.agentsNote')}</p>
-              <div className="flex flex-wrap gap-2 pt-1">
+              <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
                 {pickMode !== 'http' ? (
                   <button
                     type="button"
-                    className="app-btn app-btn-primary"
+                    className="app-btn app-btn-primary w-full sm:w-auto"
                     disabled={busy || !status.files_ready || status.enabled}
                     onClick={() => void setEnabled(true)}
                   >
@@ -292,7 +304,7 @@ export function SettingsHttpsPage() {
                 ) : null}
                 <button
                   type="button"
-                  className="app-btn app-btn-secondary"
+                  className="app-btn app-btn-secondary w-full sm:w-auto"
                   disabled={busy || (!status.enabled && status.mode === 'http')}
                   onClick={() => void setEnabled(false)}
                 >
@@ -303,7 +315,7 @@ export function SettingsHttpsPage() {
 
             {pickMode === 'local_ca' ? (
               <>
-            <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3 p-5">
+            <section className="app-panel space-y-3">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.trustTitle')}</h2>
               <ol className="list-decimal space-y-1.5 pl-5 text-sm text-[var(--color-fg-muted)]">
                 <li>{t('settingsHttps.trustStep1')}</li>
@@ -315,7 +327,7 @@ export function SettingsHttpsPage() {
               <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsHttps.trustReality')}</p>
               <button
                 type="button"
-                className="app-btn app-btn-primary"
+                className="app-btn app-btn-primary w-full sm:w-auto"
                 disabled={busy || !status.ca_ready}
                 onClick={() => void downloadCa()}
               >
@@ -323,7 +335,7 @@ export function SettingsHttpsPage() {
               </button>
             </section>
 
-            <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3 p-5">
+            <section className="app-panel space-y-3">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.create')}</h2>
               <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsHttps.createHint')}</p>
               <label className="block">

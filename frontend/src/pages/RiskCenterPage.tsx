@@ -11,8 +11,19 @@ import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { MiniStatCard } from '../components/dashboard/DashboardWidgets'
 import { IconActivity, IconCheckBadge, IconLock, IconPcs, IconSignal } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { Skeleton, StatRowSkeleton } from '../components/Skeleton'
 import { useLocale } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
+import {
+  countByFindingStatus,
+  filterRiskProblems,
+  groupStatus,
+  healthStroke,
+  severityDot,
+  severityTone,
+  type FindingFilter,
+  type SeverityFilter,
+} from './riskCenterModel'
 
 const COPY = {
   ru: {
@@ -111,38 +122,16 @@ const COPY = {
   },
 } as const
 
-type FindingFilter = 'open' | 'acknowledged' | 'ignored'
-type SeverityFilter = 'all' | 'critical' | 'high' | 'medium' | 'low'
-
-const severityTone: Record<RiskProblemGroup['severity'], string> = {
-  critical: 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-100',
-  high: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100',
-  medium: 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-100',
-  low: 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-500/40 dark:bg-slate-500/15 dark:text-slate-200',
-}
-
-const severityDot: Record<RiskProblemGroup['severity'], string> = {
-  critical: 'bg-rose-600',
-  high: 'bg-amber-500',
-  medium: 'bg-sky-500',
-  low: 'bg-slate-400',
-}
-
-function healthStroke(score: number) {
-  if (score >= 80) return 'stroke-emerald-600 dark:stroke-emerald-400'
-  if (score >= 50) return 'stroke-amber-500 dark:stroke-amber-400'
-  return 'stroke-rose-600 dark:stroke-rose-400'
-}
-
-function groupStatus(group: RiskProblemGroup): FindingFilter {
-  return group.status === 'acknowledged' || group.status === 'ignored' ? group.status : 'open'
-}
-
 function RiskSkeleton({ text }: { text: string }) {
   return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
-      <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-100 border-t-blue-600" />
-      <p className="text-sm text-[var(--color-fg-muted)]">{text}</p>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4" role="status" aria-busy="true">
+      <span className="sr-only">{text}</span>
+      <div className="grid gap-3 xl:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
+        <Skeleton className="h-[8.5rem] rounded-[var(--radius-lg)]" />
+        <StatRowSkeleton count={6} />
+      </div>
+      <Skeleton className="h-40 rounded-[var(--radius-lg)]" />
+      <Skeleton className="h-64 rounded-[var(--radius-lg)]" />
     </div>
   )
 }
@@ -210,12 +199,19 @@ function HistoryChart({ items, label }: { items: RiskHistoryPoint[]; label: stri
     <svg viewBox={`0 0 ${width} ${height}`} className="h-32 w-full" aria-label={label} preserveAspectRatio="none">
       <defs>
         <linearGradient id="risk-health-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="rgb(37 99 235)" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="rgb(37 99 235)" stopOpacity="0.02" />
+          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.02" />
         </linearGradient>
       </defs>
       <polygon points={area} fill="url(#risk-health-fill)" />
-      <polyline points={line} fill="none" stroke="rgb(37 99 235)" strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+      <polyline
+        points={line}
+        fill="none"
+        stroke="var(--color-primary)"
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
@@ -264,33 +260,12 @@ export function RiskCenterPage() {
 
   const problemGroups = overview?.problem_groups ?? []
 
-  const statusCounts = useMemo(() => {
-    const counts = { open: 0, acknowledged: 0, ignored: 0 }
-    for (const group of problemGroups) {
-      counts[groupStatus(group)] += 1
-    }
-    return counts
-  }, [problemGroups])
+  const statusCounts = useMemo(() => countByFindingStatus(problemGroups), [problemGroups])
 
-  const filteredProblems = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return problemGroups.filter((group) => {
-      if (groupStatus(group) !== findingFilter) return false
-      if (severity !== 'all' && group.severity !== severity) return false
-      if (!q) return true
-      return (
-        group.title.toLowerCase().includes(q) ||
-        group.description.toLowerCase().includes(q) ||
-        group.rule.toLowerCase().includes(q) ||
-        group.computers.some(
-          (pc) =>
-            pc.hostname.toLowerCase().includes(q) ||
-            (pc.ip_address || '').toLowerCase().includes(q) ||
-            (pc.os_name || '').toLowerCase().includes(q),
-        )
-      )
-    })
-  }, [findingFilter, problemGroups, query, severity])
+  const filteredProblems = useMemo(
+    () => filterRiskProblems(problemGroups, { findingFilter, severity, query }),
+    [findingFilter, problemGroups, query, severity],
+  )
 
   async function createTicket(group: RiskProblemGroup) {
     if (!canManage || ticketId) return
@@ -345,20 +320,18 @@ export function RiskCenterPage() {
       : null
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
-      <PageHeader icon={<IconLock className="h-7 w-7" />} title={c.title} subtitle={c.subtitle} />
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+      <PageHeader title={c.title} subtitle={c.subtitle} />
 
       <section className="risk-card-enter grid gap-3 xl:grid-cols-[minmax(17rem,22rem)_minmax(0,1fr)]">
-        <div className="app-panel flex items-center gap-4 !rounded-2xl !p-5">
+        <div className="app-panel flex items-center gap-4">
           <HealthRing score={overview.fleet_health_score} />
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
-              {c.health}
-            </div>
+            <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">{c.health}</div>
             <p className="mt-1 text-sm leading-relaxed text-[var(--color-fg-muted)]">{c.healthHint}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               {healthDelta != null ? (
-                <span className="rounded-full bg-blue-600/10 px-2 py-0.5 font-semibold text-blue-800 dark:text-blue-200">
+                <span className="rounded-full bg-[var(--color-info-bg)] px-2 py-0.5 font-semibold text-[var(--color-info-fg)]">
                   {healthDelta > 0 ? `+${healthDelta}` : healthDelta}
                 </span>
               ) : null}
@@ -409,7 +382,7 @@ export function RiskCenterPage() {
         </div>
       </section>
 
-      <section className="risk-card-enter app-panel !rounded-2xl !p-5">
+      <section className="risk-card-enter app-panel">
         <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="font-semibold text-[var(--color-fg)]">{c.history}</h2>
@@ -430,21 +403,21 @@ export function RiskCenterPage() {
         )}
       </section>
 
-      <section className="risk-card-enter overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-        <div className="flex flex-col gap-3 border-b border-[var(--color-border)] p-5 lg:flex-row lg:items-center lg:justify-between">
+      <section className="risk-card-enter app-card overflow-hidden p-0">
+        <div className="flex flex-col gap-3 border-b border-[var(--color-border)] p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="font-semibold text-[var(--color-fg)]">{c.problems}</h2>
             <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{c.problemsHint}</p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <input
-              className="app-input min-w-[16rem]"
+              className="app-input w-full min-w-0 sm:min-w-[16rem]"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={c.search}
             />
             <select
-              className="app-input sm:w-44"
+              className="app-input app-select w-full sm:w-44"
               value={severity}
               onChange={(event) => setSeverity(event.target.value as SeverityFilter)}
             >
@@ -456,7 +429,7 @@ export function RiskCenterPage() {
             </select>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-5 py-3">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-4 py-3 sm:px-5">
           {(
             [
               ['open', c.openFindings, statusCounts.open],
@@ -467,31 +440,35 @@ export function RiskCenterPage() {
             <button
               key={id}
               type="button"
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                 findingFilter === id
-                  ? 'bg-blue-600 text-white ring-blue-600'
-                  : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] ring-[var(--color-border)] hover:text-[var(--color-fg)]'
+                  ? 'bg-[var(--color-primary)] text-white'
+                  : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
               }`}
               onClick={() => setFindingFilter(id)}
             >
               {label} · {count}
             </button>
           ))}
-          <Link to="/computers" className="ml-auto text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">
+          <Link
+            to="/computers"
+            className="ml-auto text-sm font-medium text-[var(--color-primary)] no-underline hover:underline"
+          >
             {c.openFleet}
           </Link>
         </div>
-        <p className="px-5 pt-3 text-xs text-[var(--color-fg-muted)]">{c.managedHint}</p>
+        <p className="px-4 pt-3 text-xs text-[var(--color-fg-muted)] sm:px-5">{c.managedHint}</p>
         <div className="divide-y divide-[var(--color-border)]">
           {filteredProblems.map((group) => {
             const expanded = expandedRule === group.rule
             return (
-              <article key={group.rule} className="px-5 py-4">
+              <article key={group.rule} className="px-4 py-4 sm:px-5">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <button
                     type="button"
                     className="min-w-0 flex-1 rounded-xl px-1 text-left transition hover:bg-[var(--color-surface-muted)]/70"
                     onClick={() => setExpandedRule(expanded ? null : group.rule)}
+                    aria-expanded={expanded}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${severityDot[group.severity]}`} />
@@ -509,21 +486,29 @@ export function RiskCenterPage() {
                         {' · '}
                         {group.affected_computers} {c.pcs}
                       </span>
+                      <svg
+                        viewBox="0 0 20 20"
+                        className={`h-3.5 w-3.5 text-[var(--color-fg-subtle)] transition ${expanded ? 'rotate-180' : ''}`}
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.25a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08Z" />
+                      </svg>
                     </div>
                     <p className="mt-1.5 text-sm leading-relaxed text-[var(--color-fg-muted)]">{group.description}</p>
-                    <div className="mt-2 text-xs text-blue-700 dark:text-blue-300">
+                    <div className="mt-2 text-xs font-medium text-[var(--color-primary)]">
                       {expanded ? c.hidePcs : c.showPcs}
                     </div>
                   </button>
-                  <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
-                    <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs leading-relaxed text-blue-800 dark:bg-blue-500/10 dark:text-blue-200">
+                  <div className="flex w-full shrink-0 flex-col items-stretch gap-2 lg:w-auto lg:max-w-sm lg:items-end">
+                    <div className="rounded-lg border border-[var(--color-info-border)] bg-[var(--color-info-bg)] px-3 py-2 text-xs leading-relaxed text-[var(--color-info-fg)]">
                       <strong>{c.recommendation}:</strong> {group.recommendation}
                     </div>
                     {canManage ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                         <button
                           type="button"
-                          className="rounded-lg bg-[var(--color-primary)] px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                          className="app-btn app-btn-primary w-full !min-h-8 !px-2.5 !py-1 !text-xs sm:w-auto"
                           disabled={ticketId === group.finding_id || actionId === group.finding_id}
                           onClick={() => void createTicket(group)}
                         >
@@ -533,7 +518,7 @@ export function RiskCenterPage() {
                           <>
                             <button
                               type="button"
-                              className="rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-800 disabled:opacity-50 dark:border-blue-500/30 dark:bg-black/20 dark:text-blue-200"
+                              className="app-btn app-btn-secondary w-full !min-h-8 !px-2.5 !py-1 !text-xs sm:w-auto"
                               disabled={actionId === group.finding_id}
                               onClick={() => void applyProblemAction(group, 'acknowledged')}
                             >
@@ -541,7 +526,7 @@ export function RiskCenterPage() {
                             </button>
                             <button
                               type="button"
-                              className="rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-fg-muted)] disabled:opacity-50"
+                              className="app-btn app-btn-secondary w-full !min-h-8 !px-2.5 !py-1 !text-xs sm:w-auto"
                               disabled={actionId === group.finding_id}
                               onClick={() => void applyProblemAction(group, 'ignored')}
                             >
@@ -551,7 +536,7 @@ export function RiskCenterPage() {
                         ) : (
                           <button
                             type="button"
-                            className="rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-800 disabled:opacity-50 dark:border-blue-500/30 dark:bg-black/20 dark:text-blue-200"
+                            className="app-btn app-btn-secondary w-full !min-h-8 !px-2.5 !py-1 !text-xs sm:w-auto"
                             disabled={actionId === group.finding_id}
                             onClick={() => void applyProblemAction(group, 'open')}
                           >
@@ -585,7 +570,7 @@ export function RiskCenterPage() {
             )
           })}
           {filteredProblems.length === 0 ? (
-            <div className="p-10 text-center text-sm text-[var(--color-fg-muted)]">{c.noItems}</div>
+            <div className="app-empty-state !rounded-none border-0">{c.noItems}</div>
           ) : null}
         </div>
       </section>

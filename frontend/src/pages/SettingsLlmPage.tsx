@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type LlmServerSetting, type WikiRagLmStudioStatus } from '../api'
 import { IconActivity, IconClose } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { AppModal } from '../components/ui/AppModal'
 import { SystemPromptEditor } from '../components/wikirag/SystemPromptEditor'
 import { useT } from '../i18n/LocaleContext'
 import {
@@ -19,55 +19,6 @@ import { useToast } from '../ToastContext'
 const PANEL = 'overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]'
 const PAGE_SERVERS = 4
 
-function SettingsDialog({
-  title,
-  closeLabel,
-  onClose,
-  children,
-}: {
-  title: string
-  closeLabel: string
-  onClose: () => void
-  children: ReactNode
-}) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="w-full max-w-3xl rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
-          <h2 className="text-sm font-semibold text-[var(--color-fg)]">{title}</h2>
-          <button
-            type="button"
-            className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]"
-            onClick={onClose}
-            aria-label={closeLabel}
-          >
-            <IconClose className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>,
-    document.body,
-  )
-}
 const CTX_PRESETS = [0, 4096, 8192, 16384, 32768] as const
 
 type Probe = { ok: boolean; models: string[]; detail?: string }
@@ -648,101 +599,110 @@ export function SettingsLlmPage() {
         </div>
       </div>
 
-      {dialog === 'prompt' ? (
-        <SettingsDialog title={t('settingsLlm.promptFold')} closeLabel={t('common.close')} onClose={() => setDialog(null)}>
-          <SystemPromptEditor compact />
-        </SettingsDialog>
-      ) : null}
-      {dialog === 'setup' ? (
-        <SettingsDialog title={t('settingsLlm.setupFold')} closeLabel={t('common.close')} onClose={() => setDialog(null)}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.ollamaSetupTitle')}</h3>
-              <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-snug text-[var(--color-fg-muted)]">
-                <li>{t('settingsLlm.ollamaStep1')}</li>
-                <li>{t('settingsLlm.ollamaStep2')}</li>
-                <li>{t('settingsLlm.ollamaStep3')}</li>
-                <li>{t('settingsLlm.ollamaStep4')}</li>
-                <li>{t('settingsLlm.ollamaStep5')}</li>
-              </ol>
-              <p className="mt-2 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.ollamaDockerHint')}</p>
-            </div>
-            <div>
-              <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.lmSetupTitle')}</h3>
-              <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-snug text-[var(--color-fg-muted)]">
-                <li>{t('settingsLlm.lmStep1')}</li>
-                <li>{t('settingsLlm.lmStep2')}</li>
-                <li>{t('settingsLlm.lmStep3')}</li>
-              </ol>
-            </div>
+      <AppModal
+        open={dialog === 'prompt'}
+        title={t('settingsLlm.promptFold')}
+        onClose={() => setDialog(null)}
+        size="lg"
+      >
+        <SystemPromptEditor compact />
+      </AppModal>
+      <AppModal
+        open={dialog === 'setup'}
+        title={t('settingsLlm.setupFold')}
+        onClose={() => setDialog(null)}
+        size="lg"
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.ollamaSetupTitle')}</h3>
+            <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-snug text-[var(--color-fg-muted)]">
+              <li>{t('settingsLlm.ollamaStep1')}</li>
+              <li>{t('settingsLlm.ollamaStep2')}</li>
+              <li>{t('settingsLlm.ollamaStep3')}</li>
+              <li>{t('settingsLlm.ollamaStep4')}</li>
+              <li>{t('settingsLlm.ollamaStep5')}</li>
+            </ol>
+            <p className="mt-2 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.ollamaDockerHint')}</p>
           </div>
-        </SettingsDialog>
-      ) : null}
-      {dialog === 'servers' ? (
-        <SettingsDialog title={t('settingsLlm.servers')} closeLabel={t('common.close')} onClose={() => setDialog(null)}>
-          <ul className="grid gap-2 md:grid-cols-2">
-            {servers.map((row) => {
-              const hit = row.base_url.trim() ? probeFor(row.base_url) : undefined
-              return (
-                <li
-                  key={row.id}
-                  className="grid grid-cols-[minmax(5.5rem,7rem)_minmax(0,1fr)_auto] items-center gap-1.5"
-                  onBlur={onRowBlur}
-                >
-                  <input
-                    aria-label={t('settingsLlm.serverNamePh')}
-                    value={row.label}
-                    placeholder={t('settingsLlm.serverNamePh')}
-                    onChange={(e) => patchRow(row.id, { label: e.target.value })}
-                    className="app-input !min-h-8 text-xs"
+          <div>
+            <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.lmSetupTitle')}</h3>
+            <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-snug text-[var(--color-fg-muted)]">
+              <li>{t('settingsLlm.lmStep1')}</li>
+              <li>{t('settingsLlm.lmStep2')}</li>
+              <li>{t('settingsLlm.lmStep3')}</li>
+            </ol>
+          </div>
+        </div>
+      </AppModal>
+      <AppModal
+        open={dialog === 'servers'}
+        title={t('settingsLlm.servers')}
+        onClose={() => setDialog(null)}
+        size="lg"
+      >
+        <ul className="grid gap-2 md:grid-cols-2">
+          {servers.map((row) => {
+            const hit = row.base_url.trim() ? probeFor(row.base_url) : undefined
+            return (
+              <li
+                key={row.id}
+                className="grid grid-cols-[minmax(5.5rem,7rem)_minmax(0,1fr)_auto] items-center gap-1.5"
+                onBlur={onRowBlur}
+              >
+                <input
+                  aria-label={t('settingsLlm.serverNamePh')}
+                  value={row.label}
+                  placeholder={t('settingsLlm.serverNamePh')}
+                  onChange={(e) => patchRow(row.id, { label: e.target.value })}
+                  className="app-input !min-h-8 text-xs"
+                />
+                <input
+                  id={`llm-url-${row.id}`}
+                  aria-label={t('settingsLlm.serverUrlPh')}
+                  value={row.base_url}
+                  placeholder={t('settingsLlm.serverUrlPh')}
+                  onChange={(e) => patchRow(row.id, { base_url: e.target.value })}
+                  className="app-input !min-h-8 font-mono text-xs"
+                />
+                <div className="flex items-center gap-1">
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
+                    }`}
+                    title={hit?.detail || providerMark(row.base_url)}
                   />
-                  <input
-                    id={`llm-url-${row.id}`}
-                    aria-label={t('settingsLlm.serverUrlPh')}
-                    value={row.base_url}
-                    placeholder={t('settingsLlm.serverUrlPh')}
-                    onChange={(e) => patchRow(row.id, { base_url: e.target.value })}
-                    className="app-input !min-h-8 font-mono text-xs"
-                  />
-                  <div className="flex items-center gap-1">
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                        hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
-                      }`}
-                      title={hit?.detail || providerMark(row.base_url)}
-                    />
-                    <button
-                      type="button"
-                      title={t('settingsLlm.checkOne')}
-                      aria-label={t('settingsLlm.checkOne')}
-                      disabled={!row.base_url.trim() || isBusy(row.base_url)}
-                      onClick={() =>
-                        void probe(row.base_url, {
-                          chat: sameLmEndpoint(row.base_url, settings.baseUrl),
-                          notify: true,
-                        })
-                      }
-                      className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] disabled:opacity-40"
-                    >
-                      <IconActivity className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      title={t('settingsLlm.removeServer')}
-                      aria-label={t('settingsLlm.removeServer')}
-                      onClick={() => removeServer(row.id)}
-                      className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]"
-                    >
-                      <IconClose className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-          {!servers.length ? <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p> : null}
-        </SettingsDialog>
-      ) : null}
+                  <button
+                    type="button"
+                    title={t('settingsLlm.checkOne')}
+                    aria-label={t('settingsLlm.checkOne')}
+                    disabled={!row.base_url.trim() || isBusy(row.base_url)}
+                    onClick={() =>
+                      void probe(row.base_url, {
+                        chat: sameLmEndpoint(row.base_url, settings.baseUrl),
+                        notify: true,
+                      })
+                    }
+                    className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] disabled:opacity-40"
+                  >
+                    <IconActivity className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    title={t('settingsLlm.removeServer')}
+                    aria-label={t('settingsLlm.removeServer')}
+                    onClick={() => removeServer(row.id)}
+                    className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]"
+                  >
+                    <IconClose className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+        {!servers.length ? <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p> : null}
+      </AppModal>
     </div>
   )
 }

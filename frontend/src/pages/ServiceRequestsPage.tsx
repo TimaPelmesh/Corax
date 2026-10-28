@@ -2000,21 +2000,21 @@ export function ServiceRequestsPage() {
               type="button"
               disabled={pdfBusy}
               onClick={() => void downloadPdf()}
-              className="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+              className="app-btn app-btn-secondary !min-h-9 w-full sm:w-auto"
             >
               {pdfBusy ? 'PDF…' : 'PDF'}
             </button>
             <button
               type="button"
               onClick={() => setReportOpen(true)}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)]"
+              className="app-btn app-btn-secondary !min-h-9 w-full sm:w-auto"
               title={t('requests.database.reportTitle')}
             >
               {t('requests.database.reportButton')}
             </button>
             {canManageRequests ? (
-              <details className="relative">
-                <summary className="cursor-pointer list-none rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-fg)] shadow-sm hover:bg-[var(--color-surface-muted)] marker:content-none [&::-webkit-details-marker]:hidden">
+              <details className="relative w-full sm:w-auto">
+                <summary className="app-btn app-btn-secondary !min-h-9 w-full cursor-pointer list-none marker:content-none sm:w-auto [&::-webkit-details-marker]:hidden">
                   {t('requests.database.actions')}
                 </summary>
                 <div className="absolute right-0 z-20 mt-1 w-72 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg">
@@ -2607,11 +2607,21 @@ export function ServiceRequestsPage() {
                   </label>
                 </div>
               </div>
-              <details className="mt-4 border-t border-[var(--color-border)] pt-3">
-                <summary className="cursor-pointer text-[13px] font-semibold text-[var(--color-fg-subtle)]">
-                  {t('requests.stats.pdfOptionsToggle')}
+              <details className="group mt-4 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+                <summary className="cursor-pointer list-none px-3.5 py-3 text-[13px] font-semibold text-[var(--color-fg)] select-none [&::-webkit-details-marker]:hidden">
+                  <span className="flex min-h-8 items-center justify-between gap-3">
+                    <span>{t('requests.stats.pdfOptionsToggle')}</span>
+                    <span
+                      aria-hidden
+                      className="text-[var(--color-fg-subtle)] transition-transform duration-150 group-open:rotate-180"
+                    >
+                      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  </span>
                 </summary>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 border-t border-[var(--color-border)] px-3.5 py-3 sm:grid-cols-2">
                   <label className="block text-sm sm:col-span-2">
                     <span className="mb-1 block text-xs text-[var(--color-fg-subtle)]">{t('requests.stats.reportName')}</span>
                     <input type="text" value={execReportTitle} onChange={(e) => setExecReportTitle(e.target.value)} className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm" />

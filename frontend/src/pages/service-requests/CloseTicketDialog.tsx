@@ -45,20 +45,10 @@ export function CloseTicketDialog({
           {title}
         </p>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            disabled={saving}
-            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
-            onClick={onCancel}
-          >
+          <button type="button" disabled={saving} className="app-btn app-btn-secondary !min-h-9" onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button
-            type="button"
-            disabled={saving}
-            className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            onClick={onConfirm}
-          >
+          <button type="button" disabled={saving} className="app-btn app-btn-primary !min-h-9" onClick={onConfirm}>
             {saving ? confirmingLabel : confirmLabel}
           </button>
         </div>

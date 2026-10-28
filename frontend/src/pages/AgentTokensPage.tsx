@@ -2,30 +2,38 @@ import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { api, type AgentPairingRow, type AgentTokenCreated, type AgentTokenRow } from '../api'
 import { useAuth } from '../AuthContext'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { IconKey } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { TableSkeleton } from '../components/Skeleton'
+import { StatusPill } from '../components/ui/StatusPill'
 import { useT } from '../i18n/LocaleContext'
+import { activeAgentTokens } from '../lib/agentTokensUi'
 import { useToast } from '../ToastContext'
 
 export function AgentTokensPage() {
   const t = useT()
   const toast = useToast()
   const { user } = useAuth()
+  const { ask, dialog } = useConfirmDialog()
   const [rows, setRows] = useState<AgentTokenRow[]>([])
   const [pending, setPending] = useState<AgentPairingRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [label, setLabel] = useState('')
   const [allowedHostname, setAllowedHostname] = useState('')
   const [createdOnce, setCreatedOnce] = useState<AgentTokenCreated | null>(null)
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       const [tokens, pairings] = await Promise.all([api.agentTokens(), api.agentPairings()])
       setRows(tokens)
       setPending(pairings)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('common.error'))
+      const msg = e instanceof Error ? e.message : t('common.error')
+      setLoadError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -64,7 +72,13 @@ export function AgentTokensPage() {
   }
 
   async function onRevoke(id: number) {
-    if (!confirm(t('agentTokens.revokeConfirm'))) return
+    const ok = await ask({
+      title: t('agentTokens.revokeAction'),
+      body: t('agentTokens.revokeConfirm'),
+      confirmLabel: t('agentTokens.revokeAction'),
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
       await api.revokeAgentToken(id)
       setCreatedOnce((prev) => (prev && prev.id === id ? null : prev))
@@ -75,7 +89,13 @@ export function AgentTokensPage() {
   }
 
   async function onRevokeAll() {
-    if (!confirm(t('agentTokens.revokeAllConfirm'))) return
+    const ok = await ask({
+      title: t('agentTokens.revokeAll'),
+      body: t('agentTokens.revokeAllConfirm'),
+      confirmLabel: t('agentTokens.revokeAll'),
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
       const result = await api.revokeAllAgentTokens()
       setCreatedOnce(null)
@@ -105,40 +125,78 @@ export function AgentTokensPage() {
     }
   }
 
+  const active = activeAgentTokens(rows)
+
   return (
-    <div>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+      {dialog}
       <PageHeader
         icon={<IconKey className="h-7 w-7" />}
         title={t('titles.agentTokens')}
         subtitle={t('pages.agentTokensSubtitle')}
       />
 
-      <section className="app-card mb-8 p-6 sm:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
-              {t('agentTokens.pendingTitle')}
-            </h2>
+      {loadError && !loading ? (
+        <section className="app-panel space-y-3">
+          <p className="text-sm text-[var(--color-fg)]">{loadError}</p>
+          <p className="text-xs text-[var(--color-fg-muted)]">{t('agentTokens.loadErrorHint')}</p>
+          <button
+            type="button"
+            className="app-btn app-btn-primary w-full sm:w-auto"
+            onClick={() => {
+              setLoading(true)
+              void load()
+            }}
+          >
+            {t('common.refresh')}
+          </button>
+        </section>
+      ) : null}
+
+      <section className="app-panel">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+                {t('agentTokens.pendingTitle')}
+              </h2>
+              {pending.length > 0 ? (
+                <StatusPill tone="warning">{t('agentTokens.pendingCount', { n: pending.length })}</StatusPill>
+              ) : (
+                <StatusPill tone="neutral">{t('agentTokens.pendingEmpty')}</StatusPill>
+              )}
+            </div>
             <p className="mt-1 max-w-2xl text-sm text-[var(--color-fg-muted)]">{t('agentTokens.pendingHint')}</p>
           </div>
         </div>
         {pending.length === 0 ? (
-          <p className="mt-4 text-sm text-[var(--color-fg-muted)]">{t('agentTokens.pendingEmpty')}</p>
+          <div className="app-empty-state mt-4 !py-6">{t('agentTokens.pendingEmpty')}</div>
         ) : (
           <ul className="mt-4 divide-y divide-[var(--color-border)]">
             {pending.map((row) => (
-              <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0">
-                <div>
+              <li
+                key={row.id}
+                className="flex flex-col gap-3 py-3 first:pt-0 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
                   <div className="font-medium text-[var(--color-fg)]">{row.hostname}</div>
                   <div className="text-xs text-[var(--color-fg-muted)]">
                     {new Date(row.created_at).toLocaleString()}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button type="button" className="app-btn app-btn-primary !min-h-0 text-sm" onClick={() => void onApprove(row.id)}>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                  <button
+                    type="button"
+                    className="app-btn app-btn-primary w-full !min-h-0 text-sm sm:w-auto"
+                    onClick={() => void onApprove(row.id)}
+                  >
                     {t('agentTokens.connect')}
                   </button>
-                  <button type="button" className="app-btn app-btn-secondary !min-h-0 text-sm" onClick={() => void onReject(row.id)}>
+                  <button
+                    type="button"
+                    className="app-btn app-btn-secondary w-full !min-h-0 text-sm sm:w-auto"
+                    onClick={() => void onReject(row.id)}
+                  >
                     {t('agentTokens.reject')}
                   </button>
                 </div>
@@ -149,33 +207,35 @@ export function AgentTokensPage() {
       </section>
 
       {createdOnce ? (
-        <div className="app-alert app-alert-warning mb-6 text-sm">
+        <div className="app-alert app-alert-warning text-sm">
           <div className="font-medium">{t('agentTokens.saveNowTitle')}</div>
           <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-[var(--color-surface)] p-3 font-mono text-xs text-[var(--color-fg)]">
             {createdOnce.token}
           </pre>
-          <button
-            type="button"
-            className="mt-2 text-sm font-medium text-[var(--color-primary)] underline"
-            onClick={() => void navigator.clipboard.writeText(createdOnce.token)}
-          >
-            {t('agentTokens.copyToken')}
-          </button>
-          <button
-            type="button"
-            className="ml-4 mt-2 text-sm font-medium text-[var(--color-fg-muted)] underline"
-            onClick={() => setCreatedOnce(null)}
-          >
-            {t('common.close')}
-          </button>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              className="app-btn app-btn-secondary w-full !min-h-0 text-sm sm:w-auto"
+              onClick={() => void navigator.clipboard.writeText(createdOnce.token)}
+            >
+              {t('agentTokens.copyToken')}
+            </button>
+            <button
+              type="button"
+              className="app-btn app-btn-secondary w-full !min-h-0 text-sm sm:w-auto"
+              onClick={() => setCreatedOnce(null)}
+            >
+              {t('common.close')}
+            </button>
+          </div>
         </div>
       ) : null}
 
-      <form onSubmit={onCreate} className="app-card mb-10 max-w-xl space-y-4 p-6 sm:p-7">
+      <form onSubmit={onCreate} className="app-panel max-w-xl space-y-4">
         <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
           {t('agentTokens.newTokenTitle')}
         </h2>
-        <div className="mt-4 space-y-3">
+        <div className="space-y-3">
           <div>
             <label className="app-label">{t('agentTokens.labelLabel')}</label>
             <input
@@ -194,20 +254,18 @@ export function AgentTokensPage() {
               placeholder={t('agentTokens.hostnamePlaceholder')}
             />
           </div>
-          <button
-            type="submit"
-            className="app-btn app-btn-primary"
-          >
+          <button type="submit" className="app-btn app-btn-primary w-full sm:w-auto">
             {t('agentTokens.createToken')}
           </button>
         </div>
       </form>
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('agentTokens.allTokensTitle')}</h2>
         <button
           type="button"
-          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+          className="app-btn app-btn-secondary w-full !min-h-0 text-sm sm:w-auto"
+          disabled={active.length === 0}
           onClick={() => void onRevokeAll()}
         >
           {t('agentTokens.revokeAll')}
@@ -217,48 +275,49 @@ export function AgentTokensPage() {
         <div className="app-card overflow-hidden p-0">
           <TableSkeleton rows={6} cols={5} />
         </div>
+      ) : active.length === 0 ? (
+        <div className="app-empty-state">{t('agentTokens.emptyState')}</div>
       ) : (
         <div className="app-card app-table-shell overflow-hidden p-0">
           <div className="overflow-x-auto overscroll-x-contain">
-          <table className="app-table min-w-full text-left text-sm">
-            <thead>
-              <tr className="app-table-head">
-                <th className="px-4 py-3">{t('agentTokens.tableId')}</th>
-                <th className="px-4 py-3">{t('agentTokens.tablePrefix')}</th>
-                <th className="px-4 py-3">{t('agentTokens.tableLabel')}</th>
-                <th className="px-4 py-3">{t('agentTokens.tableHostname')}</th>
-                <th className="px-4 py-3">{t('agentTokens.tableCreated')}</th>
-                <th className="px-4 py-3">{t('agentTokens.tableLastUsed')}</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.filter((r) => !r.revoked_at).map((r) => (
-                <tr key={r.id} className="app-table-row border-b border-[var(--color-border)] last:border-0">
-                  <td className="px-4 py-3 font-mono text-xs">{r.id}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-[var(--color-fg-muted)]">{r.public_id_prefix}</td>
-                  <td className="px-4 py-3 text-[var(--color-fg)]">{r.label ?? '—'}</td>
-                  <td className="px-4 py-3 text-[var(--color-fg)]">{r.allowed_hostname ?? t('agentTokens.anyHostname')}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-[var(--color-fg-muted)]">
-                    {new Date(r.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-[var(--color-fg-muted)]">
-                    {r.last_used_at ? new Date(r.last_used_at).toLocaleString() : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-blue-600 hover:text-blue-700"
-                      onClick={() => void onRevoke(r.id)}
-                    >
-                      {t('agentTokens.revokeAction')}
-                    </button>
-                  </td>
+            <table className="app-table min-w-[40rem] w-full text-left text-sm">
+              <thead>
+                <tr className="app-table-head">
+                  <th className="px-4 py-3">{t('agentTokens.tableId')}</th>
+                  <th className="px-4 py-3">{t('agentTokens.tablePrefix')}</th>
+                  <th className="px-4 py-3">{t('agentTokens.tableLabel')}</th>
+                  <th className="px-4 py-3">{t('agentTokens.tableHostname')}</th>
+                  <th className="px-4 py-3">{t('agentTokens.tableCreated')}</th>
+                  <th className="px-4 py-3">{t('agentTokens.tableLastUsed')}</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {rows.filter((r) => !r.revoked_at).length === 0 ? <p className="p-4 text-sm text-[var(--color-fg-muted)]">{t('agentTokens.emptyState')}</p> : null}
+              </thead>
+              <tbody>
+                {active.map((r) => (
+                  <tr key={r.id} className="app-table-row border-b border-[var(--color-border)] last:border-0">
+                    <td className="app-table-cell font-mono text-xs">{r.id}</td>
+                    <td className="app-table-cell-muted font-mono text-xs">{r.public_id_prefix}</td>
+                    <td className="app-table-cell">{r.label ?? '—'}</td>
+                    <td className="app-table-cell">{r.allowed_hostname ?? t('agentTokens.anyHostname')}</td>
+                    <td className="app-table-cell-muted whitespace-nowrap">
+                      {new Date(r.created_at).toLocaleString()}
+                    </td>
+                    <td className="app-table-cell-muted whitespace-nowrap">
+                      {r.last_used_at ? new Date(r.last_used_at).toLocaleString() : '—'}
+                    </td>
+                    <td className="app-table-cell text-right">
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-[var(--color-error-fg)] hover:underline"
+                        onClick={() => void onRevoke(r.id)}
+                      >
+                        {t('agentTokens.revokeAction')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

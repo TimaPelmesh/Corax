@@ -63,7 +63,7 @@ function roleTone(role: string) {
     case 'dns':
       return 'bg-indigo-500/20 text-indigo-900 dark:text-indigo-200'
     case 'infra':
-      return 'bg-[var(--color-surface-muted)]0/20 text-[var(--color-fg)] dark:text-slate-200'
+      return 'bg-[var(--color-surface-muted)] text-[var(--color-fg)]'
     case 'switch':
       return 'bg-sky-500/15 text-sky-800 dark:text-sky-200'
     case 'router':
@@ -93,7 +93,7 @@ function roleTone(role: string) {
     case 'host':
       return 'bg-blue-500/15 text-blue-900 dark:text-blue-200'
     default:
-      return 'bg-[var(--color-surface-muted)]0/10 text-[var(--color-fg)] dark:text-slate-300'
+      return 'bg-[var(--color-bg-muted)] text-[var(--color-fg-muted)]'
   }
 }
 
@@ -306,37 +306,26 @@ export function NetworkPage() {
   ]
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
       <header className="flex flex-wrap items-center justify-end gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            to="/network-map"
-            className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
-          >
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <Link to="/network-map" className="app-btn app-btn-secondary !min-h-9 w-full no-underline sm:w-auto">
             {t('network.openMap')}
           </Link>
           {canEdit ? (
             <>
-              <button
-                type="button"
-                onClick={() => void openCfg()}
-                className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
-              >
+              <button type="button" onClick={() => void openCfg()} className="app-btn app-btn-secondary !min-h-9 w-full sm:w-auto">
                 {t('network.snmpSettings')}
               </button>
               <button
                 type="button"
                 disabled={pollBusy || discoverBusy}
                 onClick={() => void runPoll()}
-                className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="app-btn app-btn-primary !min-h-9 w-full sm:w-auto"
               >
                 {pollBusy ? t('network.pollBusy') : t('network.pollAll')}
               </button>
-              <button
-                type="button"
-                onClick={() => setAddOpen(true)}
-                className="rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)]"
-              >
+              <button type="button" onClick={() => setAddOpen(true)} className="app-btn app-btn-secondary !min-h-9 w-full sm:w-auto">
                 {t('network.addManual')}
               </button>
             </>
