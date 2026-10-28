@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { api, type AgentBundleProfile, type AgentBundleTarget } from '../api'
 import { useAuth } from '../AuthContext'
+import { InstallMeter, type InstallRunStatus } from '../components/InstallMeter'
 import { IconKey } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
@@ -77,6 +78,7 @@ export function AgentBundlePage() {
   const [sshUser, setSshUser] = useState('root')
   const [sshPassword, setSshPassword] = useState('')
   const [sshBusy, setSshBusy] = useState(false)
+  const [sshRun, setSshRun] = useState<InstallRunStatus>('idle')
   const [sshOutput, setSshOutput] = useState('')
   const [winMethod, setWinMethod] = useState<'winrm' | 'smb'>('smb')
   const [winHost, setWinHost] = useState('')
@@ -84,6 +86,7 @@ export function AgentBundlePage() {
   const [winUser, setWinUser] = useState('')
   const [winPassword, setWinPassword] = useState('')
   const [winBusy, setWinBusy] = useState(false)
+  const [winRun, setWinRun] = useState<InstallRunStatus>('idle')
   const [winOutput, setWinOutput] = useState('')
   const [scheduleMode, setScheduleMode] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('WEEKLY')
   const [scheduleTime, setScheduleTime] = useState('09:00')
@@ -262,6 +265,7 @@ export function AgentBundlePage() {
       return
     }
     setSshBusy(true)
+    setSshRun('run')
     setSshOutput('')
     try {
       const result = await api.linuxSshInstall({
@@ -274,10 +278,16 @@ export function AgentBundlePage() {
       setSshPassword('')
       if (result.token) setInstallToken(result.token)
       setSshOutput(result.output || String(result.exit_code))
-      if (result.ok) toast.ok(t('agentBundle.installSshOk'))
-      else toast.error((result.output || t('agentBundle.buildError')).split('\n')[0]?.slice(0, 240) || t('agentBundle.buildError'))
+      if (result.ok) {
+        setSshRun('ok')
+        toast.ok(t('agentBundle.installSshOk'))
+      } else {
+        setSshRun('fail')
+        toast.error((result.output || t('agentBundle.buildError')).split('\n')[0]?.slice(0, 240) || t('agentBundle.buildError'))
+      }
     } catch (ex) {
       setSshPassword('')
+      setSshRun('fail')
       toast.error(ex instanceof Error ? ex.message : t('agentBundle.buildError'))
     } finally {
       setSshBusy(false)
@@ -292,6 +302,7 @@ export function AgentBundlePage() {
       return
     }
     setWinBusy(true)
+    setWinRun('run')
     setWinOutput('')
     try {
       const result = await api.windowsWinrmInstall({
@@ -316,10 +327,16 @@ export function AgentBundlePage() {
       })
       setWinPassword('')
       setWinOutput(result.output || String(result.exit_code))
-      if (result.ok) toast.ok(t('agentBundle.installWinrmOk'))
-      else toast.error((result.output || t('agentBundle.buildError')).split('\n')[0]?.slice(0, 240) || t('agentBundle.buildError'))
+      if (result.ok) {
+        setWinRun('ok')
+        toast.ok(t('agentBundle.installWinrmOk'))
+      } else {
+        setWinRun('fail')
+        toast.error((result.output || t('agentBundle.buildError')).split('\n')[0]?.slice(0, 240) || t('agentBundle.buildError'))
+      }
     } catch (ex) {
       setWinPassword('')
+      setWinRun('fail')
       toast.error(ex instanceof Error ? ex.message : t('agentBundle.buildError'))
     } finally {
       setWinBusy(false)
@@ -750,10 +767,13 @@ export function AgentBundlePage() {
         </div>
 
         <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6">
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-4 p-5">
-            <h2 className="text-sm font-semibold text-[var(--color-fg)]">
-              {t('agentBundle.buildTitle')}
-            </h2>
+          <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <div className="border-b border-[var(--color-border)] px-5 py-4">
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]">
+                {t('agentBundle.buildTitle')}
+              </h2>
+            </div>
+            <div className="space-y-4 p-5">
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between gap-3 border-b border-[var(--color-border)] pb-2">
                 <dt className="text-[var(--color-fg-muted)]">{t('agentBundle.summaryServer')}</dt>
@@ -826,17 +846,23 @@ export function AgentBundlePage() {
                   ? t('agentBundle.downloadZip')
                   : t('agentBundle.downloadExe')}
             </button>
+            </div>
           </div>
 
-          <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)]/70 p-5 text-sm text-[var(--color-fg-muted)]">
-            <p className="text-sm font-semibold text-[var(--color-fg)]">
-              {t('agentBundle.deploymentTitle')}
-            </p>
+          <div className="overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+            <div className="border-b border-[var(--color-border)] px-5 py-4">
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]">
+                {t('agentBundle.deploymentTitle')}
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                {platform === 'linux' ? t('agentBundle.summaryArchiveLinux') : t('agentBundle.installWinrmHint')}
+              </p>
+            </div>
             {platform === 'linux' ? (
-              <div className="mt-3 space-y-3">
+              <div className="space-y-4 p-5">
                 <button
                   type="button"
-                  className="app-btn app-btn-primary"
+                  className="app-btn app-btn-secondary w-full"
                   disabled={busy || lanLoading || !serverHost.trim()}
                   onClick={() => void onInstallCommand()}
                 >
@@ -852,27 +878,29 @@ export function AgentBundlePage() {
                     </button>
                   </div>
                 ) : null}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                    {t('agentBundle.installSshHost')}
-                    <input className="app-input" value={sshHost} onChange={(event) => setSshHost(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                    {t('agentBundle.installSshPort')}
-                    <input className="app-input" value={sshPort} onChange={(event) => setSshPort(event.target.value)} inputMode="numeric" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                    {t('agentBundle.installSshUser')}
-                    <input className="app-input" value={sshUser} onChange={(event) => setSshUser(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                    {t('agentBundle.installSshPassword')}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="app-label" htmlFor="ssh-host">{t('agentBundle.installSshHost')}</label>
+                    <input id="ssh-host" className="app-input" value={sshHost} onChange={(event) => setSshHost(event.target.value)} autoComplete="off" disabled={sshBusy} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                  </div>
+                  <div>
+                    <label className="app-label" htmlFor="ssh-port">{t('agentBundle.installSshPort')}</label>
+                    <input id="ssh-port" className="app-input" value={sshPort} onChange={(event) => setSshPort(event.target.value)} inputMode="numeric" disabled={sshBusy} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                  </div>
+                  <div>
+                    <label className="app-label" htmlFor="ssh-user">{t('agentBundle.installSshUser')}</label>
+                    <input id="ssh-user" className="app-input" value={sshUser} onChange={(event) => setSshUser(event.target.value)} autoComplete="off" disabled={sshBusy} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="app-label" htmlFor="ssh-password">{t('agentBundle.installSshPassword')}</label>
                     <input
+                      id="ssh-password"
                       className="app-input"
                       type="password"
                       value={sshPassword}
                       onChange={(event) => setSshPassword(event.target.value)}
                       autoComplete="new-password"
+                      disabled={sshBusy}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
                           event.preventDefault()
@@ -880,89 +908,133 @@ export function AgentBundlePage() {
                         }
                       }}
                     />
-                  </label>
+                  </div>
                 </div>
+                <InstallMeter
+                  status={sshRun}
+                  steps={[
+                    t('agentBundle.installMeterSshPack'),
+                    t('agentBundle.installMeterSshReach'),
+                    t('agentBundle.installMeterSshApply'),
+                  ]}
+                  doneLabel={t('agentBundle.installMeterSshDone')}
+                  failLabel={t('agentBundle.installMeterFail')}
+                />
                 <button
                   type="button"
-                  className="app-btn app-btn-secondary"
+                  className="app-btn app-btn-primary w-full"
                   disabled={sshBusy || lanLoading || !serverHost.trim() || !sshHost.trim() || !sshPassword}
                   onClick={() => void onSshInstall()}
                 >
                   {sshBusy ? t('agentBundle.installSshBusy') : t('agentBundle.installSsh')}
                 </button>
                 {sshOutput ? (
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)]">
+                  <pre className={`max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)] ${sshRun === 'fail' ? 'border-red-400/50' : sshRun === 'ok' ? 'border-emerald-400/50' : 'border-[var(--color-border)]'}`}>
                     {sshOutput}
                   </pre>
                 ) : null}
               </div>
             ) : (
-            <>
-            <div className="mt-3 space-y-3">
-              <p className="text-sm leading-relaxed">{t('agentBundle.installWinrmHint')}</p>
-              <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                {t('agentBundle.installWinMethod')}
-                <select className="app-input app-select" value={winMethod} onChange={(event) => setWinMethod(event.target.value === 'winrm' ? 'winrm' : 'smb')}>
-                  <option value="smb">{t('agentBundle.installWinSmb')}</option>
-                  <option value="winrm">{t('agentBundle.installWinWinrm')}</option>
-                </select>
-              </label>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                  {t('agentBundle.installWinrmHost')}
-                  <input className="app-input" value={winHost} placeholder="192.168.1.20" onChange={(event) => setWinHost(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
-                </label>
-                {winMethod === 'winrm' ? (
-                  <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                    {t('agentBundle.installWinrmPort')}
-                    <input className="app-input" value={winPort} onChange={(event) => setWinPort(event.target.value)} inputMode="numeric" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
-                  </label>
+              <div className="space-y-4 p-5">
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('agentBundle.installWinMethod')}>
+                  {([
+                    ['smb', t('agentBundle.installMethodSmbTitle'), t('agentBundle.installMethodSmbHint')],
+                    ['winrm', t('agentBundle.installMethodWinrmTitle'), t('agentBundle.installMethodWinrmHint')],
+                  ] as const).map(([id, title, hint]) => {
+                    const selected = winMethod === id
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        disabled={winBusy}
+                        onClick={() => setWinMethod(id)}
+                        className={`rounded-xl border px-3 py-3 text-left transition ${
+                          selected
+                            ? 'border-[var(--color-primary)] bg-[var(--color-primary-muted)]'
+                            : 'border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'
+                        }`}
+                      >
+                        <span className="block text-sm font-semibold text-[var(--color-fg)]">{title}</span>
+                        <span className="mt-0.5 block text-xs text-[var(--color-fg-muted)]">{hint}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className={winMethod === 'winrm' ? '' : 'sm:col-span-2'}>
+                    <label className="app-label" htmlFor="win-host">{t('agentBundle.installWinrmHost')}</label>
+                    <input id="win-host" className="app-input" value={winHost} placeholder="192.168.1.20" onChange={(event) => setWinHost(event.target.value)} autoComplete="off" disabled={winBusy} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                  </div>
+                  {winMethod === 'winrm' ? (
+                    <div>
+                      <label className="app-label" htmlFor="win-port">{t('agentBundle.installWinrmPort')}</label>
+                      <input id="win-port" className="app-input" value={winPort} onChange={(event) => setWinPort(event.target.value)} inputMode="numeric" disabled={winBusy} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                    </div>
+                  ) : null}
+                  <div>
+                    <label className="app-label" htmlFor="win-user">{t('agentBundle.installWinrmUser')}</label>
+                    <input id="win-user" className="app-input" value={winUser} placeholder="CORP\\admin" onChange={(event) => setWinUser(event.target.value)} autoComplete="off" disabled={winBusy} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
+                  </div>
+                  <div>
+                    <label className="app-label" htmlFor="win-password">{t('agentBundle.installWinrmPassword')}</label>
+                    <input
+                      id="win-password"
+                      className="app-input"
+                      type="password"
+                      value={winPassword}
+                      onChange={(event) => setWinPassword(event.target.value)}
+                      autoComplete="new-password"
+                      disabled={winBusy}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          void onWinrmInstall()
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <InstallMeter
+                  status={winRun}
+                  steps={[
+                    t('agentBundle.installMeterBuild'),
+                    t('agentBundle.installMeterReach'),
+                    t('agentBundle.installMeterApply'),
+                  ]}
+                  doneLabel={t('agentBundle.installMeterDone')}
+                  failLabel={t('agentBundle.installMeterFail')}
+                />
+                <button
+                  type="button"
+                  className="app-btn app-btn-primary w-full"
+                  aria-busy={winBusy}
+                  disabled={winBusy || lanLoading || !serverHost.trim() || !winHost.trim() || !winPassword}
+                  onClick={() => void onWinrmInstall()}
+                >
+                  {winBusy ? t('agentBundle.installWinrmBusy') : t('agentBundle.installWinrm')}
+                </button>
+                {winOutput ? (
+                  <pre className={`max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)] ${winRun === 'fail' ? 'border-red-400/50' : winRun === 'ok' ? 'border-emerald-400/50' : 'border-[var(--color-border)]'}`}>
+                    {winOutput}
+                  </pre>
                 ) : null}
-                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                  {t('agentBundle.installWinrmUser')}
-                  <input className="app-input" value={winUser} placeholder="CORP\\admin" onChange={(event) => setWinUser(event.target.value)} autoComplete="off" onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} />
-                </label>
-                <label className="flex flex-col gap-1 text-sm font-medium text-[var(--color-fg)]">
-                  {t('agentBundle.installWinrmPassword')}
-                  <input
-                    className="app-input"
-                    type="password"
-                    value={winPassword}
-                    onChange={(event) => setWinPassword(event.target.value)}
-                    autoComplete="new-password"
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault()
-                        void onWinrmInstall()
-                      }
-                    }}
-                  />
-                </label>
+                <details className="rounded-xl border border-[var(--color-border)] px-3.5 py-2.5">
+                  <summary className="cursor-pointer text-xs font-medium text-[var(--color-fg-muted)]">
+                    {t('agentBundle.installManualToggle')}
+                  </summary>
+                  <ol className="mt-3 list-decimal space-y-2 pl-4 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+                    <li>{t('agentBundle.deployStep1')}</li>
+                    <li>
+                      {t('agentBundle.deployStep2Before')}{' '}
+                      <code className="text-[11px]">CORAX-Agent.exe</code>
+                    </li>
+                    <li>{t('agentBundle.deployStep3Win10')}</li>
+                    <li>{t('agentBundle.deployStep4')}</li>
+                  </ol>
+                </details>
               </div>
-              <button
-                type="button"
-                className="app-btn app-btn-secondary"
-                disabled={winBusy || lanLoading || !serverHost.trim() || !winHost.trim() || !winPassword}
-                onClick={() => void onWinrmInstall()}
-              >
-                {winBusy ? t('agentBundle.installWinrmBusy') : t('agentBundle.installWinrm')}
-              </button>
-              {winOutput ? (
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-3 font-mono text-[11px] leading-relaxed text-[var(--color-fg)]">
-                  {winOutput}
-                </pre>
-              ) : null}
-            </div>
-            <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed">
-              <li>{t('agentBundle.deployStep1')}</li>
-              <li>
-                {t('agentBundle.deployStep2Before')}{' '}
-                <code className="text-xs">CORAX-Agent.exe</code>
-              </li>
-              <li>{t('agentBundle.deployStep3Win10')}</li>
-              <li>{t('agentBundle.deployStep4')}</li>
-            </ol>
-            </>
             )}
           </div>
         </div>
