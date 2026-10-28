@@ -29,6 +29,25 @@ def test_paths_stay_inside_config_dirs():
     assert explain_job("test", "bash", None) is not None
 
 
+def test_folders_docker_and_playbooks_stay_allowlisted():
+    assert explain_job("list", "/etc/nginx", None) is None
+    assert explain_job("list", "/opt/corax/scripts", None) is None
+    assert explain_job("list", "/etc", None) is not None
+    assert explain_job("list", "/etc/nginx/../../etc", None) is not None
+    assert explain_job("read", "/etc/corax/compose/web/.env", None) is not None
+    assert explain_job("docker", "ps", None) is None
+    assert explain_job("docker", "start", "corax-web") is None
+    assert explain_job("docker", "restart", "-it") is not None
+    assert explain_job("docker", "restart", "web;id") is not None
+    assert explain_job("docker", "compose-up", "/etc/corax/compose/web") is None
+    assert explain_job("docker", "compose-up", "/tmp/web") is not None
+    play = '{"steps":[{"action":"restart","target":"nginx"},{"action":"docker","target":"start","body":"corax-web"}]}'
+    assert explain_job("playbook", "run", play) is None
+    nested = '{"steps":[{"action":"playbook","target":"run","body":"{}"}]}'
+    assert explain_job("playbook", "run", nested) is not None
+    assert explain_job("playbook", "run", '{"steps":[{"action":"restart","target":"systemd"}]}') is not None
+
+
 def test_ssh_admin_command_stays_on_the_list():
     logs, _timeout = ssh_admin_command("logs", "llama-server", 80)
     assert logs.startswith("journalctl -u ")

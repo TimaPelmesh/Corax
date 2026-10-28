@@ -6,6 +6,7 @@ directories. Unit names cannot carry a shell. sudoers, keys, and cron are refuse
 
 from __future__ import annotations
 
+import json
 import posixpath
 import re
 import shlex
@@ -19,7 +20,7 @@ from app.models import LlmClusterNode, LlmControlAudit, ServerAuditHost, ServerA
 from app.server_audit_store import find_audit_host
 
 _LLM_ACTIONS = frozenset({"start", "stop", "journal", "llama-apply", "models", "rpc-probe"})
-ACTIONS = frozenset({"status", "test", "read", "restart", "write", "units", "show"}) | _LLM_ACTIONS
+ACTIONS = frozenset({"status", "test", "read", "restart", "write", "units", "show", "list", "docker", "playbook"}) | _LLM_ACTIONS
 _HOLD_UNITS = frozenset({"systemd", "init", "dbus", "dbus-broker", "polkit", "polkitd"})
 _SHELL_NAMES = frozenset({"bash", "sh", "dash", "zsh", "python", "python3", "perl"})
 TESTS = frozenset({"nginx", "sshd"})
@@ -53,12 +54,22 @@ READ_FILES = (
     "/etc/nginx/nginx.conf",
     "/etc/ssh/sshd_config",
 )
+_SCRIPT_PREFIXES = (
+    "/opt/corax/scripts/",
+    "/var/lib/corax/scripts/",
+)
+_COMPOSE_PREFIXES = (
+    "/etc/corax/compose/",
+    "/opt/corax/compose/",
+)
 READ_PREFIXES = (
     "/etc/nginx/",
     "/etc/apache2/",
     "/etc/httpd/",
     "/etc/ssh/sshd_config.d/",
     "/etc/corax/",
+    *_SCRIPT_PREFIXES,
+    *_COMPOSE_PREFIXES,
 )
 WRITE_PREFIXES = (
     "/etc/nginx/conf.d/",
@@ -66,7 +77,12 @@ WRITE_PREFIXES = (
     "/etc/apache2/sites-available/",
     "/etc/httpd/conf.d/",
     "/etc/corax/",
+    *_SCRIPT_PREFIXES,
+    *_COMPOSE_PREFIXES,
 )
+_DOCKER_VERBS = frozenset({"ps", "start", "stop", "restart", "compose-up", "compose-down"})
+_CONTAINER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_PLAYBOOK_MAX = 8
 _UNIT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._@-]{0,80}$")
 _DENY_NAMES = frozenset({"shadow", "gshadow", "sudoers", "passwd", "group", "crontab", "authorized_keys"})
 _DENY_BITS = ("sudoers", "cron.d", "crontab", "pam.d", "/systemd/", "id_rsa", ".pem", ".key")
@@ -131,6 +147,8 @@ def action_catalog() -> dict[str, list[str]]:
             "rpc-server-gpu7",
         ],
         "model_roots": list(MODEL_ROOTS),
+        "list_prefixes": [_prefix_root(prefix) for prefix in _list_prefixes()],
+        "compose_prefixes": [_prefix_root(prefix) for prefix in _COMPOSE_PREFIXES],
     }
 
 
@@ -163,14 +181,56 @@ def _path(raw: str) -> str | None:
     return normal
 
 
+def _prefix_root(prefix: str) -> str:
+    return prefix.rstrip("/")
+
+
+def _under(path: str, prefixes: tuple[str, ...]) -> bool:
+    for prefix in prefixes:
+        root = _prefix_root(prefix)
+        if path == root or path.startswith(root + "/"):
+            return True
+    return False
+
+
+def _list_prefixes() -> tuple[str, ...]:
+    roots = tuple(root if root.endswith("/") else root + "/" for root in MODEL_ROOTS)
+    return READ_PREFIXES + roots
+
+
+def _listable(path: str) -> bool:
+    return _under(path, _list_prefixes())
+
+
+def _container_name(raw: str | None) -> str | None:
+    name = (raw or "").strip()
+    if not _CONTAINER.fullmatch(name):
+        return None
+    return name
+
+
+def _compose_dir(raw: str | None) -> str | None:
+    path = _path(raw or "")
+    if path is None or not _under(path, _COMPOSE_PREFIXES):
+        return None
+    return path
+
+
+def _hidden_file(path: str) -> bool:
+    name = posixpath.basename(path).lower()
+    return name == ".env" or name.endswith(".env")
+
+
 def _readable(path: str) -> bool:
+    if _hidden_file(path):
+        return False
     if path in READ_FILES:
         return True
     return any(path.startswith(prefix) for prefix in READ_PREFIXES)
 
 
 def _writable(path: str) -> bool:
-    if path.endswith("/"):
+    if path.endswith("/") or _hidden_file(path):
         return False
     if posixpath.basename(path) in {"", ".", ".."}:
         return False
@@ -199,6 +259,17 @@ def explain_job(action: str, target: str, body: str | None) -> str | None:
         if kind == "restart" and body not in (None, ""):
             return "Перезапуск не принимает произвольные аргументы"
         return None
+    if kind == "list":
+        if body not in (None, ""):
+            return "Просмотр каталога не принимает содержимое"
+        path = _path(target)
+        if path is None or not _listable(path):
+            return "Этот каталог из панели не показывается"
+        return None
+    if kind == "docker":
+        return _explain_docker(target, body)
+    if kind == "playbook":
+        return _explain_playbook(body)
     path = _path(target)
     if path is None:
         return "Такой путь читать и записывать нельзя"
@@ -212,6 +283,50 @@ def explain_job(action: str, target: str, body: str | None) -> str | None:
         return "Содержимое файла слишком большое"
     if not _writable(path):
         return "Записывать можно только в каталог конфигов nginx, apache или /etc/corax"
+    return None
+
+
+def _explain_docker(target: str, body: str | None) -> str | None:
+    verb = (target or "").strip().lower()
+    if verb not in _DOCKER_VERBS:
+        return "Такой команды Docker нет"
+    if verb == "ps":
+        if body not in (None, ""):
+            return "Список контейнеров не принимает аргументы"
+        return None
+    if verb in {"start", "stop", "restart"}:
+        if _container_name(body) is None:
+            return "Имя контейнера отклонено"
+        return None
+    if _compose_dir(body) is None:
+        return "Compose-проект должен лежать в /etc/corax/compose или /opt/corax/compose"
+    return None
+
+
+def _explain_playbook(body: str | None) -> str | None:
+    if not isinstance(body, str) or not body.strip() or len(body) > _BODY_MAX or "\x00" in body:
+        return "Плейбук пустой или слишком большой"
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return "Плейбук не разобран"
+    if not isinstance(data, dict) or set(data) - {"steps"}:
+        return "Плейбук принимает только шаги"
+    steps = data.get("steps")
+    if not isinstance(steps, list) or not 1 <= len(steps) <= _PLAYBOOK_MAX:
+        return "В плейбуке от 1 до 8 шагов"
+    for step in steps:
+        if not isinstance(step, dict) or set(step) - {"action", "target", "body"}:
+            return "Шаг плейбука неполный"
+        action = str(step.get("action") or "").strip().lower()
+        if action == "playbook":
+            return "Плейбук нельзя вкладывать"
+        step_body = step.get("body")
+        if step_body is not None and not isinstance(step_body, str):
+            return "Шаг плейбука неполный"
+        reason = explain_job(action, str(step.get("target") or ""), step_body)
+        if reason:
+            return reason
     return None
 
 
@@ -276,8 +391,8 @@ async def enqueue_job(
         raise ValueError("На этом хосте уже пять заданий ждут агента")
     kind = action.strip().lower()
     stored_target = target.strip()
-    stored_body = body if kind in {"write", "journal", "llama-apply", "rpc-probe"} else None
-    if kind in {"read", "write"}:
+    stored_body = body if kind in {"write", "journal", "llama-apply", "rpc-probe", "docker", "playbook"} else None
+    if kind in {"read", "write", "list"}:
         stored_target = _path(target) or stored_target
     elif kind in {"status", "restart", "test", "start", "stop", "journal"}:
         stored_target = _unit(target) or stored_target
@@ -289,6 +404,16 @@ async def enqueue_job(
         stored_target = model_dir_allowed(target) or stored_target
     elif kind == "rpc-probe":
         stored_target = "rpc"
+    elif kind == "docker":
+        stored_target = target.strip().lower()
+        if stored_target in {"start", "stop", "restart"}:
+            stored_body = _container_name(body)
+        elif stored_target in {"compose-up", "compose-down"}:
+            stored_body = _compose_dir(body)
+        else:
+            stored_body = None
+    elif kind == "playbook":
+        stored_target = "run"
     job = ServerAuditJob(
         host_id=host.id,
         requested_by_id=user_id,
@@ -354,7 +479,7 @@ async def lease_next_job(db: AsyncSession, hostname: str) -> tuple[list[dict], b
     job.leased_at = now
     await db.flush()
     item = {"id": job.id, "action": job.action, "target": job.target}
-    if job.action in {"write", "journal", "llama-apply", "rpc-probe"} and job.body:
+    if job.action in {"write", "journal", "llama-apply", "rpc-probe", "docker", "playbook"} and job.body:
         item["body"] = job.body
     return [item], True
 

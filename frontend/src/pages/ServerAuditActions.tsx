@@ -12,6 +12,44 @@ const EMPTY_CATALOG: ServerAuditActionCatalog = {
 
 const UNIT_RE = /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,80}$/
 const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,64}$/
+const CONTAINER_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/
+const PLAYBOOK_KEY = 'corax-audit-playbook-v1'
+
+type PlayStep = { kind: string; value: string }
+
+function loadPlaybook(): PlayStep[] {
+  try {
+    const raw = localStorage.getItem(PLAYBOOK_KEY)
+    const data = raw ? (JSON.parse(raw) as unknown) : []
+    if (!Array.isArray(data)) return []
+    return data
+      .filter((row): row is PlayStep => Boolean(row) && typeof row.kind === 'string' && typeof row.value === 'string')
+      .slice(0, 8)
+  } catch {
+    return []
+  }
+}
+
+function playbookPayload(steps: PlayStep[]) {
+  const mapped = steps.map((step) => {
+    const value = step.value.trim()
+    if (step.kind === 'restart' || step.kind === 'status') {
+      return UNIT_RE.test(value) ? { action: step.kind, target: value } : null
+    }
+    if (step.kind === 'docker-ps') return { action: 'docker', target: 'ps' }
+    if (step.kind === 'docker-start' || step.kind === 'docker-stop' || step.kind === 'docker-restart') {
+      return CONTAINER_RE.test(value)
+        ? { action: 'docker', target: step.kind.slice('docker-'.length), body: value }
+        : null
+    }
+    if ((step.kind === 'compose-up' || step.kind === 'compose-down') && value.startsWith('/')) {
+      return { action: 'docker', target: step.kind, body: value.replace(/\/+$/, '') }
+    }
+    return null
+  })
+  if (mapped.some((step) => step == null) || mapped.length === 0) return null
+  return JSON.stringify({ steps: mapped })
+}
 
 function statusLabel(status: string, t: ReturnType<typeof useT>) {
   if (status === 'pending') return t('serverAudit.jobPending')
@@ -35,7 +73,30 @@ function actionLabel(action: string, t: ReturnType<typeof useT>) {
   if (action === 'write') return t('serverAudit.actKindWrite')
   if (action === 'units') return t('serverAudit.actKindUnits')
   if (action === 'show') return t('serverAudit.actKindShow')
+  if (action === 'list') return t('serverAudit.actKindList')
+  if (action === 'docker') return t('serverAudit.actKindDocker')
+  if (action === 'playbook') return t('serverAudit.actKindPlaybook')
   return action
+}
+
+function parseList(output: string) {
+  const rows: { kind: 'd' | 'f'; name: string }[] = []
+  for (const line of output.split('\n')) {
+    const match = /^([df]) ([A-Za-z0-9][A-Za-z0-9._-]{0,120})$/.exec(line.trim())
+    if (!match) continue
+    rows.push({ kind: match[1] as 'd' | 'f', name: match[2] })
+  }
+  return rows
+}
+
+function parseDocker(output: string) {
+  const rows: { name: string; status: string; image: string }[] = []
+  for (const line of output.split('\n')) {
+    const [name, status, image] = line.split('|')
+    if (!name || !CONTAINER_RE.test(name.trim())) continue
+    rows.push({ name: name.trim(), status: (status || '').trim(), image: (image || '').trim() })
+  }
+  return rows
 }
 
 type UnitRow = { name: string; active: string; sub: string; description: string }
@@ -81,6 +142,11 @@ export function ServerAuditActions({
   const [writePrefix, setWritePrefix] = useState('/etc/nginx/conf.d/')
   const [writeName, setWriteName] = useState('corax.conf')
   const [fileBody, setFileBody] = useState('')
+  const [folder, setFolder] = useState('')
+  const [editPath, setEditPath] = useState('')
+  const [filledReadId, setFilledReadId] = useState<number | null>(null)
+  const [playSteps, setPlaySteps] = useState<PlayStep[]>(loadPlaybook)
+  const [composePath, setComposePath] = useState('/etc/corax/compose/web')
   const [openId, setOpenId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -97,12 +163,29 @@ export function ServerAuditActions({
         }
         if (rows.read[0]) setReadPath(rows.read[0])
         if (rows.write_prefixes[0]) setWritePrefix(rows.write_prefixes[0])
+        if (rows.list_prefixes?.[0]) setFolder((current) => current || rows.list_prefixes?.[0] || '')
       })
       .catch(() => undefined)
     return () => {
       alive = false
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PLAYBOOK_KEY, JSON.stringify(playSteps))
+    } catch {
+      /* the draft is optional */
+    }
+  }, [playSteps])
+
+  useEffect(() => {
+    if (!editPath) return
+    const job = jobs.find((item) => item.action === 'read' && item.target === editPath && item.status === 'done' && item.output)
+    if (!job || job.id === filledReadId) return
+    setFileBody(job.output || '')
+    setFilledReadId(job.id)
+  }, [editPath, filledReadId, jobs])
 
   const when = (iso: string | null) => {
     if (!iso) return ''
@@ -123,6 +206,13 @@ export function ServerAuditActions({
   const nameOk = FILE_RE.test(writeName.trim())
   const writePath = `${writePrefix}${writeName.trim()}`
 
+  const listPrefixes = catalog.list_prefixes?.length ? catalog.list_prefixes : ['/etc/corax', '/etc/nginx']
+  const composePrefixes = catalog.compose_prefixes?.length ? catalog.compose_prefixes : ['/etc/corax/compose']
+  const listJob = jobs.find((job) => job.action === 'list' && job.target === folder && job.status === 'done' && job.output)
+  const listed = parseList(listJob?.output || '')
+  const dockerJob = jobs.find((job) => job.action === 'docker' && job.target === 'ps' && job.status === 'done' && job.output)
+  const containers = parseDocker(dockerJob?.output || '')
+  const playbookBody = playbookPayload(playSteps)
   const unitsJob = jobs.find((job) => job.action === 'units' && job.status === 'done' && job.output)
   const units = parseUnits(unitsJob?.output || '')
   const shown = jobs.find((job) => job.action === 'show' && job.target === picked && job.output)
@@ -137,6 +227,42 @@ export function ServerAuditActions({
     })
     if (!ok) return
     await onQueue('restart', unit)
+  }
+
+  async function dockerVerb(verb: 'start' | 'stop' | 'restart', name: string) {
+    const ok = await confirm.ask({
+      title: t('serverAudit.dockerTitle'),
+      body: t('serverAudit.dockerAsk', { verb, name }),
+      confirmLabel: t('serverAudit.dockerRestart'),
+      tone: 'danger',
+    })
+    if (!ok) return
+    await onQueue('docker', verb, name)
+  }
+
+  async function composeVerb(verb: 'compose-up' | 'compose-down') {
+    const path = composePath.trim().replace(/\/+$/, '')
+    if (!path.startsWith('/etc/corax/compose/') && !path.startsWith('/opt/corax/compose/')) return
+    const ok = await confirm.ask({
+      title: t('serverAudit.dockerTitle'),
+      body: t('serverAudit.dockerAsk', { verb, name: path }),
+      confirmLabel: verb === 'compose-up' ? t('serverAudit.composeUp') : t('serverAudit.composeDown'),
+      tone: 'danger',
+    })
+    if (!ok) return
+    await onQueue('docker', verb, path)
+  }
+
+  async function runPlaybook() {
+    if (!playbookBody) return
+    const ok = await confirm.ask({
+      title: t('serverAudit.playbookTitle'),
+      body: t('serverAudit.playbookAsk', { n: String(playSteps.length) }),
+      confirmLabel: t('serverAudit.playbookRun'),
+      tone: 'danger',
+    })
+    if (!ok) return
+    await onQueue('playbook', 'run', playbookBody)
   }
 
   return (
@@ -197,6 +323,118 @@ export function ServerAuditActions({
             {shown?.output ? (
               <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 font-mono text-[11px] text-[var(--color-fg)]">{shown.output}</pre>
             ) : null}
+          </div>
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.dockerTitle')}</div>
+              <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void onQueue('docker', 'ps')}>
+                {t('serverAudit.dockerList')}
+              </button>
+            </div>
+            {containers.length === 0 ? (
+              <p className="mt-3 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.dockerEmpty')}</p>
+            ) : (
+              <div className="mt-3 flex max-h-56 flex-col gap-1 overflow-auto">
+                {containers.map((container) => (
+                  <div key={container.name} className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--color-surface)] px-2 py-1.5">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-xs text-[var(--color-fg)]">{container.name}</span>
+                      <span className="block truncate text-[11px] text-[var(--color-fg-subtle)]">{container.status}{container.image ? ` · ${container.image}` : ''}</span>
+                    </span>
+                    <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('start', container.name)}>
+                      {t('serverAudit.dockerStart')}
+                    </button>
+                    <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('stop', container.name)}>
+                      {t('serverAudit.dockerStop')}
+                    </button>
+                    <button type="button" className="app-btn app-btn-danger !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('restart', container.name)}>
+                      {t('serverAudit.dockerRestart')}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                value={composePath}
+                onChange={(event) => setComposePath(event.target.value)}
+                className="app-input min-w-0 flex-1 font-mono"
+                placeholder={`${composePrefixes[0]}/web`}
+                spellCheck={false}
+                aria-label={t('serverAudit.composePath')}
+              />
+              <button
+                type="button"
+                className="app-btn app-btn-primary !min-h-0 !px-3 !py-2"
+                disabled={busy}
+                onClick={() => void composeVerb('compose-up')}
+              >
+                {t('serverAudit.composeUp')}
+              </button>
+              <button
+                type="button"
+                className="app-btn app-btn-danger !min-h-0 !px-3 !py-2"
+                disabled={busy}
+                onClick={() => void composeVerb('compose-down')}
+              >
+                {t('serverAudit.composeDown')}
+              </button>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4">
+            <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.playbookTitle')}</div>
+            <p className="mt-1 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('serverAudit.playbookLead')}</p>
+            <div className="mt-3 flex flex-col gap-2">
+              {playSteps.map((step, index) => (
+                <div key={`${step.kind}-${index}`} className="grid grid-cols-[10rem_minmax(0,1fr)_auto] gap-2">
+                  <select
+                    value={step.kind}
+                    onChange={(event) =>
+                      setPlaySteps((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, kind: event.target.value } : item)))
+                    }
+                    className="app-input app-select"
+                  >
+                    <option value="restart">{t('serverAudit.actKindRestart')}</option>
+                    <option value="status">{t('serverAudit.actKindStatus')}</option>
+                    <option value="docker-ps">{t('serverAudit.dockerList')}</option>
+                    <option value="docker-start">{t('serverAudit.dockerStart')}</option>
+                    <option value="docker-stop">{t('serverAudit.dockerStop')}</option>
+                    <option value="docker-restart">{t('serverAudit.dockerRestart')}</option>
+                    <option value="compose-up">{t('serverAudit.composeUp')}</option>
+                    <option value="compose-down">{t('serverAudit.composeDown')}</option>
+                  </select>
+                  <input
+                    value={step.value}
+                    onChange={(event) =>
+                      setPlaySteps((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, value: event.target.value } : item)))
+                    }
+                    className="app-input font-mono"
+                    spellCheck={false}
+                    disabled={step.kind === 'docker-ps'}
+                  />
+                  <button
+                    type="button"
+                    className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1"
+                    onClick={() => setPlaySteps((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
+                disabled={playSteps.length >= 8}
+                onClick={() => setPlaySteps((prev) => [...prev, { kind: 'restart', value: 'nginx' }].slice(0, 8))}
+              >
+                {t('serverAudit.playbookAdd')}
+              </button>
+              <button type="button" className="app-btn app-btn-primary !min-h-0 !px-3 !py-2" disabled={busy || !playbookBody} onClick={() => void runPlaybook()}>
+                {t('serverAudit.playbookRun')}
+              </button>
+            </div>
           </div>
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-2">
@@ -264,6 +502,66 @@ export function ServerAuditActions({
         </div>
         </div>
       ) : (
+        <div className="flex flex-col gap-4">
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.folderTitle')}</div>
+            <select value={folder} onChange={(event) => setFolder(event.target.value)} className="app-input app-select min-w-0 flex-1 font-mono">
+              {folder && !listPrefixes.includes(folder) ? <option value={folder}>{folder}</option> : null}
+              {listPrefixes.map((path) => (
+                <option key={path} value={path}>
+                  {path}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy || !folder} onClick={() => void onQueue('list', folder)}>
+              {t('serverAudit.folderList')}
+            </button>
+            <button
+              type="button"
+              className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
+              disabled={!folder || listPrefixes.includes(folder)}
+              onClick={() => {
+                const root = listPrefixes.find((prefix) => folder === prefix || folder.startsWith(`${prefix}/`))
+                if (!root || folder === root) return
+                const parent = folder.slice(0, folder.lastIndexOf('/'))
+                setFolder(parent.length >= root.length ? parent : root)
+              }}
+            >
+              {t('serverAudit.folderUp')}
+            </button>
+          </div>
+          <p className="mt-2 truncate font-mono text-[11px] text-[var(--color-fg-subtle)]">{folder}</p>
+          {listed.length === 0 ? (
+            <p className="mt-2 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.folderEmpty')}</p>
+          ) : (
+            <div className="mt-2 grid max-h-48 gap-1 overflow-auto sm:grid-cols-2">
+              {listed.map((entry) => (
+                <button
+                  key={`${entry.kind}-${entry.name}`}
+                  type="button"
+                  className="truncate rounded-lg px-2 py-1 text-left font-mono text-xs hover:bg-[var(--color-surface)]"
+                  onClick={() => {
+                    const next = `${folder.replace(/\/+$/, '')}/${entry.name}`
+                    if (entry.kind === 'd') {
+                      setFolder(next)
+                      void onQueue('list', next)
+                      return
+                    }
+                    setEditPath(next)
+                    setWriteName(entry.name)
+                    const prefix = catalog.write_prefixes.find((item) => next.startsWith(item))
+                    if (prefix) setWritePrefix(prefix)
+                    void onQueue('read', next)
+                  }}
+                >
+                  {entry.kind === 'd' ? '▸ ' : ''}
+                  {entry.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="flex flex-col gap-2">
             <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
@@ -298,7 +596,10 @@ export function ServerAuditActions({
                 {t('serverAudit.actWriteName')}
                 <input
                   value={writeName}
-                  onChange={(event) => setWriteName(event.target.value)}
+                  onChange={(event) => {
+                    setEditPath('')
+                    setWriteName(event.target.value)
+                  }}
                   className="app-input font-mono"
                   spellCheck={false}
                   autoComplete="off"
@@ -318,12 +619,13 @@ export function ServerAuditActions({
                 type="button"
                 disabled={busy || !fileBody.trim() || !nameOk}
                 className="app-btn app-btn-primary !min-h-0 !px-3 !py-2"
-                onClick={() => void onQueue('write', writePath, fileBody)}
+                onClick={() => void onQueue('write', editPath || writePath, fileBody)}
               >
                 {t('serverAudit.actWrite')}
               </button>
             </span>
           </div>
+        </div>
         </div>
       )}
 

@@ -28,12 +28,22 @@ _READ_FILES = {
     "/etc/nginx/nginx.conf",
     "/etc/ssh/sshd_config",
 }
+_SCRIPT_PREFIXES = (
+    "/opt/corax/scripts/",
+    "/var/lib/corax/scripts/",
+)
+_COMPOSE_PREFIXES = (
+    "/etc/corax/compose/",
+    "/opt/corax/compose/",
+)
 _READ_PREFIXES = (
     "/etc/nginx/",
     "/etc/apache2/",
     "/etc/httpd/",
     "/etc/ssh/sshd_config.d/",
     "/etc/corax/",
+    *_SCRIPT_PREFIXES,
+    *_COMPOSE_PREFIXES,
 )
 _WRITE_PREFIXES = (
     "/etc/nginx/conf.d/",
@@ -41,7 +51,11 @@ _WRITE_PREFIXES = (
     "/etc/apache2/sites-available/",
     "/etc/httpd/conf.d/",
     "/etc/corax/",
+    *_SCRIPT_PREFIXES,
+    *_COMPOSE_PREFIXES,
 )
+_CONTAINER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+_DOCKER = {"ps", "start", "stop", "restart", "compose-up", "compose-down"}
 _DENY_NAMES = {"shadow", "gshadow", "sudoers", "passwd", "group", "crontab", "authorized_keys"}
 _DENY_BITS = ("sudoers", "cron.d", "crontab", "pam.d", "/systemd/", "id_rsa", ".pem", ".key")
 _BODY_MAX = 32_768
@@ -92,12 +106,31 @@ def _path(raw: str) -> str | None:
     return normal
 
 
+def _under(path: str, prefixes: tuple[str, ...]) -> bool:
+    for prefix in prefixes:
+        root = prefix.rstrip("/")
+        if path == root or path.startswith(root + "/"):
+            return True
+    return False
+
+
+def _listable(path: str) -> bool:
+    roots = tuple(root if root.endswith("/") else root + "/" for root in _MODEL_ROOTS)
+    return _under(path, _READ_PREFIXES + roots)
+
+
 def _readable(path: str) -> bool:
+    name = posixpath.basename(path).lower()
+    if name == ".env" or name.endswith(".env"):
+        return False
     return path in _READ_FILES or any(path.startswith(prefix) for prefix in _READ_PREFIXES)
 
 
 def _writable(path: str) -> bool:
     if path.endswith("/"):
+        return False
+    name = posixpath.basename(path).lower()
+    if name == ".env" or name.endswith(".env"):
         return False
     return any(path.startswith(prefix) for prefix in _WRITE_PREFIXES)
 
@@ -107,7 +140,7 @@ def _run(argv: list[str], timeout: float = 25) -> tuple[int, str]:
 
     if hasattr(os, "geteuid") and os.geteuid() != 0 and argv:
         tool = os.path.basename(argv[0])
-        if tool in {"systemctl", "journalctl", "nginx", "sshd"} and argv[0] != "sudo":
+        if tool in {"systemctl", "journalctl", "nginx", "sshd", "docker"} and argv[0] != "sudo":
             argv = ["sudo", "-n", *argv]
     try:
         proc = subprocess.run(
@@ -152,6 +185,106 @@ def _write(path: str, body: str) -> tuple[int, str]:
     except OSError as exc:
         return 1, str(exc)[:_OUT_MAX]
     return 0, "Файл записан"
+
+
+def _list_dir(path: str) -> tuple[int, str]:
+    if os.path.islink(path) or not os.path.isdir(path):
+        return 1, "Каталог не найден или это ссылка"
+    try:
+        entries = list(os.scandir(path))
+    except OSError as exc:
+        return 1, str(exc)[:_OUT_MAX]
+    lines: list[str] = []
+    entries.sort(key=lambda entry: (not entry.is_dir(follow_symlinks=False), entry.name.lower()))
+    for entry in entries:
+        if len(lines) >= 200:
+            break
+        name = entry.name
+        if not name or name in {".", ".."} or "/" in name or "\n" in name or "\x00" in name:
+            continue
+        lowered = name.lower()
+        if lowered == ".env" or lowered.endswith(".env") or lowered.endswith(".key") or lowered.endswith(".pem"):
+            continue
+        try:
+            if entry.is_dir(follow_symlinks=False):
+                kind = "d"
+            elif entry.is_file(follow_symlinks=False):
+                kind = "f"
+            else:
+                continue
+        except OSError:
+            continue
+        lines.append(f"{kind} {name}")
+    return 0, "\n".join(lines) if lines else "Пусто"
+
+
+def _container(raw: object) -> str | None:
+    name = raw.strip() if isinstance(raw, str) else ""
+    if not _CONTAINER.fullmatch(name):
+        return None
+    return name
+
+
+def _compose_file(directory: str) -> str | None:
+    if os.path.islink(directory) or not os.path.isdir(directory):
+        return None
+    for name in ("compose.yml", "docker-compose.yml"):
+        candidate = directory.rstrip("/") + "/" + name
+        if os.path.islink(candidate) or not os.path.isfile(candidate):
+            continue
+        return candidate
+    return None
+
+
+def _docker(verb: str, body: object) -> tuple[int, str]:
+    if verb == "ps":
+        if body not in (None, ""):
+            return 1, "Список контейнеров отклонён"
+        return _run(["docker", "ps", "-a", "--format", "{{.Names}}|{{.Status}}|{{.Image}}"], timeout=20)
+    if verb in {"start", "stop", "restart"}:
+        name = _container(body)
+        if name is None:
+            return 1, "Имя контейнера отклонено"
+        return _run(["docker", verb, name], timeout=40)
+    if verb in {"compose-up", "compose-down"}:
+        directory = _path(body if isinstance(body, str) else "")
+        if directory is None or not _under(directory, _COMPOSE_PREFIXES):
+            return 1, "Каталог compose отклонён"
+        compose = _compose_file(directory)
+        if compose is None:
+            return 1, "В каталоге нет compose.yml"
+        command = "up" if verb == "compose-up" else "down"
+        argv = ["docker", "compose", "-f", compose, "--project-directory", directory, command]
+        if command == "up":
+            argv.append("-d")
+        return _run(argv, timeout=120)
+    return 1, "Команда Docker отклонена"
+
+
+def _playbook(body: object) -> tuple[int, str]:
+    if not isinstance(body, str) or not body.strip() or len(body) > _BODY_MAX or "\x00" in body:
+        return 1, "Плейбук отклонён"
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        return 1, "Плейбук отклонён"
+    steps = data.get("steps") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or set(data) - {"steps"} or not isinstance(steps, list) or not 1 <= len(steps) <= 8:
+        return 1, "Плейбук отклонён"
+    chunks: list[str] = []
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, dict) or set(step) - {"action", "target", "body"}:
+            return 1, "Плейбук отклонён"
+        action = str(step.get("action") or "").strip().lower()
+        if action == "playbook":
+            return 1, "Плейбук отклонён"
+        code, text = execute(
+            {"action": action, "target": str(step.get("target") or ""), "body": step.get("body")}
+        )
+        chunks.append(f"--- {index} {action} {step.get('target') or ''} ({code}) ---\n{text.rstrip()}")
+        if code != 0:
+            return code, "\n".join(chunks)[:_OUT_MAX]
+    return 0, "\n".join(chunks)[:_OUT_MAX]
 
 
 def _llm_unit(raw: str) -> str | None:
@@ -477,6 +610,17 @@ def execute(job: dict) -> tuple[int, str]:
         if str(target or "").strip() not in {"", "rpc"}:
             return 1, "Проверка RPC отклонена"
         return _rpc_probe(job.get("body"))
+    if action == "list":
+        path = _path(target)
+        if path is None or not _listable(path) or job.get("body") not in (None, ""):
+            return 1, "Каталог отклонён"
+        return _list_dir(path)
+    if action == "docker":
+        return _docker(str(target or "").strip().lower(), job.get("body"))
+    if action == "playbook":
+        if str(target or "").strip() not in {"", "run"}:
+            return 1, "Плейбук отклонён"
+        return _playbook(job.get("body"))
     if action == "read":
         path = _path(target)
         if path is None or not _readable(path):

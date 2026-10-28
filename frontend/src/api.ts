@@ -1524,7 +1524,17 @@ export type ServerAuditDetail = ServerAuditHost & {
   payload_in_range: boolean
 }
 
-export type ServerAuditJobAction = 'status' | 'test' | 'read' | 'restart' | 'write' | 'units' | 'show'
+export type ServerAuditJobAction =
+  | 'status'
+  | 'test'
+  | 'read'
+  | 'restart'
+  | 'write'
+  | 'units'
+  | 'show'
+  | 'list'
+  | 'docker'
+  | 'playbook'
 
 export type ServerAuditJob = {
   id: number
@@ -1545,6 +1555,8 @@ export type ServerAuditActionCatalog = {
   write_prefixes: string[]
   llm_units?: string[]
   model_roots?: string[]
+  list_prefixes?: string[]
+  compose_prefixes?: string[]
 }
 
 export type LlmGpu = {
