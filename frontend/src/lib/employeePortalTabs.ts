@@ -1,17 +1,21 @@
 import type { EmployeePortalTab } from '../api'
 
-export function createPortalTab(title: string, columnDefaults: [string, string] = ['Имя', 'Значение']): EmployeePortalTab {
+export function createPortalTab(
+  title: string,
+  columnDefaults: readonly string[] = ['Имя', 'Значение'],
+): EmployeePortalTab {
   const id =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID().slice(0, 12)
       : `tab-${Date.now().toString(36)}`
+  const columns = columnDefaults.length > 0 ? [...columnDefaults] : ['Имя', 'Значение']
   return {
     id,
     title,
     kind: 'text',
     body: '',
-    columns: [...columnDefaults],
-    rows: [['', '']],
+    columns,
+    rows: [columns.map(() => '')],
     enabled: true,
   }
 }

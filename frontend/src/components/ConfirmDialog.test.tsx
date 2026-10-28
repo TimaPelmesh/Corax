@@ -13,8 +13,8 @@ function renderDialog(
     open?: boolean
   } = {},
 ) {
-  const onClose = props.onClose ?? vi.fn()
-  const onConfirm = props.onConfirm ?? vi.fn()
+  const onClose = vi.fn(props.onClose)
+  const onConfirm = vi.fn(props.onConfirm)
   return {
     onClose,
     onConfirm,
