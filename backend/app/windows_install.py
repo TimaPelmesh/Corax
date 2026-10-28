@@ -46,6 +46,9 @@ _ACCESS_STATUS = {
     0xC0000022,  # access denied
     0xC0000061,  # privilege not held
 }
+_SHARING_STATUS = {
+    0xC0000043,  # sharing violation: the destination file is already open
+}
 _MISSING_STATUS = {
     0xC0000034,  # object name not found
     0xC000003A,  # object path not found
@@ -107,6 +110,11 @@ def explain_remote_failure(exc: BaseException, stage: str) -> str:
                 "Обычного локального администратора она режет именно так: подключиться можно, записать нельзя. "
                 "Dr.Web в этой ситуации ставится встроенным Администратором или доменным администратором — их этот фильтр не касается. "
                 "Если учётка уже такая, запись останавливает сам Dr.Web."
+            )
+        if status in _SHARING_STATUS:
+            return (
+                "Вход прошёл, но файл агента на компьютере сейчас открыт (код C0000043). "
+                "Его держит уже запущенная копия. Закройте её и повторите установку."
             )
         if status in _MISSING_STATUS:
             return "Вход прошёл, но служебная папка ADMIN$ или C$ на компьютере не открыта."
@@ -219,6 +227,9 @@ _AGENT_EXE = r"C:\ProgramData\CORAX\Agent\CORAX-Agent.exe"
 _COPY_TARGETS = (
     ("ADMIN$", r"Temp\CORAX-Agent.exe", r"C:\Windows\Temp\CORAX-Agent.exe", r"C:\Windows\Temp"),
     ("C$", r"Windows\Temp\CORAX-Agent.exe", r"C:\Windows\Temp\CORAX-Agent.exe", r"C:\Windows\Temp"),
+    # Used when the first name is still open. A different file is not locked.
+    ("ADMIN$", r"Temp\CORAX-Agent-setup.exe", r"C:\Windows\Temp\CORAX-Agent-setup.exe", r"C:\Windows\Temp"),
+    ("C$", r"Windows\Temp\CORAX-Agent-setup.exe", r"C:\Windows\Temp\CORAX-Agent-setup.exe", r"C:\Windows\Temp"),
 )
 _LAUNCH_EXES = {item[2] for item in _COPY_TARGETS} | {_AGENT_EXE}
 _LAUNCH_DIRS = {item[3] for item in _COPY_TARGETS} | {r"C:\ProgramData\CORAX\Agent"}
@@ -292,8 +303,8 @@ def _upload(conn, data: bytes) -> tuple[str, str]:
     raise last
 
 
-def _start_quietly(host: str, domain: str, user: str, password: str, exe: str, cwd: str) -> int:
-    """Start the copied agent through WMI. It is not a service, so SCM cannot host it."""
+def _wmi_process(host: str, domain: str, user: str, password: str):
+    """One WMI process object. The caller closes the DCOM link."""
     from impacket.dcerpc.v5.dcom.wmi import CLSID_WbemLevel1Login, IID_IWbemLevel1Login, IWbemLevel1Login
     from impacket.dcerpc.v5.dcomrt import DCOMConnection
     from impacket.dcerpc.v5.dtypes import NULL
@@ -304,15 +315,43 @@ def _start_quietly(host: str, domain: str, user: str, password: str, exe: str, c
         login = IWbemLevel1Login(interface)
         services = login.NTLMLogin("//./root/cimv2", NULL, NULL)
         login.RemRelease()
-        if exe not in _LAUNCH_EXES or cwd not in _LAUNCH_DIRS:
-            raise WindowsInstallError("Некорректный путь запуска")
         process, _ = services.GetObject("Win32_Process")
+        return dcom, process
+    except Exception:
+        try:
+            dcom.disconnect()
+        except Exception:
+            pass
+        raise
+
+
+def _stop_running_agent(host: str, domain: str, user: str, password: str) -> None:
+    """Release CORAX-Agent.exe before the copy. A running file cannot be overwritten."""
+    try:
+        dcom, process = _wmi_process(host, domain, user, password)
+    except Exception:
+        log.warning("windows install could not stop the previous agent")
+        return
+    try:
         for command in _REPLACE_COMMANDS:
             try:
                 process.Create(command, r"C:\Windows\System32", None)
             except Exception:
                 log.warning("windows install could not stop the previous agent")
-        time.sleep(1.5)
+    finally:
+        try:
+            dcom.disconnect()
+        except Exception:
+            pass
+    time.sleep(1.5)
+
+
+def _start_quietly(host: str, domain: str, user: str, password: str, exe: str, cwd: str) -> int:
+    """Start the copied agent through WMI. It is not a service, so SCM cannot host it."""
+    if exe not in _LAUNCH_EXES or cwd not in _LAUNCH_DIRS:
+        raise WindowsInstallError("Некорректный путь запуска")
+    dcom, process = _wmi_process(host, domain, user, password)
+    try:
         created = process.Create(agent_launch_command(exe), cwd, None)
         code = int(getattr(created, "ReturnValue", 1) or 0)
         if code != 0:
@@ -351,6 +390,7 @@ def push_over_smb(host: str, user: str, password: str, exe: bytes) -> dict:
         except Exception:
             pass
         raise WindowsInstallError(explain_remote_failure(exc, "login")) from exc
+    _stop_running_agent(host, domain, name, password)
     try:
         placed, cwd = _upload(conn, exe)
     except WindowsInstallError:

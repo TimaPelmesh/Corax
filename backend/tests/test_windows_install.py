@@ -50,6 +50,9 @@ def test_smb_starts_only_the_agent():
     dropped = agent_launch_command(local)
     assert dropped == r'"C:\Windows\Temp\CORAX-Agent.exe" --install --silent'
     assert "cmd" not in dropped.lower()
+    setup = agent_launch_command(r"C:\Windows\Temp\CORAX-Agent-setup.exe")
+    assert setup == r'"C:\Windows\Temp\CORAX-Agent-setup.exe" --install --silent'
+    assert "cmd" not in setup.lower()
     prelude = replace_commands()
     assert prelude[-1] == r"C:\Windows\System32\taskkill.exe /F /IM CORAX-Agent.exe"
     assert all("cmd" not in command.lower() for command in prelude)
@@ -67,6 +70,12 @@ def test_copy_denial_says_the_share_not_the_port():
     assert "локального администратора" in text
     assert "Dr.Web" in text
     assert "закрыт" not in text
+    assert "445 и 135" not in text
+
+
+def test_sharing_violation_means_the_file_is_open():
+    text = explain_remote_failure(_StatusError(0xC0000043), "copy")
+    assert "открыт" in text
     assert "445 и 135" not in text
 
 
