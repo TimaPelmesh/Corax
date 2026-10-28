@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { api, type DatabaseBackupStatus } from '../api'
 import { useAuth } from '../AuthContext'
+import { IconServer } from '../components/icons'
+import { PageHeader } from '../components/PageHeader'
+import { Skeleton } from '../components/Skeleton'
+import { StatusPill } from '../components/ui/StatusPill'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -12,20 +16,32 @@ export function SettingsDatabasePage() {
   const importRef = useRef<HTMLInputElement | null>(null)
   const [status, setStatus] = useState<DatabaseBackupStatus | null>(null)
   const [statusErr, setStatusErr] = useState<string | null>(null)
+  const [statusLoading, setStatusLoading] = useState(true)
   const [exportBusy, setExportBusy] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
   const [confirm, setConfirm] = useState('')
 
   useEffect(() => {
     if (!user?.is_superuser) return
+    setStatusLoading(true)
     void api
       .databaseBackupStatus()
-      .then(setStatus)
+      .then((s) => {
+        setStatus(s)
+        setStatusErr(null)
+      })
       .catch((e) => setStatusErr(e instanceof Error ? e.message : t('settingsDatabase.loadStatusFailed')))
+      .finally(() => setStatusLoading(false))
   }, [t, user?.is_superuser])
 
   if (authLoading) {
-    return <p className="text-sm text-[var(--color-fg-subtle)]">{t('common.loading')}</p>
+    return (
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4" role="status" aria-busy="true">
+        <Skeleton className="h-14 w-full max-w-md rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <span className="sr-only">{t('common.loading')}</span>
+      </div>
+    )
   }
 
   if (!user?.is_superuser) {
@@ -36,11 +52,26 @@ export function SettingsDatabasePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-      {statusErr ? <div className="app-alert app-alert-warning mb-4">{statusErr}</div> : null}
+      <PageHeader
+        icon={<IconServer className="h-7 w-7" />}
+        title={t('titles.database')}
+        subtitle={t('settingsPurpose.database')}
+      />
+
+      {statusErr ? <div className="app-alert app-alert-warning">{statusErr}</div> : null}
+
+      {statusLoading && !status ? (
+        <div className="grid gap-3 sm:grid-cols-3" role="status" aria-busy="true">
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+          <span className="sr-only">{t('common.loading')}</span>
+        </div>
+      ) : null}
 
       {status ? (
-        <div className="mb-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="app-panel-sm">
             <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsDatabase.databaseCard')}
             </div>
@@ -48,7 +79,7 @@ export function SettingsDatabasePage() {
               {status.database ?? '—'} @ {status.host ?? '—'}:{status.port ?? '—'}
             </div>
           </div>
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm">
+          <div className="app-panel-sm">
             <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsDatabase.recordsCard')}
             </div>
@@ -60,16 +91,14 @@ export function SettingsDatabasePage() {
               })}
             </div>
           </div>
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-sm">
+          <div className="app-panel-sm">
             <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
               {t('settingsDatabase.pgToolsCard')}
             </div>
-            <div
-              className={`mt-1 font-medium ${
-                toolsOk ? 'text-[var(--color-primary)]' : 'text-yellow-800 dark:text-yellow-200'
-              }`}
-            >
-              {toolsOk ? t('settingsDatabase.toolsAvailable') : t('settingsDatabase.toolsMissing')}
+            <div className="mt-1.5">
+              <StatusPill tone={toolsOk ? 'success' : 'warning'}>
+                {toolsOk ? t('settingsDatabase.toolsAvailable') : t('settingsDatabase.toolsMissing')}
+              </StatusPill>
             </div>
             {status.pg_bin_dir_configured ? (
               <div className="mt-1 break-all font-mono text-[11px] text-[var(--color-fg-subtle)]">
@@ -86,14 +115,14 @@ export function SettingsDatabasePage() {
       ) : null}
 
       {!status?.single_database && status ? (
-        <div className="app-alert app-alert-warning mb-6">
+        <div className="app-alert app-alert-warning">
           {t('settingsDatabase.multiDbWarning')}{' '}
           <code className="text-xs">DATABASE_URL</code>.
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-4 p-5">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="app-panel space-y-4">
           <h2 className="text-sm font-semibold text-[var(--color-fg)]">
             {t('settingsDatabase.exportTitle')}
           </h2>
@@ -102,7 +131,7 @@ export function SettingsDatabasePage() {
           </p>
           <button
             type="button"
-            className="app-btn app-btn-primary"
+            className="app-btn app-btn-primary w-full sm:w-auto"
             disabled={exportBusy || !toolsOk}
             onClick={() => {
               setExportBusy(true)
@@ -117,7 +146,7 @@ export function SettingsDatabasePage() {
           </button>
         </section>
 
-        <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-4 p-5">
+        <section className="app-panel space-y-4">
           <h2 className="text-sm font-semibold text-[var(--color-fg)]">
             {t('settingsDatabase.importTitle')}
           </h2>
@@ -178,7 +207,7 @@ export function SettingsDatabasePage() {
           />
           <button
             type="button"
-            className="app-btn app-btn-danger"
+            className="app-btn app-btn-danger w-full sm:w-auto"
             disabled={importBusy || !toolsOk || confirm.trim() !== 'RESTORE'}
             onClick={() => importRef.current?.click()}
           >
@@ -187,7 +216,7 @@ export function SettingsDatabasePage() {
         </section>
       </div>
 
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-xs leading-relaxed text-[var(--color-fg-muted)]">
+      <div className="app-panel text-xs leading-relaxed text-[var(--color-fg-muted)]">
         <p>
           {t('settingsDatabase.windowsHintIntro')}{' '}
           <code className="text-[var(--color-fg)]">backend/.env</code>:

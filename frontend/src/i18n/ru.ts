@@ -565,6 +565,8 @@ export const ru = {
     noUsers: 'Нет пользователей панели',
     manageUsers: 'Управление пользователями',
     saved: 'Сохранено',
+    statusReady: 'Готово',
+    statusForcedOff: 'Принудительно выкл.',
   },
   computers: {
     hostLabel: 'Поиск',
@@ -655,6 +657,7 @@ export const ru = {
     exactPackageName: 'Фильтры:',
     noDataForSelection: 'Нет ПК, подходящих под все выбранные фильтры.',
     openDetails: 'Подробнее',
+    hostsLoadingHint: 'Подбираем компьютеры…',
   },
   dashboard: {
     noData: 'Нет данных',
@@ -2942,6 +2945,7 @@ export const ru = {
     riskLink: 'Центр рисков',
     severityAll: 'Все важности',
     clearSearch: 'Сбросить поиск',
+    filtersToolbar: 'Фильтры и действия',
   },
   settingsBitrix: {
     loadFailed: 'Ошибка загрузки',
@@ -3151,6 +3155,8 @@ export const ru = {
     revokeAllConfirm:
       'Отозвать все токены агентов? Копии установщика перестанут слать инвентаризацию, пока вы снова не одобрите каждый ПК.',
     revokeAllDone: 'Отозвано токенов: {count}',
+    loadErrorHint: 'Не удалось загрузить токены или заявки на подключение. Проверьте API и повторите.',
+    pendingCount: 'ждут: {n}',
   },
   agentBundle: {
     modules: {
@@ -3363,6 +3369,7 @@ export const ru = {
       kindText: 'Текст',
       kindTable: 'Таблица',
       enabled: 'Показывать',
+      disabled: 'Скрыто',
       empty: 'Вкладок пока нет. Добавьте справочник — телефоны, VPN, что нужно сотрудникам.',
       bodyPlaceholder: 'Свободный текст: номера, инструкции, ссылки.',
       addRow: 'Строка',
@@ -3372,6 +3379,7 @@ export const ru = {
       saved: 'Вкладки сохранены — сотрудники увидят их сразу',
       saveFailed: 'Не удалось сохранить вкладки',
       loadFailed: 'Не удалось загрузить вкладки',
+      deleteConfirm: 'Удалить вкладку «{title}»? После сохранения сотрудники её больше не увидят.',
     },
   },
   sitemap: {

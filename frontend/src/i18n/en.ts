@@ -567,6 +567,8 @@ export const en: MessageTree = {
     noUsers: 'No panel users',
     manageUsers: 'Manage users',
     saved: 'Saved',
+    statusReady: 'Ready',
+    statusForcedOff: 'Forced off',
   },
   computers: {
     hostLabel: 'Search',
@@ -657,6 +659,7 @@ export const en: MessageTree = {
     exactPackageName: 'Filters:',
     noDataForSelection: 'No PCs match all selected filters.',
     openDetails: 'Details',
+    hostsLoadingHint: 'Matching computers…',
   },
   dashboard: {
     noData: 'No data',
@@ -2944,6 +2947,7 @@ export const en: MessageTree = {
     riskLink: 'Risk center',
     severityAll: 'All severities',
     clearSearch: 'Clear search',
+    filtersToolbar: 'Filters and actions',
   },
   settingsBitrix: {
     loadFailed: 'Load failed',
@@ -3153,6 +3157,8 @@ export const en: MessageTree = {
     revokeAllConfirm:
       'Revoke every agent token? Installer copies will stop sending inventory until you approve each PC again.',
     revokeAllDone: 'Tokens revoked: {count}',
+    loadErrorHint: 'Could not load tokens or pending approvals. Check that the API is reachable, then retry.',
+    pendingCount: '{n} waiting',
   },
   agentBundle: {
     modules: {
@@ -3365,6 +3371,7 @@ export const en: MessageTree = {
       kindText: 'Text',
       kindTable: 'Table',
       enabled: 'Visible',
+      disabled: 'Hidden',
       empty: 'No tabs yet. Add a phone list, VPN notes, or anything staff need.',
       bodyPlaceholder: 'Free text: numbers, instructions, links.',
       addRow: 'Row',
@@ -3374,6 +3381,7 @@ export const en: MessageTree = {
       saved: 'Tabs saved — employees will see them immediately',
       saveFailed: 'Could not save the tabs',
       loadFailed: 'Could not load the tabs',
+      deleteConfirm: 'Delete tab “{title}”? Employees will stop seeing it after the next save.',
     },
   },
   sitemap: {

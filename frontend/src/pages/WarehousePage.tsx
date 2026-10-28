@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
   api,
@@ -9,8 +8,11 @@ import {
   type WarehouseStockItem,
 } from '../api'
 import { useAuth } from '../AuthContext'
-import { IconClose, IconInfo, IconTrash } from '../components/icons'
+import { IconInfo, IconTrash } from '../components/icons'
 import { useConfirmDialog } from '../components/ConfirmDialog'
+import { PageHeader } from '../components/PageHeader'
+import { TableSkeleton } from '../components/Skeleton'
+import { AppModal } from '../components/ui/AppModal'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -121,8 +123,10 @@ function FilterChip({
   )
 }
 
-function conditionTone() {
-  return 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
+function conditionTone(condition: string) {
+  return condition === 'new'
+    ? 'bg-[var(--color-success-bg)] text-[var(--color-success-fg)]'
+    : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-muted)]'
 }
 
 function itemQty(item: WarehouseStockItem) {
@@ -650,7 +654,7 @@ export function WarehousePage() {
             return (
               <article
                 key={section.key}
-                className="app-table-shell overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]"
+                className="app-card app-table-shell overflow-hidden p-0"
               >
                 <header className={`flex flex-wrap items-center gap-2 px-3 py-2.5 ${look.head}`}>
                   <span className="text-[15px] font-semibold text-[var(--color-fg)]">{section.label}</span>
@@ -706,7 +710,7 @@ export function WarehousePage() {
                             {t('warehouse.quantityMany', { n: itemQty(item) })}
                           </td>
                           <td className="px-3 py-2">
-                            <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${conditionTone()}`}>
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${conditionTone(item.condition)}`}>
                               {t(`warehouse.conditions.${stockCondition(item.condition)}`)}
                             </span>
                           </td>
@@ -758,18 +762,20 @@ export function WarehousePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-      <h1 className="sr-only">{t('titles.warehouse')}</h1>
-      {!canEdit ? (
-        <div className="flex justify-end">
-          <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs font-medium text-[var(--color-fg-muted)]">
-            {t('warehouse.viewOnly')}
-          </span>
-        </div>
-      ) : null}
+      <PageHeader
+        title={t('titles.warehouse')}
+        actions={
+          !canEdit ? (
+            <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs font-medium text-[var(--color-fg-muted)]">
+              {t('warehouse.viewOnly')}
+            </span>
+          ) : null
+        }
+      />
 
       <div className="flex flex-col gap-4 lg:flex-row">
         <aside className="shrink-0 lg:w-56">
-          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <div className="app-panel !p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="px-1 text-xs font-medium text-[var(--color-fg-subtle)]">
                 {t('warehouse.rooms')}
@@ -879,15 +885,15 @@ export function WarehousePage() {
         </aside>
 
         <section className="min-w-0 flex-1 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('warehouse.searchPlaceholder')}
-              className="app-input min-w-[12rem] flex-1"
+              className="app-input min-w-0 w-full flex-1 sm:min-w-[12rem]"
               aria-label={t('warehouse.searchAria')}
             />
-            <div className="inline-flex h-9 w-[13rem] shrink-0 rounded-lg border border-[var(--color-border)] p-0.5">
+            <div className="inline-flex h-9 w-full shrink-0 rounded-lg border border-[var(--color-border)] p-0.5 sm:w-[13rem]">
               {(['stock', 'history'] as const).map((id) => (
                 <button
                   key={id}
@@ -945,7 +951,7 @@ export function WarehousePage() {
                 <div className={`relative ${view === 'stock' ? '' : 'invisible pointer-events-none'}`}>
                   <button
                     type="button"
-                    className="rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white"
+                    className="app-btn app-btn-primary w-full !min-h-9 sm:w-auto"
                     onClick={() => setAddMenuOpen((v) => !v)}
                     aria-expanded={addMenuOpen}
                   >
@@ -1007,17 +1013,16 @@ export function WarehousePage() {
 
           {view === 'history' ? (
             historyBusy ? (
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-10 text-center text-sm text-[var(--color-fg-subtle)]">
-                {t('warehouse.loadingItems')}
+              <div className="app-card app-table-shell overflow-hidden p-0" role="status" aria-busy="true">
+                <span className="sr-only">{t('warehouse.loadingItems')}</span>
+                <TableSkeleton rows={6} cols={4} />
               </div>
             ) : movements.length === 0 ? (
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-12 text-center text-sm text-[var(--color-fg-muted)]">
-                {t('warehouse.historyEmpty')}
-              </div>
+              <div className="app-empty-state">{t('warehouse.historyEmpty')}</div>
             ) : (
-              <div className="app-table-shell overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
+              <div className="app-card app-table-shell overflow-x-auto p-0">
                 <table className="app-table min-w-full text-left text-sm">
-                  <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
+                  <thead className="app-table-head">
                     <tr>
                       <th className="px-3 py-2.5">{t('warehouse.columns.updated')}</th>
                       <th className="px-3 py-2.5">{t('warehouse.columns.type')}</th>
@@ -1075,11 +1080,12 @@ export function WarehousePage() {
               </div>
             )
           ) : loading ? (
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-10 text-center text-sm text-[var(--color-fg-subtle)]">
-              {t('warehouse.loadingItems')}
+            <div className="app-card app-table-shell overflow-hidden p-0" role="status" aria-busy="true">
+              <span className="sr-only">{t('warehouse.loadingItems')}</span>
+              <TableSkeleton rows={6} cols={5} />
             </div>
           ) : !hasStock ? (
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-12 text-center">
+            <div className="app-empty-state">
               <p className="text-sm font-medium text-[var(--color-fg)]">
               {!activeRoom
                 ? rooms.length === 0
@@ -1124,217 +1130,177 @@ export function WarehousePage() {
         </section>
       </div>
 
-      {roomDialog
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center">
-              <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <h2 className="text-lg font-semibold text-[var(--color-fg)]">
-                    {roomDialog.mode === 'create'
-                      ? t('warehouse.roomDialogCreate')
-                      : t('warehouse.roomDialogRename')}
-                  </h2>
-                  <button
-                    type="button"
-                    className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
-                    onClick={() => setRoomDialog(null)}
-                  >
-                    <IconClose className="h-5 w-5" />
-                  </button>
-                </div>
-                <label className="block">
-                  <span className="app-label">{t('warehouse.roomName')}</span>
-                  <input
-                    value={roomDialog.title}
-                    onChange={(e) => setRoomDialog((d) => (d ? { ...d, title: e.target.value } : d))}
-                    className="app-input"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        void submitRoomDialog()
-                      }
-                    }}
-                  />
-                </label>
-                <label className="mt-3 block">
-                  <span className="app-label">{t('warehouse.roomNotes')}</span>
-                  <textarea
-                    value={roomDialog.notes}
-                    onChange={(e) => setRoomDialog((d) => (d ? { ...d, notes: e.target.value } : d))}
-                    className="app-input min-h-[4.5rem] resize-y"
-                    placeholder={t('warehouse.roomNotesPlaceholder')}
-                  />
-                </label>
-                <div className="mt-4 flex justify-end gap-2">
-                  <button type="button" className="app-btn app-btn-secondary" onClick={() => setRoomDialog(null)}>
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={roomBusy || !roomDialog.title.trim()}
-                    className="app-btn app-btn-primary"
-                    onClick={() => void submitRoomDialog()}
-                  >
-                    {roomBusy ? t('warehouse.saving') : t('common.save')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+      <AppModal
+        open={Boolean(roomDialog)}
+        title={
+          roomDialog?.mode === 'create' ? t('warehouse.roomDialogCreate') : t('warehouse.roomDialogRename')
+        }
+        onClose={() => setRoomDialog(null)}
+        size="sm"
+      >
+        {roomDialog ? (
+          <>
+            <label className="block">
+              <span className="app-label">{t('warehouse.roomName')}</span>
+              <input
+                value={roomDialog.title}
+                onChange={(e) => setRoomDialog((d) => (d ? { ...d, title: e.target.value } : d))}
+                className="app-input"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void submitRoomDialog()
+                  }
+                }}
+              />
+            </label>
+            <label className="mt-3 block">
+              <span className="app-label">{t('warehouse.roomNotes')}</span>
+              <textarea
+                value={roomDialog.notes}
+                onChange={(e) => setRoomDialog((d) => (d ? { ...d, notes: e.target.value } : d))}
+                className="app-input min-h-[4.5rem] resize-y"
+                placeholder={t('warehouse.roomNotesPlaceholder')}
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="app-btn app-btn-secondary" onClick={() => setRoomDialog(null)}>
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={roomBusy || !roomDialog.title.trim()}
+                className="app-btn app-btn-primary"
+                onClick={() => void submitRoomDialog()}
+              >
+                {roomBusy ? t('warehouse.saving') : t('common.save')}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </AppModal>
 
-      {transferTarget
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center">
-              <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div>
-                    <h2 className="text-lg font-semibold text-[var(--color-fg)]">{t('warehouse.moveTitle')}</h2>
-                    <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">{transferTarget.name}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
-                    onClick={() => setTransferItemId(null)}
-                  >
-                    <IconClose className="h-5 w-5" />
-                  </button>
-                </div>
-                <label className="block">
-                  <span className="app-label">{t('warehouse.transferTo')}</span>
-                  <select
-                    value={transferToId ?? ''}
-                    onChange={(e) => setTransferToId(Number(e.target.value))}
-                    className="app-input"
-                  >
-                    {otherRooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="mt-4 flex justify-end gap-2">
-                  <button type="button" className="app-btn app-btn-secondary" onClick={() => setTransferItemId(null)}>
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={transferBusy || !transferToId}
-                    className="app-btn app-btn-primary"
-                    onClick={() => void submitTransfer()}
-                  >
-                    {transferBusy ? t('warehouse.moving') : t('warehouse.moveTitle')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+      <AppModal
+        open={Boolean(transferTarget)}
+        title={t('warehouse.moveTitle')}
+        onClose={() => setTransferItemId(null)}
+        size="sm"
+      >
+        {transferTarget ? (
+          <>
+            <p className="mb-3 text-sm text-[var(--color-fg-muted)]">{transferTarget.name}</p>
+            <label className="block">
+              <span className="app-label">{t('warehouse.transferTo')}</span>
+              <select
+                value={transferToId ?? ''}
+                onChange={(e) => setTransferToId(Number(e.target.value))}
+                className="app-input"
+              >
+                {otherRooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="app-btn app-btn-secondary" onClick={() => setTransferItemId(null)}>
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={transferBusy || !transferToId}
+                className="app-btn app-btn-primary"
+                onClick={() => void submitTransfer()}
+              >
+                {transferBusy ? t('warehouse.moving') : t('warehouse.moveTitle')}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </AppModal>
 
-      {writeOffItem
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center">
-              <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div>
-                    <h2 className="text-lg font-semibold text-[var(--color-fg)]">{t('warehouse.writeOffTitle')}</h2>
-                    <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
-                      {t('warehouse.writeOffWhat', { name: writeOffItem.name })}
-                      {writeOffItem.manufacturer ? ` · ${writeOffItem.manufacturer}` : ''}
-                      {writeOffItem.internal_code ? ` · ${writeOffItem.internal_code}` : ''}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
-                    onClick={() => setWriteOffItem(null)}
-                  >
-                    <IconClose className="h-5 w-5" />
-                  </button>
-                </div>
-                <p className="text-sm text-[var(--color-fg)]">
-                  {t('warehouse.writeOffOnHand', { n: itemQty(writeOffItem) })}
-                </p>
-                <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
-                  {t('warehouse.writeOffScope')}
-                </p>
-                {itemQty(writeOffItem) > 1 ? (
-                  <label className="mt-3 block">
-                    <span className="app-label">{t('warehouse.writeOffQtyLabel')}</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={itemQty(writeOffItem)}
-                      value={writeOffQty}
-                      onChange={(e) =>
-                        setWriteOffQty(Math.max(1, Math.min(itemQty(writeOffItem), Number(e.target.value) || 1)))
-                      }
-                      className="app-input"
-                    />
-                  </label>
-                ) : null}
-                <label className="mt-3 block">
-                  <span className="app-label">{t('warehouse.writeOffReason')}</span>
-                  <input
-                    value={writeOffReason}
-                    onChange={(e) => setWriteOffReason(e.target.value)}
-                    className="app-input"
-                    placeholder={t('warehouse.writeOffReasonPlaceholder')}
-                  />
-                </label>
-                <div className="mt-4 flex flex-wrap justify-end gap-2">
-                  <button type="button" className="app-btn app-btn-secondary" onClick={() => setWriteOffItem(null)}>
-                    {t('common.cancel')}
-                  </button>
-                  {itemQty(writeOffItem) > 1 ? (
-                    <button
-                      type="button"
-                      disabled={writeOffBusy}
-                      className="app-btn app-btn-secondary"
-                      onClick={() => void submitWriteOff(true)}
-                    >
-                      {t('warehouse.writeOffAll', { n: itemQty(writeOffItem) })}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={writeOffBusy}
-                    className="app-btn app-btn-secondary"
-                    onClick={() => void submitWriteOff(false)}
-                  >
-                    {writeOffBusy ? t('warehouse.writeOffBusy') : t('warehouse.writeOffSubmit')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+      <AppModal
+        open={Boolean(writeOffItem)}
+        title={t('warehouse.writeOffTitle')}
+        onClose={() => setWriteOffItem(null)}
+        size="sm"
+      >
+        {writeOffItem ? (
+          <>
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              {t('warehouse.writeOffWhat', { name: writeOffItem.name })}
+              {writeOffItem.manufacturer ? ` · ${writeOffItem.manufacturer}` : ''}
+              {writeOffItem.internal_code ? ` · ${writeOffItem.internal_code}` : ''}
+            </p>
+            <p className="mt-3 text-sm text-[var(--color-fg)]">
+              {t('warehouse.writeOffOnHand', { n: itemQty(writeOffItem) })}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">
+              {t('warehouse.writeOffScope')}
+            </p>
+            {itemQty(writeOffItem) > 1 ? (
+              <label className="mt-3 block">
+                <span className="app-label">{t('warehouse.writeOffQtyLabel')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={itemQty(writeOffItem)}
+                  value={writeOffQty}
+                  onChange={(e) =>
+                    setWriteOffQty(Math.max(1, Math.min(itemQty(writeOffItem), Number(e.target.value) || 1)))
+                  }
+                  className="app-input"
+                />
+              </label>
+            ) : null}
+            <label className="mt-3 block">
+              <span className="app-label">{t('warehouse.writeOffReason')}</span>
+              <input
+                value={writeOffReason}
+                onChange={(e) => setWriteOffReason(e.target.value)}
+                className="app-input"
+                placeholder={t('warehouse.writeOffReasonPlaceholder')}
+              />
+            </label>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button type="button" className="app-btn app-btn-secondary" onClick={() => setWriteOffItem(null)}>
+                {t('common.cancel')}
+              </button>
+              {itemQty(writeOffItem) > 1 ? (
+                <button
+                  type="button"
+                  disabled={writeOffBusy}
+                  className="app-btn app-btn-secondary"
+                  onClick={() => void submitWriteOff(true)}
+                >
+                  {t('warehouse.writeOffAll', { n: itemQty(writeOffItem) })}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={writeOffBusy}
+                className="app-btn app-btn-secondary"
+                onClick={() => void submitWriteOff(false)}
+              >
+                {writeOffBusy ? t('warehouse.writeOffBusy') : t('warehouse.writeOffSubmit')}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </AppModal>
 
-      {addOpen && addPreset
-        ? createPortal(
-            <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center">
-              <div className="w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl">
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div>
-                    <h2 className="text-lg font-semibold text-[var(--color-fg)]">
-                      {itemDialogMode === 'edit' ? t('warehouse.editDialogHeading') : t('warehouse.addDialogHeading')}
-                    </h2>
-                    <p className="text-xs text-[var(--color-fg-subtle)]">{activeRoom?.title}</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-lg p-1 text-[var(--color-fg-subtle)] hover:bg-[var(--color-surface-muted)]"
-                    onClick={closeItemDialog}
-                  >
-                    <IconClose className="h-5 w-5" />
-                  </button>
-                </div>
-                <div className="space-y-3">
+      <AppModal
+        open={Boolean(addOpen && addPreset)}
+        title={itemDialogMode === 'edit' ? t('warehouse.editDialogHeading') : t('warehouse.addDialogHeading')}
+        onClose={closeItemDialog}
+        size="sm"
+      >
+        {addOpen && addPreset ? (
+          <>
+            <p className="mb-3 text-xs text-[var(--color-fg-subtle)]">{activeRoom?.title}</p>
+            <div className="space-y-3">
                   <label className="block">
                     <span className="app-label">{t('warehouse.addType')}</span>
                     <input
@@ -1437,28 +1403,26 @@ export function WarehousePage() {
                     />
                   </label>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-                  <button type="button" className="app-btn app-btn-secondary" onClick={closeItemDialog}>
-                    {t('common.cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={addBusy || !addName.trim()}
-                    className="app-btn app-btn-primary"
-                    onClick={() => void submitAdd()}
-                  >
-                    {addBusy
-                      ? t('warehouse.saving')
-                      : itemDialogMode === 'edit'
-                        ? t('warehouse.saveItem')
-                        : t('warehouse.addToWarehouse')}
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+              <button type="button" className="app-btn app-btn-secondary" onClick={closeItemDialog}>
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={addBusy || !addName.trim()}
+                className="app-btn app-btn-primary"
+                onClick={() => void submitAdd()}
+              >
+                {addBusy
+                  ? t('warehouse.saving')
+                  : itemDialogMode === 'edit'
+                    ? t('warehouse.saveItem')
+                    : t('warehouse.addToWarehouse')}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </AppModal>
       {confirmDialog}
     </div>
   )

@@ -420,7 +420,7 @@ export function NotesPage() {
           <button
             type="button"
             onClick={() => void createNote()}
-            className="my-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-primary)] px-4 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+            className="app-btn app-btn-primary my-3 w-full !min-h-10"
           >
             <span className="text-lg leading-none" aria-hidden>
               +
@@ -443,9 +443,14 @@ export function NotesPage() {
             className="app-input mb-2 !min-h-0 !py-1.5 text-sm"
           />
           {loading ? (
-            <p className="px-1 py-3 text-xs text-[var(--color-fg-subtle)]">{t('common.loading')}</p>
+            <div className="space-y-2 px-1 py-2" role="status" aria-busy="true">
+              <span className="sr-only">{t('common.loading')}</span>
+              <div className="h-9 animate-pulse rounded-lg bg-[var(--color-bg-muted)]" />
+              <div className="h-9 animate-pulse rounded-lg bg-[var(--color-bg-muted)]" />
+              <div className="h-9 animate-pulse rounded-lg bg-[var(--color-bg-muted)]" />
+            </div>
           ) : list.length === 0 ? (
-            <p className="px-1 py-3 text-xs text-[var(--color-fg-subtle)]">{t('notes.empty')}</p>
+            <p className="app-empty-state !rounded-lg !border-dashed !px-3 !py-4 text-xs">{t('notes.empty')}</p>
           ) : visibleList.length === 0 ? (
             <p className="px-1 py-3 text-xs text-[var(--color-fg-subtle)]">{t('notes.searchEmpty')}</p>
           ) : (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type EmployeePortalTab } from '../api'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { Skeleton } from '../components/Skeleton'
@@ -24,6 +24,10 @@ export function EmployeePortalTabsPanel() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const toastRef = useRef(toast)
+  const tRef = useRef(t)
+  toastRef.current = toast
+  tRef.current = t
 
   useEffect(() => {
     let cancelled = false
@@ -37,9 +41,9 @@ export function EmployeePortalTabsPanel() {
       })
       .catch((ex) => {
         if (!cancelled) {
-          const msg = ex instanceof Error ? ex.message : t('agentBundle.portalTabs.loadFailed')
+          const msg = ex instanceof Error ? ex.message : tRef.current('agentBundle.portalTabs.loadFailed')
           setLoadError(msg)
-          toast.error(msg)
+          toastRef.current.error(msg)
         }
       })
       .finally(() => {
@@ -48,7 +52,7 @@ export function EmployeePortalTabsPanel() {
     return () => {
       cancelled = true
     }
-  }, [t, toast])
+  }, [])
 
   async function save() {
     setBusy(true)
@@ -136,21 +140,21 @@ export function EmployeePortalTabsPanel() {
           <AppFold
             key={tab.id}
             className="!shadow-none"
-            defaultOpen={index === 0 || tabs.length === 1}
+            defaultOpen
             title={
-              <span className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="truncate font-medium text-[var(--color-fg)]">
-                  {tab.title.trim() || t('agentBundle.portalTabs.newTitle')}
-                </span>
-                <StatusPill tone={tab.enabled ? 'success' : 'neutral'}>
-                  {tab.enabled ? t('agentBundle.portalTabs.enabled') : t('agentBundle.portalTabs.disabled')}
-                </StatusPill>
-                <span className="text-[11px] font-normal text-[var(--color-fg-subtle)]">
+              <span className="min-w-0 truncate">
+                {tab.title.trim() || t('agentBundle.portalTabs.newTitle')}
+                <span className="ml-2 text-[11px] font-normal text-[var(--color-fg-subtle)]">
                   {tab.kind === 'table' ? t('agentBundle.portalTabs.kindTable') : t('agentBundle.portalTabs.kindText')}
                   {' · '}
                   {t('agentBundle.portalTabs.order', { n: index + 1 })}
                 </span>
               </span>
+            }
+            summaryExtra={
+              <StatusPill tone={tab.enabled ? 'success' : 'neutral'}>
+                {tab.enabled ? t('agentBundle.portalTabs.enabled') : t('agentBundle.portalTabs.disabled')}
+              </StatusPill>
             }
           >
             <div className="space-y-3 pt-1">

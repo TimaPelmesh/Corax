@@ -291,13 +291,11 @@ export function SoftwarePage() {
                 )}
               </tbody>
             </table>
+            )}
           </div>
         </section>
 
-        <section
-          ref={hostsPanelRef}
-          className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]"
-        >
+        <section ref={hostsPanelRef} className="app-panel flex min-h-0 flex-col overflow-hidden !p-0">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
             <h2 className="text-[13px] font-medium text-[var(--color-fg)]">{t('software.installedOnTitle')}</h2>
             {filters.length ? (
@@ -309,9 +307,16 @@ export function SoftwarePage() {
           </div>
 
           {!filters.length ? (
-            <p className="px-4 py-8 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('software.selectRowHint')}</p>
+            <div className="app-empty-state !rounded-none border-0 m-3">
+              {t('software.selectRowHint')}
+            </div>
           ) : hostsLoading ? (
-            <p className="px-4 py-8 text-sm text-[var(--color-fg-subtle)]">{t('software.loadingHosts')}</p>
+            <div className="space-y-2 p-3" role="status" aria-busy="true">
+              <span className="sr-only">{t('software.loadingHosts')}</span>
+              {Array.from({ length: 6 }, (_, i) => (
+                <Skeleton key={i} className="h-10 rounded-lg" />
+              ))}
+            </div>
           ) : sortedHosts && sortedHosts.length ? (
             <>
               <div ref={hostsListRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

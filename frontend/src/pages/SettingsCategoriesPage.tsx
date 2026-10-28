@@ -51,13 +51,13 @@ function findSiblingContext(
 function IconChevron({ open, className }: { open: boolean; className?: string }) {
   return (
     <svg
-      className={className}
+      className={`${className ?? ''} transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
       viewBox="0 0 20 20"
       fill="none"
       aria-hidden
     >
       <path
-        d={open ? 'M5 7.5 10 12.5 15 7.5' : 'M7.5 5 12.5 10 7.5 15'}
+        d="M7.5 5 12.5 10 7.5 15"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
@@ -66,6 +66,8 @@ function IconChevron({ open, className }: { open: boolean; className?: string })
     </svg>
   )
 }
+
+export { collectExpandableIds, countNodes, findSiblingContext }
 
 function TreeNodeRow({
   node,
@@ -480,8 +482,8 @@ export function SettingsCategoriesPage() {
         </div>
       ) : null}
 
-      <div className="max-w-3xl overflow-hidden rounded-xl border border-[var(--color-border)]">
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
+      <div className="app-card max-w-3xl overflow-hidden p-0">
+        <div className="flex flex-col gap-2 border-b border-[var(--color-border)] px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="min-w-0 flex-1 text-xs text-[var(--color-fg-subtle)]">
             {loading ? (
               t('common.loading')
@@ -496,25 +498,29 @@ export function SettingsCategoriesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('settingsCategories.searchPlaceholder')}
-            className="app-input !min-h-8 max-w-[12rem] flex-1 py-1 text-xs sm:max-w-xs"
+            className="app-input !min-h-8 w-full flex-1 py-1 text-xs sm:max-w-xs"
             aria-label={t('settingsCategories.searchAria')}
           />
-          <button
-            type="button"
-            className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
-            onClick={expandAll}
-            disabled={loading || filteredTree.length === 0}
-          >
-            {t('settingsCategories.expandAll')}
-          </button>
-          <button
-            type="button"
-            className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
-            onClick={collapseAll}
-            disabled={loading || filteredTree.length === 0}
-          >
-            {t('settingsCategories.collapseAll')}
-          </button>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <button
+              type="button"
+              className="app-btn app-btn-secondary flex-1 !min-h-8 !px-2 !py-1 !text-xs sm:flex-none"
+              onClick={expandAll}
+              disabled={loading || filteredTree.length === 0}
+              aria-label={t('settingsCategories.expandAll')}
+            >
+              {t('settingsCategories.expandAll')}
+            </button>
+            <button
+              type="button"
+              className="app-btn app-btn-secondary flex-1 !min-h-8 !px-2 !py-1 !text-xs sm:flex-none"
+              onClick={collapseAll}
+              disabled={loading || filteredTree.length === 0}
+              aria-label={t('settingsCategories.collapseAll')}
+            >
+              {t('settingsCategories.collapseAll')}
+            </button>
+          </div>
         </div>
 
         {loading ? (

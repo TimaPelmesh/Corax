@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, type BitrixBotCard, type BitrixBotPhrases, type BitrixBotSettings } from '../api'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { IconSearch, IconTrash } from '../components/icons'
+import { StatusPill } from '../components/ui/StatusPill'
 import { useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -291,8 +293,8 @@ function renderBb(source: string): ReactNode[] {
   return stack[0].parts
 }
 
-const btn = 'rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)] disabled:opacity-50'
-const btnPrimary = 'rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white disabled:opacity-50'
+const btn = 'app-btn app-btn-secondary !min-h-0'
+const btnPrimary = 'app-btn app-btn-primary !min-h-0'
 
 function Toggle({
   on,
@@ -341,6 +343,7 @@ export function BitrixBotPanel({
 }) {
   const t = useT()
   const toast = useToast()
+  const { ask, dialog } = useConfirmDialog()
   const [bot, setBot] = useState<BitrixBotSettings | null>(null)
   const [webhook, setWebhook] = useState('')
   const [token, setToken] = useState('')
@@ -680,7 +683,13 @@ export function BitrixBotPanel({
   async function removeBot(id: number) {
     const item = bots.find((row) => row.bot_id === id)
     const label = item?.name || `#${id}`
-    if (!window.confirm(t('settingsBitrix.botDeleteConfirm', { id, name: label }))) return
+    const ok = await ask({
+      title: t('settingsBitrix.botDelete'),
+      body: t('settingsBitrix.botDeleteConfirm', { id, name: label }),
+      confirmLabel: t('settingsBitrix.botDelete'),
+      tone: 'danger',
+    })
+    if (!ok) return
     setBusy(true)
     try {
       const next = await api.unregisterBitrixBot(id)
@@ -785,7 +794,8 @@ export function BitrixBotPanel({
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-      <aside className="flex max-h-[32rem] flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
+      {dialog}
+      <aside className="app-card flex max-h-[32rem] flex-col overflow-hidden !rounded-xl">
         <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
           <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsBitrix.botListTitle')}</h2>
           <button
@@ -843,7 +853,7 @@ export function BitrixBotPanel({
                   </button>
                   <button
                     type="button"
-                    className="mr-1 self-center rounded-lg p-2 text-[var(--color-fg-subtle)] hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950/40"
+                    className="mr-1 self-center rounded-lg p-2 text-[var(--color-fg-subtle)] hover:bg-[var(--color-error-bg)] hover:text-[var(--color-error-fg)] disabled:opacity-50"
                     aria-label={t('settingsBitrix.botDelete')}
                     disabled={busy}
                     onClick={() => void removeBot(item.bot_id)}
@@ -857,23 +867,23 @@ export function BitrixBotPanel({
         </div>
       </aside>
 
-      <section className="min-w-0 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]">
-        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-4">
+      <section className="app-card min-w-0 overflow-hidden !rounded-xl">
+        <header className="flex flex-col gap-3 border-b border-[var(--color-border)] px-4 py-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="truncate text-lg font-semibold text-[var(--color-fg)]">{displayName}</h2>
               {selectedId ? <span className="font-mono text-xs text-[var(--color-fg-subtle)]">#{selectedId}</span> : null}
             </div>
-            <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
-              <span className="rounded-full bg-[var(--color-bg-muted)] px-2 py-0.5 text-[var(--color-fg-subtle)]">
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <StatusPill tone="neutral">
                 {eventMode === 'webhook' ? t('settingsBitrix.botEventWebhook') : t('settingsBitrix.botEventFetch')}
-              </span>
-              <span className="rounded-full bg-[var(--color-bg-muted)] px-2 py-0.5 text-[var(--color-fg-subtle)]">
+              </StatusPill>
+              <StatusPill tone={bot?.webhook_host ? 'success' : 'warning'}>
                 {bot?.webhook_host ? t('settingsBitrix.botStatusOn', { host: bot.webhook_host }) : t('settingsBitrix.botStatusOff')}
-              </span>
+              </StatusPill>
             </div>
           </div>
-          <div className="flex flex-col gap-3">
+          <div className="flex w-full flex-col gap-3 sm:w-auto">
             <Toggle
               on={Boolean(bot?.bot_enabled && bound)}
               disabled={busy || !bound || !bot?.bot_id || !bot.webhook_set}

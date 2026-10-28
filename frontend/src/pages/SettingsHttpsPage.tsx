@@ -363,10 +363,10 @@ export function SettingsHttpsPage() {
                   disabled={busy}
                 />
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   type="button"
-                  className="app-btn app-btn-primary"
+                  className="app-btn app-btn-primary w-full sm:w-auto"
                   disabled={busy}
                   onClick={() => void generate(false)}
                 >
@@ -375,7 +375,7 @@ export function SettingsHttpsPage() {
                 {status.ca_ready ? (
                   <button
                     type="button"
-                    className="app-btn app-btn-secondary"
+                    className="app-btn app-btn-secondary w-full sm:w-auto"
                     disabled={busy}
                     onClick={() => void generate(true)}
                   >
@@ -388,7 +388,7 @@ export function SettingsHttpsPage() {
             ) : null}
 
             {pickMode === 'enterprise' ? (
-            <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] space-y-3 p-5">
+            <section className="app-panel space-y-3">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.importTitle')}</h2>
               <p className="text-xs text-[var(--color-fg-muted)]">{t('settingsHttps.importHint')}</p>
               <label className="block">
@@ -413,7 +413,7 @@ export function SettingsHttpsPage() {
               </label>
               <button
                 type="button"
-                className="app-btn app-btn-primary"
+                className="app-btn app-btn-primary w-full sm:w-auto"
                 disabled={busy}
                 onClick={() => void importEnterprise()}
               >
