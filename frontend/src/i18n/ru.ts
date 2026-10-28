@@ -268,6 +268,7 @@ export const ru = {
     providerHint: 'Серверов может быть несколько. Чат и эмбеддинги выбираются отдельно.',
     connection: 'Подключение',
     servers: 'Серверы',
+    moreServers: 'Ещё {n}',
     addServer: 'Добавить',
     serverNamePh: 'Имя',
     serverUrlPh: 'http://10.0.0.5:11434/v1',

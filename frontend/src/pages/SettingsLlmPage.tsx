@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { api, type LlmServerSetting, type WikiRagLmStudioStatus } from '../api'
 import { IconActivity, IconClose } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
@@ -16,6 +17,57 @@ import {
 import { useToast } from '../ToastContext'
 
 const PANEL = 'overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]'
+const PAGE_SERVERS = 4
+
+function SettingsDialog({
+  title,
+  closeLabel,
+  onClose,
+  children,
+}: {
+  title: string
+  closeLabel: string
+  onClose: () => void
+  children: ReactNode
+}) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="w-full max-w-3xl rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">{title}</h2>
+          <button
+            type="button"
+            className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]"
+            onClick={onClose}
+            aria-label={closeLabel}
+          >
+            <IconClose className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
 const CTX_PRESETS = [0, 4096, 8192, 16384, 32768] as const
 
 type Probe = { ok: boolean; models: string[]; detail?: string }
@@ -56,6 +108,7 @@ export function SettingsLlmPage() {
   const [serversConfigured, setServersConfigured] = useState(true)
   const [ready, setReady] = useState(false)
   const [focusId, setFocusId] = useState<string | null>(null)
+  const [dialog, setDialog] = useState<null | 'servers' | 'prompt' | 'setup'>(null)
   const settingsRef = useRef(settings)
   const rowsRef = useRef(servers)
   const embedRef = useRef(embedBaseUrl)
@@ -244,6 +297,7 @@ export function SettingsLlmPage() {
   function addServer() {
     if (servers.length >= 12) return
     const draft = servers.find((row) => !row.base_url.trim())
+    if (servers.length >= PAGE_SERVERS) setDialog('servers')
     if (draft) {
       setFocusId(draft.id)
       return
@@ -349,6 +403,20 @@ export function SettingsLlmPage() {
             ) : null}
             <button
               type="button"
+              className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-fg)]"
+              onClick={() => setDialog('prompt')}
+            >
+              {t('settingsLlm.promptFold')}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-fg)]"
+              onClick={() => setDialog('setup')}
+            >
+              {t('settingsLlm.setupFold')}
+            </button>
+            <button
+              type="button"
               className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
               disabled={chatBusy || !settings.baseUrl.trim()}
               onClick={() => void probe(settings.baseUrl, { chat: true, notify: true })}
@@ -365,83 +433,56 @@ export function SettingsLlmPage() {
         </p>
       ) : null}
 
-      <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.85fr)]">
-        <section className={PANEL}>
+      <div className="flex flex-col gap-3">
+        <section className={`${PANEL} order-2`}>
           <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
             <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.servers')}</h2>
-            <button
-              type="button"
-              className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg)] disabled:opacity-40"
-              disabled={servers.length >= 12}
-              onClick={addServer}
-            >
-              {t('settingsLlm.addServer')}
-            </button>
+            <div className="flex items-center gap-1.5">
+              {servers.length > PAGE_SERVERS ? (
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                  onClick={() => setDialog('servers')}
+                >
+                  {t('settingsLlm.moreServers', { n: servers.length - PAGE_SERVERS })}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg)] disabled:opacity-40"
+                disabled={servers.length >= 12}
+                onClick={() => {
+                  addServer()
+                  setDialog('servers')
+                }}
+              >
+                {t('settingsLlm.addServer')}
+              </button>
+            </div>
           </div>
           {servers.length ? (
-            <ul className="max-h-52 overflow-auto px-2 py-1">
-              {servers.map((row) => {
+            <ul className="grid gap-1 px-3 py-2 sm:grid-cols-2">
+              {servers.slice(0, PAGE_SERVERS).map((row) => {
                 const hit = row.base_url.trim() ? probeFor(row.base_url) : undefined
                 return (
-                  <li
-                    key={row.id}
-                    className="grid grid-cols-[minmax(5.5rem,7.5rem)_minmax(0,1fr)_auto] items-center gap-1.5 py-1"
-                    onBlur={onRowBlur}
-                  >
-                    <input
-                      aria-label={t('settingsLlm.serverNamePh')}
-                      value={row.label}
-                      placeholder={t('settingsLlm.serverNamePh')}
-                      onChange={(e) => patchRow(row.id, { label: e.target.value })}
-                      className="app-input !min-h-8 text-xs"
-                    />
-                    <input
-                      id={`llm-url-${row.id}`}
-                      aria-label={t('settingsLlm.serverUrlPh')}
-                      value={row.base_url}
-                      placeholder={t('settingsLlm.serverUrlPh')}
-                      onChange={(e) => patchRow(row.id, { base_url: e.target.value })}
-                      className="app-input !min-h-8 font-mono text-xs"
-                    />
-                    <div className="flex items-center gap-1">
+                  <li key={row.id}>
+                    <button
+                      type="button"
+                      onClick={() => setDialog('servers')}
+                      className="flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-[var(--color-bg-muted)]"
+                    >
                       <span
                         className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                          hit?.ok
-                            ? 'bg-[var(--color-primary)]'
-                            : hit
-                              ? 'bg-[var(--color-fg-subtle)]'
-                              : 'bg-[var(--color-border)]'
+                          hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
                         }`}
-                        title={hit?.detail || providerMark(row.base_url)}
                       />
-                      <span className="hidden w-14 truncate text-[10px] text-[var(--color-fg-subtle)] sm:inline">
-                        {row.base_url.trim() ? providerMark(row.base_url) : ''}
+                      <span className="truncate text-xs font-medium text-[var(--color-fg)]">
+                        {row.label || providerMark(row.base_url)}
                       </span>
-                      <button
-                        type="button"
-                        title={t('settingsLlm.checkOne')}
-                        aria-label={t('settingsLlm.checkOne')}
-                        disabled={!row.base_url.trim() || isBusy(row.base_url)}
-                        onClick={() =>
-                          void probe(row.base_url, {
-                            chat: sameLmEndpoint(row.base_url, settings.baseUrl),
-                            notify: true,
-                          })
-                        }
-                        className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)] disabled:opacity-40"
-                      >
-                        <IconActivity className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        title={t('settingsLlm.removeServer')}
-                        aria-label={t('settingsLlm.removeServer')}
-                        onClick={() => removeServer(row.id)}
-                        className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] hover:text-[var(--color-fg)]"
-                      >
-                        <IconClose className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-fg-subtle)]">
+                        {row.base_url || t('settingsLlm.serverUrlPh')}
+                      </span>
+                    </button>
                   </li>
                 )
               })}
@@ -451,11 +492,12 @@ export function SettingsLlmPage() {
           )}
         </section>
 
-        <div className="grid gap-3">
+        <div className="order-1 grid gap-3 lg:grid-cols-2">
           <section className={PANEL}>
             <div className="border-b border-[var(--color-border)] px-3 py-2">
-              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.chatRole')}</h2>
-              <p className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.chatSeparate')}</p>
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]" title={t('settingsLlm.chatSeparate')}>
+                {t('settingsLlm.chatRole')}
+              </h2>
             </div>
             <div className="grid grid-cols-2 gap-2 p-3">
               <label className="block min-w-0">
@@ -557,8 +599,9 @@ export function SettingsLlmPage() {
 
           <section className={PANEL}>
             <div className="border-b border-[var(--color-border)] px-3 py-2">
-              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.embedRole')}</h2>
-              <p className="text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.embedSeparate')}</p>
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]" title={t('settingsLlm.embedSeparate')}>
+                {t('settingsLlm.embedRole')}
+              </h2>
             </div>
             <div className="grid grid-cols-2 gap-2 p-3">
               <label className="block min-w-0">
@@ -605,41 +648,101 @@ export function SettingsLlmPage() {
         </div>
       </div>
 
-      <details className={PANEL}>
-        <summary className="cursor-pointer list-none px-3 py-2 text-sm font-semibold text-[var(--color-fg)]">
-          {t('settingsLlm.promptFold')}
-        </summary>
-        <div className="border-t border-[var(--color-border)] px-3 py-2">
+      {dialog === 'prompt' ? (
+        <SettingsDialog title={t('settingsLlm.promptFold')} closeLabel={t('common.close')} onClose={() => setDialog(null)}>
           <SystemPromptEditor compact />
-        </div>
-      </details>
-
-      <details className={PANEL}>
-        <summary className="cursor-pointer list-none px-3 py-2 text-sm font-semibold text-[var(--color-fg)]">
-          {t('settingsLlm.setupFold')}
-        </summary>
-        <div className="grid gap-3 border-t border-[var(--color-border)] px-3 py-2 md:grid-cols-2">
-          <div>
-            <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.ollamaSetupTitle')}</h3>
-            <ol className="mt-1 list-decimal space-y-1 pl-4 text-[11px] leading-snug text-[var(--color-fg-muted)]">
-              <li>{t('settingsLlm.ollamaStep1')}</li>
-              <li>{t('settingsLlm.ollamaStep2')}</li>
-              <li>{t('settingsLlm.ollamaStep3')}</li>
-              <li>{t('settingsLlm.ollamaStep4')}</li>
-              <li>{t('settingsLlm.ollamaStep5')}</li>
-            </ol>
-            <p className="mt-1 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.ollamaDockerHint')}</p>
+        </SettingsDialog>
+      ) : null}
+      {dialog === 'setup' ? (
+        <SettingsDialog title={t('settingsLlm.setupFold')} closeLabel={t('common.close')} onClose={() => setDialog(null)}>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.ollamaSetupTitle')}</h3>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-snug text-[var(--color-fg-muted)]">
+                <li>{t('settingsLlm.ollamaStep1')}</li>
+                <li>{t('settingsLlm.ollamaStep2')}</li>
+                <li>{t('settingsLlm.ollamaStep3')}</li>
+                <li>{t('settingsLlm.ollamaStep4')}</li>
+                <li>{t('settingsLlm.ollamaStep5')}</li>
+              </ol>
+              <p className="mt-2 text-[11px] text-[var(--color-fg-subtle)]">{t('settingsLlm.ollamaDockerHint')}</p>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.lmSetupTitle')}</h3>
+              <ol className="mt-2 list-decimal space-y-1 pl-4 text-xs leading-snug text-[var(--color-fg-muted)]">
+                <li>{t('settingsLlm.lmStep1')}</li>
+                <li>{t('settingsLlm.lmStep2')}</li>
+                <li>{t('settingsLlm.lmStep3')}</li>
+              </ol>
+            </div>
           </div>
-          <div>
-            <h3 className="text-xs font-semibold text-[var(--color-fg)]">{t('settingsLlm.lmSetupTitle')}</h3>
-            <ol className="mt-1 list-decimal space-y-1 pl-4 text-[11px] leading-snug text-[var(--color-fg-muted)]">
-              <li>{t('settingsLlm.lmStep1')}</li>
-              <li>{t('settingsLlm.lmStep2')}</li>
-              <li>{t('settingsLlm.lmStep3')}</li>
-            </ol>
-          </div>
-        </div>
-      </details>
+        </SettingsDialog>
+      ) : null}
+      {dialog === 'servers' ? (
+        <SettingsDialog title={t('settingsLlm.servers')} closeLabel={t('common.close')} onClose={() => setDialog(null)}>
+          <ul className="grid gap-2 md:grid-cols-2">
+            {servers.map((row) => {
+              const hit = row.base_url.trim() ? probeFor(row.base_url) : undefined
+              return (
+                <li
+                  key={row.id}
+                  className="grid grid-cols-[minmax(5.5rem,7rem)_minmax(0,1fr)_auto] items-center gap-1.5"
+                  onBlur={onRowBlur}
+                >
+                  <input
+                    aria-label={t('settingsLlm.serverNamePh')}
+                    value={row.label}
+                    placeholder={t('settingsLlm.serverNamePh')}
+                    onChange={(e) => patchRow(row.id, { label: e.target.value })}
+                    className="app-input !min-h-8 text-xs"
+                  />
+                  <input
+                    id={`llm-url-${row.id}`}
+                    aria-label={t('settingsLlm.serverUrlPh')}
+                    value={row.base_url}
+                    placeholder={t('settingsLlm.serverUrlPh')}
+                    onChange={(e) => patchRow(row.id, { base_url: e.target.value })}
+                    className="app-input !min-h-8 font-mono text-xs"
+                  />
+                  <div className="flex items-center gap-1">
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
+                      }`}
+                      title={hit?.detail || providerMark(row.base_url)}
+                    />
+                    <button
+                      type="button"
+                      title={t('settingsLlm.checkOne')}
+                      aria-label={t('settingsLlm.checkOne')}
+                      disabled={!row.base_url.trim() || isBusy(row.base_url)}
+                      onClick={() =>
+                        void probe(row.base_url, {
+                          chat: sameLmEndpoint(row.base_url, settings.baseUrl),
+                          notify: true,
+                        })
+                      }
+                      className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] disabled:opacity-40"
+                    >
+                      <IconActivity className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title={t('settingsLlm.removeServer')}
+                      aria-label={t('settingsLlm.removeServer')}
+                      onClick={() => removeServer(row.id)}
+                      className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]"
+                    >
+                      <IconClose className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          {!servers.length ? <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p> : null}
+        </SettingsDialog>
+      ) : null}
     </div>
   )
 }

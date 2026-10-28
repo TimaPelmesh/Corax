@@ -270,6 +270,7 @@ export const en: MessageTree = {
     providerHint: 'More than one server is allowed. Chat and embeddings are chosen separately.',
     connection: 'Connection',
     servers: 'Servers',
+    moreServers: '{n} more',
     addServer: 'Add',
     serverNamePh: 'Name',
     serverUrlPh: 'http://10.0.0.5:11434/v1',
