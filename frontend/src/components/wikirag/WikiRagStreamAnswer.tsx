@@ -6,28 +6,38 @@ export function StreamCaret() {
   return <span className="wikirag-caret" aria-hidden />
 }
 
-/** Keep the bubble on the stream. Short tokens show at once; only a long burst eases in. */
+function prefersStillText(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/** Words keep landing after the socket closes. The finished answer must not pop in. */
 function useLiveTyped(text: string, streaming: boolean) {
-  const shownRef = useRef(text)
-  const [shown, setShown] = useState(text)
+  const targetRef = useRef(text)
+  targetRef.current = text
+  const shownRef = useRef(streaming ? '' : text)
+  const [shown, setShown] = useState(streaming ? '' : text)
 
   useEffect(() => {
-    if (!streaming) {
-      shownRef.current = text
-      setShown(text)
-      return
-    }
     let timer = 0
     let cancelled = false
     const tick = () => {
       if (cancelled) return
-      const next = nextTypewriterChunk(shownRef.current, text)
+      const target = targetRef.current
+      if (prefersStillText()) {
+        if (shownRef.current !== target) {
+          shownRef.current = target
+          setShown(target)
+        }
+        return
+      }
+      const next = nextTypewriterChunk(shownRef.current, target)
       if (next !== shownRef.current) {
         shownRef.current = next
         setShown(next)
       }
-      if (next !== text) {
-        timer = window.setTimeout(tick, typewriterDelayMs(text.length - next.length))
+      if (next !== target) {
+        timer = window.setTimeout(tick, typewriterDelayMs(target.length - next.length))
       }
     }
     tick()
@@ -37,11 +47,23 @@ function useLiveTyped(text: string, streaming: boolean) {
     }
   }, [text, streaming])
 
-  return streaming ? shown : text
+  return shown
 }
 
 export function WikiRagStreamAnswer({ text, streaming }: { text: string; streaming: boolean }) {
   const visible = useLiveTyped(text, streaming)
-  if (!visible.trim()) return streaming ? <StreamCaret /> : null
-  return <WikiRagMarkdown text={visible} streaming={streaming} />
+  const caughtUp = visible === text
+  const [paintWords, setPaintWords] = useState(streaming)
+
+  useEffect(() => {
+    if (streaming || !caughtUp) {
+      setPaintWords(true)
+      return
+    }
+    const timer = window.setTimeout(() => setPaintWords(false), 240)
+    return () => window.clearTimeout(timer)
+  }, [streaming, caughtUp])
+
+  if (!visible.trim()) return paintWords ? <StreamCaret /> : null
+  return <WikiRagMarkdown text={visible} streaming={paintWords} />
 }

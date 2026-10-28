@@ -186,8 +186,32 @@ const headingClass: Record<1 | 2 | 3 | 4, string> = {
   4: 'text-[13px] font-medium text-[var(--color-fg)]',
 }
 
-function renderStreamText(text: string, keyPrefix: string, _animate: boolean): ReactNode {
-  return renderInline(text, keyPrefix)
+/** One span per word. Stable keys so a word flashes in once and then stays put. */
+function renderWords(text: string, keyPrefix: string): ReactNode[] {
+  const parts = text.split(/(\s+)/)
+  let word = 0
+  const nodes: ReactNode[] = []
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i]
+    if (!part) continue
+    if (/^\s+$/.test(part)) {
+      nodes.push(<Fragment key={`${keyPrefix}-s${i}`}>{part}</Fragment>)
+      continue
+    }
+    const idx = word
+    word += 1
+    nodes.push(
+      <span key={`${keyPrefix}-w${idx}`} className="wikirag-word-in">
+        {renderInline(part, `${keyPrefix}-w${idx}`)}
+      </span>,
+    )
+  }
+  return nodes
+}
+
+function renderStreamText(text: string, keyPrefix: string, animate: boolean): ReactNode {
+  if (!animate) return renderInline(text, keyPrefix)
+  return renderWords(text, keyPrefix)
 }
 
 export function WikiRagMarkdown({
