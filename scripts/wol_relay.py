@@ -100,9 +100,25 @@ def _lock() -> socket.socket | None:
     return sock
 
 
+def _note(text: str) -> None:
+    try:
+        with (ROOT / "data" / "wol-relay.log").open("a", encoding="utf-8") as fh:
+            fh.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text + "\n")
+    except OSError:
+        pass
+
+
+def _beat() -> None:
+    try:
+        (QUEUE / "relay.alive").write_text(str(int(time.time())), encoding="ascii")
+    except OSError:
+        pass
+
+
 def main() -> int:
     lock = _lock()
     if lock is None:
+        _note("already running")
         return 0
     token = _env_value("CORAX_WOL_RELAY_TOKEN")
     QUEUE.mkdir(parents=True, exist_ok=True)
@@ -110,8 +126,13 @@ def main() -> int:
         QUEUE.chmod(0o777)
     except OSError:
         pass
+    _note("listening" if token else "listening without token")
+    last_beat = 0.0
     while True:
         now = time.time()
+        if now - last_beat > 1:
+            _beat()
+            last_beat = now
         for stale in list(QUEUE.glob("res-*.json")) + list(QUEUE.glob("req-*.json")):
             try:
                 if now - stale.stat().st_mtime > 30 and stale.name.startswith("res-"):
@@ -124,8 +145,15 @@ def main() -> int:
                     req.unlink(missing_ok=True)
                     continue
                 handle(req, token)
+                _note("sent")
             except OSError:
                 continue
+            except Exception:
+                _note("request failed")
+                try:
+                    _write_result(req, {"sent": 0, "errors": 1, "detail": ""})
+                except OSError:
+                    continue
         time.sleep(0.05)
 
 

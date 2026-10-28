@@ -48,6 +48,7 @@ _ACCESS_STATUS = {
 }
 _MISSING_STATUS = {
     0xC0000034,  # object name not found
+    0xC000003A,  # object path not found
     0xC00000CC,  # bad network name
 }
 
@@ -102,15 +103,17 @@ def explain_remote_failure(exc: BaseException, stage: str) -> str:
     if stage == "copy":
         if status in _ACCESS_STATUS:
             return (
-                "Вход прошёл, порт 445 открыт, но служебная папка C$ не пустила запись. "
-                "Нужна учётка администратора. На рабочей Windows эта папка часто выключена, "
-                "а права локального администратора режутся при входе по сети."
+                "Вход прошёл, но Windows не дала записать файл. "
+                "Обычного локального администратора она режет именно так: подключиться можно, записать нельзя. "
+                "Dr.Web в этой ситуации ставится встроенным Администратором или доменным администратором — их этот фильтр не касается. "
+                "Если учётка уже такая, запись останавливает сам Dr.Web."
             )
         if status in _MISSING_STATUS:
-            return "Вход прошёл, но служебная папка C$ на компьютере не открыта."
+            return "Вход прошёл, но служебная папка ADMIN$ или C$ на компьютере не открыта."
         if status in _LOGON_STATUS:
             return "Запись в служебную папку не прошла: учётка не принята."
-        return "Вход прошёл, записать агент в служебную папку не удалось."
+        code = f" Код {status:08X}." if status is not None else ""
+        return "Вход прошёл, записать агент в служебную папку не удалось." + code
     if status in _ACCESS_STATUS:
         return (
             "Агент уже скопирован. Порт 135 слушает, но запуск отклонили: "
@@ -212,7 +215,13 @@ exit $proc.ExitCode
 
 
 _AGENT_EXE = r"C:\ProgramData\CORAX\Agent\CORAX-Agent.exe"
-_AGENT_SHARE_PATH = r"ProgramData\CORAX\Agent\CORAX-Agent.exe"
+# Same drop as a console installer: ADMIN$ is C:\Windows, Temp already exists.
+_COPY_TARGETS = (
+    ("ADMIN$", r"Temp\CORAX-Agent.exe", r"C:\Windows\Temp\CORAX-Agent.exe", r"C:\Windows\Temp"),
+    ("C$", r"Windows\Temp\CORAX-Agent.exe", r"C:\Windows\Temp\CORAX-Agent.exe", r"C:\Windows\Temp"),
+)
+_LAUNCH_EXES = {item[2] for item in _COPY_TARGETS} | {_AGENT_EXE}
+_LAUNCH_DIRS = {item[3] for item in _COPY_TARGETS} | {r"C:\ProgramData\CORAX\Agent"}
 
 
 def split_account(value: str) -> tuple[str, str]:
@@ -231,17 +240,19 @@ def split_account(value: str) -> tuple[str, str]:
     return "", user
 
 
-def agent_launch_command() -> str:
+def copy_targets() -> tuple[tuple[str, str, str, str], ...]:
+    return _COPY_TARGETS
+
+
+def agent_launch_command(exe: str | None = None) -> str:
     """The only program a remote install is allowed to start."""
-    return f'"{_AGENT_EXE}" --install --silent'
+    path = _AGENT_EXE if exe is None else exe
+    if path not in _LAUNCH_EXES:
+        raise ValueError("Некорректный путь запуска")
+    return f'"{path}" --install --silent'
 
 
-def _upload(conn, data: bytes) -> None:
-    for folder in (r"ProgramData\CORAX", r"ProgramData\CORAX\Agent"):
-        try:
-            conn.createDirectory("C$", folder)
-        except Exception:
-            pass
+def _put_file(conn, share: str, path: str, data: bytes) -> None:
     view = memoryview(data)
     offset = 0
 
@@ -253,10 +264,25 @@ def _upload(conn, data: bytes) -> None:
         offset += len(chunk)
         return chunk
 
-    conn.putFile("C$", _AGENT_SHARE_PATH, reader)
+    conn.putFile(share, path, reader)
 
 
-def _start_quietly(host: str, domain: str, user: str, password: str) -> int:
+def _upload(conn, data: bytes) -> tuple[str, str]:
+    """Copy into Windows Temp. The agent then installs itself into ProgramData."""
+    last: BaseException | None = None
+    for share, remote, local, cwd in _COPY_TARGETS:
+        try:
+            _put_file(conn, share, remote, data)
+            return local, cwd
+        except Exception as exc:
+            last = exc
+            log.warning("windows install copy to %s failed: %s", share, type(exc).__name__)
+    if last is None:
+        raise WindowsInstallError("Некуда копировать агент")
+    raise last
+
+
+def _start_quietly(host: str, domain: str, user: str, password: str, exe: str, cwd: str) -> int:
     """Start the copied agent through WMI. It is not a service, so SCM cannot host it."""
     from impacket.dcerpc.v5.dcom.wmi import CLSID_WbemLevel1Login, IID_IWbemLevel1Login, IWbemLevel1Login
     from impacket.dcerpc.v5.dcomrt import DCOMConnection
@@ -268,8 +294,10 @@ def _start_quietly(host: str, domain: str, user: str, password: str) -> int:
         login = IWbemLevel1Login(interface)
         services = login.NTLMLogin("//./root/cimv2", NULL, NULL)
         login.RemRelease()
+        if exe not in _LAUNCH_EXES or cwd not in _LAUNCH_DIRS:
+            raise WindowsInstallError("Некорректный путь запуска")
         process, _ = services.GetObject("Win32_Process")
-        created = process.Create(agent_launch_command(), r"C:\ProgramData\CORAX\Agent", None)
+        created = process.Create(agent_launch_command(exe), cwd, None)
         code = int(getattr(created, "ReturnValue", 1) or 0)
         if code != 0:
             raise WindowsInstallError(f"Компьютер не запустил агент (код {code})")
@@ -282,7 +310,7 @@ def _start_quietly(host: str, domain: str, user: str, password: str) -> int:
 
 
 def push_over_smb(host: str, user: str, password: str, exe: bytes) -> dict:
-    """Copy the agent into C$ and start it. Same idea as an antivirus console."""
+    """Copy the agent into Windows Temp and start it, the way a console installer does."""
     host = assert_lan_host(host)
     password = clean_winrm_password(password)
     domain, name = split_account(user)
@@ -308,7 +336,9 @@ def push_over_smb(host: str, user: str, password: str, exe: bytes) -> dict:
             pass
         raise WindowsInstallError(explain_remote_failure(exc, "login")) from exc
     try:
-        _upload(conn, exe)
+        placed, cwd = _upload(conn, exe)
+    except WindowsInstallError:
+        raise
     except Exception as exc:
         log.warning("windows install copy failed: %s", type(exc).__name__)
         raise WindowsInstallError(explain_remote_failure(exc, "copy")) from exc
@@ -318,7 +348,7 @@ def push_over_smb(host: str, user: str, password: str, exe: bytes) -> dict:
         except Exception:
             pass
     try:
-        pid = _start_quietly(host, domain, name, password)
+        pid = _start_quietly(host, domain, name, password, placed, cwd)
     except WindowsInstallError:
         raise
     except Exception as exc:

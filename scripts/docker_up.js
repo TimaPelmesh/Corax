@@ -160,21 +160,37 @@ function startWolRelay() {
     /* Windows */
   }
   const script = path.join(root, "scripts", "wol_relay.py");
+  const logPath = path.join(root, "data", "wol-relay.log");
   const candidates =
-    process.platform === "win32" ? ["python", "py", "python3"] : ["python3", "python"];
-  for (const bin of candidates) {
-    const child = spawn(bin, [script], {
+    process.platform === "win32"
+      ? [
+          ["py", ["-3"]],
+          ["python", []],
+          ["python3", []],
+        ]
+      : [
+          ["python3", []],
+          ["python", []],
+        ];
+  for (const [bin, prefix] of candidates) {
+    const probe = spawnSync(bin, [...prefix, "-c", "import sys"], {
+      windowsHide: true,
+      timeout: 15000,
+      stdio: "ignore",
+    });
+    if (probe.status !== 0) continue;
+    const logFd = fs.openSync(logPath, "a");
+    const child = spawn(bin, [...prefix, script], {
       cwd: root,
       detached: true,
-      stdio: "ignore",
+      stdio: ["ignore", logFd, logFd],
       windowsHide: true,
-      shell: process.platform === "win32",
+      shell: false,
     });
-    if (child.pid) {
-      child.unref();
-      console.log("WoL: ретранслятор на хосте (data/wol-queue). Пакет уходит с этой сетевой карты, не из Docker.");
-      return;
-    }
+    child.unref();
+    fs.closeSync(logFd);
+    console.log("WoL: ретранслятор на хосте (data/wol-queue). Пакет уходит с этой сетевой карты, не из Docker.");
+    return;
   }
   console.error("WoL: не найден Python, ретранслятор не запущен. Кнопка в панели не разбудит ПК.");
 }

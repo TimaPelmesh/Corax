@@ -2,6 +2,7 @@ from app.windows_install import (
     agent_launch_command,
     assert_lan_host,
     claim_windows_exe,
+    copy_targets,
     explain_remote_failure,
     remote_script,
     split_account,
@@ -43,6 +44,11 @@ def test_smb_starts_only_the_agent():
     command = agent_launch_command()
     assert command == r'"C:\ProgramData\CORAX\Agent\CORAX-Agent.exe" --install --silent'
     assert "cmd" not in command.lower()
+    share, remote, local, cwd = copy_targets()[0]
+    assert (share, remote, cwd) == ("ADMIN$", r"Temp\CORAX-Agent.exe", r"C:\Windows\Temp")
+    dropped = agent_launch_command(local)
+    assert dropped == r'"C:\Windows\Temp\CORAX-Agent.exe" --install --silent'
+    assert "cmd" not in dropped.lower()
 
 
 def test_open_port_is_not_blamed_for_a_rejected_login():
@@ -53,7 +59,8 @@ def test_open_port_is_not_blamed_for_a_rejected_login():
 
 def test_copy_denial_says_the_share_not_the_port():
     text = explain_remote_failure(_StatusError(0xC0000022), "copy")
-    assert "C$" in text
+    assert "локального администратора" in text
+    assert "Dr.Web" in text
     assert "закрыт" not in text
     assert "445 и 135" not in text
 

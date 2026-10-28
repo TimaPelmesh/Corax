@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <tlhelp32.h>
 
 #include <cctype>
 #include <cstdio>
@@ -130,6 +131,40 @@ void register_tray_autostart(const std::wstring& dest_exe) {
 bool ensure_dir(const std::wstring& path) {
   if (CreateDirectoryW(path.c_str(), nullptr)) return true;
   return GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
+std::wstring process_image(DWORD pid) {
+  HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!proc) return L"";
+  wchar_t buf[MAX_PATH * 4];
+  DWORD n = (DWORD)(sizeof(buf) / sizeof(buf[0]));
+  bool ok = QueryFullProcessImageNameW(proc, 0, buf, &n) == TRUE;
+  CloseHandle(proc);
+  return ok ? std::wstring(buf, n) : L"";
+}
+
+void stop_previous_agent(const std::wstring& dest) {
+  DWORD ignored = 0;
+  run_schtasks(L"/End /TN \"CORAX Agent\"", ignored);
+  run_schtasks(L"/End /TN \"CORAX Agent Tray\"", ignored);
+  DWORD self = GetCurrentProcessId();
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap == INVALID_HANDLE_VALUE) return;
+  PROCESSENTRY32W entry{};
+  entry.dwSize = sizeof(entry);
+  if (Process32FirstW(snap, &entry)) {
+    do {
+      if (entry.th32ProcessID == 0 || entry.th32ProcessID == self) continue;
+      std::wstring image = process_image(entry.th32ProcessID);
+      if (image.empty() || !same_path(image, dest)) continue;
+      HANDLE proc = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, entry.th32ProcessID);
+      if (!proc) continue;
+      TerminateProcess(proc, 0);
+      WaitForSingleObject(proc, 2000);
+      CloseHandle(proc);
+    } while (Process32NextW(snap, &entry));
+  }
+  CloseHandle(snap);
 }
 
 std::string percent_decode(const std::string& raw) {
@@ -329,10 +364,27 @@ InstallResult install_agent() {
   }
 
   std::wstring dest_exe = dir + L"\\CORAX-Agent.exe";
+  bool replaced = false;
   if (!same_path(self, dest_exe)) {
-    if (!CopyFileW(self.c_str(), dest_exe.c_str(), FALSE)) {
+    bool had_previous = GetFileAttributesW(dest_exe.c_str()) != INVALID_FILE_ATTRIBUTES;
+    bool copied = CopyFileW(self.c_str(), dest_exe.c_str(), FALSE) == TRUE;
+    if (!copied && had_previous) {
+      stop_previous_agent(dest_exe);
+      copied = CopyFileW(self.c_str(), dest_exe.c_str(), FALSE) == TRUE;
+    }
+    if (!copied && had_previous) {
+      std::wstring old = dest_exe + L".old";
+      if (MoveFileExW(dest_exe.c_str(), old.c_str(), MOVEFILE_REPLACE_EXISTING) &&
+          CopyFileW(self.c_str(), dest_exe.c_str(), FALSE)) {
+        DeleteFileW(old.c_str());
+        copied = true;
+      }
+    }
+    if (!copied) {
       dest_exe = self;
       dir = src_dir;
+    } else {
+      replaced = had_previous;
     }
   }
   copy_if_present(src_dir, dir, L"agent.json");
@@ -354,7 +406,8 @@ InstallResult install_agent() {
 
   out.ok = true;
   out.install_dir = util::narrow(dir);
-  out.message = machine ? "Установлено. Агент в автозагрузке и в трее."
-                        : "Установлено для этого пользователя. Агент в автозагрузке и в трее.";
+  out.message = !machine ? "Установлено для этого пользователя. Агент в автозагрузке и в трее."
+               : replaced ? "Установлено. Прежняя копия в трее заменена этой."
+                          : "Установлено. Агент в автозагрузке и в трее.";
   return out;
 }

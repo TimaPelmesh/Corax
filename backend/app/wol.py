@@ -134,8 +134,24 @@ def interfaces_from_ipconfig(text: str) -> list[tuple[str, str, ipaddress.IPv4Ne
     return found
 
 
+_lan_cache_at = 0.0
+_lan_cache: list[tuple[str, ipaddress.IPv4Network]] = []
+
+
 def local_lan_interfaces() -> list[tuple[str, ipaddress.IPv4Network]]:
     """Physical/site LAN NICs only — skip Docker, WSL, Hyper-V and VPN adapters."""
+    global _lan_cache_at, _lan_cache
+    now = time.monotonic()
+    if _lan_cache and now - _lan_cache_at < 60:
+        return list(_lan_cache)
+    found = _scan_lan_interfaces()
+    if found:
+        _lan_cache_at = now
+        _lan_cache = found
+    return found
+
+
+def _scan_lan_interfaces() -> list[tuple[str, ipaddress.IPv4Network]]:
     from app.local_ip import _is_likely_container_bridge
 
     found: dict[str, ipaddress.IPv4Network] = {}
@@ -283,7 +299,7 @@ def _send_via_queue(
     try:
         root.mkdir(parents=True, exist_ok=True)
     except OSError:
-        return {"sent": 0, "errors": 1, "detail": "relay_timeout"}
+        return {"sent": 0, "errors": 1, "detail": "relay_queue"}
     uid = uuid.uuid4().hex
     req = root / f"req-{uid}.json"
     tmp = root / f"req-{uid}.json.tmp"
@@ -296,8 +312,9 @@ def _send_via_queue(
         tmp.write_text(body, encoding="utf-8")
         tmp.replace(req)
     except OSError:
-        return {"sent": 0, "errors": 1, "detail": "relay_timeout"}
-    deadline = time.time() + 4.0
+        return {"sent": 0, "errors": 1, "detail": "relay_queue"}
+    deadline = time.time() + 20.0
+    started = time.time()
     try:
         while time.time() < deadline:
             if res.is_file():
@@ -312,11 +329,21 @@ def _send_via_queue(
                     "errors": int(data.get("errors") or 0),
                     "detail": str(data.get("detail") or ""),
                 }
+            if time.time() - started > 3 and not _relay_alive(root):
+                return {"sent": 0, "errors": 1, "detail": "relay_down"}
             time.sleep(0.05)
     finally:
         req.unlink(missing_ok=True)
         tmp.unlink(missing_ok=True)
     return {"sent": 0, "errors": 1, "detail": "relay_timeout"}
+
+
+def _relay_alive(root: Path) -> bool:
+    beat = root / "relay.alive"
+    try:
+        return beat.is_file() and time.time() - beat.stat().st_mtime < 30
+    except OSError:
+        return False
 
 
 def send_wake(
