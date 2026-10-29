@@ -689,12 +689,6 @@ export const en: MessageTree = {
   dashboard: {
     noData: 'No data',
     emptyFleet: 'No computers in inventory',
-    overnightTitle: 'Overnight',
-    overnightEmpty: 'Quiet: no offline PCs, overdue tickets, or low stock.',
-    overnightOffline: '{host} does not answer ping',
-    overnightSlaDeadline: 'Ticket #{id} is past its due date. {title}',
-    overnightSlaAge: 'Ticket #{id} has been open longer than its window. {title}',
-    overnightStock: '{name}: {available} left',
     donutAriaLabel: 'Distribution donut chart',
     showPcsFor: 'Show PCs: {name}',
     drilldownEmpty: 'No PCs in the selected segment.',

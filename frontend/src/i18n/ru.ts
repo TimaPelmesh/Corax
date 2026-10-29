@@ -687,12 +687,6 @@ export const ru = {
   dashboard: {
     noData: 'Нет данных',
     emptyFleet: 'В инвентаризации нет компьютеров',
-    overnightTitle: 'За ночь',
-    overnightEmpty: 'Тихо: нет офлайна, просроченных заявок и пустых остатков.',
-    overnightOffline: '{host} не отвечает на ping',
-    overnightSlaDeadline: 'Заявка №{id} — срок прошёл. {title}',
-    overnightSlaAge: 'Заявка №{id} держится дольше нормы. {title}',
-    overnightStock: '{name}: осталось {available}',
     donutAriaLabel: 'Круговая диаграмма распределения',
     showPcsFor: 'Показать ПК: {name}',
     drilldownEmpty: 'Нет ПК для выбранного сегмента.',

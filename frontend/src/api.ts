@@ -494,17 +494,6 @@ export type SettingsBoardItem = {
   count: number
 }
 
-export type OvernightItem = {
-  kind: 'offline' | 'sla' | 'stock'
-  host?: string
-  ticket_id?: number
-  title?: string
-  reason?: 'deadline' | 'age' | string
-  name?: string
-  available?: number
-  href?: string
-}
-
 export type WolJournalItem = {
   id: number
   hostname: string
@@ -1747,8 +1736,6 @@ export const api = {
 
   dashboardSummary: async () =>
     normalizeDashboardSummary(await request<DashboardSummary>(`${API_PREFIX}/dashboard/summary`)),
-
-  dashboardOvernight: () => request<{ items: OvernightItem[] }>(`${API_PREFIX}/dashboard/overnight`),
 
   settingsBoard: () => request<{ items: SettingsBoardItem[] }>(`${API_PREFIX}/settings/board`),
 

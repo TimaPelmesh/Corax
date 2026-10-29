@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type DashboardSegmentKind, type DashboardSummary, type OvernightItem } from '../api'
+import { api, type DashboardSegmentKind, type DashboardSummary } from '../api'
 import { useAuth } from '../AuthContext'
 import { DashboardDrilldownPanel, type DashboardDrilldownSelection } from '../components/DashboardDrilldown'
 import {
@@ -37,7 +37,6 @@ export function DashboardPage() {
   const { user } = useAuth()
   const canDownloadAgent = Boolean(user?.is_superuser)
   const [data, setData] = useState<DashboardSummary | null>(null)
-  const [overnight, setOvernight] = useState<OvernightItem[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [widgets, setWidgets] = useState<WidgetVisibility>(() => readWidgets())
   const [drilldown, setDrilldown] = useState<DashboardDrilldownSelection | null>(null)
@@ -78,21 +77,6 @@ export function DashboardPage() {
     void load()
   }, [load])
 
-  useEffect(() => {
-    let cancelled = false
-    void api
-      .dashboardOvernight()
-      .then((payload) => {
-        if (!cancelled) setOvernight(payload.items)
-      })
-      .catch(() => {
-        if (!cancelled) setOvernight(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const closedPoints = data?.service_requests_closed_series ?? []
   const closedTotal = closedPoints.length
     ? (closedPoints[closedPoints.length - 1].cumulative ?? closedPoints.reduce((sum, point) => sum + point.count, 0))
@@ -104,32 +88,6 @@ export function DashboardPage() {
     <div>
       <h1 className="sr-only">{t('titles.dashboard')}</h1>
       <div className="dashboard-enter space-y-4" aria-busy={loading || undefined}>
-        {overnight ? (
-          <section className="app-card px-4 py-3" aria-label={t('dashboard.overnightTitle')}>
-            <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">{t('dashboard.overnightTitle')}</h2>
-            {overnight.length === 0 ? (
-              <p className="mt-1 text-sm text-[var(--color-fg-muted)]">{t('dashboard.overnightEmpty')}</p>
-            ) : (
-              <ul className="mt-2 space-y-1 text-sm text-[var(--color-fg)]">
-                {overnight.map((item, index) => (
-                  <li key={`${item.kind}-${item.host ?? item.ticket_id ?? item.name ?? index}`}>
-                    <Link to={item.href || '/'} className="hover:underline">
-                      {item.kind === 'offline'
-                        ? t('dashboard.overnightOffline', { host: item.host || '' })
-                        : item.kind === 'sla'
-                          ? t(item.reason === 'deadline' ? 'dashboard.overnightSlaDeadline' : 'dashboard.overnightSlaAge', {
-                              id: item.ticket_id ?? 0,
-                              title: item.title || '',
-                            })
-                          : t('dashboard.overnightStock', { name: item.name || '', available: item.available ?? 0 })}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ) : null}
-
         {data && data.computers_total === 0 ? (
           <div className="app-card flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
             <p>{t('dashboard.emptyFleet')}</p>
