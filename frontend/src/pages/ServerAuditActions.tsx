@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type ServerAuditActionCatalog, type ServerAuditJob, type ServerAuditJobAction } from '../api'
 import { useConfirmDialog } from '../components/ConfirmDialog'
+import { AppFold } from '../components/ui/AppFold'
 import { useT } from '../i18n/LocaleContext'
 
 const EMPTY_CATALOG: ServerAuditActionCatalog = {
@@ -13,43 +14,8 @@ const EMPTY_CATALOG: ServerAuditActionCatalog = {
 const UNIT_RE = /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,80}$/
 const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,64}$/
 const CONTAINER_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/
-const PLAYBOOK_KEY = 'corax-audit-playbook-v1'
 
-type PlayStep = { kind: string; value: string }
-
-function loadPlaybook(): PlayStep[] {
-  try {
-    const raw = localStorage.getItem(PLAYBOOK_KEY)
-    const data = raw ? (JSON.parse(raw) as unknown) : []
-    if (!Array.isArray(data)) return []
-    return data
-      .filter((row): row is PlayStep => Boolean(row) && typeof row.kind === 'string' && typeof row.value === 'string')
-      .slice(0, 8)
-  } catch {
-    return []
-  }
-}
-
-function playbookPayload(steps: PlayStep[]) {
-  const mapped = steps.map((step) => {
-    const value = step.value.trim()
-    if (step.kind === 'restart' || step.kind === 'status') {
-      return UNIT_RE.test(value) ? { action: step.kind, target: value } : null
-    }
-    if (step.kind === 'docker-ps') return { action: 'docker', target: 'ps' }
-    if (step.kind === 'docker-start' || step.kind === 'docker-stop' || step.kind === 'docker-restart') {
-      return CONTAINER_RE.test(value)
-        ? { action: 'docker', target: step.kind.slice('docker-'.length), body: value }
-        : null
-    }
-    if ((step.kind === 'compose-up' || step.kind === 'compose-down') && value.startsWith('/')) {
-      return { action: 'docker', target: step.kind, body: value.replace(/\/+$/, '') }
-    }
-    return null
-  })
-  if (mapped.some((step) => step == null) || mapped.length === 0) return null
-  return JSON.stringify({ steps: mapped })
-}
+type RemoteAction = 'status' | 'show' | 'restart' | 'test'
 
 function statusLabel(status: string, t: ReturnType<typeof useT>) {
   if (status === 'pending') return t('serverAudit.jobPending')
@@ -135,9 +101,8 @@ export function ServerAuditActions({
   const confirm = useConfirmDialog()
   const [catalog, setCatalog] = useState<ServerAuditActionCatalog>(EMPTY_CATALOG)
   const [picked, setPicked] = useState('')
-  const [statusUnit, setStatusUnit] = useState('nginx')
-  const [restartUnit, setRestartUnit] = useState('nginx')
-  const [extraUnit, setExtraUnit] = useState('')
+  const [remoteAction, setRemoteAction] = useState<RemoteAction>('status')
+  const [remoteTarget, setRemoteTarget] = useState('nginx')
   const [readPath, setReadPath] = useState('/etc/nginx/nginx.conf')
   const [writePrefix, setWritePrefix] = useState('/etc/nginx/conf.d/')
   const [writeName, setWriteName] = useState('corax.conf')
@@ -145,7 +110,6 @@ export function ServerAuditActions({
   const [folder, setFolder] = useState('')
   const [editPath, setEditPath] = useState('')
   const [filledReadId, setFilledReadId] = useState<number | null>(null)
-  const [playSteps, setPlaySteps] = useState<PlayStep[]>(loadPlaybook)
   const [composePath, setComposePath] = useState('/etc/corax/compose/web')
   const [openId, setOpenId] = useState<number | null>(null)
 
@@ -158,8 +122,7 @@ export function ServerAuditActions({
         setCatalog(rows)
         if (rows.restart[0]) {
           const picked = rows.restart.includes('nginx') ? 'nginx' : rows.restart[0]
-          setStatusUnit(picked)
-          setRestartUnit(picked)
+          setRemoteTarget(picked)
         }
         if (rows.read[0]) setReadPath(rows.read[0])
         if (rows.write_prefixes[0]) setWritePrefix(rows.write_prefixes[0])
@@ -170,14 +133,6 @@ export function ServerAuditActions({
       alive = false
     }
   }, [])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(PLAYBOOK_KEY, JSON.stringify(playSteps))
-    } catch {
-      /* the draft is optional */
-    }
-  }, [playSteps])
 
   useEffect(() => {
     if (!editPath) return
@@ -201,8 +156,11 @@ export function ServerAuditActions({
     }
   }
 
-  const statusTarget = extraUnit.trim() || statusUnit
-  const statusOk = UNIT_RE.test(statusTarget)
+  const requestTarget = remoteTarget.trim()
+  const requestOk =
+    remoteAction === 'test'
+      ? requestTarget === 'nginx' || requestTarget === 'sshd'
+      : UNIT_RE.test(requestTarget)
   const nameOk = FILE_RE.test(writeName.trim())
   const writePath = `${writePrefix}${writeName.trim()}`
 
@@ -212,7 +170,6 @@ export function ServerAuditActions({
   const listed = parseList(listJob?.output || '')
   const dockerJob = jobs.find((job) => job.action === 'docker' && job.target === 'ps' && job.status === 'done' && job.output)
   const containers = parseDocker(dockerJob?.output || '')
-  const playbookBody = playbookPayload(playSteps)
   const unitsJob = jobs.find((job) => job.action === 'units' && job.status === 'done' && job.output)
   const units = parseUnits(unitsJob?.output || '')
   const shown = jobs.find((job) => job.action === 'show' && job.target === picked && job.output)
@@ -253,16 +210,13 @@ export function ServerAuditActions({
     await onQueue('docker', verb, path)
   }
 
-  async function runPlaybook() {
-    if (!playbookBody) return
-    const ok = await confirm.ask({
-      title: t('serverAudit.playbookTitle'),
-      body: t('serverAudit.playbookAsk', { n: String(playSteps.length) }),
-      confirmLabel: t('serverAudit.playbookRun'),
-      tone: 'danger',
-    })
-    if (!ok) return
-    await onQueue('playbook', 'run', playbookBody)
+  async function sendRemote() {
+    if (!requestOk) return
+    if (remoteAction === 'restart') {
+      await restartPicked(requestTarget)
+      return
+    }
+    await onQueue(remoteAction, requestTarget)
   }
 
   return (
@@ -271,43 +225,78 @@ export function ServerAuditActions({
       {view === 'ops' ? (
         <div className="flex flex-col gap-4">
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4">
-            <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.playTitle')}</div>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('serverAudit.playLead')}</p>
-            <div className="mt-4 grid items-stretch gap-2 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
-              {(
-                [
-                  { n: '1', title: t('serverAudit.playStepUnits'), run: () => void onQueue('units', 'service'), disabled: busy },
-                  { n: '2', title: t('serverAudit.playStepShow'), run: () => void onQueue('show', picked), disabled: busy || !picked },
-                  { n: '3', title: t('serverAudit.playStepRestart'), run: () => void restartPicked(picked), disabled: busy || !picked },
-                ] as const
-              ).map((step, index) => (
-                <div key={step.n} className="contents">
-                  <div className="flex flex-col justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">{step.n}</div>
-                      <div className="mt-1 text-sm font-medium text-[var(--color-fg)]">{step.title}</div>
-                    </div>
-                    <button type="button" className="app-btn app-btn-secondary mt-3 !min-h-0 !px-3 !py-2" disabled={step.disabled} onClick={step.run}>
-                      {t('serverAudit.playRun')}
-                    </button>
-                  </div>
-                  {index < 2 ? <div className="hidden items-center justify-center text-[var(--color-fg-subtle)] md:flex">→</div> : null}
-                </div>
-              ))}
+            <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.remoteTitle')}</div>
+            <p className="mt-1 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('serverAudit.remoteLead')}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void onQueue('units', 'service')}>
+                {t('serverAudit.playStepUnits')}
+              </button>
+              <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void onQueue('test', 'nginx')}>
+                {t('serverAudit.actNginxTest')}
+              </button>
+              <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void onQueue('test', 'sshd')}>
+                {t('serverAudit.actSshdTest')}
+              </button>
+              <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void onQueue('docker', 'ps')}>
+                {t('serverAudit.dockerList')}
+              </button>
             </div>
-            <p className="mt-3 text-xs text-[var(--color-fg-subtle)]">{picked ? picked : t('serverAudit.playPick')}</p>
-            {units.length === 0 ? (
-              <p className="mt-3 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.playEmpty')}</p>
-            ) : (
-              <div className="mt-3 grid max-h-64 gap-1 overflow-auto sm:grid-cols-2">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="flex min-w-[9rem] flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                {t('serverAudit.remoteAction')}
+                <select
+                  value={remoteAction}
+                  onChange={(event) => setRemoteAction(event.target.value as RemoteAction)}
+                  className="app-input app-select"
+                >
+                  <option value="status">{t('serverAudit.actKindStatus')}</option>
+                  <option value="show">{t('serverAudit.actKindShow')}</option>
+                  <option value="test">{t('serverAudit.actKindTest')}</option>
+                  <option value="restart">{t('serverAudit.actKindRestart')}</option>
+                </select>
+              </label>
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
+                {t('serverAudit.remoteTarget')}
+                <input
+                  value={remoteTarget}
+                  onChange={(event) => setRemoteTarget(event.target.value)}
+                  list="server-audit-units"
+                  className="app-input font-mono"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </label>
+              <button
+                type="button"
+                className={remoteAction === 'restart' ? 'app-btn app-btn-danger !min-h-0 !px-3 !py-2' : 'app-btn app-btn-primary !min-h-0 !px-3 !py-2'}
+                disabled={busy || !requestOk}
+                onClick={() => void sendRemote()}
+              >
+                {t('serverAudit.remoteSend')}
+              </button>
+            </div>
+            <datalist id="server-audit-units">
+              {catalog.restart.map((name) => (
+                <option key={name} value={name} />
+              ))}
+              {units.map((unit) => (
+                <option key={`live-${unit.name}`} value={unit.name} />
+              ))}
+            </datalist>
+            {units.length > 0 ? (
+              <div className="mt-3 grid max-h-48 gap-1 overflow-auto sm:grid-cols-2">
                 {units.map((unit) => {
                   const on = unit.active === 'active'
-                  const selected = picked === unit.name
+                  const selected = picked === unit.name || remoteTarget === unit.name
                   return (
                     <button
                       key={unit.name}
                       type="button"
-                      onClick={() => setPicked(unit.name)}
+                      onClick={() => {
+                        setPicked(unit.name)
+                        setRemoteTarget(unit.name)
+                        setRemoteAction('status')
+                      }}
                       className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left ${selected ? 'border-[var(--color-primary)] bg-[var(--color-surface)]' : 'border-transparent hover:bg-[var(--color-surface)]'}`}
                     >
                       <span className={`h-2 w-2 shrink-0 rounded-full ${on ? 'bg-emerald-500' : 'bg-[var(--color-fg-subtle)]'}`} />
@@ -319,187 +308,60 @@ export function ServerAuditActions({
                   )
                 })}
               </div>
+            ) : (
+              <p className="mt-3 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.playEmpty')}</p>
             )}
             {shown?.output ? (
-              <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 font-mono text-[11px] text-[var(--color-fg)]">{shown.output}</pre>
+              <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 font-mono text-[11px] text-[var(--color-fg)]">{shown.output}</pre>
             ) : null}
           </div>
-          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.dockerTitle')}</div>
-              <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void onQueue('docker', 'ps')}>
-                {t('serverAudit.dockerList')}
-              </button>
-            </div>
-            {containers.length === 0 ? (
-              <p className="mt-3 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.dockerEmpty')}</p>
-            ) : (
-              <div className="mt-3 flex max-h-56 flex-col gap-1 overflow-auto">
-                {containers.map((container) => (
-                  <div key={container.name} className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--color-surface)] px-2 py-1.5">
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-xs text-[var(--color-fg)]">{container.name}</span>
-                      <span className="block truncate text-[11px] text-[var(--color-fg-subtle)]">{container.status}{container.image ? ` · ${container.image}` : ''}</span>
-                    </span>
-                    <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('start', container.name)}>
-                      {t('serverAudit.dockerStart')}
-                    </button>
-                    <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('stop', container.name)}>
-                      {t('serverAudit.dockerStop')}
-                    </button>
-                    <button type="button" className="app-btn app-btn-danger !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('restart', container.name)}>
-                      {t('serverAudit.dockerRestart')}
-                    </button>
-                  </div>
-                ))}
+          <AppFold title={t('serverAudit.dockerTitle')}>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {containers.length === 0 ? <p className="text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.dockerEmpty')}</p> : <span />}
+                <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void onQueue('docker', 'ps')}>
+                  {t('serverAudit.dockerList')}
+                </button>
               </div>
-            )}
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <input
-                value={composePath}
-                onChange={(event) => setComposePath(event.target.value)}
-                className="app-input min-w-0 flex-1 font-mono"
-                placeholder={`${composePrefixes[0]}/web`}
-                spellCheck={false}
-                aria-label={t('serverAudit.composePath')}
-              />
-              <button
-                type="button"
-                className="app-btn app-btn-primary !min-h-0 !px-3 !py-2"
-                disabled={busy}
-                onClick={() => void composeVerb('compose-up')}
-              >
-                {t('serverAudit.composeUp')}
-              </button>
-              <button
-                type="button"
-                className="app-btn app-btn-danger !min-h-0 !px-3 !py-2"
-                disabled={busy}
-                onClick={() => void composeVerb('compose-down')}
-              >
-                {t('serverAudit.composeDown')}
-              </button>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4">
-            <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.playbookTitle')}</div>
-            <p className="mt-1 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('serverAudit.playbookLead')}</p>
-            <div className="mt-3 flex flex-col gap-2">
-              {playSteps.map((step, index) => (
-                <div key={`${step.kind}-${index}`} className="grid grid-cols-[10rem_minmax(0,1fr)_auto] gap-2">
-                  <select
-                    value={step.kind}
-                    onChange={(event) =>
-                      setPlaySteps((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, kind: event.target.value } : item)))
-                    }
-                    className="app-input app-select"
-                  >
-                    <option value="restart">{t('serverAudit.actKindRestart')}</option>
-                    <option value="status">{t('serverAudit.actKindStatus')}</option>
-                    <option value="docker-ps">{t('serverAudit.dockerList')}</option>
-                    <option value="docker-start">{t('serverAudit.dockerStart')}</option>
-                    <option value="docker-stop">{t('serverAudit.dockerStop')}</option>
-                    <option value="docker-restart">{t('serverAudit.dockerRestart')}</option>
-                    <option value="compose-up">{t('serverAudit.composeUp')}</option>
-                    <option value="compose-down">{t('serverAudit.composeDown')}</option>
-                  </select>
-                  <input
-                    value={step.value}
-                    onChange={(event) =>
-                      setPlaySteps((prev) => prev.map((item, itemIndex) => (itemIndex === index ? { ...item, value: event.target.value } : item)))
-                    }
-                    className="app-input font-mono"
-                    spellCheck={false}
-                    disabled={step.kind === 'docker-ps'}
-                  />
-                  <button
-                    type="button"
-                    className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1"
-                    onClick={() => setPlaySteps((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-                  >
-                    ×
-                  </button>
+              {containers.length > 0 ? (
+                <div className="flex max-h-56 flex-col gap-1 overflow-auto">
+                  {containers.map((container) => (
+                    <div key={container.name} className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--color-surface)] px-2 py-1.5">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-mono text-xs text-[var(--color-fg)]">{container.name}</span>
+                        <span className="block truncate text-[11px] text-[var(--color-fg-subtle)]">{container.status}{container.image ? ` · ${container.image}` : ''}</span>
+                      </span>
+                      <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('start', container.name)}>
+                        {t('serverAudit.dockerStart')}
+                      </button>
+                      <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('stop', container.name)}>
+                        {t('serverAudit.dockerStop')}
+                      </button>
+                      <button type="button" className="app-btn app-btn-danger !min-h-0 !px-2 !py-1 text-xs" disabled={busy} onClick={() => void dockerVerb('restart', container.name)}>
+                        {t('serverAudit.dockerRestart')}
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : null}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={composePath}
+                  onChange={(event) => setComposePath(event.target.value)}
+                  className="app-input min-w-0 flex-1 font-mono"
+                  placeholder={`${composePrefixes[0]}/web`}
+                  spellCheck={false}
+                  aria-label={t('serverAudit.composePath')}
+                />
+                <button type="button" className="app-btn app-btn-primary !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void composeVerb('compose-up')}>
+                  {t('serverAudit.composeUp')}
+                </button>
+                <button type="button" className="app-btn app-btn-danger !min-h-0 !px-3 !py-2" disabled={busy} onClick={() => void composeVerb('compose-down')}>
+                  {t('serverAudit.composeDown')}
+                </button>
+              </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
-                disabled={playSteps.length >= 8}
-                onClick={() => setPlaySteps((prev) => [...prev, { kind: 'restart', value: 'nginx' }].slice(0, 8))}
-              >
-                {t('serverAudit.playbookAdd')}
-              </button>
-              <button type="button" className="app-btn app-btn-primary !min-h-0 !px-3 !py-2" disabled={busy || !playbookBody} onClick={() => void runPlaybook()}>
-                {t('serverAudit.playbookRun')}
-              </button>
-            </div>
-          </div>
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-              {t('serverAudit.actGroupCheck')}
-            </div>
-            <button type="button" disabled={busy} className="app-btn app-btn-secondary !min-h-0 !justify-start !px-3 !py-2" onClick={() => void onQueue('test', 'nginx')}>
-              {t('serverAudit.actNginxTest')}
-            </button>
-            <button type="button" disabled={busy} className="app-btn app-btn-secondary !min-h-0 !justify-start !px-3 !py-2" onClick={() => void onQueue('test', 'sshd')}>
-              {t('serverAudit.actSshdTest')}
-            </button>
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-              {t('serverAudit.actGroupStatus')}
-            </div>
-            <select value={statusUnit} onChange={(event) => setStatusUnit(event.target.value)} className="app-input app-select">
-              {catalog.restart.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-            <label className="flex flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-              {t('serverAudit.actUnitExtra')}
-              <input
-                value={extraUnit}
-                onChange={(event) => setExtraUnit(event.target.value)}
-                placeholder="cron"
-                className="app-input font-mono"
-                spellCheck={false}
-                autoComplete="off"
-              />
-            </label>
-            <button
-              type="button"
-              disabled={busy || !statusOk}
-              className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
-              onClick={() => void onQueue('status', statusTarget)}
-            >
-              {t('serverAudit.actStatusRun')}
-            </button>
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-              {t('serverAudit.actGroupRestart')}
-            </div>
-            <select value={restartUnit} onChange={(event) => setRestartUnit(event.target.value)} className="app-input app-select">
-              {catalog.restart.map((name) => (
-                <option key={`restart-${name}`} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={busy}
-              className="app-btn app-btn-danger !min-h-0 !px-3 !py-2"
-              onClick={() => void restartPicked(restartUnit)}
-            >
-              {t('serverAudit.actRestartPick')}
-            </button>
-          </div>
-        </div>
+          </AppFold>
         </div>
       ) : (
         <div className="flex flex-col gap-4">

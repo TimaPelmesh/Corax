@@ -406,7 +406,7 @@ export function ServerAuditPage() {
   const fastSec = selectedSeconds > 0 && selectedSeconds < 60 ? selectedSeconds : 0
   const listMs = fastSec > 0 ? fastSec * 1000 : 20_000
   const detailMs = hours >= 168 ? 45_000 : fastSec > 0 ? fastSec * 1000 : selectedSeconds > 0 && selectedSeconds <= 60 ? 10_000 : selectedWaiting ? 10_000 : 25_000
-  const jobMs = jobHot ? 4_000 : 20_000
+  const jobMs = jobHot ? 15_000 : 30_000
   const tickMs = manageOpen && canEdit ? jobMs : chartsLive ? detailMs : listMs
   const remainSec = paused ? null : Math.max(0, Math.ceil((tickMs - (now - polledAt)) / 1000))
 
