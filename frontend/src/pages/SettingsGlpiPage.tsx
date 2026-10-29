@@ -6,6 +6,7 @@ import { IconPcs, IconTicket, IconWarehouse } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { AppFold } from '../components/ui/AppFold'
 import { GlpiApiPanel } from './GlpiApiPanel'
+import { GlpiDepthPanel } from './GlpiDepthPanel'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -277,6 +278,7 @@ export function SettingsGlpiPage() {
 
       <div className="flex flex-col gap-4">
         <GlpiApiPanel />
+        <GlpiDepthPanel />
         <AppFold title={t('settingsGlpi.filesMore')}>
         <div className="grid gap-4 xl:grid-cols-2">
         <section className="space-y-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">

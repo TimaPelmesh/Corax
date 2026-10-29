@@ -114,6 +114,69 @@ export function SettingsDatabasePage() {
         </div>
       ) : null}
 
+      {status?.schedule ? (
+        <section className="app-panel space-y-3">
+          <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsDatabase.scheduleTitle')}</h2>
+          <p className="text-sm leading-relaxed text-[var(--color-fg-muted)]">{t('settingsDatabase.scheduleHint')}</p>
+          <label className="flex items-center gap-2 text-sm text-[var(--color-fg)]">
+            <input
+              type="checkbox"
+              checked={status.schedule.enabled}
+              onChange={(e) => {
+                const enabled = e.target.checked
+                void api
+                  .databaseBackupSchedule({ enabled })
+                  .then((schedule) => setStatus({ ...status, schedule }))
+                  .catch((e) => toast.error(e instanceof Error ? e.message : t('common.error')))
+              }}
+            />
+            {t('settingsDatabase.scheduleOn')}
+          </label>
+          <label className="block text-sm text-[var(--color-fg)]">
+            {t('settingsDatabase.intervalHours')}
+            <input
+              type="number"
+              min={1}
+              max={168}
+              className="app-input mt-1 w-full max-w-[8rem]"
+              value={status.schedule.interval_hours}
+              onBlur={(e) => {
+                const hours = Math.max(1, Math.min(168, Number.parseInt(e.target.value, 10) || 24))
+                void api
+                  .databaseBackupSchedule({ interval_hours: hours })
+                  .then((schedule) => setStatus({ ...status, schedule }))
+                  .catch((err) => toast.error(err instanceof Error ? err.message : t('common.error')))
+              }}
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="app-btn app-btn-secondary"
+              disabled={exportBusy}
+              onClick={() => {
+                setExportBusy(true)
+                void api
+                  .databaseBackupCheck()
+                  .then((schedule) => {
+                    setStatus({ ...status, schedule })
+                    toast.ok(schedule.last_message || t('settingsDatabase.lastCheck'))
+                  })
+                  .catch((e) => toast.error(e instanceof Error ? e.message : t('common.error')))
+                  .finally(() => setExportBusy(false))
+              }}
+            >
+              {exportBusy ? t('settingsDatabase.checkBusy') : t('settingsDatabase.checkButton')}
+            </button>
+            {status.schedule.last_message ? (
+              <StatusPill tone={status.schedule.last_ok ? 'success' : status.schedule.last_ok === false ? 'error' : 'neutral'}>
+                {status.schedule.last_message}
+              </StatusPill>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {!status?.single_database && status ? (
         <div className="app-alert app-alert-warning">
           {t('settingsDatabase.multiDbWarning')}{' '}

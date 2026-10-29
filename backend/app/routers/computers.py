@@ -267,6 +267,40 @@ async def computers_ping_sweep(_: User = Depends(get_current_user)):
     return computer_ping_scheduler.request_full(reason="ui")
 
 
+@router.get("/wol/journal")
+async def wol_journal(
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    found = await db.execute(
+        select(AssetChangeLog, Computer.hostname)
+        .join(Computer, Computer.id == AssetChangeLog.computer_id)
+        .where(AssetChangeLog.field_key == "wake")
+        .order_by(AssetChangeLog.id.desc())
+        .limit(20)
+    )
+    items = []
+    for log_row, hostname in found.all():
+        sent = 0
+        actor = ""
+        try:
+            payload = json.loads(log_row.payload_json or "{}")
+            sent = int(payload.get("sent") or 0)
+            actor = str(payload.get("by_username") or "")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            sent = 0
+        items.append(
+            {
+                "id": log_row.id,
+                "hostname": hostname,
+                "at": log_row.created_at.isoformat() if log_row.created_at else None,
+                "sent": sent,
+                "by": actor,
+            }
+        )
+    return {"items": items}
+
+
 @router.get("/wol/config", response_model=WolConfigOut)
 async def get_wol_config(
     _: User = Depends(get_current_superuser),

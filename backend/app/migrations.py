@@ -2082,6 +2082,36 @@ def _migrate_bitrix_bot_keyboard(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE bitrix_bot_dialogs ADD COLUMN keyboard_sig VARCHAR(128)"))
 
 
+def _migrate_backup_schedule(sync_conn) -> None:
+    if "backup_schedule" in _table_names(sync_conn):
+        return
+    if sync_conn.dialect.name == "sqlite":
+        ddl = """
+            CREATE TABLE backup_schedule (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              enabled BOOLEAN NOT NULL DEFAULT 0,
+              interval_hours INTEGER NOT NULL DEFAULT 24,
+              last_run_at TIMESTAMP,
+              last_ok BOOLEAN,
+              last_message VARCHAR(255) NOT NULL DEFAULT '',
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+    else:
+        ddl = """
+            CREATE TABLE backup_schedule (
+              id SERIAL PRIMARY KEY,
+              enabled BOOLEAN NOT NULL DEFAULT FALSE,
+              interval_hours INTEGER NOT NULL DEFAULT 24,
+              last_run_at TIMESTAMP,
+              last_ok BOOLEAN,
+              last_message VARCHAR(255) NOT NULL DEFAULT '',
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+    sync_conn.execute(text(ddl))
+
+
 _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-04-16_schema_migrations", lambda c: None),
     ("2026-04-16_tags_color", _migrate_tags_color_column),
@@ -2157,6 +2187,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-27_bitrix_bot_modes", _migrate_bitrix_bot_modes),
     ("2026-10-27_bitrix_bot_scripts", _migrate_bitrix_bot_scripts),
     ("2026-10-27_bitrix_bot_email", _migrate_bitrix_bot_email),
+    ("2026-10-29_backup_schedule", _migrate_backup_schedule),
 ]
 
 

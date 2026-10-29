@@ -449,6 +449,9 @@ MENU_COMMANDS = (
     ("ticket", "Оставить заявку", "New ticket"),
     ("status", "Мои заявки", "My tickets"),
     ("help", "Помощь", "Help"),
+    ("pc", "Мой компьютер", "My computer"),
+    ("stock", "Склад", "Warehouse"),
+    ("sla", "Срок заявки", "Ticket due"),
 )
 
 

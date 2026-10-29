@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { api, type User, type WolConfig } from '../api'
+import { api, type User, type WolConfig, type WolJournalItem } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconPcs } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
@@ -28,13 +28,19 @@ export function SettingsWolPage() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [journal, setJournal] = useState<WolJournalItem[]>([])
 
   const load = useCallback(async () => {
     setLoadError(null)
     try {
-      const [c, u] = await Promise.all([api.wolConfig(), api.users()])
+      const [c, u, wakes] = await Promise.all([
+        api.wolConfig(),
+        api.users(),
+        api.wolJournal().catch(() => ({ items: [] as WolJournalItem[] })),
+      ])
       setCfg(normalizeWolConfig(c))
       setUsers(u.filter((x) => x.is_active && !x.is_ldap && x.role !== 'directory'))
+      setJournal(wakes.items)
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('common.error')
       setLoadError(msg)
@@ -171,6 +177,28 @@ export function SettingsWolPage() {
               />
             </label>
             <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('settingsWol.cooldownHint')}</p>
+          </section>
+
+          <section className="app-panel">
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsWol.journal')}</h2>
+            {journal.length === 0 ? (
+              <p className="mt-2 text-sm text-[var(--color-fg-muted)]">{t('settingsWol.journalEmpty')}</p>
+            ) : (
+              <ul className="mt-2 space-y-2 text-sm">
+                {journal.map((row) => (
+                  <li key={row.id} className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-[var(--color-fg)]">{row.hostname}</span>
+                    <StatusPill tone={row.sent > 0 ? 'success' : 'error'}>
+                      {row.sent > 0 ? t('settingsWol.packetSent') : t('settingsWol.packetFailed')}
+                    </StatusPill>
+                    <span className="text-[var(--color-fg-muted)]">
+                      {row.by}
+                      {row.at ? ` · ${row.at.replace('T', ' ').slice(0, 16)}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </div>
       )}

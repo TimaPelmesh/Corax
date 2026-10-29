@@ -1,7 +1,18 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { api, type SettingsBoardItem } from '../api'
 import { useAuth } from '../AuthContext'
 import { buildNavSections } from '../components/layout/navConfig'
+import { StatusPill, type StatusPillTone } from '../components/ui/StatusPill'
 import { useT, type MessageKey } from '../i18n/LocaleContext'
+
+const STATE_TONE: Record<SettingsBoardItem['state'], StatusPillTone> = {
+  ok: 'success',
+  error: 'error',
+  stale: 'warning',
+  off: 'neutral',
+  local: 'info',
+}
 
 const PURPOSE_KEY: Record<string, MessageKey> = {
   '/settings/llm': 'settingsPurpose.llm',
@@ -24,6 +35,25 @@ export function SettingsIndexPage() {
   const { user } = useAuth()
   const section = buildNavSections(user).find((s) => s.titleKey === 'nav.settings')
   const items = section?.items ?? []
+  const [board, setBoard] = useState<Record<string, SettingsBoardItem>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .settingsBoard()
+      .then((payload) => {
+        if (cancelled) return
+        const next: Record<string, SettingsBoardItem> = {}
+        for (const row of payload.items) next[row.path] = row
+        setBoard(next)
+      })
+      .catch(() => {
+        if (!cancelled) setBoard({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div>
@@ -33,6 +63,8 @@ export function SettingsIndexPage() {
         {items.map((item) => {
           const Icon = item.icon
           const purposeKey = PURPOSE_KEY[item.to]
+          const status = board[item.to]
+          const codeKey = status ? (`settingsBoard.${status.code}` as MessageKey) : null
           return (
             <Link
               key={item.to}
@@ -46,6 +78,13 @@ export function SettingsIndexPage() {
                 <span className="block text-sm font-semibold text-[var(--color-fg)]">{t(item.labelKey)}</span>
                 {purposeKey ? (
                   <span className="mt-1 block text-[13px] leading-snug text-[var(--color-fg-muted)]">{t(purposeKey)}</span>
+                ) : null}
+                {status && codeKey ? (
+                  <span className="mt-2 block">
+                    <StatusPill tone={STATE_TONE[status.state]}>
+                      {t(codeKey, { count: status.count })}
+                    </StatusPill>
+                  </span>
                 ) : null}
               </span>
             </Link>

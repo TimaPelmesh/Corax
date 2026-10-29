@@ -47,7 +47,8 @@ from app.imbot_v2 import (
     send_keyboard,
     webhook_base,
 )
-from app.models import Bitrix24Config, BitrixBotDialog, ServiceRequest, User, service_request_assignees
+from app.models import Bitrix24Config, BitrixBotDialog, Computer, ServiceRequest, User, service_request_assignees
+from app.product_depth import computer_reply, overdue_reason, sla_reply, stock_reply
 from app.search_index import index_service_request
 
 router = APIRouter()
@@ -415,6 +416,66 @@ async def _last_bitrix_ticket(db: AsyncSession, event: dict[str, str]) -> Servic
     return by_dialog or by_name
 
 
+async def _computers_for_person(db: AsyncSession, name: str) -> list[dict[str, Any]]:
+    token = given_name(name).strip()
+    if len(token) < 2:
+        return []
+    like = f"%{token}%"
+    found = await db.execute(
+        select(Computer)
+        .join(User, Computer.assigned_user_id == User.id)
+        .where((User.full_name.ilike(like)) | (User.username.ilike(like)))
+        .limit(5)
+    )
+    rows = []
+    for computer in found.scalars():
+        rows.append(
+            {
+                "hostname": computer.hostname,
+                "ping": computer.ping_status or "нет ping",
+                "ip": computer.ip_address or "",
+            }
+        )
+    return rows
+
+
+async def _low_stock() -> list[dict[str, Any]] | None:
+    from app.database import WarehouseSessionLocal
+    from app.warehouse_models import StockItem
+
+    try:
+        async with WarehouseSessionLocal() as warehouse:
+            found = await warehouse.execute(
+                select(StockItem)
+                .where(StockItem.quantity_available <= 2)
+                .order_by(StockItem.quantity_available)
+                .limit(8)
+            )
+            return [{"name": item.name, "available": int(item.quantity_available or 0)} for item in found.scalars()]
+    except Exception:
+        log.warning("bitrix stock lookup failed", exc_info=True)
+        return None
+
+
+async def _overdue_tickets(db: AsyncSession) -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    found = await db.execute(
+        select(ServiceRequest)
+        .where(ServiceRequest.status.in_(("open", "in_progress")))
+        .order_by(ServiceRequest.id.desc())
+        .limit(200)
+    )
+    rows: list[dict[str, Any]] = []
+    for ticket in found.scalars():
+        reason = overdue_reason(ticket.priority, ticket.opened_at or ticket.created_at, ticket.planned_close_at, now)
+        if not reason:
+            continue
+        rows.append({"id": ticket.id, "title": ticket.title, "reason": reason})
+        if len(rows) >= 8:
+            break
+    return rows
+
+
 async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str]) -> dict[str, Any]:
     """Chat events from imbot.v2.Event.get and from the older ONIMBOT* form."""
     stored_id = str(cfg.bot_id or "").strip()
@@ -468,6 +529,17 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
         )
         await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "status"}
+    if step == "pc":
+        await _v2_reply(cfg, event, computer_reply(await _computers_for_person(db, person)), keyboard=_menu(), db=db, state_key=phase_key)
+        return {"ok": True, "event": event["event"], "note": "pc"}
+    if step == "stock":
+        stock_rows = await _low_stock()
+        stock_body = "Склад сейчас не открылся." if stock_rows is None else stock_reply(stock_rows)
+        await _v2_reply(cfg, event, stock_body, keyboard=_menu(), db=db, state_key=phase_key)
+        return {"ok": True, "event": event["event"], "note": "stock"}
+    if step == "sla":
+        await _v2_reply(cfg, event, sla_reply(await _overdue_tickets(db)), keyboard=_menu(), db=db, state_key=phase_key)
+        return {"ok": True, "event": event["event"], "note": "sla"}
     if step == "nudge":
         await _v2_reply(cfg, event, nudge_text(person, voice), keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "nudge"}

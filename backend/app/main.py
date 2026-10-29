@@ -47,6 +47,7 @@ from app.routers import (
     network,
     notes,
     printers,
+    product_signals,
     request_categories,
     risks,
     search,
@@ -248,6 +249,9 @@ async def lifespan(_: FastAPI):
 
         await llm_scrape_scheduler.start()
         await bitrix_bot_poller.start()
+        from app.backup_schedule import backup_scheduler
+
+        await backup_scheduler.start()
 
     yield
 
@@ -261,6 +265,9 @@ async def lifespan(_: FastAPI):
 
         await llm_scrape_scheduler.stop()
         await bitrix_bot_poller.stop()
+        from app.backup_schedule import backup_scheduler
+
+        await backup_scheduler.stop()
         # Deduplicate: при совпадающих DSN три "разных" engine это один объект.
         seen_engines: set[int] = set()
         for eng in (engine, diagrams_engine, warehouse_engine):
@@ -501,6 +508,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(settings_router.router, prefix=base)
     app.include_router(tls_settings.router, prefix=base)
     app.include_router(database_backup.router, prefix=base)
+    app.include_router(product_signals.router, prefix=base)
     app.include_router(wikirag.router, prefix=base)
     app.include_router(warehouse.router, prefix=base)
     app.include_router(notes.router, prefix=base)

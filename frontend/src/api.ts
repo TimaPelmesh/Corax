@@ -487,6 +487,42 @@ export type AssetChangeLog = {
   payload_json: string | null
 }
 
+export type SettingsBoardItem = {
+  path: string
+  state: 'ok' | 'error' | 'stale' | 'off' | 'local'
+  code: string
+  count: number
+}
+
+export type OvernightItem = {
+  kind: 'offline' | 'sla' | 'stock'
+  host?: string
+  ticket_id?: number
+  title?: string
+  reason?: 'deadline' | 'age' | string
+  name?: string
+  available?: number
+  href?: string
+}
+
+export type WolJournalItem = {
+  id: number
+  hostname: string
+  at: string | null
+  sent: number
+  by: string
+}
+
+export type GlpiDepthItem = {
+  id?: number | string | null
+  content?: string
+  author?: string
+  at?: string
+  name?: string
+  software?: string
+  seats?: number | null
+}
+
 export type WolConfig = {
   enabled: boolean
   force_disabled: boolean
@@ -1307,6 +1343,14 @@ export type DatabaseBackupStatus = {
     service_requests: number
     users: number
   }
+  schedule?: {
+    enabled: boolean
+    interval_hours: number
+    last_run_at: string | null
+    last_ok: boolean | null
+    last_message: string
+    due: boolean
+  }
 }
 
 export type DatabaseRestoreResult = {
@@ -1704,6 +1748,10 @@ export const api = {
   dashboardSummary: async () =>
     normalizeDashboardSummary(await request<DashboardSummary>(`${API_PREFIX}/dashboard/summary`)),
 
+  dashboardOvernight: () => request<{ items: OvernightItem[] }>(`${API_PREFIX}/dashboard/overnight`),
+
+  settingsBoard: () => request<{ items: SettingsBoardItem[] }>(`${API_PREFIX}/settings/board`),
+
   dashboardNavBadges: () => request<DashboardNavBadges>(`${API_PREFIX}/dashboard/nav-badges`),
 
   dashboardCalendar: (month: string) =>
@@ -1837,6 +1885,8 @@ export const api = {
   },
 
   wolConfig: () => request<WolConfig>(`${API_PREFIX}/computers/wol/config`),
+
+  wolJournal: () => request<{ items: WolJournalItem[] }>(`${API_PREFIX}/computers/wol/journal`),
 
   updateWolConfig: (body: {
     enabled?: boolean
@@ -2631,6 +2681,28 @@ export const api = {
     }),
 
   databaseBackupStatus: () => request<DatabaseBackupStatus>(`${API_PREFIX}/settings/database/status`),
+
+  databaseBackupSchedule: (body: { enabled?: boolean; interval_hours?: number }) =>
+    request<NonNullable<DatabaseBackupStatus['schedule']>>(`${API_PREFIX}/settings/database/schedule`, {
+      method: 'PUT',
+      json: body,
+    }),
+
+  databaseBackupCheck: () =>
+    request<NonNullable<DatabaseBackupStatus['schedule']>>(`${API_PREFIX}/settings/database/check`, {
+      method: 'POST',
+      timeout_ms: 120_000,
+    }),
+
+  glpiFollowups: (ticketId: number) =>
+    request<{ available: boolean; items: GlpiDepthItem[]; error?: string }>(
+      `${API_PREFIX}/settings/glpi/followups/${ticketId}`,
+    ),
+
+  glpiLicenses: () =>
+    request<{ available: boolean; items: GlpiDepthItem[]; error?: string }>(
+      `${API_PREFIX}/settings/glpi/licenses`,
+    ),
 
   exportDatabaseDump: async () => {
     const headers = new Headers()

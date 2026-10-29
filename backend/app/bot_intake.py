@@ -17,6 +17,9 @@ MINE = "Мои заявки"
 STATUS = "Статус заявки"
 HELP = "Помощь"
 CANCEL = "Отмена"
+PC = "Мой компьютер"
+STOCK = "Склад"
+SLA = "Срок заявки"
 TICKET_COMMAND = "corax_ticket"
 _SLASH = {
     "ticket": "ask",
@@ -24,6 +27,11 @@ _SLASH = {
     "status": "status",
     "help": "help",
     "cancel": "cancel",
+    "pc": "pc",
+    "computer": "pc",
+    "stock": "stock",
+    "warehouse": "stock",
+    "sla": "sla",
 }
 
 OFF = "Приём заявок сейчас выключен."
@@ -43,7 +51,7 @@ DEFAULT_LINES = {
         "Спасибо, что обратились.{wish}\n"
         "Если понадобится ещё помощь — нажмите на кнопку ниже."
     ),
-    "help": "Нажмите на кнопку ниже.",
+    "help": "Кнопки ниже — заявка и её статус. Ещё команды: /pc мой компьютер, /stock склад, /sla срок заявки.",
     "nudge": "{hello}\nНажмите на кнопку ниже.",
     "off": OFF,
     "no_ticket": NO_TICKET,
@@ -245,6 +253,9 @@ def button_kind(text: str, command: str = "") -> str | None:
         ("cancel", (CANCEL,)),
         ("status", (MINE, "Моя заявка", STATUS)),
         ("help", (HELP,)),
+        ("pc", (PC, "Мой пк")),
+        ("stock", (STOCK, "Остатки")),
+        ("sla", (SLA, "Просроченные заявки")),
     )
     for kind, labels in pairs:
         for label in labels:
@@ -412,7 +423,7 @@ def status_text(
 
 
 def intake_step(event: str, command: str, text: str, *, enabled: bool, waiting: bool) -> str:
-    """greet, ask, take, status, help, cancel, nudge, off, or skip."""
+    """greet, ask, take, status, help, cancel, pc, stock, sla, nudge, off, or skip."""
     kind = (event or "").strip()
     if kind not in {"ONIMBOTV2JOINCHAT", "ONIMBOTV2MESSAGEADD", "ONIMBOTV2COMMANDADD"}:
         return "skip"

@@ -943,6 +943,38 @@ class _Session:
             start += len(raw_items)
         return collected
 
+    def _depth_get(self, url: str) -> Any:
+        headers = self._legacy_headers() if "/apirest.php" in url else self._v2_headers()
+        return self._parse(self._http.get(url, headers=headers), empty_on=(400, 401, 404))
+
+    def list_followups(self, ticket_id: int, limit: int = 30) -> list[dict[str, Any]]:
+        from app.product_depth import parse_followups
+
+        ticket = int(ticket_id)
+        urls = []
+        if self.mode != "legacy":
+            urls.append(f"{self.base}/api.php/Assistance/Ticket/{ticket}/Followup")
+            urls.append(f"{self.base}/api.php/Assistance/Ticket/{ticket}/ITILFollowup")
+        urls.append(f"{self.base}/apirest.php/Ticket/{ticket}/ITILFollowup")
+        for url in urls:
+            rows = parse_followups(self._depth_get(url))
+            if rows:
+                return rows[:limit]
+        return []
+
+    def list_licenses(self, limit: int = 40) -> list[dict[str, Any]]:
+        from app.product_depth import parse_licenses
+
+        urls = []
+        if self.mode != "legacy":
+            urls.append(f"{self.base}/api.php/Management/SoftwareLicense")
+        urls.append(f"{self.base}/apirest.php/SoftwareLicense")
+        for url in urls:
+            rows = parse_licenses(self._depth_get(url))
+            if rows:
+                return rows[:limit]
+        return []
+
     def read_identity(self) -> GlpiIdentity:
         """Кто сейчас авторизован и какой активный профиль. Без секретов."""
         if self._cached_identity is not None:
@@ -3379,3 +3411,13 @@ def _extra_match(row: dict[str, Any], extra: dict[str, Any]) -> bool:
             continue
         return False
     return True
+
+
+def fetch_followups(creds: GlpiCredentials, ticket_id: int) -> list[dict[str, Any]]:
+    with _Session(creds, None) as session:
+        return session.list_followups(ticket_id)
+
+
+def fetch_licenses(creds: GlpiCredentials, limit: int = 40) -> list[dict[str, Any]]:
+    with _Session(creds, None) as session:
+        return session.list_licenses(limit)

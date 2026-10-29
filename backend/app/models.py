@@ -675,6 +675,22 @@ class WakeOnLanConfig(Base):
     )
 
 
+class BackupSchedule(Base):
+    """One row: when to take a dump and whether the last archive header opened."""
+
+    __tablename__ = "backup_schedule"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    interval_hours: Mapped[int] = mapped_column(Integer, default=24)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_message: Mapped[str] = mapped_column(String(255), default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Note(Base):
     """Shared project notes / plans for panel users."""
 

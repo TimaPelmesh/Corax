@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import func, select
 
@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import Computer, ServiceRequest, User
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.backup_schedule import ensure_schedule, run_backup_check, schedule_view
 from app.pg_backup import (
     configured_pg_bin_dir,
     create_database_dump,
@@ -56,7 +57,33 @@ async def database_backup_status(
             "service_requests": int(requests or 0),
             "users": int(users or 0),
         },
+        "schedule": schedule_view(await ensure_schedule(db)),
     }
+
+
+@router.put("/schedule")
+async def update_backup_schedule(
+    body: dict = Body(...),
+    _: User = Depends(get_current_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await ensure_schedule(db)
+    if "enabled" in body:
+        row.enabled = bool(body.get("enabled"))
+    if "interval_hours" in body:
+        try:
+            hours = int(body.get("interval_hours") or 24)
+        except (TypeError, ValueError):
+            hours = 24
+        row.interval_hours = min(168, max(1, hours))
+    await db.commit()
+    await db.refresh(row)
+    return schedule_view(row)
+
+
+@router.post("/check")
+async def check_backup_archive(_: User = Depends(get_current_superuser)):
+    return await run_backup_check()
 
 
 @router.get("/export")

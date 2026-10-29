@@ -11,7 +11,10 @@ import re
 import shlex
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import quote
+
+from app.product_depth import host_key_action
 
 _INTERVALS = {0, 15, 30, 60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400}
 _SERVER = re.compile(r"^https?://[A-Za-z0-9._:-]{3,200}$")
@@ -222,6 +225,29 @@ def _collect(stdout, timeout: float) -> tuple[int, str]:
     return code, out.decode("utf-8", "replace")
 
 
+def ssh_known_hosts_path() -> Path:
+    from app.config import settings
+
+    root = Path(settings.log_dir).resolve().parent / "ssh"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / "known_hosts"
+
+
+def _pin_policy(paramiko, path: Path):
+    """Remember the first key. A changed key raises before this policy runs."""
+
+    class Pin(paramiko.MissingHostKeyPolicy):
+        def missing_host_key(self, client, hostname, key) -> None:
+            fingerprint = key.get_fingerprint().hex()
+            if host_key_action(None, fingerprint) != "remember":
+                raise InstallError("Ключ SSH сервера не принят.")
+            client.get_host_keys().add(hostname, key.get_name(), key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            client.save_host_keys(str(path))
+
+    return Pin()
+
+
 @contextmanager
 def _ssh_client(host: str, port: int, user: str, password: str):
     try:
@@ -229,7 +255,10 @@ def _ssh_client(host: str, port: int, user: str, password: str):
     except ImportError as exc:
         raise InstallError("На панели нет paramiko. Пересоберите образ.") from exc
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    known = ssh_known_hosts_path()
+    if known.is_file():
+        client.load_host_keys(str(known))
+    client.set_missing_host_key_policy(_pin_policy(paramiko, known))
     try:
         client.connect(
             hostname=host,
@@ -249,6 +278,8 @@ def _ssh_client(host: str, port: int, user: str, password: str):
     except InstallError:
         raise
     except Exception as exc:
+        if exc.__class__.__name__ == "BadHostKeyException":
+            raise InstallError("Ключ SSH сервера сменился. Подключение остановлено.") from exc
         message = _redact(str(exc) or exc.__class__.__name__, password)
         lowered = message.lower()
         if "authentication" in lowered or "auth fail" in lowered:
