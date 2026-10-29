@@ -321,7 +321,7 @@ export function UsersPage() {
   }
 
   return (
-    <div>
+    <div className="settings-page settings-page--wide">
       <div className="mb-4 flex flex-wrap gap-1.5">
         {(
           [

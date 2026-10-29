@@ -4,6 +4,8 @@ import { api, type LdapConfig, type LdapSyncResult, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { AppFold } from '../components/ui/AppFold'
+import { StatusPill } from '../components/ui/StatusPill'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -181,7 +183,7 @@ export function SettingsLdapPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
+    <div className="settings-page settings-page--wide">
       <PageHeader
         icon={<IconKey className="h-7 w-7" />}
         title={t('titles.ldap')}
@@ -245,14 +247,9 @@ export function SettingsLdapPage() {
             />
             {t('settingsLdap.anonymousBind')}
           </label>
-          <div className="text-xs font-medium text-[var(--color-fg-muted)]">
-            {t('settingsLdap.statusLabel')}{' '}
-            {configured ? (
-              <span className="text-emerald-700">{t('settingsLdap.configured')}</span>
-            ) : (
-              <span>{t('settingsLdap.notConfigured')}</span>
-            )}
-          </div>
+          <StatusPill tone={configured ? 'success' : 'neutral'}>
+            {configured ? t('settingsLdap.configured') : t('settingsLdap.notConfigured')}
+          </StatusPill>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -308,6 +305,10 @@ export function SettingsLdapPage() {
               className="app-input"
             />
           </div>
+        </div>
+
+        <AppFold title={t('settingsLdap.advanced')}>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="sm:col-span-2 xl:col-span-3">
             <label className="app-label">
               {t('settingsLdap.userFilterLabel')}
@@ -365,7 +366,8 @@ export function SettingsLdapPage() {
               className="app-input"
             />
           </div>
-        </div>
+          </div>
+        </AppFold>
 
         <div className="flex flex-wrap items-end gap-3 border-t border-[var(--color-border)] pt-5">
           <button
@@ -457,23 +459,15 @@ export function SettingsLdapPage() {
                   <td className="px-4 py-3 text-[var(--color-fg-muted)]">{u.full_name ?? '—'}</td>
                   <td className="px-4 py-3">
                     {u.is_superuser ? (
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-[var(--color-fg)]">
-                        {t('settingsLdap.adminRole')}
-                      </span>
+                      <StatusPill tone="info">{t('settingsLdap.adminRole')}</StatusPill>
                     ) : (
                       <span className="text-[var(--color-fg-muted)]">{u.role}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {u.is_active ? (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                        {t('settingsLdap.statusActive')}
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs font-medium text-[var(--color-fg-muted)]">
-                        {t('settingsLdap.statusInactive')}
-                      </span>
-                    )}
+                    <StatusPill tone={u.is_active ? 'success' : 'neutral'}>
+                      {u.is_active ? t('settingsLdap.statusActive') : t('settingsLdap.statusInactive')}
+                    </StatusPill>
                   </td>
                 </tr>
               ))}

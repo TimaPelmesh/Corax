@@ -4,6 +4,7 @@ import { api, type TlsMode, type TlsStatus } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconLock } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { AppFold } from '../components/ui/AppFold'
 import { Skeleton } from '../components/Skeleton'
 import { StatusPill } from '../components/ui/StatusPill'
 import { useT } from '../i18n/LocaleContext'
@@ -167,7 +168,7 @@ export function SettingsHttpsPage() {
     'SERVER'
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="settings-page settings-page--wide">
       <PageHeader
         icon={<IconLock className="h-7 w-7" />}
         title={t('titles.https')}
@@ -315,8 +316,7 @@ export function SettingsHttpsPage() {
 
             {pickMode === 'local_ca' ? (
               <>
-            <section className="app-panel space-y-3">
-              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.trustTitle')}</h2>
+            <AppFold title={t('settingsHttps.trustTitle')}>
               <ol className="list-decimal space-y-1.5 pl-5 text-sm text-[var(--color-fg-muted)]">
                 <li>{t('settingsHttps.trustStep1')}</li>
                 <li>{t('settingsHttps.trustStep2')}</li>
@@ -333,7 +333,7 @@ export function SettingsHttpsPage() {
               >
                 {t('settingsHttps.downloadCa')}
               </button>
-            </section>
+            </AppFold>
 
             <section className="app-panel space-y-3">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsHttps.create')}</h2>

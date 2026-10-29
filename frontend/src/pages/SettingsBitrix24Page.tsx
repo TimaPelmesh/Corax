@@ -4,6 +4,7 @@ import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { AppModal } from '../components/ui/AppModal'
 import { BitrixBotPanel } from './BitrixBotPanel'
+import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
@@ -105,8 +106,8 @@ export function SettingsBitrix24Page() {
   const edge = 'rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)] disabled:opacity-50'
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-      <h1 className="sr-only">{t('titles.bitrix24')}</h1>
+    <div className="settings-page settings-page--wide">
+      <PageHeader title={t('titles.bitrix24')} subtitle={t('pages.bitrixSubtitle')} />
       {!cfg ? (
         <div className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</div>
       ) : (

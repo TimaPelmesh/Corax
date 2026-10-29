@@ -56,10 +56,10 @@ export function SettingsIndexPage() {
   }, [])
 
   return (
-    <div>
+    <div className="settings-page settings-page--wide">
       <h1 className="sr-only">{t('titles.settings')}</h1>
-      <p className="max-w-xl text-sm text-[var(--color-fg-muted)]">{t('pages.settingsSubtitle')}</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <p className="text-sm text-[var(--color-fg-muted)]">{t('pages.settingsSubtitle')}</p>
+      <div className="grid gap-2 lg:grid-cols-2">
         {items.map((item) => {
           const Icon = item.icon
           const purposeKey = PURPOSE_KEY[item.to]
@@ -69,24 +69,22 @@ export function SettingsIndexPage() {
             <Link
               key={item.to}
               to={item.to}
-              className="app-card flex items-start gap-3 px-4 py-3.5 no-underline transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
+              className="app-card flex items-center gap-3 px-3 py-2.5 no-underline hover:border-[var(--color-border-strong)] hover:bg-[var(--color-surface-muted)]"
             >
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-muted)] text-[var(--color-primary)]">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-muted)] text-[var(--color-primary)]">
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-[var(--color-fg)]">{t(item.labelKey)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-[var(--color-fg)]">{t(item.labelKey)}</span>
                 {purposeKey ? (
-                  <span className="mt-1 block text-[13px] leading-snug text-[var(--color-fg-muted)]">{t(purposeKey)}</span>
-                ) : null}
-                {status && codeKey ? (
-                  <span className="mt-2 block">
-                    <StatusPill tone={STATE_TONE[status.state]}>
-                      {t(codeKey, { count: status.count })}
-                    </StatusPill>
-                  </span>
+                  <span className="block truncate text-[13px] text-[var(--color-fg-muted)]">{t(purposeKey)}</span>
                 ) : null}
               </span>
+              {status && codeKey ? (
+                <StatusPill tone={STATE_TONE[status.state]} className="max-w-[11rem] truncate">
+                  {t(codeKey, { count: status.count })}
+                </StatusPill>
+              ) : null}
             </Link>
           )
         })}

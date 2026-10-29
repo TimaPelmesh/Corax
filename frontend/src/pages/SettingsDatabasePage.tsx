@@ -36,7 +36,7 @@ export function SettingsDatabasePage() {
 
   if (authLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4" role="status" aria-busy="true">
+      <div className="settings-page" role="status" aria-busy="true">
         <Skeleton className="h-14 w-full max-w-md rounded-xl" />
         <Skeleton className="h-32 w-full rounded-xl" />
         <span className="sr-only">{t('common.loading')}</span>
@@ -51,7 +51,7 @@ export function SettingsDatabasePage() {
   const toolsOk = Boolean(status?.pg_dump_available && status?.pg_restore_available)
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="settings-page">
       <PageHeader
         icon={<IconServer className="h-7 w-7" />}
         title={t('titles.database')}

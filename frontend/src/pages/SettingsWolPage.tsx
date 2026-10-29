@@ -80,7 +80,7 @@ export function SettingsWolPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="settings-page">
       <PageHeader
         icon={<IconPcs className="h-7 w-7" />}
         title={t('titles.wol')}

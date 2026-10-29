@@ -2577,6 +2577,7 @@ export const en: MessageTree = {
     entryPassword: ' — password: ',
     entryExists: ' — already exists',
     enable: 'Enable LDAP',
+    advanced: 'Directory fields',
     anonymousBind: 'Anonymous bind',
     statusLabel: 'Status:',
     configured: 'configured',

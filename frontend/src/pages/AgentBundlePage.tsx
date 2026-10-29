@@ -194,7 +194,7 @@ export function AgentBundlePage() {
 
   if (authLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4" role="status" aria-busy="true">
+      <div className="settings-page settings-page--wide" role="status" aria-busy="true">
         <Skeleton className="h-14 w-full max-w-md rounded-xl" />
         <Skeleton className="h-64 w-full rounded-xl" />
         <span className="sr-only">{t('common.loading')}</span>
@@ -404,7 +404,7 @@ export function AgentBundlePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="settings-page settings-page--wide">
       <PageHeader
         icon={<IconKey className="h-7 w-7" />}
         title={t('titles.agentBundle')}

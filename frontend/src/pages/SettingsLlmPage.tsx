@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type LlmServerSetting, type WikiRagLmStudioStatus } from '../api'
 import { IconActivity, IconClose } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
+import { StatusPill } from '../components/ui/StatusPill'
 import { AppModal } from '../components/ui/AppModal'
 import { SystemPromptEditor } from '../components/wikirag/SystemPromptEditor'
 import { useT } from '../i18n/LocaleContext'
@@ -334,7 +335,7 @@ export function SettingsLlmPage() {
   const chatBusy = isBusy(settings.baseUrl)
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-3">
+    <div className="settings-page settings-page--wide">
       <PageHeader
         icon={<IconActivity className="h-6 w-6" />}
         title={t('titles.llm')}
@@ -342,33 +343,19 @@ export function SettingsLlmPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {status ? (
-              <span
-                className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  status.ok
-                    ? 'bg-[var(--color-primary-muted)] text-[var(--color-primary)]'
-                    : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-muted)]'
-                }`}
-              >
+              <StatusPill tone={status.ok ? 'success' : 'neutral'}>
                 {status.ok ? t('settingsLlm.onlineTitle') : t('settingsLlm.offlineTitle')}
-              </span>
+              </StatusPill>
             ) : null}
-            <button
-              type="button"
-              className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-fg)]"
-              onClick={() => setDialog('prompt')}
-            >
+            <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setDialog('prompt')}>
               {t('settingsLlm.promptFold')}
             </button>
-            <button
-              type="button"
-              className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-fg)]"
-              onClick={() => setDialog('setup')}
-            >
+            <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-1.5" onClick={() => setDialog('setup')}>
               {t('settingsLlm.setupFold')}
             </button>
             <button
               type="button"
-              className="rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+              className="app-btn app-btn-primary !min-h-0 !px-3 !py-1.5"
               disabled={chatBusy || !settings.baseUrl.trim()}
               onClick={() => void probe(settings.baseUrl, { chat: true, notify: true })}
             >

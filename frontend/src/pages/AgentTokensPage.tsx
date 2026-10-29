@@ -128,7 +128,7 @@ export function AgentTokensPage() {
   const active = activeAgentTokens(rows)
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="settings-page settings-page--wide">
       {dialog}
       <PageHeader
         icon={<IconKey className="h-7 w-7" />}

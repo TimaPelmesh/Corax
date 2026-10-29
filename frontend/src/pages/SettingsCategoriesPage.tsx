@@ -466,7 +466,7 @@ export function SettingsCategoriesPage() {
   }
 
   return (
-    <div>
+    <div className="settings-page settings-page--wide">
       {canManage ? (
         <div className="mb-4 flex max-w-xl flex-wrap items-center gap-2">
           <input

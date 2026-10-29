@@ -2575,6 +2575,7 @@ export const ru = {
     entryPassword: ' — пароль: ',
     entryExists: ' — уже есть',
     enable: 'Включить LDAP',
+    advanced: 'Поля каталога',
     anonymousBind: 'Anonymous bind',
     statusLabel: 'Статус:',
     configured: 'параметры заданы',

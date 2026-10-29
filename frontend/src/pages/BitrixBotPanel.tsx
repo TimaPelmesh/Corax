@@ -955,7 +955,7 @@ export function BitrixBotPanel({
                         </span>
                         <div className="min-w-0 max-w-[28rem]">
                           <div className="mb-1 truncate px-1 text-[12px] font-medium" style={{ color: circle }}>{displayName}</div>
-                          <div className="whitespace-pre-wrap rounded-2xl rounded-bl-md bg-[var(--color-surface)] px-3 py-2 text-sm leading-relaxed text-[var(--color-fg)] shadow-sm">{renderBb(phraseBody)}</div>
+                          <div className="whitespace-pre-wrap rounded-2xl rounded-bl-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm leading-relaxed text-[var(--color-fg)]">{renderBb(phraseBody)}</div>
                           {currentKind.id === 'ask' ? (
                             <div className="mt-1.5 px-1 text-[12px] text-[var(--color-fg-subtle)]">Отмена</div>
                           ) : currentKind.id === 'off' ? null : (

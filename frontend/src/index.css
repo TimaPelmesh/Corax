@@ -415,6 +415,19 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+.settings-page {
+  margin-inline: auto;
+  display: flex;
+  width: 100%;
+  max-width: 52rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.settings-page--wide {
+  max-width: 72rem;
+}
+
 @utility app-empty-state {
   border-radius: var(--radius-lg);
   border: 1px dashed var(--color-border);

@@ -91,7 +91,7 @@ export function SettingsZabbixPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="settings-page">
       <PageHeader
         icon={<IconZabbix className="h-6 w-6" />}
         title={t('titles.zabbix')}

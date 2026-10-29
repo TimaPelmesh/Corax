@@ -269,7 +269,7 @@ export function SettingsGlpiPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+    <div className="settings-page settings-page--wide">
       <PageHeader
         icon={<IconPcs className="h-6 w-6" />}
         title={t('titles.glpi')}
