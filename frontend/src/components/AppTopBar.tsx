@@ -394,7 +394,7 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
               }
             }}
             placeholder={t('chrome.searchPlaceholder')}
-            className="app-input app-input-glass !min-h-[40px] !rounded-full !py-2 !pl-10 !pr-[4.5rem] !text-[13px] !shadow-none"
+            className="app-input app-input-glass !min-h-[40px] !rounded-lg !py-2 !pl-10 !pr-[4.5rem] !text-[13px] !shadow-none"
             aria-label={t('chrome.searchAria')}
             aria-expanded={paletteOpen}
             aria-controls="command-palette"
@@ -500,7 +500,7 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
       <div ref={profileWrapRef} className="relative flex min-w-0 items-center justify-end">
         <button
           type="button"
-          className={`relative flex max-w-full items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] py-0.5 pl-0.5 pr-2.5 text-left transition hover:bg-[var(--color-surface-muted)] ${
+          className={`relative flex max-w-full items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] py-0.5 pl-0.5 pr-2.5 text-left transition hover:bg-[var(--color-surface-muted)] ${
             profileOpen ? 'ring-2 ring-[var(--color-primary)]/25' : ''
           }`}
           onClick={() => {

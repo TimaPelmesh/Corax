@@ -460,12 +460,12 @@
 .network-map-inspector {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: var(--shadow-card-hover);
 }
 
 .network-map-inspector-overlay .network-map-inspector {
-  border-radius: 18px;
+  border-radius: 8px;
   border-color: var(--color-border);
   background: var(--color-surface);
   box-shadow: 0 18px 42px rgb(15 23 42 / 0.18);
@@ -479,14 +479,14 @@
 .network-map-inspector-overlay .network-map-inspector input,
 .network-map-inspector-overlay .network-map-inspector select,
 .network-map-inspector-overlay .network-map-inspector textarea {
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .network-map-inspector button,
 .network-map-inspector input,
 .network-map-inspector select,
 .network-map-inspector textarea {
-  border-radius: 2px;
+  border-radius: 8px;
 }
 
 .network-map-tray {
@@ -499,6 +499,6 @@
 
 .network-map-port-menu,
 .network-map-ctx {
-  border-radius: 2px;
+  border-radius: 8px;
   box-shadow: 0 8px 18px rgb(0 0 0 / 0.16);
 }

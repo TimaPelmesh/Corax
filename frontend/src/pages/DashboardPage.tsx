@@ -525,7 +525,7 @@ export function DashboardPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="status">
             {[0, 1, 2, 3, 4, 5].map((k) => (
-              <Skeleton key={k} className="h-56 rounded-[1rem]" />
+              <Skeleton key={k} className="h-56 rounded-lg" />
             ))}
           </div>
         )}

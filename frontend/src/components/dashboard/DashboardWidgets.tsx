@@ -805,12 +805,12 @@ export function DashboardSkeleton() {
         ))}
       </div>
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
-        <Skeleton className="h-44 rounded-[1rem]" />
-        <Skeleton className="h-44 rounded-[1rem]" />
+        <Skeleton className="h-44 rounded-lg" />
+        <Skeleton className="h-44 rounded-lg" />
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {[0, 1, 2, 3, 4, 5].map((k) => (
-          <Skeleton key={k} className="h-56 rounded-[1rem]" />
+          <Skeleton key={k} className="h-56 rounded-lg" />
         ))}
       </div>
     </div>

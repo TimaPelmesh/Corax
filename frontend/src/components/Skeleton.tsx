@@ -41,7 +41,7 @@ export function StatRowSkeleton({ count = 4 }: StatRowSkeletonProps) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" role="status" aria-busy="true">
       {Array.from({ length: count }, (_, i) => (
-        <Skeleton key={i} className="h-24 rounded-[1rem] sm:h-[5.25rem]" />
+        <Skeleton key={i} className="h-24 rounded-lg sm:h-[5.25rem]" />
       ))}
     </div>
   )
