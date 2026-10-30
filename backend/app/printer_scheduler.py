@@ -75,6 +75,8 @@ class PrinterPollScheduler:
             await engine.dispose()
 
     async def _loop_body(self) -> None:
+        # Let the panel answer before the first SNMP sweep.
+        await self._wait(45)
         while not self._thread_stop.is_set():
             interval_min = 15
             enabled = True

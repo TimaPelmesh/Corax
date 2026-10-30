@@ -1,35 +1,55 @@
-"""Precomputed dashboard inventory, off the API event loop.
+"""Dashboard snapshot supervisor.
 
-GET /dashboard/summary reads one row. This thread owns a private asyncpg pool
-and rebuilds that row after agent reports and on a quiet interval.
+The heavy inventory pass runs in a child process (`python -m app.dashboard_snapshot_job`).
+Keeping it inside Uvicorn froze the panel: the software/raw_payload fold holds the GIL,
+so the API event loop stopped running while the fold was on.
 """
 
 from __future__ import annotations
 
-import asyncio
+import os
+import subprocess
+import sys
 import threading
 import time
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.database import _create_engine
 from app.observability import get_logger
 
 log = get_logger("corax.dashboard_snapshot")
 
-_MIN_GAP_SEC = 25
-_IDLE_SEC = 90
+_FIRST_DELAY_SEC = 12
+_MIN_GAP_SEC = 30
+_IDLE_SEC = 120
+_CHILD_TIMEOUT_SEC = 600
+
+
+def _backend_dir() -> str:
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _kill_proc(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    try:
+        proc.kill()
+    except OSError:
+        return
+    try:
+        proc.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 class DashboardSnapshotWorker:
     def __init__(self) -> None:
         self._thread: threading.Thread | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
         self._thread_stop = threading.Event()
         self._wake = threading.Event()
-        self._session_factory: async_sessionmaker[AsyncSession] | None = None
+        self._proc: subprocess.Popen | None = None
+        self._proc_lock = threading.Lock()
 
     async def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -40,106 +60,80 @@ class DashboardSnapshotWorker:
             target=self._thread_main, name="corax-dashboard-snapshot", daemon=True
         )
         self._thread.start()
-        for _ in range(80):
-            if self._loop is not None and self._loop.is_running() and self._session_factory is not None:
-                return
-            await asyncio.sleep(0.05)
-        log.warning("dashboard snapshot worker did not become ready")
 
     async def stop(self) -> None:
         self._thread_stop.set()
         self._wake.set()
-        loop = self._loop
-        if loop is not None and loop.is_running():
-            loop.call_soon_threadsafe(lambda: None)
+        with self._proc_lock:
+            proc = self._proc
+        if proc is not None:
+            _kill_proc(proc)
         if self._thread:
             self._thread.join(timeout=8)
         self._thread = None
-        self._loop = None
-        self._session_factory = None
 
     def request_refresh(self) -> None:
         """Non-blocking. Safe from the API thread after an inventory commit."""
         self._wake.set()
 
     def _thread_main(self) -> None:
-        asyncio.run(self._async_main())
-
-    async def _async_main(self) -> None:
-        engine = _create_engine(settings.database_url)
-        self._session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        self._loop = asyncio.get_running_loop()
-        try:
-            await self._loop_body()
-        finally:
-            self._session_factory = None
-            self._loop = None
-            await engine.dispose()
-
-    async def _loop_body(self) -> None:
+        if self._thread_stop.wait(_FIRST_DELAY_SEC):
+            return
         while not self._thread_stop.is_set():
             self._wake.clear()
-            try:
-                await self._compute_and_save()
-            except Exception as exc:
-                log.warning("dashboard snapshot failed: %s", exc)
+            self._run_child()
             if self._thread_stop.is_set():
                 break
-            kicked = await self._rest(_MIN_GAP_SEC)
-            if kicked or self._thread_stop.is_set():
-                continue
-            await self._rest(_IDLE_SEC)
+            kicked = self._pause(_MIN_GAP_SEC)
+            if self._thread_stop.is_set():
+                break
+            if not kicked:
+                self._wake.wait(_IDLE_SEC)
 
-    async def _rest(self, seconds: float) -> bool:
-        """Sleep up to `seconds`. True if a refresh was requested during the wait."""
+    def _pause(self, seconds: float) -> bool:
+        """Sleep the full gap. A kick during the sleep is remembered, not acted on early."""
         kicked = False
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline and not self._thread_stop.is_set():
             if self._wake.is_set():
                 kicked = True
-                self._wake.clear()
-            await asyncio.sleep(0.4)
+            self._thread_stop.wait(0.4)
         return kicked
 
-    async def _compute_and_save(self) -> None:
-        from app.routers.dashboard import (
-            _compute_dashboard_inventory,
-            _dash_session_factory,
-            _dashboard_stamp,
-            _stamp_key,
-        )
-
-        factory = self._session_factory
-        if factory is None:
+    def _run_child(self) -> None:
+        with self._proc_lock:
+            current = self._proc
+        if current is not None and current.poll() is None:
             return
-        async with factory() as db:
-            stamp = await _dashboard_stamp(db)
-            existing = await read_dashboard_snapshot(db)
-        key = _stamp_key(stamp)
-        if existing is not None and existing[1] == key:
-            return
-        token = _dash_session_factory.set(factory)
+        backend = _backend_dir()
+        env = os.environ.copy()
+        env["PYTHONPATH"] = backend + os.pathsep + env.get("PYTHONPATH", "")
+        kwargs: dict = {}
+        if os.name != "nt":
+            kwargs["start_new_session"] = True
         try:
-            inventory = await _compute_dashboard_inventory(None, stamp[:2])
-        finally:
-            _dash_session_factory.reset(token)
-        payload = inventory.model_dump_json()
-        async with factory() as db:
-            await db.execute(
-                text(
-                    """
-                    INSERT INTO dashboard_snapshots (id, payload, stamp, updated_at)
-                    VALUES (1, :payload, :stamp, CURRENT_TIMESTAMP)
-                    ON CONFLICT (id) DO UPDATE
-                    SET payload = EXCLUDED.payload,
-                        stamp = EXCLUDED.stamp,
-                        updated_at = CURRENT_TIMESTAMP
-                    """
-                ),
-                {"payload": payload, "stamp": key},
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "app.dashboard_snapshot_job"],
+                cwd=backend,
+                env=env,
+                **kwargs,
             )
-            await db.commit()
-        log.info("dashboard snapshot saved", extra={"stamp": key[:80]})
+        except Exception as exc:
+            log.warning("dashboard snapshot child failed to start: %s", exc)
+            return
+        with self._proc_lock:
+            self._proc = proc
+        log.info("dashboard snapshot child started", extra={"pid": proc.pid})
+        try:
+            code = proc.wait(timeout=_CHILD_TIMEOUT_SEC)
+        except subprocess.TimeoutExpired:
+            log.warning("dashboard snapshot child timed out", extra={"pid": proc.pid})
+            _kill_proc(proc)
+            return
+        if code != 0:
+            log.warning("dashboard snapshot child exited", extra={"pid": proc.pid, "code": code})
+        else:
+            log.info("dashboard snapshot child finished", extra={"pid": proc.pid})
 
 
 async def read_dashboard_snapshot(db: AsyncSession) -> tuple[str, str] | None:
@@ -156,6 +150,23 @@ async def read_dashboard_snapshot(db: AsyncSession) -> tuple[str, str] | None:
     if row is None or not row[0]:
         return None
     return str(row[0]), str(row[1] or "")
+
+
+async def save_dashboard_snapshot(db: AsyncSession, payload: str, stamp: str) -> None:
+    await db.execute(
+        text(
+            """
+            INSERT INTO dashboard_snapshots (id, payload, stamp, updated_at)
+            VALUES (1, :payload, :stamp, CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO UPDATE
+            SET payload = EXCLUDED.payload,
+                stamp = EXCLUDED.stamp,
+                updated_at = CURRENT_TIMESTAMP
+            """
+        ),
+        {"payload": payload, "stamp": stamp},
+    )
+    await db.commit()
 
 
 dashboard_snapshot_worker = DashboardSnapshotWorker()

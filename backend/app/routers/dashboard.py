@@ -112,6 +112,8 @@ async def _memo_heavy(name: str, stamp: tuple, factory):
 # classify every software row on the event loop, so the pool (5+10) and every
 # other tab waited until the browser aborted at 25s.
 _DASHBOARD_DB_SLOTS = asyncio.Semaphore(3)
+# raw_payload is large. Never read it twice at the same time.
+_PAYLOAD_SLOT = asyncio.Semaphore(1)
 
 
 async def _with_db_slot(factory):
@@ -830,6 +832,10 @@ async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp:
         return await _memo_heavy("software_families", inventory_stamp, _software_families_uncached)
 
     async def _software_families_uncached() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
+        async with _PAYLOAD_SLOT:
+            return await _software_families_load()
+
+    async def _software_families_load() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
         async with dash_sessions()() as s:
             fam_rows = (
                 await s.execute(
@@ -958,6 +964,12 @@ async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp:
         return await _memo_heavy("physical_disks", inventory_stamp, _physical_disks_uncached)
 
     async def _physical_disks_uncached() -> tuple[
+        int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
+    ]:
+        async with _PAYLOAD_SLOT:
+            return await _physical_disks_load()
+
+    async def _physical_disks_load() -> tuple[
         int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
     ]:
         async with dash_sessions()() as s:
