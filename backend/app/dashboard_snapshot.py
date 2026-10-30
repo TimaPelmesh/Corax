@@ -20,12 +20,13 @@ from app.observability import get_logger
 
 log = get_logger("corax.dashboard_snapshot")
 
-_FIRST_DELAY_SEC = 12
-_MIN_GAP_SEC = 30
-_IDLE_SEC = 120
+_FIRST_DELAY_SEC = 20
+_MIN_GAP_SEC = 240
+_IDLE_SEC = 240
 _CHILD_TIMEOUT_SEC = 600
-# Full agent reports are reread at most this often. Counts refresh on the shorter gap.
-_HEAVY_EVERY_SEC = 600
+# Office, disks and the software table are reread at most this often.
+# A shorter gap still refreshes head counts without scanning those tables.
+_HEAVY_EVERY_SEC = 1200
 
 
 def _backend_dir() -> str:

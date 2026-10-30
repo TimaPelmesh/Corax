@@ -238,22 +238,18 @@ export function ComputersPage() {
       setLoading(false)
     }
     try {
-      const [data, ping] = await Promise.all([
-        api.computers({
-          view: 'list',
-          skip: (page - 1) * PAGE_SIZE,
-          limit: PAGE_SIZE,
-          q: debouncedHostSearch.trim() || undefined,
-          tag_ids: filterTagIds.length ? filterTagIds : undefined,
-          ping_status: pingFilter === 'all' ? undefined : pingFilter,
-          sort: sort.key,
-          sort_dir: sort.dir,
-        }),
-        api.computersPingStatus(false).catch(() => ({ items: [], sweep: null })),
-      ])
-      const merged = applyPingMap(data.items, ping.items)
-      putCache(key, { items: merged, total: data.total })
-      setRows(merged)
+      const data = await api.computers({
+        view: 'list',
+        skip: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE,
+        q: debouncedHostSearch.trim() || undefined,
+        tag_ids: filterTagIds.length ? filterTagIds : undefined,
+        ping_status: pingFilter === 'all' ? undefined : pingFilter,
+        sort: sort.key,
+        sort_dir: sort.dir,
+      })
+      putCache(key, { items: data.items, total: data.total })
+      setRows(data.items)
       setTotal(data.total)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
@@ -263,7 +259,6 @@ export function ComputersPage() {
     }
   }, [
     PAGE_SIZE,
-    applyPingMap,
     debouncedHostSearch,
     filterTagIds,
     page,

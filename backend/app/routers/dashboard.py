@@ -8,7 +8,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, cast, Date, func, literal, or_, select
+from sqlalchemy import case, cast, Date, func, literal, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_user
 from app.database import AsyncSessionLocal, get_db
@@ -240,7 +240,7 @@ def _fold_physical_disks(raws):
 # time on a busy panel is wasteful. 5-second per-user memo is invisible to
 # the user (counter can lag by a few seconds) and still respects tenancy —
 # `notes_total` depends on the caller.
-_NAV_BADGES_CACHE_SECONDS = 5.0
+_NAV_BADGES_CACHE_SECONDS = 90.0
 _NAV_BADGES_CACHE: dict[int, tuple[float, DashboardNavBadges]] = {}
 
 
@@ -528,14 +528,19 @@ async def dashboard_nav_badges(
         return int(await s.scalar(select(func.count()).select_from(Computer)) or 0)
 
     async def _software(s: AsyncSession) -> int:
-        return int(
-            await s.scalar(
-                select(func.count(func.distinct(InstalledSoftware.name)))
-                .select_from(InstalledSoftware)
-                .join(Computer, Computer.id == InstalledSoftware.computer_id)
+        # The distinct-name scan of every install made every tab wait. The
+        # snapshot already stores that number; the sidebar reads one field.
+        try:
+            value = await s.scalar(
+                text(
+                    "SELECT NULLIF(payload::jsonb->>'software_unique_titles', '')::int "
+                    "FROM dashboard_snapshots WHERE id = 1"
+                )
             )
-            or 0
-        )
+        except Exception:
+            await s.rollback()
+            return 0
+        return int(value or 0)
 
     async def _printers(s: AsyncSession) -> int:
         rows = (
@@ -711,6 +716,8 @@ async def _compute_dashboard_inventory(
             return total, online, offline, max(0, total - online - offline)
 
     async def _software_totals() -> tuple[int, int]:
+        if not heavy:
+            return 0, 0
         async with dash_sessions()() as s:
             row = (
                 await s.execute(
@@ -834,6 +841,8 @@ async def _compute_dashboard_inventory(
         list[DashboardRamBucket],
         list[DashboardNameCount],
     ]:
+        if not heavy:
+            return [], [], [], [], []
         async with dash_sessions()() as s:
             _os_r = await s.execute(select(Computer.os_name, func.count()).group_by(Computer.os_name))
             by_os = [
@@ -886,6 +895,8 @@ async def _compute_dashboard_inventory(
             return by_os, by_manufacturer, by_system_model, ram_buckets, top_cpu
 
     async def _top_software() -> list[DashboardNameCount]:
+        if not heavy:
+            return []
         async with dash_sessions()() as s:
             sw_r = await s.execute(
                 select(InstalledSoftware.name, pc_sw.label("cnt"))
@@ -957,6 +968,8 @@ async def _compute_dashboard_inventory(
         return await asyncio.to_thread(_fold_software_families, fam_rows, payload_rows)
 
     async def _peripherals() -> tuple[list[DashboardPeripheralKind], list[DashboardNameCount]]:
+        if not heavy:
+            return [], []
         async with dash_sessions()() as s:
             pk_r = await s.execute(
                 select(Peripheral.kind, pe_pc.label("cnt"))
@@ -995,6 +1008,8 @@ async def _compute_dashboard_inventory(
             return peripheral_kinds, top_peripherals
 
     async def _monitors() -> list[DashboardNameCount]:
+        if not heavy:
+            return []
         async with dash_sessions()() as s:
             mon_r = await s.execute(
                 select(Peripheral.name, Peripheral.computer_id)
@@ -1037,6 +1052,8 @@ async def _compute_dashboard_inventory(
         )[:12]
 
     async def _disk_devices() -> list[DashboardDiskDeviceRank]:
+        if not heavy:
+            return []
         async with dash_sessions()() as s:
             disk_r = await s.execute(
                 select(

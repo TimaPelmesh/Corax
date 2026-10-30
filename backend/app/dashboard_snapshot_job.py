@@ -13,10 +13,22 @@ from app.observability import get_logger
 
 log = get_logger("corax.dashboard_snapshot_job")
 
-# Office and disk charts. Counts and tickets refresh without rereading agent reports.
+# Charts and software totals. Head counts and tickets refresh without scanning those tables.
 _HEAVY_FIELDS = (
+    "software_installations_total",
+    "software_unique_titles",
+    "by_os",
+    "by_manufacturer",
+    "by_system_model",
+    "ram_buckets",
+    "top_cpu",
+    "top_software",
     "browsers",
     "office_suites",
+    "peripheral_kinds",
+    "top_peripherals",
+    "top_monitors",
+    "top_disk_devices",
     "physical_disks_total",
     "physical_disks_by_media",
     "physical_disks_by_size",
