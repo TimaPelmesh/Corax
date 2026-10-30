@@ -440,6 +440,12 @@ async def submit_inventory(
     await ack_hostname(db, hn)
     await db.commit()
     try:
+        from app.dashboard_snapshot import dashboard_snapshot_worker
+
+        dashboard_snapshot_worker.request_refresh()
+    except Exception:
+        pass
+    try:
         _save_inbox_json(hn, pc.id, raw, now)
     except OSError:
         pass

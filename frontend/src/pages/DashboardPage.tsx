@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type DashboardSegmentKind, type DashboardSummary } from '../api'
 import { DASHBOARD_SUMMARY_KEY, peekCache, putCache } from '../lib/viewCache'
@@ -37,6 +37,7 @@ export function DashboardPage() {
   const toast = useToast()
   const { user } = useAuth()
   const canDownloadAgent = Boolean(user?.is_superuser)
+  const emptyPolls = useRef(0)
   const [data, setData] = useState<DashboardSummary | null>(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) ?? null)
   const [loading, setLoading] = useState(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) == null)
   const [widgets, setWidgets] = useState<WidgetVisibility>(() => readWidgets())
@@ -79,6 +80,20 @@ export function DashboardPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!data) return
+    if (data.computers_total > 0 || data.software_installations_total > 0) {
+      emptyPolls.current = 0
+      return
+    }
+    if (emptyPolls.current >= 15) return
+    const id = window.setTimeout(() => {
+      emptyPolls.current += 1
+      void load()
+    }, 4000)
+    return () => window.clearTimeout(id)
+  }, [data, load])
 
   const closedPoints = data?.service_requests_closed_series ?? []
   const closedTotal = closedPoints.length

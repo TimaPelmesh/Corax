@@ -285,7 +285,7 @@ export function ServiceRequestsPage() {
       putCache(DASHBOARD_SUMMARY_KEY, next)
       setSummary(next)
     } catch {
-      setSummary(null)
+      // Keep the last summary on screen. A slow refresh must not blank the header.
     } finally {
       setSummaryLoading(false)
     }

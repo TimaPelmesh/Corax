@@ -233,6 +233,7 @@ async def lifespan(_: FastAPI):
 
 
     from app.computer_ping_scheduler import computer_ping_scheduler
+    from app.dashboard_snapshot import dashboard_snapshot_worker
     from app.printer_scheduler import printer_poll_scheduler
     from app.wikirag_corax_sync import wikirag_corax_sync_scheduler
     from app.wikirag_index_queue import wikirag_index_queue
@@ -243,6 +244,7 @@ async def lifespan(_: FastAPI):
     if env != "test":
         await printer_poll_scheduler.start()
         await computer_ping_scheduler.start()
+        await dashboard_snapshot_worker.start()
         await wikirag_corax_sync_scheduler.start()
         from app.bitrix_bot_poll import bitrix_bot_poller
         from app.llm_cluster import llm_scrape_scheduler
@@ -259,6 +261,7 @@ async def lifespan(_: FastAPI):
     if env != "test":
         await printer_poll_scheduler.stop()
         await computer_ping_scheduler.stop()
+        await dashboard_snapshot_worker.stop()
         await wikirag_corax_sync_scheduler.stop()
         from app.bitrix_bot_poll import bitrix_bot_poller
         from app.llm_cluster import llm_scrape_scheduler

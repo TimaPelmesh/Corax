@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import logging
 import re
 import time
@@ -66,6 +67,16 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+# Background snapshot worker sets this so heavy queries use its own asyncpg pool.
+_dash_session_factory: contextvars.ContextVar = contextvars.ContextVar(
+    "dash_session_factory", default=None
+)
+
+
+def dash_sessions():
+    factory = _dash_session_factory.get()
+    return factory or AsyncSessionLocal
 
 
 def _count_tab_printers(rows: list[tuple]) -> int:
@@ -508,28 +519,75 @@ async def dashboard_nav_badges(
     return result
 
 
+def _blank_summary() -> DashboardSummary:
+    return DashboardSummary(
+        computers_total=0,
+        software_installations_total=0,
+        software_unique_titles=0,
+        tags_in_directory=0,
+        by_os=[],
+        by_manufacturer=[],
+        by_system_model=[],
+        ram_buckets=[],
+        top_cpu=[],
+        top_software=[],
+        peripheral_kinds=[],
+        top_peripherals=[],
+    )
+
+
+def _stamp_key(stamp: tuple) -> str:
+    return "|".join(str(part) for part in stamp)
+
+
+async def _summary_inventory_inline(stamp: tuple) -> DashboardSummary:
+    """Tests and a missing worker still need a full summary on the request."""
+    global _SUMMARY_CACHE
+    now_mono = time.monotonic()
+    cached = _SUMMARY_CACHE
+    if cached and cached[0] > now_mono and cached[1] == stamp:
+        return cached[2]
+    async with _SUMMARY_COMPUTE_LOCK:
+        cached = _SUMMARY_CACHE
+        now_mono = time.monotonic()
+        if cached and cached[0] > now_mono and cached[1] == stamp:
+            return cached[2]
+        inventory = await _compute_dashboard_inventory(None, stamp[:2])
+        _SUMMARY_CACHE = (now_mono + _SUMMARY_CACHE_SECONDS, stamp, inventory)
+        return inventory
+
+
+async def _summary_inventory_snapshot(stamp: tuple) -> DashboardSummary:
+    """Production: one row read. Recompute runs on the snapshot thread."""
+    from app.dashboard_snapshot import dashboard_snapshot_worker, read_dashboard_snapshot
+
+    key = _stamp_key(stamp)
+    async with AsyncSessionLocal() as db:
+        stored = await read_dashboard_snapshot(db)
+    if stored is None or stored[1] != key:
+        dashboard_snapshot_worker.request_refresh()
+    if stored is None:
+        return _blank_summary()
+    try:
+        return DashboardSummary.model_validate_json(stored[0])
+    except Exception:
+        dashboard_snapshot_worker.request_refresh()
+        return _blank_summary()
+
+
 @router.get("/summary", response_model=DashboardSummary)
 async def dashboard_summary(
     current: User = Depends(get_current_user),
 ):
-    global _SUMMARY_CACHE
-    # Close this session before the lock. Waiting callers must not pin a connection.
+    from app.config import settings
+
     async with AsyncSessionLocal() as db:
         stamp = await _dashboard_stamp(db)
-    now_mono = time.monotonic()
-    cached = _SUMMARY_CACHE
-    if cached and cached[0] > now_mono and cached[1] == stamp:
-        inventory = cached[2]
+    env = (settings.environment or "").strip().lower()
+    if env == "test":
+        inventory = await _summary_inventory_inline(stamp)
     else:
-        async with _SUMMARY_COMPUTE_LOCK:
-            # Re-check under the lock: пока ждали — соседний запрос мог уже посчитать.
-            cached = _SUMMARY_CACHE
-            now_mono = time.monotonic()
-            if cached and cached[0] > now_mono and cached[1] == stamp:
-                inventory = cached[2]
-            else:
-                inventory = await _compute_dashboard_inventory(db, stamp[:2])
-                _SUMMARY_CACHE = (now_mono + _SUMMARY_CACHE_SECONDS, stamp, inventory)
+        inventory = await _summary_inventory_snapshot(stamp)
 
     async def _upcoming(s: AsyncSession):
         return await accessible_upcoming_notes(s, current, horizon_days=30, limit=8)
@@ -554,7 +612,7 @@ async def dashboard_summary(
     return inventory.model_copy(update={"upcoming_notes": upcoming_notes, "notes_total": notes_total})
 
 
-async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple) -> DashboardSummary:
+async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp: tuple) -> DashboardSummary:
     """Inventory analytics. Independent SELECTs run in parallel on fresh sessions."""
     del db  # request session is not concurrency-safe; each worker opens its own
     ping_status_l = func.lower(func.coalesce(Computer.ping_status, ""))
@@ -562,7 +620,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
     pc_sw = func.count(func.distinct(InstalledSoftware.computer_id))
 
     async def _fleet() -> tuple[int, int, int, int]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             row = (
                 await s.execute(
                     select(
@@ -582,7 +640,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
             return total, online, offline, max(0, total - online - offline)
 
     async def _software_totals() -> tuple[int, int]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             row = (
                 await s.execute(
                     select(
@@ -596,11 +654,11 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
             return int(row.installs or 0), int(row.titles or 0)
 
     async def _tags() -> int:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             return int(await s.scalar(select(func.count()).select_from(Tag)) or 0)
 
     async def _printers() -> int:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             rows = (
                 await s.execute(
                     select(Printer.name, Printer.snmp_model, Printer.snmp_sys_name).where(
@@ -620,7 +678,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
         str,
         list[DashboardTimePoint],
     ]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             status_r = await s.execute(
                 select(ServiceRequest.status, func.count())
                 .group_by(ServiceRequest.status)
@@ -705,7 +763,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
         list[DashboardRamBucket],
         list[DashboardNameCount],
     ]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             _os_r = await s.execute(select(Computer.os_name, func.count()).group_by(Computer.os_name))
             by_os = [
                 DashboardNameCount(name=n, count=c)
@@ -757,7 +815,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
             return by_os, by_manufacturer, by_system_model, ram_buckets, top_cpu
 
     async def _top_software() -> list[DashboardNameCount]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             sw_r = await s.execute(
                 select(InstalledSoftware.name, pc_sw.label("cnt"))
                 .join(Computer, Computer.id == InstalledSoftware.computer_id)
@@ -772,7 +830,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
         return await _memo_heavy("software_families", inventory_stamp, _software_families_uncached)
 
     async def _software_families_uncached() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             fam_rows = (
                 await s.execute(
                     select(
@@ -792,7 +850,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
         return await asyncio.to_thread(_fold_software_families, fam_rows, payload_rows)
 
     async def _peripherals() -> tuple[list[DashboardPeripheralKind], list[DashboardNameCount]]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             pk_r = await s.execute(
                 select(Peripheral.kind, pe_pc.label("cnt"))
                 .join(Computer, Computer.id == Peripheral.computer_id)
@@ -830,7 +888,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
             return peripheral_kinds, top_peripherals
 
     async def _monitors() -> list[DashboardNameCount]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             mon_r = await s.execute(
                 select(Peripheral.name, Peripheral.computer_id)
                 .join(Computer, Computer.id == Peripheral.computer_id)
@@ -872,7 +930,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
         )[:12]
 
     async def _disk_devices() -> list[DashboardDiskDeviceRank]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             disk_r = await s.execute(
                 select(
                     Computer.hostname,
@@ -902,7 +960,7 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
     async def _physical_disks_uncached() -> tuple[
         int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
     ]:
-        async with AsyncSessionLocal() as s:
+        async with dash_sessions()() as s:
             raws = [
                 row[0]
                 for row in (

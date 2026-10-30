@@ -2082,6 +2082,23 @@ def _migrate_bitrix_bot_keyboard(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE bitrix_bot_dialogs ADD COLUMN keyboard_sig VARCHAR(128)"))
 
 
+def _migrate_dashboard_snapshots(sync_conn) -> None:
+    if "dashboard_snapshots" in _table_names(sync_conn):
+        return
+    sync_conn.execute(
+        text(
+            """
+            CREATE TABLE dashboard_snapshots (
+              id INTEGER PRIMARY KEY,
+              payload TEXT NOT NULL,
+              stamp TEXT NOT NULL DEFAULT '',
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    )
+
+
 def _migrate_backup_schedule(sync_conn) -> None:
     if "backup_schedule" in _table_names(sync_conn):
         return
@@ -2188,6 +2205,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-27_bitrix_bot_scripts", _migrate_bitrix_bot_scripts),
     ("2026-10-27_bitrix_bot_email", _migrate_bitrix_bot_email),
     ("2026-10-29_backup_schedule", _migrate_backup_schedule),
+    ("2026-10-30_dashboard_snapshots", _migrate_dashboard_snapshots),
 ]
 
 
