@@ -1,5 +1,6 @@
 import asyncio
 import contextvars
+import json
 import logging
 import re
 import time
@@ -7,7 +8,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, cast, Date, func, literal, select
+from sqlalchemy import case, cast, Date, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_user
 from app.database import AsyncSessionLocal, get_db
@@ -119,6 +120,69 @@ _PAYLOAD_SLOT = asyncio.Semaphore(1)
 async def _with_db_slot(factory):
     async with _DASHBOARD_DB_SLOTS:
         return await factory()
+
+
+# Titles that can classify as a browser or an office suite. The full software
+# table is much larger and is not needed for those two charts.
+_FAMILY_NAME_NEEDLES = (
+    "chrome",
+    "yandex",
+    "яндекс",
+    "firefox",
+    "edge",
+    "opera",
+    "brave",
+    "vivaldi",
+    "chromium",
+    "explorer",
+    "libreoffice",
+    "onlyoffice",
+    "only office",
+    "мойофис",
+    "мой офис",
+    "myoffice",
+    "р7",
+    "r7-office",
+    "r7 office",
+    "openoffice",
+    "microsoft 365",
+    "office 365",
+    "microsoft office",
+    "microsoft word",
+    "microsoft excel",
+    "microsoft outlook",
+    "microsoft powerpoint",
+    "word 20",
+    "excel 20",
+    "outlook 20",
+    "powerpoint 20",
+    "proplus",
+    "o365",
+)
+
+
+def _family_name_clause():
+    return or_(*[InstalledSoftware.name.ilike(f"%{needle}%") for needle in _FAMILY_NAME_NEEDLES])
+
+
+def _slim_dashboard_payload(raw: str) -> str | None:
+    """Keep office installs and disk rows. Drop the rest of the agent report."""
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    extended = data.get("extended") if isinstance(data.get("extended"), dict) else {}
+    office = extended.get("office_installs") if isinstance(extended.get("office_installs"), list) else []
+    physical = extended.get("physical_disks") if isinstance(extended.get("physical_disks"), list) else []
+    disks = data.get("disks") if isinstance(data.get("disks"), list) else []
+    if not office and not physical and not disks:
+        return None
+    return json.dumps(
+        {"extended": {"office_installs": office, "physical_disks": physical}, "disks": disks},
+        ensure_ascii=False,
+    )
 
 
 def _fold_software_families(fam_rows, payload_rows):
@@ -614,7 +678,12 @@ async def dashboard_summary(
     return inventory.model_copy(update={"upcoming_notes": upcoming_notes, "notes_total": notes_total})
 
 
-async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp: tuple) -> DashboardSummary:
+async def _compute_dashboard_inventory(
+    db: AsyncSession | None,
+    inventory_stamp: tuple,
+    *,
+    heavy: bool = True,
+) -> DashboardSummary:
     """Inventory analytics. Independent SELECTs run in parallel on fresh sessions."""
     del db  # request session is not concurrency-safe; each worker opens its own
     ping_status_l = func.lower(func.coalesce(Computer.ping_status, ""))
@@ -827,8 +896,43 @@ async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp:
             )
             return [DashboardNameCount(name=str(row[0]), count=int(row[1])) for row in sw_r.all()]
 
+    slim_payloads: list[tuple[int, str]] | None = None
+
+    async def _slim_payloads() -> list[tuple[int, str]]:
+        """One pass, 20 PCs at a time. The full report is not kept."""
+        nonlocal slim_payloads
+        if slim_payloads is not None:
+            return slim_payloads
+        found: list[tuple[int, str]] = []
+        last_id = 0
+        while True:
+            async with dash_sessions()() as s:
+                rows = (
+                    await s.execute(
+                        select(Computer.id, Computer.raw_payload)
+                        .where(Computer.raw_payload.is_not(None))
+                        .where(Computer.id > last_id)
+                        .order_by(Computer.id)
+                        .limit(20)
+                    )
+                ).all()
+            if not rows:
+                break
+            for computer_id, raw in rows:
+                last_id = int(computer_id)
+                if not raw:
+                    continue
+                compact = _slim_dashboard_payload(str(raw))
+                if compact:
+                    found.append((int(computer_id), compact))
+            await asyncio.sleep(0.05)
+        slim_payloads = found
+        return found
+
     async def _software_families() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
         """Same classify_software_name quality; one row per title via array_agg(distinct pc)."""
+        if not heavy:
+            return [], []
         return await _memo_heavy("software_families", inventory_stamp, _software_families_uncached)
 
     async def _software_families_uncached() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
@@ -845,14 +949,11 @@ async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp:
                         func.array_agg(func.distinct(InstalledSoftware.computer_id)),
                     )
                     .join(Computer, Computer.id == InstalledSoftware.computer_id)
+                    .where(_family_name_clause())
                     .group_by(InstalledSoftware.name, InstalledSoftware.version)
                 )
             ).all()
-            payload_rows = (
-                await s.execute(
-                    select(Computer.id, Computer.raw_payload).where(Computer.raw_payload.is_not(None))
-                )
-            ).all()
+        payload_rows = await _slim_payloads()
         return await asyncio.to_thread(_fold_software_families, fam_rows, payload_rows)
 
     async def _peripherals() -> tuple[list[DashboardPeripheralKind], list[DashboardNameCount]]:
@@ -961,6 +1062,8 @@ async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp:
     async def _physical_disks() -> tuple[
         int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
     ]:
+        if not heavy:
+            return 0, [], [], []
         return await _memo_heavy("physical_disks", inventory_stamp, _physical_disks_uncached)
 
     async def _physical_disks_uncached() -> tuple[
@@ -972,13 +1075,8 @@ async def _compute_dashboard_inventory(db: AsyncSession | None, inventory_stamp:
     async def _physical_disks_load() -> tuple[
         int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
     ]:
-        async with dash_sessions()() as s:
-            raws = [
-                row[0]
-                for row in (
-                    await s.execute(select(Computer.raw_payload).where(Computer.raw_payload.is_not(None)))
-                ).all()
-            ]
+        payload_rows = await _slim_payloads()
+        raws = [raw for _computer_id, raw in payload_rows]
         return await asyncio.to_thread(_fold_physical_disks, raws)
 
     (

@@ -24,6 +24,8 @@ _FIRST_DELAY_SEC = 12
 _MIN_GAP_SEC = 30
 _IDLE_SEC = 120
 _CHILD_TIMEOUT_SEC = 600
+# Full agent reports are reread at most this often. Counts refresh on the shorter gap.
+_HEAVY_EVERY_SEC = 600
 
 
 def _backend_dir() -> str:
@@ -50,6 +52,7 @@ class DashboardSnapshotWorker:
         self._wake = threading.Event()
         self._proc: subprocess.Popen | None = None
         self._proc_lock = threading.Lock()
+        self._last_heavy_at = 0.0
 
     async def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -108,6 +111,8 @@ class DashboardSnapshotWorker:
         backend = _backend_dir()
         env = os.environ.copy()
         env["PYTHONPATH"] = backend + os.pathsep + env.get("PYTHONPATH", "")
+        heavy_due = (time.monotonic() - self._last_heavy_at) >= _HEAVY_EVERY_SEC
+        env["CORAX_SNAPSHOT_HEAVY"] = "1" if heavy_due else "0"
         kwargs: dict = {}
         if os.name != "nt":
             kwargs["start_new_session"] = True
@@ -132,8 +137,10 @@ class DashboardSnapshotWorker:
             return
         if code != 0:
             log.warning("dashboard snapshot child exited", extra={"pid": proc.pid, "code": code})
-        else:
-            log.info("dashboard snapshot child finished", extra={"pid": proc.pid})
+            return
+        if heavy_due:
+            self._last_heavy_at = time.monotonic()
+        log.info("dashboard snapshot child finished", extra={"pid": proc.pid, "heavy": heavy_due})
 
 
 async def read_dashboard_snapshot(db: AsyncSession) -> tuple[str, str] | None:
