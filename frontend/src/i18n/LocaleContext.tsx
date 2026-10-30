@@ -1,5 +1,4 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { en } from './en'
 import { ru, type MessageTree } from './ru'
 import {
   canonicalNavPath,
@@ -23,7 +22,28 @@ type NestedKeyOf<T, Prefix extends string = ''> = T extends object
 
 export type MessageKey = NestedKeyOf<MessageTree>
 
-const catalogs: Record<Locale, MessageTree> = { ru, en }
+const catalogs: { ru: MessageTree; en?: MessageTree } = { ru }
+let englishLoad: Promise<MessageTree> | null = null
+
+/** Vitest registers the English tree before render. Production loads it on demand. */
+export function registerEnglishCatalog(tree: MessageTree) {
+  catalogs.en = tree
+}
+
+function loadEnglishCatalog(): Promise<MessageTree> {
+  if (catalogs.en) return Promise.resolve(catalogs.en)
+  if (!englishLoad) {
+    englishLoad = import('./en').then((mod) => {
+      catalogs.en = mod.en
+      return mod.en
+    })
+  }
+  return englishLoad
+}
+
+if (typeof window !== 'undefined' && detectInitialLocale() === 'en') {
+  void loadEnglishCatalog()
+}
 
 function getByPath(tree: MessageTree, path: string): string | undefined {
   const parts = path.split('.')
@@ -37,6 +57,7 @@ function getByPath(tree: MessageTree, path: string): string | undefined {
 
 type LocaleContextValue = {
   locale: Locale
+  catalogEpoch: number
   setLocale: (locale: Locale) => void
   t: (key: MessageKey, params?: Record<string, string | number>) => string
   hiddenNav: string[]
@@ -49,6 +70,7 @@ const LocaleContext = createContext<LocaleContextValue | null>(null)
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => detectInitialLocale())
+  const [catalogEpoch, setCatalogEpoch] = useState(0)
   const [hiddenNav, setHiddenNav] = useState<string[]>(() => loadHiddenNav())
 
   useEffect(() => {
@@ -68,6 +90,17 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     }
   }, [hiddenNav])
 
+  useEffect(() => {
+    if (locale !== 'en') return
+    let cancelled = false
+    void loadEnglishCatalog().then(() => {
+      if (!cancelled) setCatalogEpoch((n) => n + 1)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [locale])
+
   const setLocale = useCallback((next: Locale) => {
     document.documentElement.lang = next === 'en' ? 'en' : 'ru'
     try {
@@ -75,17 +108,17 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
+    if (next === 'en') void loadEnglishCatalog().then(() => setCatalogEpoch((n) => n + 1))
     setLocaleState(next)
   }, [])
 
   const t = useCallback(
     (key: MessageKey, params?: Record<string, string | number>) => {
-      const catalog = catalogs[locale]
-      const fallback = catalogs.ru
-      const raw = getByPath(catalog, key) ?? getByPath(fallback, key) ?? key
+      const catalog = locale === 'en' ? catalogs.en : catalogs.ru
+      const raw = (catalog && getByPath(catalog, key)) ?? getByPath(catalogs.ru, key) ?? key
       return interpolate(raw, params)
     },
-    [locale],
+    [locale, catalogEpoch],
   )
 
   const isNavHidden = useCallback(
@@ -106,8 +139,8 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const showAllNav = useCallback(() => setHiddenNav([]), [])
 
   const value = useMemo(
-    () => ({ locale, setLocale, t, hiddenNav, isNavHidden, setNavHidden, showAllNav }),
-    [locale, setLocale, t, hiddenNav, isNavHidden, setNavHidden, showAllNav],
+    () => ({ locale, catalogEpoch, setLocale, t, hiddenNav, isNavHidden, setNavHidden, showAllNav }),
+    [locale, catalogEpoch, setLocale, t, hiddenNav, isNavHidden, setNavHidden, showAllNav],
   )
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>
@@ -134,6 +167,8 @@ export function translateStatic(key: MessageKey, locale?: Locale, params?: Recor
           : null
       : null
   const loc = locale ?? fromDom ?? detectInitialLocale()
-  const raw = getByPath(catalogs[loc], key) ?? getByPath(catalogs.ru, key) ?? key
+  if (loc === 'en' && !catalogs.en) void loadEnglishCatalog()
+  const catalog = loc === 'en' ? catalogs.en : catalogs.ru
+  const raw = (catalog && getByPath(catalog, key)) ?? getByPath(catalogs.ru, key) ?? key
   return interpolate(raw, params)
 }

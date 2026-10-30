@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type DashboardSegmentKind, type DashboardSummary } from '../api'
+import { DASHBOARD_SUMMARY_KEY, peekCache, putCache } from '../lib/viewCache'
 import { useAuth } from '../AuthContext'
 import { DashboardDrilldownPanel, type DashboardDrilldownSelection } from '../components/DashboardDrilldown'
 import {
@@ -36,8 +37,8 @@ export function DashboardPage() {
   const toast = useToast()
   const { user } = useAuth()
   const canDownloadAgent = Boolean(user?.is_superuser)
-  const [data, setData] = useState<DashboardSummary | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<DashboardSummary | null>(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) ?? null)
+  const [loading, setLoading] = useState(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) == null)
   const [widgets, setWidgets] = useState<WidgetVisibility>(() => readWidgets())
   const [drilldown, setDrilldown] = useState<DashboardDrilldownSelection | null>(null)
 
@@ -57,7 +58,9 @@ export function DashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      setData(await api.dashboardSummary())
+      const next = await api.dashboardSummary()
+      putCache(DASHBOARD_SUMMARY_KEY, next)
+      setData(next)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {

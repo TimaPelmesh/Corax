@@ -12,6 +12,7 @@ import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { IconDetails } from '../components/icons'
 import { Skeleton, TableSkeleton } from '../components/Skeleton'
 import { useT } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
 import { useToast } from '../ToastContext'
 import { catalogFilterKey } from './knowledgeZabbixModel'
 
@@ -27,6 +28,45 @@ function filterKey(f: CatalogFilterItem) {
   return catalogFilterKey(f.kind, f.name)
 }
 
+const SOFTWARE_ROW_PX = 36
+
+function softwareCacheKey(kind: string, query: string) {
+  return `software:${kind}:${query.trim()}`
+}
+
+function useRowWindow(count: number) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [range, setRange] = useState({ start: 0, end: 40 })
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el || count <= 80) return
+    el.scrollTop = 0
+    let frame = 0
+    const measure = () => {
+      const start = Math.max(0, Math.floor(el.scrollTop / SOFTWARE_ROW_PX) - 12)
+      const visible = Math.ceil(el.clientHeight / SOFTWARE_ROW_PX) + 28
+      const end = Math.min(count, start + visible)
+      setRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }))
+    }
+    const onScroll = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(measure)
+    }
+    measure()
+    el.addEventListener('scroll', onScroll, { passive: true })
+    const observer = new ResizeObserver(onScroll)
+    observer.observe(el)
+    return () => {
+      cancelAnimationFrame(frame)
+      el.removeEventListener('scroll', onScroll)
+      observer.disconnect()
+    }
+  }, [count])
+
+  return { ref, start: range.start, end: Math.max(range.end, range.start) }
+}
+
 export function SoftwarePage() {
   const t = useT()
   const toast = useToast()
@@ -34,8 +74,9 @@ export function SoftwarePage() {
   const canDownloadAgent = Boolean(user?.is_superuser)
   const [kind, setKind] = useState<CatalogKind>('software')
   const [query, setQuery] = useState('')
-  const [rows, setRows] = useState<SoftwareCatalogRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const initialCatalog = peekCache<SoftwareCatalogRow[]>(softwareCacheKey('software', ''))
+  const [rows, setRows] = useState<SoftwareCatalogRow[]>(initialCatalog ?? [])
+  const [loading, setLoading] = useState(!initialCatalog)
   const [filters, setFilters] = useState<CatalogFilterItem[]>([])
   const [hosts, setHosts] = useState<DashboardSegmentComputer[] | null>(null)
   const [hostsTotal, setHostsTotal] = useState(0)
@@ -66,9 +107,12 @@ export function SoftwarePage() {
 
   const load = useCallback(
     async (nextKind: CatalogKind, q: string) => {
-      setLoading(true)
+      const key = softwareCacheKey(nextKind, q)
+      if (!peekCache<SoftwareCatalogRow[]>(key)) setLoading(true)
       try {
-        setRows(await api.catalog(nextKind, q.trim() || undefined, 5000))
+        const next = await api.catalog(nextKind, q.trim() || undefined, 5000)
+        putCache(key, next)
+        setRows(next)
       } catch (e) {
         toast.error(e instanceof Error ? e.message : t('common.error'))
       } finally {
@@ -79,9 +123,15 @@ export function SoftwarePage() {
   )
 
   useEffect(() => {
+    const key = softwareCacheKey(kind, query)
+    const cached = peekCache<SoftwareCatalogRow[]>(key)
+    if (cached) {
+      setRows(cached)
+      setLoading(false)
+    }
     const timer = window.setTimeout(() => {
       void load(kind, query)
-    }, 320)
+    }, cached ? 0 : 320)
     return () => window.clearTimeout(timer)
   }, [kind, query, load])
 
@@ -160,6 +210,11 @@ export function SoftwarePage() {
             : t('software.columns.name')
 
   const activeKeys = useMemo(() => new Set(filters.map(filterKey)), [filters])
+  const windowed = rows.length > 80
+  const rowWindow = useRowWindow(windowed ? rows.length : 0)
+  const visibleRows = windowed ? rows.slice(rowWindow.start, rowWindow.end) : rows
+  const padTop = windowed ? rowWindow.start * SOFTWARE_ROW_PX : 0
+  const padBottom = windowed ? Math.max(0, rows.length - rowWindow.end) * SOFTWARE_ROW_PX : 0
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col overflow-auto lg:overflow-hidden">
@@ -234,7 +289,7 @@ export function SoftwarePage() {
               {loading ? t('software.refreshing') : t('software.rowsCount', { count: rows.length })}
             </span>
           </div>
-          <div className="app-table-shell min-h-0 flex-1 overflow-auto overscroll-contain">
+          <div ref={rowWindow.ref} className="app-table-shell min-h-0 flex-1 overflow-auto overscroll-contain">
             {loading && rows.length === 0 ? (
               <TableSkeleton rows={10} cols={2} />
             ) : (
@@ -262,11 +317,18 @@ export function SoftwarePage() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((r) => {
+                  <>
+                    {padTop > 0 ? (
+                      <tr aria-hidden>
+                        <td colSpan={2} style={{ height: padTop, padding: 0, border: 0 }} />
+                      </tr>
+                    ) : null}
+                    {visibleRows.map((r) => {
                     const active = activeKeys.has(filterKey({ kind, name: r.name }))
                     return (
                       <tr
                         key={r.name}
+                        style={{ height: SOFTWARE_ROW_PX }}
                         className={`cursor-pointer ${
                           active
                             ? 'bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)] shadow-[inset_2px_0_0_var(--color-primary)]'
@@ -287,7 +349,13 @@ export function SoftwarePage() {
                         <td className="px-3 py-2 text-right tabular-nums text-[var(--color-fg-muted)]">{r.count}</td>
                       </tr>
                     )
-                  })
+                  })}
+                    {padBottom > 0 ? (
+                      <tr aria-hidden>
+                        <td colSpan={2} style={{ height: padBottom, padding: 0, border: 0 }} />
+                      </tr>
+                    ) : null}
+                  </>
                 )}
               </tbody>
             </table>

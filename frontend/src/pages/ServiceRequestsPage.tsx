@@ -15,6 +15,7 @@ import { IconCheckBadge, IconPencil } from '../components/icons'
 import { RemoteConnectMenu } from '../components/RemoteConnectMenu'
 import { collectCategoryPaths } from '../requestCategories'
 import { useLocale, useT } from '../i18n/LocaleContext'
+import { DASHBOARD_SUMMARY_KEY, peekCache, putCache } from '../lib/viewCache'
 import { useToast } from '../ToastContext'
 import {
   REQUEST_STATUSES,
@@ -92,6 +93,33 @@ function requestsLookSame(prev: ServiceRequestRow[], next: ServiceRequestRow[]) 
   return true
 }
 
+type RequestListSnap = { items: ServiceRequestRow[]; total: number }
+
+function requestsListCacheKey(input: {
+  tab: string
+  page: number
+  pageSize: number
+  showAll: boolean
+  query: string
+  category: string
+  status: string | null
+  sort: string
+  edit: string | null
+}) {
+  return [
+    'requests',
+    input.tab,
+    input.page,
+    input.pageSize,
+    input.showAll ? 1 : 0,
+    input.status ?? '',
+    input.sort,
+    input.query.trim(),
+    input.category.trim(),
+    input.edit ?? '',
+  ].join('|')
+}
+
 export function ServiceRequestsPage() {
   const t = useT()
   const toast = useToast()
@@ -110,12 +138,28 @@ export function ServiceRequestsPage() {
     return 'database'
   }, [location.pathname])
 
-  const [summary, setSummary] = useState<DashboardSummary | null>(null)
-  const [summaryLoading, setSummaryLoading] = useState(true)
+  const initialPageSize = readDatabasePageSize()
+  const initialList = peekCache<RequestListSnap>(
+    requestsListCacheKey({
+      tab,
+      page: 1,
+      pageSize: initialPageSize,
+      showAll: initialPageSize <= 0,
+      query: '',
+      category: '',
+      status: null,
+      sort: 'id_desc',
+      edit: searchParams.get('edit'),
+    }),
+  )
+  const initialSummary = peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY)
 
-  const [rows, setRows] = useState<ServiceRequestRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [summary, setSummary] = useState<DashboardSummary | null>(initialSummary ?? null)
+  const [summaryLoading, setSummaryLoading] = useState(!initialSummary)
+
+  const [rows, setRows] = useState<ServiceRequestRow[]>(initialList?.items ?? [])
+  const [total, setTotal] = useState(initialList?.total ?? 0)
+  const [loading, setLoading] = useState(!initialList)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [alignDatesBusy, setAlignDatesBusy] = useState(false)
@@ -237,7 +281,9 @@ export function ServiceRequestsPage() {
 
   const refreshSummary = useCallback(async () => {
     try {
-      setSummary(await api.dashboardSummary())
+      const next = await api.dashboardSummary()
+      putCache(DASHBOARD_SUMMARY_KEY, next)
+      setSummary(next)
     } catch {
       setSummary(null)
     } finally {
@@ -451,9 +497,28 @@ export function ServiceRequestsPage() {
   }, [dbPage, dbPageSize, showAllRows, filterCategory, filterStatus, query, searchParams, sortKey, tab])
 
   const load = useCallback(async () => {
-    setLoading(true)
+    const key = requestsListCacheKey({
+      tab,
+      page: dbPage,
+      pageSize: dbPageSize,
+      showAll: showAllRows,
+      query,
+      category: filterCategory,
+      status: filterStatus,
+      sort: sortKey,
+      edit: searchParams.get('edit'),
+    })
+    const cached = peekCache<RequestListSnap>(key)
+    if (cached) {
+      setRows(cached.items)
+      setTotal(cached.total)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     try {
       const r = await fetchList()
+      putCache(key, { items: r.items, total: r.total })
       setRows(r.items)
       setTotal(r.total)
     } catch (e) {
@@ -461,17 +526,29 @@ export function ServiceRequestsPage() {
     } finally {
       setLoading(false)
     }
-  }, [fetchList, t, toast])
+  }, [fetchList, filterCategory, filterStatus, dbPage, dbPageSize, query, searchParams, showAllRows, sortKey, t, tab, toast])
 
   const refreshList = useCallback(async () => {
+    const key = requestsListCacheKey({
+      tab,
+      page: dbPage,
+      pageSize: dbPageSize,
+      showAll: showAllRows,
+      query,
+      category: filterCategory,
+      status: filterStatus,
+      sort: sortKey,
+      edit: searchParams.get('edit'),
+    })
     try {
       const r = await fetchList()
+      putCache(key, { items: r.items, total: r.total })
       setRows((prev) => (requestsLookSame(prev, r.items) ? prev : r.items))
       setTotal((prev) => (prev === r.total ? prev : r.total))
     } catch {
       // Keep the list already on screen. The next pass will try again.
     }
-  }, [fetchList])
+  }, [dbPage, dbPageSize, fetchList, filterCategory, filterStatus, query, searchParams, showAllRows, sortKey, tab])
 
   function stripEditQuery() {
     setSearchParams(
@@ -535,11 +612,27 @@ export function ServiceRequestsPage() {
 
   useEffect(() => {
     if (tab !== 'database' && tab !== 'stats') return
-    const timer = window.setInterval(() => {
+    const heavy =
+      tab === 'stats' ||
+      showAllRows ||
+      Boolean(query.trim() || filterCategory.trim()) ||
+      sortKey !== 'id_desc' ||
+      Boolean(searchParams.get('edit'))
+    const period = heavy ? 30_000 : 12_000
+    const tick = () => {
+      if (document.visibilityState === 'hidden') return
       void refreshList()
-    }, 5000)
-    return () => window.clearInterval(timer)
-  }, [refreshList, tab])
+    }
+    const timer = window.setInterval(tick, period)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshList()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [filterCategory, query, refreshList, searchParams, showAllRows, sortKey, tab])
 
   useEffect(() => {
     if (loading) return

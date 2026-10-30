@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { api, type User } from './api'
 import { clearLoginGreeting } from './loginGreeting'
+import { prefetchShell } from './routePrefetch'
 
 type AuthState = {
   user: User | null
@@ -37,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    prefetchShell()
     void refresh()
   }, [refresh])
 

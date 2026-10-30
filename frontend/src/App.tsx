@@ -101,7 +101,7 @@ const AssistSessionPage = lazyPage(() =>
 
 function DocumentTitle() {
   const { pathname, search } = useLocation()
-  const { locale } = useLocale()
+  const { locale, catalogEpoch } = useLocale()
   useEffect(() => {
     if (pathname === '/h' || pathname === '/r') return
     const base = titleForPath(pathname, locale)
@@ -111,7 +111,7 @@ function DocumentTitle() {
       return
     }
     document.title = base
-  }, [pathname, search, locale])
+  }, [pathname, search, locale, catalogEpoch])
   return null
 }
 

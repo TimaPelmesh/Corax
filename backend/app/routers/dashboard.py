@@ -81,6 +81,21 @@ _SUMMARY_CACHE: tuple[float, tuple, DashboardSummary] | None = None
 # и получат уже готовый результат из кэша.
 _SUMMARY_COMPUTE_LOCK = asyncio.Lock()
 
+# Ticket edits must not rescan every software title and every raw_payload.
+# Those two reads stay warm for a few minutes, keyed only by the fleet stamp.
+_HEAVY_TTL = 180.0
+_HEAVY_CACHE: dict[str, tuple[float, tuple, object]] = {}
+
+
+async def _memo_heavy(name: str, stamp: tuple, factory):
+    now = time.monotonic()
+    hit = _HEAVY_CACHE.get(name)
+    if hit is not None and hit[0] > now and hit[1] == stamp:
+        return hit[2]
+    value = await factory()
+    _HEAVY_CACHE[name] = (now + _HEAVY_TTL, stamp, value)
+    return value
+
 # Sidebar polls nav-badges on nearly every route change; four SELECTs each
 # time on a busy panel is wasteful. 5-second per-user memo is invisible to
 # the user (counter can lag by a few seconds) and still respects tenancy —
@@ -449,7 +464,7 @@ async def dashboard_summary(
             if cached and cached[0] > now_mono and cached[1] == stamp:
                 inventory = cached[2]
             else:
-                inventory = await _compute_dashboard_inventory(db)
+                inventory = await _compute_dashboard_inventory(db, stamp[:2])
                 _SUMMARY_CACHE = (now_mono + _SUMMARY_CACHE_SECONDS, stamp, inventory)
 
     async def _upcoming(s: AsyncSession):
@@ -475,7 +490,7 @@ async def dashboard_summary(
     return inventory.model_copy(update={"upcoming_notes": upcoming_notes, "notes_total": notes_total})
 
 
-async def _compute_dashboard_inventory(db: AsyncSession) -> DashboardSummary:
+async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple) -> DashboardSummary:
     """Inventory analytics. Independent SELECTs run in parallel on fresh sessions."""
     del db  # request session is not concurrency-safe; each worker opens its own
     ping_status_l = func.lower(func.coalesce(Computer.ping_status, ""))
@@ -690,6 +705,9 @@ async def _compute_dashboard_inventory(db: AsyncSession) -> DashboardSummary:
 
     async def _software_families() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
         """Same classify_software_name quality; one row per title via array_agg(distinct pc)."""
+        return await _memo_heavy("software_families", inventory_stamp, _software_families_uncached)
+
+    async def _software_families_uncached() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
         async with AsyncSessionLocal() as s:
             fam_r = await s.execute(
                 select(
@@ -840,6 +858,11 @@ async def _compute_dashboard_inventory(db: AsyncSession) -> DashboardSummary:
             ]
 
     async def _physical_disks() -> tuple[
+        int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
+    ]:
+        return await _memo_heavy("physical_disks", inventory_stamp, _physical_disks_uncached)
+
+    async def _physical_disks_uncached() -> tuple[
         int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
     ]:
         async with AsyncSessionLocal() as s:

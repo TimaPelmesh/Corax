@@ -4,8 +4,6 @@
 @import "@fontsource/ibm-plex-sans/700.css";
 @import "@fontsource/ibm-plex-sans/400-italic.css";
 @import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
-@import "@fontsource/ibm-plex-mono/600.css";
 @import "tailwindcss";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -1344,48 +1342,48 @@ body {
 @keyframes dashboard-fade-up {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
 .dashboard-enter {
-  animation: dashboard-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: dashboard-fade-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* Staggered appearance for dashboard stat / panel grids */
 .dashboard-stagger > * {
-  animation: dashboard-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: dashboard-fade-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .dashboard-stagger > *:nth-child(1) {
   animation-delay: 0ms;
 }
 .dashboard-stagger > *:nth-child(2) {
-  animation-delay: 35ms;
+  animation-delay: 18ms;
 }
 .dashboard-stagger > *:nth-child(3) {
-  animation-delay: 70ms;
+  animation-delay: 36ms;
 }
 .dashboard-stagger > *:nth-child(4) {
-  animation-delay: 105ms;
+  animation-delay: 54ms;
 }
 .dashboard-stagger > *:nth-child(5) {
-  animation-delay: 140ms;
+  animation-delay: 72ms;
 }
 .dashboard-stagger > *:nth-child(6) {
-  animation-delay: 175ms;
+  animation-delay: 90ms;
 }
 .dashboard-stagger > *:nth-child(7) {
-  animation-delay: 210ms;
+  animation-delay: 108ms;
 }
 .dashboard-stagger > *:nth-child(8) {
-  animation-delay: 245ms;
+  animation-delay: 126ms;
 }
 .dashboard-stagger > *:nth-child(n + 9) {
-  animation-delay: 280ms;
+  animation-delay: 144ms;
 }
 
 /* Soft fade when swapping filters / tabs (prefer over slide) */
@@ -1405,20 +1403,16 @@ body {
 @keyframes route-enter {
   from {
     opacity: 0;
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
+    transform: none;
   }
 }
 
-.route-enter,
-.dashboard-enter,
-.dashboard-stagger > *,
-.app-fade-swap,
-.risk-card-enter,
-.popup-enter,
-.route-loader-bar {
-  animation: none !important;
+.route-enter {
+  animation: route-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 @keyframes settings-sheet-in {

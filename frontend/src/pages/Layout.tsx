@@ -10,6 +10,7 @@ import { buildNavSections, prefsNavItems } from '../components/layout/navConfig'
 import { ApiOfflineBanner } from '../components/ApiOfflineBanner'
 import { WikiRagIndexWatcher } from '../components/wikirag/WikiRagIndexWatcher'
 import { useNavCounts } from '../hooks/useNavCounts'
+import { prefetchRoute } from '../routePrefetch'
 import { useWelcomeToast } from '../hooks/useWelcomeToast'
 import { useLocale } from '../i18n/LocaleContext'
 
@@ -44,6 +45,15 @@ export function Layout() {
   const navCounts = useNavCounts(Boolean(user))
   const { welcomeToast, welcomeToastLeaving } = useWelcomeToast(user)
   const mobileNavVisible = mobileNavOpen && mobileNavPath === location.pathname
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      prefetchRoute('/computers')
+      prefetchRoute('/software')
+      prefetchRoute('/requests/database')
+    }, 1600)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (!mobileNavVisible) return
@@ -272,7 +282,8 @@ export function Layout() {
             <Suspense fallback={<RouteLoader />}>
               <ErrorBoundary key={location.pathname} inline>
                 <div
-                  className={lockPageScroll ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}
+                  key={location.pathname}
+                  className={`route-enter ${lockPageScroll ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : ''}`}
                 >
                   {llmOnly && !onAudit ? <Navigate to="/server-audit" replace /> : <Outlet />}
                 </div>

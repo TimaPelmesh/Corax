@@ -8,6 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { TableSkeleton } from '../components/Skeleton'
 import { useComputerPingLive } from '../hooks/useComputerPingLive'
 import { useT } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
 import { useToast } from '../ToastContext'
 
 const PC_COLUMN_KEYS = ['location', 'tags', 'os', 'ram', 'software', 'peripheral', 'last'] as const
@@ -58,6 +59,17 @@ function useClickOutside(refs: Array<RefObject<HTMLElement | null>>, onClose: ()
   }, [refs, onClose, enabled])
 }
 
+function computersCacheKey(input: {
+  page: number
+  q: string
+  tagIds: number[]
+  ping: string
+  sortKey: string
+  sortDir: string
+}) {
+  return `computers:${input.page}:${input.ping}:${input.sortKey}:${input.sortDir}:${input.q}:${input.tagIds.join(',')}`
+}
+
 export function ComputersPage() {
   const t = useT()
   const { user } = useAuth()
@@ -66,9 +78,12 @@ export function ComputersPage() {
   const [collectBusy, setCollectBusy] = useState(false)
   const PAGE_SIZE = 100
   const [searchParams, setSearchParams] = useSearchParams()
-  const [rows, setRows] = useState<Computer[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const initialComputers = peekCache<{ items: Computer[]; total: number }>(
+    computersCacheKey({ page: 1, q: '', tagIds: [], ping: 'all', sortKey: 'last', sortDir: 'desc' }),
+  )
+  const [rows, setRows] = useState<Computer[]>(initialComputers?.items ?? [])
+  const [total, setTotal] = useState(initialComputers?.total ?? 0)
+  const [loading, setLoading] = useState(!initialComputers)
   const toast = useToast()
   const columnsMenuRef = useRef<HTMLDivElement | null>(null)
   const tagsMenuRef = useRef<HTMLDivElement | null>(null)
@@ -208,6 +223,20 @@ export function ComputersPage() {
   )
 
   const load = useCallback(async () => {
+    const key = computersCacheKey({
+      page,
+      q: debouncedHostSearch.trim(),
+      tagIds: filterTagIds,
+      ping: pingFilter,
+      sortKey: sort.key,
+      sortDir: sort.dir,
+    })
+    const cached = peekCache<{ items: Computer[]; total: number }>(key)
+    if (cached) {
+      setRows(cached.items)
+      setTotal(cached.total)
+      setLoading(false)
+    }
     try {
       const [data, ping] = await Promise.all([
         api.computers({
@@ -222,7 +251,9 @@ export function ComputersPage() {
         }),
         api.computersPingStatus(false).catch(() => ({ items: [], sweep: null })),
       ])
-      setRows(applyPingMap(data.items, ping.items))
+      const merged = applyPingMap(data.items, ping.items)
+      putCache(key, { items: merged, total: data.total })
+      setRows(merged)
       setTotal(data.total)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
