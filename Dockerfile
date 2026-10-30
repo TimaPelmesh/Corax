@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-#
 # Multi-stage production image for CORAX (API + static UI).
 #
 # Why multi-stage:
