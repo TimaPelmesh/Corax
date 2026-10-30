@@ -96,6 +96,69 @@ async def _memo_heavy(name: str, stamp: tuple, factory):
     _HEAVY_CACHE[name] = (now + _HEAVY_TTL, stamp, value)
     return value
 
+
+# One Uvicorn process. A summary used to open ~12 sessions at once and then
+# classify every software row on the event loop, so the pool (5+10) and every
+# other tab waited until the browser aborted at 25s.
+_DASHBOARD_DB_SLOTS = asyncio.Semaphore(3)
+
+
+async def _with_db_slot(factory):
+    async with _DASHBOARD_DB_SLOTS:
+        return await factory()
+
+
+def _fold_software_families(fam_rows, payload_rows):
+    browsers_ids: dict[str, set[int]] = {}
+    office_ids: dict[str, set[int]] = {}
+    for sw_name, sw_version, pc_ids in fam_rows:
+        fam = classify_software_name(str(sw_name), None if sw_version is None else str(sw_version))
+        if fam is None:
+            continue
+        bucket = browsers_ids if fam.category == "browser" else office_ids
+        dest = bucket.setdefault(fam.name, set())
+        for cid in pc_ids or []:
+            if cid is not None:
+                dest.add(int(cid))
+    for computer_id, raw_payload in payload_rows:
+        labels = office_labels_from_payload(raw_payload)
+        specific = {label for label in labels if label != "Microsoft Office"}
+        chosen = specific or labels
+        for label in chosen:
+            office_ids.setdefault(label, set()).add(int(computer_id))
+        if specific:
+            generic = office_ids.get("Microsoft Office")
+            if generic is not None:
+                generic.discard(int(computer_id))
+                if not generic:
+                    office_ids.pop("Microsoft Office", None)
+    browsers = [
+        DashboardNameCount(name=n, count=len(ids))
+        for n, ids in sorted(browsers_ids.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    ]
+    office_suites = [
+        DashboardNameCount(name=n, count=len(ids))
+        for n, ids in sorted(office_ids.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    ]
+    return browsers, office_suites
+
+
+def _fold_physical_disks(raws):
+    pd_total, pd_by_media, pd_by_size, pd_by_variant = aggregate_physical_disks(raws)
+    physical_disks_by_media = sorted(
+        [DashboardNameCount(name=n, count=c) for n, c in pd_by_media.items()],
+        key=lambda x: (media_sort_key(x.name), -x.count),
+    )
+    physical_disks_by_size = sorted(
+        [DashboardRamBucket(label=n, count=c) for n, c in pd_by_size.items()],
+        key=lambda b: disk_size_sort_key(b.label),
+    )
+    physical_disks_by_variant = sorted(
+        [DashboardNameCount(name=n, count=c) for n, c in pd_by_variant.items()],
+        key=lambda x: (disk_variant_sort_key(x.name), -x.count),
+    )
+    return pd_total, physical_disks_by_media, physical_disks_by_size, physical_disks_by_variant
+
 # Sidebar polls nav-badges on nearly every route change; four SELECTs each
 # time on a busy panel is wasteful. 5-second per-user memo is invisible to
 # the user (counter can lag by a few seconds) and still respects tenancy —
@@ -448,11 +511,12 @@ async def dashboard_nav_badges(
 @router.get("/summary", response_model=DashboardSummary)
 async def dashboard_summary(
     current: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     global _SUMMARY_CACHE
+    # Close this session before the lock. Waiting callers must not pin a connection.
+    async with AsyncSessionLocal() as db:
+        stamp = await _dashboard_stamp(db)
     now_mono = time.monotonic()
-    stamp = await _dashboard_stamp(db)
     cached = _SUMMARY_CACHE
     if cached and cached[0] > now_mono and cached[1] == stamp:
         inventory = cached[2]
@@ -709,50 +773,23 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
 
     async def _software_families_uncached() -> tuple[list[DashboardNameCount], list[DashboardNameCount]]:
         async with AsyncSessionLocal() as s:
-            fam_r = await s.execute(
-                select(
-                    InstalledSoftware.name,
-                    InstalledSoftware.version,
-                    func.array_agg(func.distinct(InstalledSoftware.computer_id)),
+            fam_rows = (
+                await s.execute(
+                    select(
+                        InstalledSoftware.name,
+                        InstalledSoftware.version,
+                        func.array_agg(func.distinct(InstalledSoftware.computer_id)),
+                    )
+                    .join(Computer, Computer.id == InstalledSoftware.computer_id)
+                    .group_by(InstalledSoftware.name, InstalledSoftware.version)
                 )
-                .join(Computer, Computer.id == InstalledSoftware.computer_id)
-                .group_by(InstalledSoftware.name, InstalledSoftware.version)
-            )
-            browsers_ids: dict[str, set[int]] = {}
-            office_ids: dict[str, set[int]] = {}
-            for sw_name, sw_version, pc_ids in fam_r.all():
-                fam = classify_software_name(str(sw_name), None if sw_version is None else str(sw_version))
-                if fam is None:
-                    continue
-                bucket = browsers_ids if fam.category == "browser" else office_ids
-                dest = bucket.setdefault(fam.name, set())
-                for cid in pc_ids or []:
-                    if cid is not None:
-                        dest.add(int(cid))
-            payload_r = await s.execute(
-                select(Computer.id, Computer.raw_payload).where(Computer.raw_payload.is_not(None))
-            )
-            for computer_id, raw_payload in payload_r.all():
-                labels = office_labels_from_payload(raw_payload)
-                specific = {label for label in labels if label != "Microsoft Office"}
-                chosen = specific or labels
-                for label in chosen:
-                    office_ids.setdefault(label, set()).add(int(computer_id))
-                if specific:
-                    generic = office_ids.get("Microsoft Office")
-                    if generic is not None:
-                        generic.discard(int(computer_id))
-                        if not generic:
-                            office_ids.pop("Microsoft Office", None)
-            browsers = [
-                DashboardNameCount(name=n, count=len(ids))
-                for n, ids in sorted(browsers_ids.items(), key=lambda kv: (-len(kv[1]), kv[0]))
-            ]
-            office_suites = [
-                DashboardNameCount(name=n, count=len(ids))
-                for n, ids in sorted(office_ids.items(), key=lambda kv: (-len(kv[1]), kv[0]))
-            ]
-            return browsers, office_suites
+            ).all()
+            payload_rows = (
+                await s.execute(
+                    select(Computer.id, Computer.raw_payload).where(Computer.raw_payload.is_not(None))
+                )
+            ).all()
+        return await asyncio.to_thread(_fold_software_families, fam_rows, payload_rows)
 
     async def _peripherals() -> tuple[list[DashboardPeripheralKind], list[DashboardNameCount]]:
         async with AsyncSessionLocal() as s:
@@ -866,23 +903,13 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
         int, list[DashboardNameCount], list[DashboardRamBucket], list[DashboardNameCount]
     ]:
         async with AsyncSessionLocal() as s:
-            raw_r = await s.execute(select(Computer.raw_payload).where(Computer.raw_payload.is_not(None)))
-            pd_total, pd_by_media, pd_by_size, pd_by_variant = aggregate_physical_disks(
-                [row[0] for row in raw_r.all()]
-            )
-        physical_disks_by_media = sorted(
-            [DashboardNameCount(name=n, count=c) for n, c in pd_by_media.items()],
-            key=lambda x: (media_sort_key(x.name), -x.count),
-        )
-        physical_disks_by_size = sorted(
-            [DashboardRamBucket(label=n, count=c) for n, c in pd_by_size.items()],
-            key=lambda b: disk_size_sort_key(b.label),
-        )
-        physical_disks_by_variant = sorted(
-            [DashboardNameCount(name=n, count=c) for n, c in pd_by_variant.items()],
-            key=lambda x: (disk_variant_sort_key(x.name), -x.count),
-        )
-        return pd_total, physical_disks_by_media, physical_disks_by_size, physical_disks_by_variant
+            raws = [
+                row[0]
+                for row in (
+                    await s.execute(select(Computer.raw_payload).where(Computer.raw_payload.is_not(None)))
+                ).all()
+            ]
+        return await asyncio.to_thread(_fold_physical_disks, raws)
 
     (
         (computers_total, computers_online, computers_offline, computers_unknown),
@@ -907,18 +934,20 @@ async def _compute_dashboard_inventory(db: AsyncSession, inventory_stamp: tuple)
         top_disk_devices,
         (pd_total, physical_disks_by_media, physical_disks_by_size, physical_disks_by_variant),
     ) = await asyncio.gather(
-        _fleet(),
-        _software_totals(),
-        _tags(),
-        _printers(),
-        _service_block(),
-        _computer_dists(),
-        _top_software(),
-        _software_families(),
-        _peripherals(),
-        _monitors(),
-        _disk_devices(),
-        _physical_disks(),
+        *[_with_db_slot(fn) for fn in (
+            _fleet,
+            _software_totals,
+            _tags,
+            _printers,
+            _service_block,
+            _computer_dists,
+            _top_software,
+            _software_families,
+            _peripherals,
+            _monitors,
+            _disk_devices,
+            _physical_disks,
+        )]
     )
 
     return DashboardSummary(
