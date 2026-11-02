@@ -3,10 +3,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_serializer
 from sqlalchemy import delete, func, insert, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only
 
 from app.auth import get_current_user, get_current_editor_or_superuser, get_current_superuser
-from app.computer_ip import resolve_computer_ipv4
+from app.computer_ip import primary_ipv4_from_extended, resolve_computer_ipv4
 from app.config import settings
 from app.database import get_db
 from app.models import (
@@ -44,6 +44,7 @@ from app.wol_config import (
     serialize_id_list,
     user_may_wake,
 )
+import asyncio
 import csv
 import io
 import json
@@ -977,6 +978,50 @@ async def get_computer_software(
     return [SoftwareItem(name=str(n), version=v) for n, v in rd.all()]
 
 
+_CARD_COLUMNS = (
+    Computer.id,
+    Computer.hostname,
+    Computer.serial_number,
+    Computer.mac_primary,
+    Computer.ip_address,
+    Computer.ping_status,
+    Computer.last_ping_at,
+    Computer.cpu,
+    Computer.ram_gb,
+    Computer.os_name,
+    Computer.os_version,
+    Computer.manufacturer,
+    Computer.model,
+    Computer.location,
+    Computer.gpu_name,
+    Computer.memory_used_percent,
+    Computer.motherboard_manufacturer,
+    Computer.motherboard_product,
+    Computer.last_report_at,
+    Computer.notes,
+    Computer.assigned_user_id,
+)
+
+# Parsed agent blob for cards opened a moment ago. Keyed by the report time,
+# so a new inventory drops the old parse. One process, no extra service.
+_EXTENDED_CACHE: dict[int, tuple[datetime | None, dict | None]] = {}
+_EXTENDED_CACHE_MAX = 48
+
+
+async def _agent_extended_cached(
+    db: AsyncSession, computer_id: int, reported_at: datetime | None
+) -> dict | None:
+    hit = _EXTENDED_CACHE.get(computer_id)
+    if hit is not None and hit[0] == reported_at:
+        return hit[1]
+    raw = await db.scalar(select(Computer.raw_payload).where(Computer.id == computer_id))
+    ext = await asyncio.to_thread(_agent_extended_from_raw, raw)
+    if len(_EXTENDED_CACHE) >= _EXTENDED_CACHE_MAX and computer_id not in _EXTENDED_CACHE:
+        _EXTENDED_CACHE.pop(next(iter(_EXTENDED_CACHE)))
+    _EXTENDED_CACHE[computer_id] = (reported_at, ext)
+    return ext
+
+
 @router.get("/{computer_id}", response_model=ComputerDetail)
 async def get_computer(
     computer_id: int,
@@ -987,17 +1032,23 @@ async def get_computer(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    load_opts = [selectinload(Computer.peripherals)]
-    if include_software:
-        load_opts.insert(0, selectinload(Computer.software))
+    # raw_payload and disks_json stay out of this read. DNS and ARP stay out
+    # too: they used to run while this request still held a pool connection.
     r = await db.execute(
-        select(Computer).options(*load_opts).where(Computer.id == computer_id)
+        select(Computer).options(load_only(*_CARD_COLUMNS)).where(Computer.id == computer_id)
     )
     c = r.scalar_one_or_none()
     if not c:
         raise HTTPException(status_code=404, detail="ПК не найден")
     if include_software:
-        sw = [SoftwareItem(name=s.name, version=s.version) for s in c.software]
+        sw_rows = (
+            await db.execute(
+                select(InstalledSoftware.name, InstalledSoftware.version)
+                .where(InstalledSoftware.computer_id == computer_id)
+                .order_by(InstalledSoftware.name.asc())
+            )
+        ).all()
+        sw = [SoftwareItem(name=str(n), version=v) for n, v in sw_rows]
         cnt = len(sw)
     else:
         sw = []
@@ -1007,9 +1058,14 @@ async def get_computer(
             .where(InstalledSoftware.computer_id == computer_id)
         )
         cnt = int(cnt_r.scalar_one() or 0)
+    pe_rows = (
+        await db.execute(
+            select(Peripheral.kind, Peripheral.name).where(Peripheral.computer_id == computer_id)
+        )
+    ).all()
     pe = [
         PeripheralItem(kind=k, name=n)
-        for k, n in prepare_peripherals_for_display([(p.kind, p.name) for p in c.peripherals])
+        for k, n in prepare_peripherals_for_display([(row[0], row[1]) for row in pe_rows])
     ]
     rd = await db.execute(select(DiskVolume).where(DiskVolume.computer_id == computer_id))
     disks = [
@@ -1024,14 +1080,16 @@ async def get_computer(
         if isinstance(d.mount, str) and _DRIVE_LETTER_RE.match(d.mount)
     ]
     tags = await _tags_for_computer(db, computer_id)
+    ext = await _agent_extended_cached(db, computer_id, c.last_report_at)
+    stored_ip = (c.ip_address or "").strip() or None
     return ComputerDetail(
         id=c.id,
         hostname=c.hostname,
         serial_number=c.serial_number,
         mac_primary=c.mac_primary,
-        ip_address=getattr(c, "ip_address", None) or _resolve_computer_ip(c),
-        ping_status=getattr(c, "ping_status", None),
-        last_ping_at=getattr(c, "last_ping_at", None),
+        ip_address=stored_ip or primary_ipv4_from_extended(ext, prefer_mac=c.mac_primary),
+        ping_status=c.ping_status,
+        last_ping_at=c.last_ping_at,
         cpu=c.cpu,
         ram_gb=c.ram_gb,
         os_name=c.os_name,
@@ -1039,7 +1097,7 @@ async def get_computer(
         manufacturer=c.manufacturer,
         model=c.model,
         location=c.location,
-        gpu_name=resolve_gpu_name(c.gpu_name, _agent_extended_from_raw(c.raw_payload)),
+        gpu_name=resolve_gpu_name(c.gpu_name, ext),
         memory_used_percent=c.memory_used_percent,
         motherboard_manufacturer=c.motherboard_manufacturer,
         motherboard_product=c.motherboard_product,
@@ -1052,7 +1110,7 @@ async def get_computer(
         software=sw,
         peripherals=pe,
         tags=tags,
-        agent_extended=_agent_extended_from_raw(c.raw_payload),
+        agent_extended=ext,
     )
 
 
@@ -1062,7 +1120,11 @@ async def computer_wol_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    r = await db.execute(select(Computer).where(Computer.id == computer_id))
+    r = await db.execute(
+        select(Computer)
+        .options(load_only(Computer.id, Computer.mac_primary))
+        .where(Computer.id == computer_id)
+    )
     c = r.scalar_one_or_none()
     if not c:
         raise HTTPException(status_code=404, detail="ПК не найден")

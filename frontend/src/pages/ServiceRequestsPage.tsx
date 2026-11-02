@@ -120,6 +120,14 @@ function requestsListCacheKey(input: {
   ].join('|')
 }
 
+const BITRIX_TITLE_PREFIX = /^\s*\[битрикс\]\s*/i
+
+function displayRequestTitle(row: { title: string; external_source?: string | null }): string {
+  const title = (row.title || '').trim()
+  if (row.external_source !== 'bitrix24') return title
+  return title.replace(BITRIX_TITLE_PREFIX, '').trim() || title
+}
+
 export function ServiceRequestsPage() {
   const t = useT()
   const toast = useToast()
@@ -240,9 +248,8 @@ export function ServiceRequestsPage() {
   const [execReportTitle, setExecReportTitle] = useState(t('requests.reportDefaults.title'))
   const [execReportAudience, setExecReportAudience] = useState(t('requests.reportDefaults.audience'))
   const [execReportAuthor, setExecReportAuthor] = useState('')
-  const filterTabs = useMemo(
+  const statusFilterOptions = useMemo(
     () => [
-      { id: null, label: t('requests.tabs.all') },
       { id: 'open', label: t('requests.status.openPlural') },
       { id: 'in_progress', label: t('requests.status.inProgress') },
       { id: 'done', label: t('requests.status.donePlural') },
@@ -1997,26 +2004,6 @@ export function ServiceRequestsPage() {
         {tab === 'database' ? (
         <div className="min-w-0 lg:col-span-12">
 
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            {filterTabs.map((tab) => {
-              const active = filterStatus === tab.id
-              return (
-                <button
-                  key={tab.id ?? 'all'}
-                  type="button"
-                  onClick={() => setFilterStatus(tab.id)}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                    active
-                      ? 'app-btn app-btn-primary !min-h-0 rounded-full px-3.5 py-1.5 text-xs'
-                      : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] ring-1 ring-[var(--color-border)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -2048,6 +2035,19 @@ export function ServiceRequestsPage() {
               {categoryPaths.map((c) => (
                 <option key={c} value={c}>
                   {c}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filterStatus ?? ''}
+              onChange={(e) => setFilterStatus(e.target.value || null)}
+              className="shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-fg)] shadow-sm"
+              aria-label={t('requests.database.statusFilterAria')}
+            >
+              <option value="">{t('requests.database.statusAll')}</option>
+              {statusFilterOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -2397,21 +2397,21 @@ export function ServiceRequestsPage() {
                                 <div className="flex min-w-0 items-start gap-2">
                                   <div className="min-w-0 flex-1">
                                     <div className="break-words font-semibold leading-5 text-[var(--color-fg)]" title={row.title}>
-                                      <span className="mr-2">{row.title}</span>
+                                      <span>{displayRequestTitle(row)}</span>
                                       {row.location ? (
                                         <span className="inline font-normal text-sm text-[var(--color-fg-muted)]" title={row.location}>
-                                          · {row.location}
-                                        </span>
-                                      ) : null}
-                                      {row.external_source === 'bitrix24' ? (
-                                        <span
-                                          className="inline-flex translate-y-[-1px] items-center rounded-md bg-[var(--color-fg)] px-1.5 py-0.5 text-[10px] font-bold tracking-[0.12em] text-[var(--color-bg)]"
-                                          title={row.external_id ? `Bitrix24: ${row.external_id}` : 'Bitrix24'}
-                                        >
-                                          B24
+                                          {' '}· {row.location}
                                         </span>
                                       ) : null}
                                     </div>
+                                    {row.external_source === 'bitrix24' ? (
+                                      <div
+                                        className="mt-0.5 text-[11px] font-medium text-[var(--color-fg-subtle)]"
+                                        title={row.external_id ? `Bitrix24 #${row.external_id}` : 'Bitrix24'}
+                                      >
+                                        {t('requests.database.table.fromBitrix')}
+                                      </div>
+                                    ) : null}
                                     {row.computer_hostname ? (
                                       <div className="mt-0.5 truncate text-xs text-[var(--color-fg-muted)]" title={row.computer_hostname}>
                                         {t('requests.database.table.pc', { name: row.computer_hostname })}
@@ -2915,7 +2915,7 @@ export function ServiceRequestsPage() {
                           </td>
                           <td className="max-w-[240px] px-3 py-2.5">
                             <div className="truncate font-medium" title={row.title}>
-                              {row.title}
+                              {displayRequestTitle(row)}
                             </div>
                           </td>
                           <td className="whitespace-nowrap px-3 py-2.5 text-xs">

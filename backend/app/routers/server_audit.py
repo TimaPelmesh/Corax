@@ -235,6 +235,36 @@ def _host_out(host: ServerAuditHost, ip: str | None = None, *, with_notes: bool 
     )
 
 
+_PAYLOAD_CACHE: dict[int, dict] = {}
+_PAYLOAD_CACHE_MAX = 32
+
+
+def _parse_audit_payload(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+async def _cached_sample_payload(db: AsyncSession, sample_id: int | None) -> dict:
+    if sample_id is None:
+        return {}
+    hit = _PAYLOAD_CACHE.get(sample_id)
+    if hit is not None:
+        return hit
+    raw = await db.scalar(
+        select(ServerAuditSample.payload_json).where(ServerAuditSample.id == sample_id)
+    )
+    payload = await asyncio.to_thread(_parse_audit_payload, raw)
+    if len(_PAYLOAD_CACHE) >= _PAYLOAD_CACHE_MAX and sample_id not in _PAYLOAD_CACHE:
+        _PAYLOAD_CACHE.pop(next(iter(_PAYLOAD_CACHE)))
+    _PAYLOAD_CACHE[sample_id] = payload
+    return payload
+
+
 def _apply_interval(host: ServerAuditHost, seconds: int) -> None:
     host.interval_seconds = seconds
     host.interval_minutes = minutes_mirror(seconds)
@@ -378,6 +408,7 @@ async def host_detail(
     latest = (
         await db.execute(
             select(ServerAuditSample)
+            .options(defer(ServerAuditSample.payload_json))
             .where(ServerAuditSample.host_id == host.id)
             .order_by(ServerAuditSample.collected_at.desc())
             .limit(1)
@@ -402,15 +433,7 @@ async def host_detail(
         for row in chart_rows
     ]
     in_range = rows[-1] if rows else None
-    raw_payload = getattr(latest, "payload_json", None) if latest is not None else None
-    payload: dict = {}
-    if raw_payload:
-        try:
-            parsed = json.loads(raw_payload)
-        except json.JSONDecodeError:
-            parsed = {}
-        if isinstance(parsed, dict):
-            payload = parsed
+    payload = await _cached_sample_payload(db, latest.id if latest is not None else None)
     ips = await _ips(db, [host])
     base = _host_out(host, ips.get(host.computer_id or 0))
     return ServerAuditDetail(

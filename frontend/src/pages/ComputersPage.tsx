@@ -253,7 +253,9 @@ export function ComputersPage() {
       setTotal(data.total)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
-      toast.error(e instanceof Error ? e.message : t('common.error'))
+      const message = e instanceof Error ? e.message : t('common.error')
+      if (cached && message.includes('недоступна')) return
+      toast.error(message)
     } finally {
       setLoading(false)
     }

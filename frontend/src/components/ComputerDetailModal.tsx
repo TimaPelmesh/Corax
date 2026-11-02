@@ -189,9 +189,8 @@ export function ComputerDetailModal({
       setLoading(true)
     }
 
-    setSoftwareLoading(true)
-
-    // Core card first (no heavy software list) — paint ASAP.
+    // Hardware card only. The software table waits until that tab is opened,
+    // so flipping through several PCs does not pull thousands of rows each time.
     void api
       .computer(computerId, { includeSoftware: false })
       .then((d) => {
@@ -202,12 +201,24 @@ export function ComputerDetailModal({
         setSelectedTagIds((d.tags ?? []).map((tag) => tag.id))
       })
       .catch((e: unknown) => {
-        if (!cancelled) toast.error(e instanceof Error ? e.message : t('common.error'))
+        if (cancelled) return
+        const message = e instanceof Error ? e.message : t('common.error')
+        if (snap && message.includes('недоступна')) return
+        toast.error(message)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
 
+    return () => {
+      cancelled = true
+    }
+  }, [computerId, t, toast])
+
+  useEffect(() => {
+    if (!computerId || cardTab !== 'software' || softwareRows !== null) return
+    let cancelled = false
+    setSoftwareLoading(true)
     void api
       .computerSoftware(computerId)
       .then((sw) => {
@@ -219,11 +230,10 @@ export function ComputerDetailModal({
       .finally(() => {
         if (!cancelled) setSoftwareLoading(false)
       })
-
     return () => {
       cancelled = true
     }
-  }, [computerId, t, toast])
+  }, [cardTab, computerId, softwareRows])
 
   useEffect(() => {
     if (!computerId || !user) {
