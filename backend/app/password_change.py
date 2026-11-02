@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 
 from app.config import _is_default_secret, settings
 from app.jwtutil import JWTError, decode_token
@@ -105,18 +104,14 @@ async def password_change_block_response(request: Request) -> JSONResponse | Non
     if not sub:
         return None
 
-    from app.database import AsyncSessionLocal
+    from app.auth import panel_gate_flags
 
     try:
-        async with AsyncSessionLocal() as db:
-            r = await db.execute(select(User).where(User.username == sub))
-            user = r.scalar_one_or_none()
-            if user is None or int(getattr(user, "token_version", 0) or 0) != token_ver:
-                return None
-            if not getattr(user, "must_change_password", False):
-                return None
+        flags = await panel_gate_flags(str(sub), token_ver)
     except Exception:
         # A database blip must not turn the login form into a 500.
+        return None
+    if flags is None or not flags[0]:
         return None
 
     return JSONResponse({"detail": PASSWORD_CHANGE_REQUIRED}, status_code=403)

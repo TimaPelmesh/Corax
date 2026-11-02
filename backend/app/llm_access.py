@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 
 from app.auth import get_current_user
 from app.jwtutil import JWTError, decode_token
@@ -92,16 +91,13 @@ async def llm_operator_block_response(request: Request) -> JSONResponse | None:
         return None
     if not isinstance(sub, str) or not sub:
         return None
-    from app.database import AsyncSessionLocal
+    from app.auth import panel_gate_flags
 
     try:
-        async with AsyncSessionLocal() as db:
-            user = (await db.execute(select(User).where(User.username == sub))).scalar_one_or_none()
-            if user is None or int(getattr(user, "token_version", 0) or 0) != token_ver:
-                return None
-            if not is_llm_operator(user):
-                return None
+        flags = await panel_gate_flags(sub, token_ver)
     except Exception:
+        return None
+    if flags is None or not flags[1]:
         return None
     return JSONResponse(
         {"detail": "Роль LLM-operator не открывает остальную панель"},

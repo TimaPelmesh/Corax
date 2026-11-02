@@ -1,3 +1,5 @@
+import time
+
 from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import bcrypt
@@ -10,6 +12,13 @@ from app.jwtutil import JWTError, access_token_payload, decode_token, encode_tok
 from app.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+# Two middlewares used to SELECT the whole users row, avatar included, on every
+# API call. A tab and a dialog fire several calls, so the panel waited on that
+# blob before the real query. Flags stay a few seconds; token_version is part
+# of the key, so logout and password change drop the cache immediately.
+_GATE_TTL = 8.0
+_gate_flags: dict[tuple[str, int], tuple[float, bool, bool]] = {}
 
 PANEL_ROLES = frozenset({"observer", "editor"})
 
@@ -66,6 +75,44 @@ async def authenticate_user(db: AsyncSession, username: str, password: str) -> U
     return None
 
 
+async def panel_gate_flags(username: str, token_ver: int) -> tuple[bool, bool] | None:
+    """(must_change_password, is_llm_operator) or None when the token is stale.
+
+    Does not return a User. Callers must not touch avatar_data or the password hash.
+    """
+    from types import SimpleNamespace
+
+    from app.llm_access import is_llm_operator
+
+    key = (username, int(token_ver))
+    now = time.monotonic()
+    hit = _gate_flags.get(key)
+    if hit is not None and hit[0] > now:
+        return hit[1], hit[2]
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        row = (
+            await db.execute(
+                select(
+                    User.token_version,
+                    User.must_change_password,
+                    User.role,
+                    User.is_superuser,
+                    User.is_active,
+                ).where(User.username == username)
+            )
+        ).one_or_none()
+    if row is None or int(row[0] or 0) != int(token_ver) or not row[4]:
+        return None
+    must_change = bool(row[1])
+    operator = is_llm_operator(SimpleNamespace(is_superuser=bool(row[3]), role=row[2] or ""))
+    if len(_gate_flags) > 256:
+        _gate_flags.clear()
+    _gate_flags[key] = (now + _GATE_TTL, must_change, operator)
+    return must_change, operator
+
+
 async def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     access_token: str | None = Cookie(default=None),
@@ -100,7 +147,6 @@ async def get_current_user(
                 User.phone,
                 User.avatar_emoji,
                 User.avatar_bg,
-                User.hashed_password,
                 User.is_active,
                 User.is_superuser,
                 User.is_ldap,
