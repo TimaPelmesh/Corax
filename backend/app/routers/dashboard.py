@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case, cast, Date, func, literal, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 from app.auth import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.oem_normalize import (
@@ -482,10 +483,23 @@ async def dashboard_calendar(
         shared_note_ids = select(NoteShare.note_id).where(NoteShare.user_id == current.id)
         notes_access = (Note.owner_user_id == current.id) | Note.id.in_(shared_note_ids)
 
-    plans_query = select(Note).where(
-        (Note.plan_start.is_not(None)) | (Note.plan_end.is_not(None)),
-        (Note.plan_start.is_(None)) | (Note.plan_start < next_month),
-        (Note.plan_end.is_(None)) | (Note.plan_end >= month_start),
+    plans_query = (
+        select(Note)
+        .options(
+            load_only(
+                Note.id,
+                Note.title,
+                Note.plan_start,
+                Note.plan_end,
+                Note.color,
+                Note.mark,
+            )
+        )
+        .where(
+            (Note.plan_start.is_not(None)) | (Note.plan_end.is_not(None)),
+            (Note.plan_start.is_(None)) | (Note.plan_start < next_month),
+            (Note.plan_end.is_(None)) | (Note.plan_end >= month_start),
+        )
     )
     if notes_access is not True:
         plans_query = plans_query.where(notes_access)
@@ -495,6 +509,13 @@ async def dashboard_calendar(
     window_end = datetime.combine(next_month, datetime.min.time(), tzinfo=timezone.utc)
     requests_stmt = (
         select(ServiceRequest)
+        .options(
+            load_only(
+                ServiceRequest.id,
+                ServiceRequest.title,
+                ServiceRequest.planned_close_at,
+            )
+        )
         .where(
             ServiceRequest.status == "open",
             ServiceRequest.planned_close_at.is_not(None),
@@ -505,14 +526,11 @@ async def dashboard_calendar(
         .limit(500)
     )
 
-    async def _plans(s: AsyncSession):
-        return list((await s.execute(plans_stmt)).scalars().all())
-
-    async def _requests(s: AsyncSession):
-        return list((await s.execute(requests_stmt)).scalars().all())
-
-    plans, requests = await asyncio.gather(_with_fresh_session(_plans), _with_fresh_session(_requests))
-    del db  # request session unused after parallel reads
+    # The page opens this next to /summary. Extra sessions plus full ticket
+    # rows (description and the GLPI blob) held the one worker until the
+    # browser gave up. Both reads stay on the request connection.
+    plans = list((await db.execute(plans_stmt)).scalars().all())
+    requests = list((await db.execute(requests_stmt)).scalars().all())
 
     items = [
         DashboardCalendarItem(

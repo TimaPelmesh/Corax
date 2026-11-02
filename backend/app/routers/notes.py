@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.auth import can_access_panel, get_current_user
 from app.database import get_db
@@ -328,7 +329,15 @@ async def accessible_upcoming_notes(
         ),
     )
 
-    q_dated = select(Note).where(in_window)
+    note_cols = load_only(
+        Note.id,
+        Note.title,
+        Note.owner_user_id,
+        Note.plan_start,
+        Note.plan_end,
+        Note.updated_at,
+    )
+    q_dated = select(Note).options(note_cols).where(in_window)
     if access_filter is not True:
         q_dated = q_dated.where(access_filter)
     q_dated = q_dated.order_by(
@@ -342,7 +351,7 @@ async def accessible_upcoming_notes(
     notes = list(dated)
 
     if len(notes) < limit:
-        q_recent = select(Note).order_by(Note.updated_at.desc()).limit(limit * 3)
+        q_recent = select(Note).options(note_cols).order_by(Note.updated_at.desc()).limit(limit * 3)
         if access_filter is not True:
             q_recent = q_recent.where(access_filter)
         for n in (await db.execute(q_recent)).scalars().all():
@@ -358,7 +367,11 @@ async def accessible_upcoming_notes(
     owners = {
         u.id: u
         for u in (
-            await db.execute(select(User).where(User.id.in_({n.owner_user_id for n in notes})))
+            await db.execute(
+                select(User)
+                .options(load_only(User.id, User.username))
+                .where(User.id.in_({n.owner_user_id for n in notes}))
+            )
         ).scalars().all()
     }
     return [(n, owners.get(n.owner_user_id)) for n in notes]
