@@ -1761,6 +1761,8 @@ export const api = {
 
   me: () => request<User>(`${API_PREFIX}/auth/me`),
 
+  myAvatar: () => request<{ avatar_data: string | null }>(`${API_PREFIX}/auth/avatar`),
+
   searchCatalog: (q: string, opts?: { types?: string[]; limit?: number }) => {
     const p = new URLSearchParams({ q })
     for (const type of opts?.types ?? []) p.append('types', type)

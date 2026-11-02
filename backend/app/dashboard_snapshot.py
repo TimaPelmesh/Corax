@@ -144,6 +144,21 @@ class DashboardSnapshotWorker:
         log.info("dashboard snapshot child finished", extra={"pid": proc.pid, "heavy": heavy_due})
 
 
+async def read_dashboard_snapshot_stamp(db: AsyncSession) -> str | None:
+    """Stamp only. The payload is a large JSON blob and must not ride along on a cache hit."""
+    try:
+        row = (await db.execute(text("SELECT stamp FROM dashboard_snapshots WHERE id = 1"))).first()
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return None
+    if row is None or row[0] is None:
+        return None
+    return str(row[0])
+
+
 async def read_dashboard_snapshot(db: AsyncSession) -> tuple[str, str] | None:
     try:
         row = (

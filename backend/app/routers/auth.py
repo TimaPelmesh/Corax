@@ -103,13 +103,14 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
         if linked is not None:
             linked_username = linked.username
             linked_full_name = linked.full_name
-    avatar = await db.scalar(select(User.avatar_data).where(User.id == user.id))
+    # The picture is a separate read. Pulling the bytea here held a pool
+    # connection and kept the shell on the spinner until the image arrived.
     return UserOut(
         id=user.id,
         username=user.username,
         email=user.email,
         full_name=user.full_name,
-        avatar_data=avatar,
+        avatar_data=None,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
         is_ldap=bool(user.is_ldap),
@@ -120,6 +121,12 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
         linked_directory_full_name=linked_full_name,
         must_change_password=bool(getattr(user, "must_change_password", False)),
     )
+
+
+@router.get("/avatar")
+async def my_avatar(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    avatar = await db.scalar(select(User.avatar_data).where(User.id == user.id))
+    return {"avatar_data": avatar}
 
 
 @router.post("/logout")

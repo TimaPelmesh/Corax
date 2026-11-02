@@ -152,9 +152,11 @@ export function NetworkPage() {
     void (async () => {
       if (search.trim() || !peekCache<NetworkDevice[]>(NETWORK_CACHE_KEY)) setLoading(true)
       try {
-        await reload({ sync: !search.trim() })
+        await reload()
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : t('network.loadFailed'))
+        if (!peekCache<NetworkDevice[]>(NETWORK_CACHE_KEY)) {
+          toast.error(e instanceof Error ? e.message : t('network.loadFailed'))
+        }
       } finally {
         setLoading(false)
       }

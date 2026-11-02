@@ -112,8 +112,14 @@ export function UserPrefsPanel({
       setAvatarErr(e instanceof Error ? e.message : t('prefs.avatarSaveFailed'))
       try {
         const fresh = await api.me()
-        setUser(fresh)
-        setDraftAvatar(fresh.avatar_data ?? null)
+        let avatar = fresh.avatar_data ?? null
+        try {
+          avatar = (await api.myAvatar()).avatar_data
+        } catch {
+          /* the profile row is enough */
+        }
+        setUser({ ...fresh, avatar_data: avatar })
+        setDraftAvatar(avatar)
       } catch {
         /* ignore */
       }

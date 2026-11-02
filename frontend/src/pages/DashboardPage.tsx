@@ -38,7 +38,8 @@ export function DashboardPage() {
   const { user } = useAuth()
   const canDownloadAgent = Boolean(user?.is_superuser)
   const emptyPolls = useRef(0)
-  const [data, setData] = useState<DashboardSummary | null>(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) ?? null)
+  const dataRef = useRef<DashboardSummary | null>(peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) ?? null)
+  const [data, setData] = useState<DashboardSummary | null>(() => dataRef.current)
   const [loading, setLoading] = useState(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) == null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [widgets, setWidgets] = useState<WidgetVisibility>(() => readWidgets())
@@ -63,25 +64,13 @@ export function DashboardPage() {
     try {
       const next = await api.dashboardSummary()
       putCache(DASHBOARD_SUMMARY_KEY, next)
+      dataRef.current = next
       setData(next)
     } catch (e) {
       const message = e instanceof Error ? e.message : t('common.error')
-      // One quiet retry: a rebuild can still be opening Postgres when the first summary lands.
-      if (message.includes('недоступна')) {
-        await new Promise((resolve) => window.setTimeout(resolve, 2000))
-        try {
-          const next = await api.dashboardSummary()
-          putCache(DASHBOARD_SUMMARY_KEY, next)
-          setData(next)
-          setLoadError(null)
-          return
-        } catch (again) {
-          const text = again instanceof Error ? again.message : message
-          setLoadError(text)
-          toast.error(text)
-          return
-        }
-      }
+      // The previous numbers stay on screen. A second attempt would sit in the
+      // same connection queue and then pop the "database unavailable" toast.
+      if (dataRef.current) return
       setLoadError(message)
       toast.error(message)
     } finally {

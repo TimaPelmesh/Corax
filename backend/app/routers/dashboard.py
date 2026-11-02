@@ -89,6 +89,10 @@ logger = logging.getLogger(__name__)
 
 _SUMMARY_CACHE_SECONDS = 45.0
 _SUMMARY_CACHE: tuple[float, tuple, DashboardSummary] | None = None
+# The stored snapshot stamp, plus the model already parsed off the event loop.
+# Agent reports change the live stamp every few seconds; re-reading the blob
+# on that change held a pool connection and froze every other request.
+_PARSED_SNAPSHOT: tuple[str, DashboardSummary] | None = None
 # Thundering-herd guard: если 10 клиентов пришли одновременно на холодный
 # кэш, считать дашборд должен один — остальные подождут единицы миллисекунд
 # и получат уже готовый результат из кэша.
@@ -644,21 +648,36 @@ async def _summary_inventory_inline(stamp: tuple) -> DashboardSummary:
 
 async def _summary_inventory_snapshot(stamp: tuple, db: AsyncSession) -> DashboardSummary:
     """Production: one row read. Recompute runs on the snapshot thread."""
-    from app.dashboard_snapshot import dashboard_snapshot_worker, read_dashboard_snapshot
+    global _PARSED_SNAPSHOT
+    from app.dashboard_snapshot import (
+        dashboard_snapshot_worker,
+        read_dashboard_snapshot,
+        read_dashboard_snapshot_stamp,
+    )
 
     key = _stamp_key(stamp)
-    stored = await read_dashboard_snapshot(db)
-    if stored is None or stored[1] != key:
+    stored_key = await read_dashboard_snapshot_stamp(db)
+    if stored_key is None:
         dashboard_snapshot_worker.request_refresh()
+        logger.warning("dashboard snapshot missing; summary stays blank until the worker finishes")
+        return _blank_summary()
+    if stored_key != key:
+        dashboard_snapshot_worker.request_refresh()
+    parsed = _PARSED_SNAPSHOT
+    if parsed is not None and parsed[0] == stored_key:
+        return parsed[1]
+    stored = await read_dashboard_snapshot(db)
     if stored is None:
         logger.warning("dashboard snapshot missing; summary stays blank until the worker finishes")
         return _blank_summary()
     try:
-        return DashboardSummary.model_validate_json(stored[0])
+        inventory = await asyncio.to_thread(DashboardSummary.model_validate_json, stored[0])
     except Exception as exc:
         logger.warning("dashboard snapshot rejected: %s", exc)
         dashboard_snapshot_worker.request_refresh()
         return _blank_summary()
+    _PARSED_SNAPSHOT = (stored[1], inventory)
+    return inventory
 
 
 @router.get("/summary", response_model=DashboardSummary)
