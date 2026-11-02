@@ -15,9 +15,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.auth import get_current_editor_or_superuser, get_current_user
+from app.auth import get_current_editor_or_superuser, get_current_user, require_user
 from app.config import settings
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import User, WikiRagChunk, WikiRagDocument
 from app.observability import get_logger
 from app.schemas import (
@@ -957,16 +957,16 @@ def _attach_rag_sources(parsed: dict[str, Any], rag_sources: list[dict[str, Any]
 @router.post("/chat/preview", response_model=WikiRagChatPreviewOut)
 async def wiki_rag_chat_preview(
     body: WikiRagChatRequest,
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_user),
 ):
     q = body.message.strip()
+    history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
+    async with AsyncSessionLocal() as db:
+        messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
+            q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
+        )
     lm_base = _resolve_lm_base_url(body.lm_base_url)
     await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
-    history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
-    messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
-        q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
-    )
     stats = messages_stats(messages)
     tools = corax_stats.get("tools") or []
     return WikiRagChatPreviewOut(
@@ -988,17 +988,17 @@ async def wiki_rag_chat_preview(
 @router.post("/chat", response_model=WikiRagChatResponse)
 async def wiki_rag_chat(
     body: WikiRagChatRequest,
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_user),
 ):
     q = body.message.strip()
     lm_base = _resolve_lm_base_url(body.lm_base_url)
-    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
     started = time.perf_counter()
-    messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
-        q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
-    )
+    async with AsyncSessionLocal() as db:
+        messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
+            q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
+        )
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
     context_ms = round((time.perf_counter() - started) * 1000)
     stats = messages_stats(messages)
     meta = {
@@ -1040,18 +1040,18 @@ async def wiki_rag_chat(
 @router.post("/chat/stream")
 async def wiki_rag_chat_stream(
     body: WikiRagChatRequest,
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_user),
 ):
     """SSE-версия чата: meta → delta* → done или error."""
     started = time.perf_counter()
     q = body.message.strip()
     lm_base = _resolve_lm_base_url(body.lm_base_url)
-    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
-    messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
-        q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
-    )
+    async with AsyncSessionLocal() as db:
+        messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
+            q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
+        )
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
     context_ms = round((time.perf_counter() - started) * 1000)
     stats = messages_stats(messages)
     meta: dict[str, Any] = {

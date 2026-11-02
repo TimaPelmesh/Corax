@@ -54,7 +54,13 @@ class NetworkJobRunner:
             from app.config import settings
             from app.database import _create_engine
 
-            engine = _create_engine(settings.database_url, pool_size=2, max_overflow=1)
+            engine = _create_engine(
+                settings.database_url,
+                pool_size=2,
+                max_overflow=1,
+                statement_timeout_ms=180_000,
+                idle_in_transaction_ms=0,
+            )
             self._factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         return self._factory
 

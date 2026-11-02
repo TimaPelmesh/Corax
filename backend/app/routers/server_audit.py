@@ -12,8 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
-from app.auth import get_current_editor_or_superuser, get_current_user
-from app.database import get_db
+from app.auth import get_current_editor_or_superuser, get_current_user, require_user
+from app.database import AsyncSessionLocal, get_db
 from app.linux_install import InstallError, clean_ssh_host, push_script_update, run_remote_command
 from app.models import Computer, LlmControlAudit, ServerAuditHost, ServerAuditSample, User
 from app.schemas import (
@@ -88,7 +88,7 @@ async def host_job_create(
     return found
 
 
-async def _session_user(current: User = Depends(get_current_user)) -> User:
+async def _session_user(current: User = Depends(require_user)) -> User:
     if current.is_superuser:
         return current
     role = (getattr(current, "role", "") or "").strip().lower()
@@ -102,12 +102,13 @@ async def host_ssh(
     host_id: int,
     body: ServerAuditSshIn,
     user: User = Depends(_session_user),
-    db: AsyncSession = Depends(get_db),
 ):
     """Run one allowlisted command on this host. The password is not stored."""
-    host = await _host_or_404(db, host_id)
-    ips = await _ips(db, [host])
-    raw = (ips.get(host.computer_id or 0) or "").strip() or host.hostname
+    async with AsyncSessionLocal() as db:
+        host = await _host_or_404(db, host_id)
+        ips = await _ips(db, [host])
+        stored_host_id = host.id
+        raw = (ips.get(host.computer_id or 0) or "").strip() or host.hostname
     try:
         address = clean_ssh_host(raw)
     except ValueError as exc:
@@ -139,23 +140,24 @@ async def host_ssh(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except InstallError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    db.add(
-        LlmControlAudit(
-            user_id=user.id,
-            username=(user.username or "")[:64],
-            host_id=host.id,
-            action=("ssh-" + body.action)[:32],
-            target=(body.target or address)[:255],
-            params_json=json.dumps(
-                {"via": "ssh", "exit_code": result.get("exit_code")},
-                ensure_ascii=False,
-            ),
+    async with AsyncSessionLocal() as db:
+        db.add(
+            LlmControlAudit(
+                user_id=user.id,
+                username=(user.username or "")[:64],
+                host_id=stored_host_id,
+                action=("ssh-" + body.action)[:32],
+                target=(body.target or address)[:255],
+                params_json=json.dumps(
+                    {"via": "ssh", "exit_code": result.get("exit_code")},
+                    ensure_ascii=False,
+                ),
+            )
         )
-    )
-    try:
-        await db.commit()
-    except Exception:
-        await db.rollback()
+        try:
+            await db.commit()
+        except Exception:
+            await db.rollback()
     result["address"] = address
     return result
 

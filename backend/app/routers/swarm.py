@@ -7,7 +7,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from app.auth import get_current_user
+from app.auth import require_user
 from app.linux_install import InstallError, clean_ssh_host, run_remote_commands
 from app.models import User
 from app.observability import get_logger
@@ -67,7 +67,7 @@ class SwarmOverviewOut(BaseModel):
     output: str = ""
 
 
-def _swarm_user(current: User = Depends(get_current_user)) -> User:
+def _swarm_user(current: User = Depends(require_user)) -> User:
     if current.is_superuser or (current.role or "").strip().lower() == "editor":
         return current
     raise HTTPException(status_code=403, detail="Недостаточно прав для Docker Swarm")

@@ -64,7 +64,13 @@ class PrinterPollScheduler:
         asyncio.run(self._async_main())
 
     async def _async_main(self) -> None:
-        engine = _create_engine(settings.database_url, pool_size=2, max_overflow=1)
+        engine = _create_engine(
+            settings.database_url,
+            pool_size=2,
+            max_overflow=1,
+            statement_timeout_ms=180_000,
+            idle_in_transaction_ms=0,
+        )
         self._session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         self._loop = asyncio.get_running_loop()
         try:

@@ -232,3 +232,90 @@ async def get_current_editor_or_superuser(current: User = Depends(get_current_us
     if _normalized_role(current) == "editor":
         return current
     raise HTTPException(status_code=403, detail="Недостаточно прав: требуется роль editor или администратор")
+
+
+def _read_access_token(token: str | None, access_token: str | None) -> tuple[str, int]:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Неверный или просроченный токен",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    raw = token or access_token
+    if not raw:
+        raise credentials_exception
+    try:
+        payload = decode_token(raw)
+        sub = payload.get("sub")
+        if sub is None or not isinstance(sub, str):
+            raise credentials_exception
+        return sub, int(payload.get("ver") or 0)
+    except (JWTError, TypeError, ValueError):
+        raise credentials_exception
+
+
+async def _load_panel_user(db: AsyncSession, username: str, token_ver: int) -> User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Неверный или просроченный токен",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    loaded = await db.execute(
+        select(User)
+        .options(
+            load_only(
+                User.id,
+                User.username,
+                User.email,
+                User.full_name,
+                User.phone,
+                User.avatar_emoji,
+                User.avatar_bg,
+                User.is_active,
+                User.is_superuser,
+                User.is_ldap,
+                User.role,
+                User.created_at,
+                User.linked_directory_user_id,
+                User.must_change_password,
+                User.token_version,
+            )
+        )
+        .where(User.username == username)
+    )
+    user = loaded.scalar_one_or_none()
+    if user is None or not user.is_active or not can_access_panel(user):
+        raise credentials_exception
+    if int(getattr(user, "token_version", 0) or 0) != token_ver:
+        raise credentials_exception
+    return user
+
+
+async def require_user(
+    token: str | None = Depends(oauth2_scheme),
+    access_token: str | None = Cookie(default=None),
+) -> User:
+    """Check the token and close the session before the handler runs.
+
+    SSH, Zabbix, LDAP, SNMP and the model must not keep a panel connection
+    while they wait on the network. Profile edits stay on get_current_user:
+    they change this same row and commit it through Depends(get_db).
+    """
+    username, token_ver = _read_access_token(token, access_token)
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        user = await _load_panel_user(db, username, token_ver)
+        db.expunge(user)
+        return user
+
+
+async def require_superuser(current: User = Depends(require_user)) -> User:
+    if not current.is_superuser:
+        raise HTTPException(status_code=403, detail="Нужны права администратора")
+    return current
+
+
+async def require_editor(current: User = Depends(require_user)) -> User:
+    if current.is_superuser or _normalized_role(current) == "editor":
+        return current
+    raise HTTPException(status_code=403, detail="Недостаточно прав: требуется роль editor или администратор")

@@ -56,6 +56,19 @@ async def load_zabbix_config(db: AsyncSession) -> ZabbixConfig | None:
     return await db.get(ZabbixConfig, 1)
 
 
+async def _config_row(db: AsyncSession | None) -> ZabbixConfig | None:
+    """Load the row and, when the caller has no session, close it before HTTP."""
+    if db is not None:
+        return await load_zabbix_config(db)
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        row = await load_zabbix_config(session)
+        if row is not None:
+            session.expunge(row)
+        return row
+
+
 def config_ready(row: ZabbixConfig | None) -> tuple[bool, str]:
     if row is None or not bool(row.enabled):
         return False, "Интеграция Zabbix выключена"
@@ -76,8 +89,8 @@ async def _with_session(row: ZabbixConfig, fn):
     return await asyncio.to_thread(fn, session)
 
 
-async def get_overview_payload(db: AsyncSession) -> dict[str, Any]:
-    row = await load_zabbix_config(db)
+async def get_overview_payload(db: AsyncSession | None = None) -> dict[str, Any]:
+    row = await _config_row(db)
     ok, msg = config_ready(row)
     base = {
         "enabled": bool(row.enabled) if row else False,
@@ -131,8 +144,8 @@ async def get_overview_payload(db: AsyncSession) -> dict[str, Any]:
         return _cache_put(cache_key, payload)
 
 
-async def get_problems_payload(db: AsyncSession, *, limit: int = 50) -> dict[str, Any]:
-    row = await load_zabbix_config(db)
+async def get_problems_payload(db: AsyncSession | None = None, *, limit: int = 50) -> dict[str, Any]:
+    row = await _config_row(db)
     ok, msg = config_ready(row)
     if not ok or row is None:
         return {"enabled": False, "available": False, "message": msg, "items": [], "total": None}
@@ -172,8 +185,8 @@ async def get_problems_payload(db: AsyncSession, *, limit: int = 50) -> dict[str
         return _cache_put(cache_key, payload)
 
 
-async def get_hosts_payload(db: AsyncSession, *, limit: int = 100) -> dict[str, Any]:
-    row = await load_zabbix_config(db)
+async def get_hosts_payload(db: AsyncSession | None = None, *, limit: int = 100) -> dict[str, Any]:
+    row = await _config_row(db)
     ok, msg = config_ready(row)
     if not ok or row is None:
         return {"enabled": False, "available": False, "message": msg, "items": [], "total": None}
@@ -213,8 +226,8 @@ async def get_hosts_payload(db: AsyncSession, *, limit: int = 100) -> dict[str, 
         return _cache_put(cache_key, payload)
 
 
-async def get_host_status_payload(db: AsyncSession, hostname: str) -> dict[str, Any]:
-    row = await load_zabbix_config(db)
+async def get_host_status_payload(db: AsyncSession | None, hostname: str) -> dict[str, Any]:
+    row = await _config_row(db)
     ok, msg = config_ready(row)
     base = {
         "enabled": bool(row.enabled) if row else False,

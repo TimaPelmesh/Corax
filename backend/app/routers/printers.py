@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_serializer
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_editor_or_superuser, get_current_user
+from app.auth import get_current_editor_or_superuser, get_current_user, require_editor
 from app.database import get_db
 from app.secret_mask import can_read_integration_secrets, mask_secret
 from app.models import Computer, Printer, User
@@ -587,12 +587,36 @@ async def bulk_delete_printers(
     await db.commit()
 
 
+_printer_fallback = None
+
+
+def _printer_sessions():
+    global _printer_fallback
+    factory = printer_poll_scheduler._session_factory
+    if factory is not None:
+        return factory
+    if _printer_fallback is None:
+        from sqlalchemy.ext.asyncio import async_sessionmaker
+
+        from app.config import settings
+        from app.database import _create_engine
+
+        engine = _create_engine(
+            settings.database_url,
+            pool_size=2,
+            max_overflow=1,
+            statement_timeout_ms=180_000,
+            idle_in_transaction_ms=0,
+        )
+        _printer_fallback = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return _printer_fallback
+
+
 @router.post("/poll", response_model=PrinterPollResult)
-async def poll_all_printers(
-    _: User = Depends(get_current_editor_or_superuser),
-    db: AsyncSession = Depends(get_db),
-):
-    stats = await run_printer_poll_cycle(db, triggered_by="manual")
+async def poll_all_printers(_: User = Depends(require_editor)):
+    """SNMP stays off the panel pool. The request waits, the connection does not."""
+    async with _printer_sessions()() as db:
+        stats = await run_printer_poll_cycle(db, triggered_by="manual")
     return PrinterPollResult(
         polled=stats.polled,
         online=stats.online,
@@ -615,9 +639,13 @@ async def poll_all_printers(
 @router.post("/{printer_id}/poll", response_model=PrinterOut)
 async def poll_printer(
     printer_id: int,
-    _: User = Depends(get_current_editor_or_superuser),
-    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_editor),
 ):
+    async with _printer_sessions()() as db:
+        return await _poll_printer_db(printer_id, db)
+
+
+async def _poll_printer_db(printer_id: int, db: AsyncSession):
     row = await db.get(Printer, printer_id)
     if not row:
         raise HTTPException(status_code=404, detail="Принтер не найден")
