@@ -106,10 +106,9 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
           const [computersRes, printers, requestsRes] = await Promise.all([
             api.computers({ q, limit: 8, view: 'list' }),
             api.printers({ q, limit: 8 }),
-            api.serviceRequests({ limit: 200 }),
+            api.serviceRequests({ q, limit: 8, brief: true }),
           ])
           if (cancelled) return
-          const qLower = q.toLowerCase()
           const computerHits: SearchHit[] = (computersRes.items as Computer[]).slice(0, 6).map((c) => ({
             kind: 'computer',
             id: c.id,
@@ -125,18 +124,6 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
             to: `/printers`,
           }))
           const requestHits: SearchHit[] = requestsRes.items
-            .filter((r) => {
-              const hay = [
-                r.title,
-                r.ticket_no != null ? String(r.ticket_no) : '',
-                r.computer_hostname || '',
-                r.requester_name || '',
-                r.location || '',
-              ]
-                .join(' ')
-                .toLowerCase()
-              return hay.includes(qLower)
-            })
             .slice(0, 6)
             .map((r) => ({
               kind: 'request' as const,
@@ -171,19 +158,9 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
     const load = async () => {
       if (first) setNotifyLoading(true)
       try {
-        const [openRes, progressRes] = await Promise.all([
-          api.serviceRequests({ status: 'open', limit: 200 }),
-          api.serviceRequests({ status: 'in_progress', limit: 200 }),
-        ])
+        const inbox = await api.serviceRequests({ assigned: 'me', limit: 12, brief: true })
         if (cancelled) return
-        const mine = [...openRes.items, ...progressRes.items]
-          .filter((r) => {
-            const ids = new Set<number>([user.id])
-            if (user.linked_directory_user_id) ids.add(user.linked_directory_user_id)
-            return r.assignee_ids.some((id) => ids.has(id))
-          })
-          .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
-          .slice(0, 12)
+        const mine = inbox.items
 
         const prefs = prefsRef.current
         const currentIds = new Set(mine.map((r) => r.id))
@@ -212,7 +189,7 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
       }
     }
     // Let /me, the JS bundles and the dashboard use the one worker first.
-    const firstLoad = window.setTimeout(() => void load(), 2500)
+    const firstLoad = window.setTimeout(() => void load(), 400)
     const onRefresh = () => {
       void load()
     }
@@ -232,10 +209,10 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
     window.addEventListener('corax:notify-prefs', onPrefsChanged)
     let timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void load()
-    }, 5_000)
+    }, 20_000)
     const onVisForInterval = () => {
       window.clearInterval(timer)
-      const ms = document.visibilityState === 'visible' ? 5_000 : 30_000
+      const ms = document.visibilityState === 'visible' ? 20_000 : 60_000
       timer = window.setInterval(() => void load(), ms)
       if (document.visibilityState === 'visible') void load()
     }

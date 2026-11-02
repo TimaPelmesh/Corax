@@ -8,7 +8,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy import func, select
 
@@ -385,29 +384,9 @@ if settings.security_headers_enabled:
         enable_csp=settings.security_csp_enabled,
     )
 
-class _GzipExceptAssets:
-    """Gzip JSON, but never the Vite /assets bundles.
-
-    Starlette compresses the whole body on the event loop. Each JS/CSS chunk
-    then takes seconds and /api/v1/auth/me waits in the same line. Hashed
-    assets are already cacheable; on a LAN the raw file is faster.
-    """
-
-    def __init__(self, app, minimum_size: int = 1024, compresslevel: int = 1) -> None:
-        self.app = app
-        self._gzip = GZipMiddleware(app, minimum_size=minimum_size, compresslevel=compresslevel)
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") == "http" and str(scope.get("path") or "").startswith("/assets/"):
-            await self.app(scope, receive, send)
-            return
-        await self._gzip(scope, receive, send)
-
-
-# JSON still shrinks. Level 1 is the fast zlib setting: level 5 held the
-# single Uvicorn thread long enough that the panel and /me timed out.
-app.add_middleware(_GzipExceptAssets, minimum_size=1024, compresslevel=1)
-
+# No response gzip. Starlette compresses the whole body on the one Uvicorn
+# thread, so a fat JSON tab froze every other request behind it. On the LAN
+# the raw body is cheaper than that wait.
 app.add_middleware(RequestLoggingMiddleware)
 
 install_exception_handlers(app, environment=settings.environment)

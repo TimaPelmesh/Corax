@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -96,12 +96,44 @@ _GLPI_HEADERS = [
 _GLPI_DT_FMT = "%d-%m-%Y %H:%M"
 
 
+# List rows never need the GLPI blob. Brief rows (bell, search) also skip
+# the description text: the table and the dialog still load it.
+_LIST_COLUMNS = (
+    ServiceRequest.id,
+    ServiceRequest.ticket_no,
+    ServiceRequest.glpi_id,
+    ServiceRequest.title,
+    ServiceRequest.description,
+    ServiceRequest.status,
+    ServiceRequest.priority,
+    ServiceRequest.glpi_status,
+    ServiceRequest.glpi_priority,
+    ServiceRequest.glpi_updated_at,
+    ServiceRequest.external_source,
+    ServiceRequest.external_id,
+    ServiceRequest.external_url,
+    ServiceRequest.requester_name,
+    ServiceRequest.category,
+    ServiceRequest.location,
+    ServiceRequest.ai_title_suggestion,
+    ServiceRequest.ai_enriched_at,
+    ServiceRequest.created_by_id,
+    ServiceRequest.computer_id,
+    ServiceRequest.opened_at,
+    ServiceRequest.planned_close_at,
+    ServiceRequest.closed_at,
+    ServiceRequest.created_at,
+    ServiceRequest.updated_at,
+)
+
+
 def _row_to_out(
     row: ServiceRequest,
     *,
     users: dict[int, User],
     computers: dict[int, Computer],
     assignees: dict[int, list[tuple[int, str]]],
+    include_description: bool = True,
 ) -> ServiceRequestOut:
     created_by = users.get(row.created_by_id)
     computer = computers.get(row.computer_id) if row.computer_id else None
@@ -111,7 +143,7 @@ def _row_to_out(
         ticket_no=row.ticket_no,
         glpi_id=row.glpi_id,
         title=row.title,
-        description=row.description,
+        description=row.description if include_description else None,
         status=row.status,
         priority=row.priority,
         glpi_status=row.glpi_status,
@@ -139,7 +171,9 @@ def _row_to_out(
     )
 
 
-async def _to_out_many(db: AsyncSession, rows: list[ServiceRequest]) -> list[ServiceRequestOut]:
+async def _to_out_many(
+    db: AsyncSession, rows: list[ServiceRequest], *, include_description: bool = True
+) -> list[ServiceRequestOut]:
     if not rows:
         return []
     user_ids = {row.created_by_id for row in rows}
@@ -175,7 +209,13 @@ async def _to_out_many(db: AsyncSession, rows: list[ServiceRequest]) -> list[Ser
         assignees.setdefault(int(request_id), []).append((int(uid), str(username)))
 
     return [
-        _row_to_out(row, users=users, computers=computers, assignees=assignees)
+        _row_to_out(
+            row,
+            users=users,
+            computers=computers,
+            assignees=assignees,
+            include_description=include_description,
+        )
         for row in rows
     ]
 
@@ -216,19 +256,60 @@ async def _template_to_out(db: AsyncSession, row: ServiceRequestTemplate) -> Ser
 
 @router.get("", response_model=ServiceRequestListResponse)
 async def list_service_requests(
-    _: User = Depends(get_current_user),
+    current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     status: str | None = Query(None),
     skip: int = Query(0, ge=0, le=1_000_000),
     limit: int = Query(200, ge=1, le=10000),
+    q: str | None = Query(None, max_length=200),
+    assigned: str | None = Query(None, max_length=16),
+    brief: bool = Query(False),
 ):
-    stmt = select(ServiceRequest).order_by(ServiceRequest.id.desc())
+    columns = _LIST_COLUMNS if not brief else tuple(c for c in _LIST_COLUMNS if c is not ServiceRequest.description)
+    stmt = select(ServiceRequest).options(load_only(*columns))
+    if assigned == "me":
+        stmt = stmt.order_by(ServiceRequest.updated_at.desc())
+    else:
+        stmt = stmt.order_by(ServiceRequest.id.desc())
     if status:
         stmt = stmt.where(ServiceRequest.status == status)
+    elif assigned == "me":
+        stmt = stmt.where(ServiceRequest.status.in_(("open", "in_progress")))
+    needle = (q or "").strip()
+    if needle:
+        like = f"%{needle}%"
+        host_match = (
+            select(Computer.id)
+            .where(Computer.id == ServiceRequest.computer_id, Computer.hostname.ilike(like))
+            .exists()
+        )
+        parts = [
+            ServiceRequest.title.ilike(like),
+            ServiceRequest.requester_name.ilike(like),
+            ServiceRequest.location.ilike(like),
+            ServiceRequest.category.ilike(like),
+            host_match,
+        ]
+        if needle.isdigit() and len(needle) <= 9:
+            parts.append(ServiceRequest.ticket_no == int(needle))
+        stmt = stmt.where(or_(*parts))
+    if assigned == "me":
+        owner_ids = [current.id]
+        if current.linked_directory_user_id:
+            owner_ids.append(int(current.linked_directory_user_id))
+        stmt = stmt.where(
+            ServiceRequest.id.in_(
+                select(service_request_assignees.c.request_id).where(
+                    service_request_assignees.c.user_id.in_(owner_ids)
+                )
+            )
+        )
     stmt = stmt.offset(skip).limit(limit)
     r = await db.execute(stmt)
     rows = list(r.scalars().all())
-    out = await _to_out_many(db, rows)
+    out = await _to_out_many(db, rows, include_description=not brief)
+    if brief:
+        return ServiceRequestListResponse(items=out, total=len(out))
     total_stmt = select(func.count()).select_from(ServiceRequest)
     if status:
         total_stmt = total_stmt.where(ServiceRequest.status == status)

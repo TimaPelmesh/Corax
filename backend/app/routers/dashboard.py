@@ -550,61 +550,37 @@ async def dashboard_nav_badges(
     if cached is not None:
         return cached
 
-    async def _computers(s: AsyncSession) -> int:
-        return int(await s.scalar(select(func.count()).select_from(Computer)) or 0)
-
-    async def _software(s: AsyncSession) -> int:
-        # The distinct-name scan of every install made every tab wait. The
-        # snapshot already stores that number; the sidebar reads one field.
-        try:
-            value = await s.scalar(
-                text(
-                    "SELECT NULLIF(payload::jsonb->>'software_unique_titles', '')::int "
-                    "FROM dashboard_snapshots WHERE id = 1"
-                )
+    # One session, five short reads. Five extra connections here used to
+    # empty the pool while a tab was opening, and that tab waited.
+    computers_total = int(await db.scalar(select(func.count()).select_from(Computer)) or 0)
+    try:
+        software_value = await db.scalar(
+            text(
+                "SELECT NULLIF(payload::jsonb->>'software_unique_titles', '')::int "
+                "FROM dashboard_snapshots WHERE id = 1"
             )
-        except Exception:
-            await s.rollback()
-            return 0
-        return int(value or 0)
-
-    async def _printers(s: AsyncSession) -> int:
-        rows = (
-            await s.execute(
-                select(Printer.name, Printer.snmp_model, Printer.snmp_sys_name).where(
-                    Printer.source.in_(("snmp", "manual"))
-                )
-            )
-        ).all()
-        return _count_tab_printers(rows)
-
-    async def _active_requests(s: AsyncSession) -> int:
-        return int(
-            await s.scalar(
-                select(func.count())
-                .select_from(ServiceRequest)
-                .where(ServiceRequest.status.in_(["open", "in_progress"]))
-            )
-            or 0
         )
-
-    async def _notes(s: AsyncSession) -> int:
-        return await accessible_notes_count(s, current)
-
-    (
-        computers_total,
-        software_unique_titles,
-        snmp_printers_total,
-        service_requests_active,
-        notes_total,
-    ) = await asyncio.gather(
-        _with_fresh_session(_computers),
-        _with_fresh_session(_software),
-        _with_fresh_session(_printers),
-        _with_fresh_session(_active_requests),
-        _with_fresh_session(_notes),
+        software_unique_titles = int(software_value or 0)
+    except Exception:
+        await db.rollback()
+        software_unique_titles = 0
+    printer_rows = (
+        await db.execute(
+            select(Printer.name, Printer.snmp_model, Printer.snmp_sys_name).where(
+                Printer.source.in_(("snmp", "manual"))
+            )
+        )
+    ).all()
+    snmp_printers_total = _count_tab_printers(printer_rows)
+    service_requests_active = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ServiceRequest)
+            .where(ServiceRequest.status.in_(["open", "in_progress"]))
+        )
+        or 0
     )
-    del db
+    notes_total = await accessible_notes_count(db, current)
     result = DashboardNavBadges(
         computers_total=computers_total,
         software_unique_titles=software_unique_titles,

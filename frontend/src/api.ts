@@ -2904,11 +2904,21 @@ export const api = {
       timeout_ms: 180_000,
     }),
 
-  serviceRequests: (opts?: { status?: string; limit?: number; skip?: number }) => {
+  serviceRequests: (opts?: {
+    status?: string
+    limit?: number
+    skip?: number
+    q?: string
+    assigned?: 'me'
+    brief?: boolean
+  }) => {
     const p = new URLSearchParams()
     if (opts?.status) p.set('status', opts.status)
     if (opts?.limit != null) p.set('limit', String(opts.limit))
     if (opts?.skip != null && opts.skip > 0) p.set('skip', String(opts.skip))
+    if (opts?.q) p.set('q', opts.q)
+    if (opts?.assigned) p.set('assigned', opts.assigned)
+    if (opts?.brief) p.set('brief', 'true')
     const qs = p.toString()
     return request<ServiceRequestListResponse>(
       `${API_PREFIX}/service-requests${qs ? `?${qs}` : ''}`,
