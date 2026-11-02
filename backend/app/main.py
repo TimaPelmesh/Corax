@@ -26,6 +26,7 @@ from app.observability import (
 from app.security_headers import SecurityHeadersMiddleware
 from app.password_change import bootstrap_must_change_password, PasswordChangeGateMiddleware
 from app.llm_access import LlmOperatorScopeMiddleware
+from app.panel_read_cache import PanelReadCacheMiddleware
 from app.warehouse_models import StockItem, StockMovement, WarehouseRoom  # noqa: F401 — register ORM metadata
 from app.models import ServiceRequestTemplate, Tag, User
 from app.routers import (
@@ -385,6 +386,9 @@ if _dev:
 else:
     _cors_kw["allow_origins"] = origins
 
+# Closest to the app: a repeated list read reuses the answer already in memory
+# and does not take a second database connection.
+app.add_middleware(PanelReadCacheMiddleware)
 app.add_middleware(CORSMiddleware, **_cors_kw)
 
 if settings.security_headers_enabled:

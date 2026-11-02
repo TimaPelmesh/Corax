@@ -4,6 +4,8 @@
 @import "@fontsource/ibm-plex-sans/700.css";
 @import "@fontsource/ibm-plex-sans/400-italic.css";
 @import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
 @import "tailwindcss";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -13,6 +15,7 @@
   --font-display: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-brand: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-figures: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --text-xs: 0.75rem;   /* 12px */
   --text-sm: 0.875rem;  /* 14px */
   --text-md: 1rem;      /* 16px */
@@ -139,12 +142,13 @@ body {
   outline: none;
 }
 
-/* ??????? ??????? ???????: ???????????? ?????, ??? ? ??????????? OSS-????????? */
+/* Counters use IBM Plex Sans tabular figures, the same open-source face as the UI. */
 @utility admin-stat-value {
-  font-family: var(--font-mono);
+  font-family: var(--font-figures);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: -0.03em;
 }
 
 /* ????????? ???????: ????? semibold, ??? ?????????? display */

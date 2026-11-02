@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   api,
   type NetworkDevice,
@@ -11,6 +10,7 @@ import { NetworkDeviceDetailModal } from '../components/NetworkDeviceDetailModal
 import { AppModal } from '../components/ui/AppModal'
 import { useLocale } from '../i18n/LocaleContext'
 import type { MessageKey } from '../i18n/LocaleContext'
+import { pcLacksAgent } from '../lib/networkPc'
 import { peekCache, putCache } from '../lib/viewCache'
 import { NETWORK_CACHE_KEY } from '../tabWarm'
 import { useToast } from '../ToastContext'
@@ -93,12 +93,6 @@ function roleTone(role: string) {
 
 type PresenceFilter = 'all' | 'no_agent' | 'agent' | 'ping'
 
-function lacksAgent(row: NetworkDevice) {
-  if (row.agent_installed) return false
-  const kind = row.role || row.device_type
-  return kind === 'host' || kind === 'unknown' || row.source === 'ping'
-}
-
 function networkTitle(row: NetworkDevice) {
   return row.network_name || row.sys_name || row.hostname || row.ip_address
 }
@@ -166,7 +160,7 @@ export function NetworkPage() {
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (roleFilter !== 'all' && (r.role || r.device_type) !== roleFilter) return false
-      if (presence === 'no_agent') return lacksAgent(r)
+      if (presence === 'no_agent') return pcLacksAgent(r)
       if (presence === 'agent') return Boolean(r.agent_installed)
       if (presence === 'ping') return r.source === 'ping'
       return true
@@ -178,7 +172,7 @@ export function NetworkPage() {
       total: rows.length,
       ok: rows.filter((r) => r.snmp_status === 'ok').length,
       err: rows.filter((r) => r.snmp_status === 'error').length,
-      noAgent: rows.filter((r) => lacksAgent(r)).length,
+      noAgent: rows.filter((r) => pcLacksAgent(r)).length,
     }),
     [rows],
   )
@@ -329,13 +323,6 @@ export function NetworkPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
-      <Link
-        to="/network-map"
-        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 no-underline shadow-sm hover:bg-[var(--color-surface-muted)]"
-      >
-        <span className="text-sm font-semibold text-[var(--color-fg)]">{t('nav.networkMap')}</span>
-        <span className="text-sm text-[var(--color-fg-muted)]">{t('network.openMap')}</span>
-      </Link>
       <header className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {canEdit ? (
@@ -552,7 +539,7 @@ export function NetworkPage() {
                       <td className="px-3 py-2">
                         {r.agent_installed ? (
                           <span className="text-xs text-emerald-700 dark:text-emerald-300">{t('network.agentYes')}</span>
-                        ) : lacksAgent(r) ? (
+                        ) : pcLacksAgent(r) ? (
                           <span className="inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-200">
                             {t('network.agentGap')}
                           </span>

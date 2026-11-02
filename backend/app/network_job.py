@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from app.database import AsyncSessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from app.observability import get_logger
 
 log = get_logger("corax.network_job")
@@ -38,10 +39,24 @@ class NetworkJobState:
 
 
 class NetworkJobRunner:
+    """SNMP and ping sit on the network for minutes. Their session comes from
+    a private pool so a running scan cannot fill the connections the panel uses.
+    """
+
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
         self.state = NetworkJobState()
+        self._factory: async_sessionmaker[AsyncSession] | None = None
+
+    def _sessions(self) -> async_sessionmaker[AsyncSession]:
+        if self._factory is None:
+            from app.config import settings
+            from app.database import _create_engine
+
+            engine = _create_engine(settings.database_url, pool_size=2, max_overflow=1)
+            self._factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        return self._factory
 
     def snapshot(self) -> dict[str, Any]:
         s = self.state
@@ -96,7 +111,7 @@ class NetworkJobRunner:
 
     async def _run(self, kind: JobKind) -> None:
         try:
-            async with AsyncSessionLocal() as db:
+            async with self._sessions()() as db:
                 if kind == "discover":
                     await self._run_discover(db)
                 else:

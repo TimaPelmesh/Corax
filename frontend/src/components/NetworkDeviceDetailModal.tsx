@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext'
 import { IconClose } from './icons'
 import { NetworkTypeIcon, NETWORK_DEVICE_TYPE_OPTIONS } from './NetworkTypeIcon'
 import { useLocale } from '../i18n/LocaleContext'
+import { pcLacksAgent } from '../lib/networkPc'
 import { useToast } from '../ToastContext'
 
 function fmtWhen(iso: string | null | undefined, locale: string) {
@@ -192,7 +193,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
                 {row?.network_name || row?.sys_name || row?.hostname || row?.ip_address || t('network.device')}
               </h2>
               <p className="mt-0.5 font-mono text-sm text-[var(--color-fg-subtle)]">{row?.ip_address}</p>
-              {row && !row.agent_installed && (row.device_type === 'host' || row.device_type === 'unknown' || row.source === 'ping') ? (
+              {row && pcLacksAgent(row) ? (
                 <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">{t('network.agentGap')}</p>
               ) : null}
               {row ? (

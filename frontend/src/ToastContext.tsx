@@ -45,6 +45,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (message: string, tone: ToastTone = 'info') => {
       const msg = (message || '').trim()
       if (!msg) return
+      // Pool wait used to paint this as if Postgres had died. The screen keeps
+      // the last numbers; a blue banner on top of them is the wrong signal.
+      if (msg.includes('База временно недоступна')) return
       setToast({ message: msg, tone })
       if (timer.current != null) window.clearTimeout(timer.current)
       if (tone === 'busy') return

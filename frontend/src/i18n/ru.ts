@@ -992,7 +992,6 @@ export const ru = {
   network: {
     device: 'Устройство',
     viewList: 'Список',
-    openMap: 'Открыть карту сети',
     snmpSettings: 'Настройки SNMP',
     discover: 'Сканировать',
     discoverBusy: 'Сканирование…',

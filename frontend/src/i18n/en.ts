@@ -994,7 +994,6 @@ export const en: MessageTree = {
   network: {
     device: 'Device',
     viewList: 'List',
-    openMap: 'Open network map',
     snmpSettings: 'SNMP settings',
     discover: 'Scan',
     discoverBusy: 'Scanning…',

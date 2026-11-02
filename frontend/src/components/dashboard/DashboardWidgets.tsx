@@ -746,7 +746,7 @@ export function MiniStatCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium text-[var(--color-fg-subtle)]">{label}</div>
-          <div className="mt-0.5 font-mono text-[1.2rem] font-semibold leading-none tabular-nums text-[var(--color-fg)]">{value}</div>
+          <div className="admin-stat-value mt-0.5 text-[1.2rem] leading-none text-[var(--color-fg)]">{value}</div>
           {sub ? <div className="mt-0.5 truncate text-xs font-medium leading-snug text-[var(--color-fg-subtle)]">{sub}</div> : null}
         </div>
       </div>

@@ -203,7 +203,7 @@ export function DashboardPage() {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="font-mono text-[1.1rem] font-semibold tabular-nums leading-none text-[var(--color-fg)]">
+                    <div className="admin-stat-value text-[1.1rem] leading-none text-[var(--color-fg)]">
                       {closedTotal}
                     </div>
                     <div className="mt-0.5 text-xs font-medium text-[var(--color-fg-subtle)]">
