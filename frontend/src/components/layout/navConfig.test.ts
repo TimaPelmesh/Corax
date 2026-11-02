@@ -26,11 +26,12 @@ describe('buildNavSections', () => {
       '/',
       '/risks',
       '/computers',
+      '/network-map',
+      '/network',
       '/server-audit',
+      '/swarm',
       '/software',
       '/printers',
-      '/network',
-      '/network-map',
       '/warehouse',
     ])
   })

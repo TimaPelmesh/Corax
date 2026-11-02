@@ -57,7 +57,7 @@ async function warmPrinters() {
 }
 
 async function warmNetwork() {
-  putCache(NETWORK_CACHE_KEY, await api.networkDevices({ limit: 5000 }))
+  putCache(NETWORK_CACHE_KEY, await api.networkDevices({ limit: 500, sync: false }))
 }
 
 async function warmAudit() {

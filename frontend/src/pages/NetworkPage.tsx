@@ -130,9 +130,13 @@ export function NetworkPage() {
   const [addBusy, setAddBusy] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (opts?: { sync?: boolean }) => {
     const q = search.trim()
-    const devices = await api.networkDevices({ q: q || undefined, limit: 5000 })
+    const devices = await api.networkDevices({
+      q: q || undefined,
+      limit: 5000,
+      sync: opts?.sync === true,
+    })
     if (!q) putCache(NETWORK_CACHE_KEY, devices)
     setRows(devices)
     return devices
@@ -142,7 +146,7 @@ export function NetworkPage() {
     void (async () => {
       if (search.trim() || !peekCache<NetworkDevice[]>(NETWORK_CACHE_KEY)) setLoading(true)
       try {
-        await reload()
+        await reload({ sync: !search.trim() })
       } catch (e) {
         toast.error(e instanceof Error ? e.message : t('network.loadFailed'))
       } finally {
@@ -311,11 +315,15 @@ export function NetworkPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
+      <Link
+        to="/network-map"
+        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 no-underline shadow-sm hover:bg-[var(--color-surface-muted)]"
+      >
+        <span className="text-sm font-semibold text-[var(--color-fg)]">{t('nav.networkMap')}</span>
+        <span className="text-sm text-[var(--color-fg-muted)]">{t('network.openMap')}</span>
+      </Link>
       <header className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-          <Link to="/network-map" className="app-btn app-btn-secondary !min-h-9 w-full no-underline sm:w-auto">
-            {t('network.openMap')}
-          </Link>
           {canEdit ? (
             <>
               <button type="button" onClick={() => void openCfg()} className="app-btn app-btn-secondary !min-h-9 w-full sm:w-auto">

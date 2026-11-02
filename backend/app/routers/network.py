@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 from pydantic import BaseModel, Field, field_serializer
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.auth import _normalized_role, get_current_editor_or_superuser, get_current_user
 from app.diagram_live import DiagramRoomClient, network_map_live_hub, user_from_access_token
@@ -470,7 +471,7 @@ def _device_out(row: NetworkDevice, *, include_details: bool = False) -> Network
     )
     interfaces = _parse_json_list(row.interfaces_json) if include_details else []
     neighbors = _parse_json_list(row.neighbors_json) if include_details else []
-    port_ifaces = interfaces if include_details else _parse_json_list(row.interfaces_json)
+    port_ifaces = interfaces if include_details else []
     return NetworkDeviceOut(
         id=row.id,
         ip_address=row.ip_address,
@@ -506,7 +507,7 @@ async def list_devices(
     device_type: str | None = Query(default=None),
     role: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
-    sync: bool = Query(default=True),
+    sync: bool = Query(default=False),
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -518,7 +519,30 @@ async def list_devices(
             await db.commit()
         except Exception:
             await db.rollback()
-    stmt = select(NetworkDevice).order_by(NetworkDevice.hostname.asc().nulls_last(), NetworkDevice.ip_address.asc())
+    stmt = (
+        select(NetworkDevice)
+        .options(
+            load_only(
+                NetworkDevice.id,
+                NetworkDevice.ip_address,
+                NetworkDevice.hostname,
+                NetworkDevice.sys_name,
+                NetworkDevice.sys_object_id,
+                NetworkDevice.device_type,
+                NetworkDevice.vendor,
+                NetworkDevice.location,
+                NetworkDevice.snmp_status,
+                NetworkDevice.last_snmp_at,
+                NetworkDevice.last_seen_at,
+                NetworkDevice.extras_json,
+                NetworkDevice.source,
+                NetworkDevice.notes,
+                NetworkDevice.created_at,
+                NetworkDevice.updated_at,
+            )
+        )
+        .order_by(NetworkDevice.hostname.asc().nulls_last(), NetworkDevice.ip_address.asc())
+    )
     if device_type and device_type.strip() and device_type.strip() != "all":
         stmt = stmt.where(NetworkDevice.device_type == device_type.strip())
     if q and q.strip():
@@ -835,7 +859,23 @@ async def get_topology(
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    devices = (await db.execute(select(NetworkDevice))).scalars().all()
+    devices = (
+        await db.execute(
+            select(NetworkDevice).options(
+                load_only(
+                    NetworkDevice.id,
+                    NetworkDevice.hostname,
+                    NetworkDevice.sys_name,
+                    NetworkDevice.ip_address,
+                    NetworkDevice.device_type,
+                    NetworkDevice.vendor,
+                    NetworkDevice.snmp_status,
+                    NetworkDevice.source,
+                    NetworkDevice.extras_json,
+                )
+            )
+        )
+    ).scalars().all()
     links = (await db.execute(select(NetworkLink))).scalars().all()
     strong = {"lldp", "cdp", "mndp", "ndp", "fdp", "edp", "isdp", "hndp", "fdb"}
     linked_device_ids: set[int] = set()
@@ -889,8 +929,16 @@ async def get_topology(
 
     comps = (
         (
-            await db.execute(select(Computer).where(Computer.id.in_(needed_computers)))
-        ).scalars().all()
+            await db.execute(
+                select(
+                    Computer.id,
+                    Computer.hostname,
+                    Computer.ip_address,
+                    Computer.manufacturer,
+                    Computer.ping_status,
+                ).where(Computer.id.in_(needed_computers))
+            )
+        ).all()
         if needed_computers
         else []
     )
@@ -909,8 +957,10 @@ async def get_topology(
 
     prns = (
         (
-            await db.execute(select(Printer).where(Printer.id.in_(needed_printers)))
-        ).scalars().all()
+            await db.execute(
+                select(Printer.id, Printer.name, Printer.ip_address).where(Printer.id.in_(needed_printers))
+            )
+        ).all()
         if needed_printers
         else []
     )
@@ -1122,7 +1172,20 @@ async def trace_map_scene(
     by_id = {str(n["id"]): n for n in topo_nodes}
     by_ip = {_norm_ip(n.get("ip_address")): n for n in topo_nodes if _norm_ip(n.get("ip_address"))}
 
-    devices = (await db.execute(select(NetworkDevice))).scalars().all()
+    devices = (
+        await db.execute(
+            select(NetworkDevice).options(
+                load_only(
+                    NetworkDevice.id,
+                    NetworkDevice.hostname,
+                    NetworkDevice.sys_name,
+                    NetworkDevice.ip_address,
+                    NetworkDevice.device_type,
+                    NetworkDevice.extras_json,
+                )
+            )
+        )
+    ).scalars().all()
     for device in devices:
         ip = _norm_ip(getattr(device, "ip_address", None))
         if ip and ip not in by_ip:

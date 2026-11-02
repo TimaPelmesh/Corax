@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.async_pool import run_async_pool
@@ -714,24 +714,43 @@ async def _inventory_pc_entries(
     networks: list[ipaddress.IPv4Network] | None = None,
 ) -> list[tuple[str, str]]:
     """IP + hostname ПК из инвентаря (колонка IP или payload агента)."""
-    rows = (
+    # IP is a column on almost every PC. The agent blob is only for rows
+    # that still have no address — reading it for the whole fleet held the
+    # request connection long enough for the rest of the panel to time out.
+    named = (
         await db.execute(
-            select(Computer.ip_address, Computer.hostname, Computer.raw_payload, Computer.mac_primary)
+            select(Computer.ip_address, Computer.hostname).where(
+                Computer.ip_address.is_not(None),
+                Computer.ip_address != "",
+            )
         )
     ).all()
     out: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for ip_col, hostname, raw, mac in rows:
+    for ip_col, hostname in named:
         host = str(hostname or "").strip() or "PC"
         ip_s = str(ip_col or "").strip()
-        if not ip_s:
-            ip_s = primary_ipv4_from_raw_payload(
+        if not ip_s or ip_s in seen or not _ip_in_networks(ip_s, networks):
+            continue
+        seen.add(ip_s)
+        out.append((ip_s, host))
+    missing = (
+        await db.execute(
+            select(Computer.hostname, Computer.raw_payload, Computer.mac_primary).where(
+                or_(Computer.ip_address.is_(None), Computer.ip_address == "")
+            )
+        )
+    ).all()
+    for hostname, raw, mac in missing:
+        host = str(hostname or "").strip() or "PC"
+        ip_s = (
+            primary_ipv4_from_raw_payload(
                 raw,
                 prefer_mac=str(mac).strip() if mac else None,
-            ) or ""
-        if not ip_s or ip_s in seen:
-            continue
-        if not _ip_in_networks(ip_s, networks):
+            )
+            or ""
+        )
+        if not ip_s or ip_s in seen or not _ip_in_networks(ip_s, networks):
             continue
         seen.add(ip_s)
         out.append((ip_s, host))
