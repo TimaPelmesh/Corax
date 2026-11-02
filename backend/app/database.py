@@ -10,17 +10,17 @@ def _normalize_url(url: str) -> str:
     return (url or "").strip()
 
 
-def _create_engine(url: str):
+def _create_engine(url: str, *, pool_size: int = 10, max_overflow: int = 10):
     kwargs: dict = {"echo": False}
     if url.strip().lower().startswith("postgresql"):
-        # LAN-панель обычно живёт под одной репликой Uvicorn; 5+10 достаточно
-        # для одновременных агент-POST, дашборда, ping-кэша и SNMP-задач.
+        # Панель и агенты делят этот пул. Фоновые потоки (ping, SNMP)
+        # зовут _create_engine со своим маленьким пулом и сюда не лезут.
         kwargs.update(
-            pool_size=5,
-            max_overflow=10,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
             pool_pre_ping=True,
             pool_recycle=1800,
-            pool_timeout=20,
+            pool_timeout=8,
         )
     return create_async_engine(url, **kwargs)
 

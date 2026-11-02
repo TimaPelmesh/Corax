@@ -83,7 +83,7 @@ class ComputerPingScheduler:
 
     async def _async_main(self) -> None:
         self._loop = asyncio.get_running_loop()
-        engine = _create_engine(settings.database_url)
+        engine = _create_engine(settings.database_url, pool_size=2, max_overflow=1)
         self._session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
         try:
             await self._loop_body()

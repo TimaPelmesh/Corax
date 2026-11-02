@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.computer_ip import primary_ipv4_from_extended, resolve_computer_ipv4
 from app.config import settings
 from app.rate_limit import limiter
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import AgentToken, Computer, DiskVolume, InstalledSoftware, Peripheral, User
 from app.gpu_normalize import resolve_gpu_name
 from app.oem_normalize import normalize_manufacturer, normalize_system_model
@@ -32,6 +33,9 @@ from app.search_index import sync_computer
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 log = logging.getLogger("corax.agent")
+# Inventory replaces thousands of software rows and holds a connection the
+# whole time. Four at once leaves the rest of the pool for the panel.
+_INVENTORY_DB = asyncio.Semaphore(4)
 
 _AGENT_TOKEN_PREFIX = "hmac256:"
 
@@ -287,10 +291,19 @@ async def verify_agent_token(
 async def submit_inventory(
     request: Request,
     report: AgentInventoryReport,
-    db: AsyncSession = Depends(get_db),
     authorization: str | None = Header(None),
 ):
     """Идемпотентно по имени ПК: новый hostname — новая строка; тот же (без учёта регистра) — обновление и замена списка ПО."""
+    async with _INVENTORY_DB:
+        async with AsyncSessionLocal() as db:
+            return await _submit_inventory_db(report, db, authorization)
+
+
+async def _submit_inventory_db(
+    report: AgentInventoryReport,
+    db: AsyncSession,
+    authorization: str | None,
+):
     hn = report.hostname.strip()
     await verify_agent_token(db, authorization, hn, fleet=_linux_report(report.os_name))
 

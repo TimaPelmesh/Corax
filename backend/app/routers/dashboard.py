@@ -405,12 +405,6 @@ def build_closed_tickets_series_from_day_counts(
     return granularity, points
 
 
-async def _with_fresh_session(fn):
-    """Run a coroutine with its own AsyncSession — safe for asyncio.gather."""
-    async with AsyncSessionLocal() as session:
-        return await fn(session)
-
-
 """ОЗУ: группа по округлённому объёму (8 / 16 / 32 ГБ и т.д. видны отдельно)."""
 _ram_gb_rounded = case(
     (Computer.ram_gb.is_(None), literal(None)),
@@ -648,13 +642,12 @@ async def _summary_inventory_inline(stamp: tuple) -> DashboardSummary:
         return inventory
 
 
-async def _summary_inventory_snapshot(stamp: tuple) -> DashboardSummary:
+async def _summary_inventory_snapshot(stamp: tuple, db: AsyncSession) -> DashboardSummary:
     """Production: one row read. Recompute runs on the snapshot thread."""
     from app.dashboard_snapshot import dashboard_snapshot_worker, read_dashboard_snapshot
 
     key = _stamp_key(stamp)
-    async with AsyncSessionLocal() as db:
-        stored = await read_dashboard_snapshot(db)
+    stored = await read_dashboard_snapshot(db)
     if stored is None or stored[1] != key:
         dashboard_snapshot_worker.request_refresh()
     if stored is None:
@@ -671,27 +664,21 @@ async def _summary_inventory_snapshot(stamp: tuple) -> DashboardSummary:
 @router.get("/summary", response_model=DashboardSummary)
 async def dashboard_summary(
     current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     from app.config import settings
 
-    async with AsyncSessionLocal() as db:
-        stamp = await _dashboard_stamp(db)
+    # One session for the whole request. A second session on top of get_db
+    # was what filled the pool of 15 and made this call wait out pool_timeout.
+    stamp = await _dashboard_stamp(db)
     env = (settings.environment or "").strip().lower()
     if env == "test":
         inventory = await _summary_inventory_inline(stamp)
     else:
-        inventory = await _summary_inventory_snapshot(stamp)
+        inventory = await _summary_inventory_snapshot(stamp, db)
 
-    async def _upcoming(s: AsyncSession):
-        return await accessible_upcoming_notes(s, current, horizon_days=30, limit=8)
-
-    async def _notes_count(s: AsyncSession):
-        return await accessible_notes_count(s, current)
-
-    upcoming_raw, notes_total = await asyncio.gather(
-        _with_fresh_session(_upcoming),
-        _with_fresh_session(_notes_count),
-    )
+    upcoming_raw = await accessible_upcoming_notes(db, current, horizon_days=30, limit=8)
+    notes_total = await accessible_notes_count(db, current)
     upcoming_notes = [
         DashboardUpcomingNote(
             id=n.id,
