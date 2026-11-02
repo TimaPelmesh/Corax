@@ -3,7 +3,9 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.auth import authenticate_user, create_access_token, get_current_user, get_current_user_optional
 from app.password_change import maybe_flag_bootstrap_password
@@ -91,16 +93,23 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
     linked_username = None
     linked_full_name = None
     if user.linked_directory_user_id:
-        linked = await db.get(User, user.linked_directory_user_id)
+        linked = (
+            await db.execute(
+                select(User)
+                .options(load_only(User.id, User.username, User.full_name))
+                .where(User.id == user.linked_directory_user_id)
+            )
+        ).scalar_one_or_none()
         if linked is not None:
             linked_username = linked.username
             linked_full_name = linked.full_name
+    avatar = await db.scalar(select(User.avatar_data).where(User.id == user.id))
     return UserOut(
         id=user.id,
         username=user.username,
         email=user.email,
         full_name=user.full_name,
-        avatar_data=user.avatar_data,
+        avatar_data=avatar,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
         is_ldap=bool(user.is_ldap),

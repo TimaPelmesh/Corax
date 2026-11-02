@@ -385,10 +385,28 @@ if settings.security_headers_enabled:
         enable_csp=settings.security_csp_enabled,
     )
 
-# Прозрачное сжатие: JSON дашборда/парка ПК/списка заявок и текстовые SPA-ассеты
-# сжимаются 3–5×. WebSocket и уже сжатые ответы Starlette пропускает сам.
-# minimum_size — не тратить CPU на короткие 200 OK и подтверждения.
-app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
+class _GzipExceptAssets:
+    """Gzip JSON, but never the Vite /assets bundles.
+
+    Starlette compresses the whole body on the event loop. Each JS/CSS chunk
+    then takes seconds and /api/v1/auth/me waits in the same line. Hashed
+    assets are already cacheable; on a LAN the raw file is faster.
+    """
+
+    def __init__(self, app, minimum_size: int = 1024, compresslevel: int = 1) -> None:
+        self.app = app
+        self._gzip = GZipMiddleware(app, minimum_size=minimum_size, compresslevel=compresslevel)
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and str(scope.get("path") or "").startswith("/assets/"):
+            await self.app(scope, receive, send)
+            return
+        await self._gzip(scope, receive, send)
+
+
+# JSON still shrinks. Level 1 is the fast zlib setting: level 5 held the
+# single Uvicorn thread long enough that the panel and /me timed out.
+app.add_middleware(_GzipExceptAssets, minimum_size=1024, compresslevel=1)
 
 app.add_middleware(RequestLoggingMiddleware)
 

@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.database import get_db
 from app.jwtutil import JWTError, access_token_payload, decode_token, encode_token
@@ -86,7 +87,33 @@ async def get_current_user(
         token_ver = int(payload.get("ver") or 0)
     except (JWTError, TypeError, ValueError):
         raise credentials_exception
-    user = await get_user_by_username(db, sub)
+    # avatar_data is a data-URL blob. Loading it on every API call made /me
+    # and the rest of the panel wait on a fat row. /me reads the blob itself.
+    loaded = await db.execute(
+        select(User)
+        .options(
+            load_only(
+                User.id,
+                User.username,
+                User.email,
+                User.full_name,
+                User.phone,
+                User.avatar_emoji,
+                User.avatar_bg,
+                User.hashed_password,
+                User.is_active,
+                User.is_superuser,
+                User.is_ldap,
+                User.role,
+                User.created_at,
+                User.linked_directory_user_id,
+                User.must_change_password,
+                User.token_version,
+            )
+        )
+        .where(User.username == sub)
+    )
+    user = loaded.scalar_one_or_none()
     if user is None or not user.is_active or not can_access_panel(user):
         raise credentials_exception
     if int(getattr(user, "token_version", 0) or 0) != token_ver:

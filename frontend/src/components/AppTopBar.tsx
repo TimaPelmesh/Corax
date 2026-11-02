@@ -211,7 +211,8 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
         }
       }
     }
-    void load()
+    // Let /me, the JS bundles and the dashboard use the one worker first.
+    const firstLoad = window.setTimeout(() => void load(), 2500)
     const onRefresh = () => {
       void load()
     }
@@ -241,6 +242,7 @@ export function AppTopBar({ navItems = [] }: AppTopBarProps) {
     document.addEventListener('visibilitychange', onVisForInterval)
     return () => {
       cancelled = true
+      window.clearTimeout(firstLoad)
       window.clearInterval(timer)
       window.removeEventListener('corax:assignee-notifications', onRefresh)
       window.removeEventListener('focus', onRefresh)

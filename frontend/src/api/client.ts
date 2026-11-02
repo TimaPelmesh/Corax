@@ -222,7 +222,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   if (!share) return run
   inflightGets.set(path, run)
-  void run.finally(() => {
+  // catch() so a failed GET does not surface as an unhandled rejection
+  // from this bookkeeping promise. Callers still await `run` and see the error.
+  void run.catch(() => undefined).finally(() => {
     if (inflightGets.get(path) === run) inflightGets.delete(path)
   })
   return run
