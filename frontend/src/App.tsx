@@ -23,6 +23,7 @@ const ComputersPage = lazyPage(() =>
 const ServerAuditPage = lazyPage(() =>
   import('./pages/ServerAuditPage').then((module) => ({ default: module.ServerAuditPage })),
 )
+const SwarmPage = lazyPage(() => import('./pages/SwarmPage').then((module) => ({ default: module.SwarmPage })))
 const SoftwarePage = lazyPage(() =>
   import('./pages/SoftwarePage').then((module) => ({ default: module.SoftwarePage })),
 )
@@ -182,6 +183,7 @@ export default function App() {
         <Route path="software" element={<SoftwarePage />} />
         <Route path="computers" element={<ComputersPage />} />
         <Route path="server-audit" element={<ServerAuditPage />} />
+        <Route path="swarm" element={<SwarmPage />} />
         {/* Legacy LlmCluster/Chat/Topology UI lives on /server-audit (page files kept). */}
         <Route path="llm-cluster" element={<Navigate to="/server-audit" replace />} />
         <Route path="llm-cluster/*" element={<Navigate to="/server-audit" replace />} />

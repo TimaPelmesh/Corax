@@ -312,16 +312,35 @@ def _run(client, command: str, password: str, *, sudo: bool, timeout: float) -> 
 
 def run_remote_command(host: str, port: int, user: str, password: str, command: str, timeout: float) -> dict:
     """Run one already-built command. The caller chooses the command, not the browser."""
+    results = run_remote_commands(host, port, user, password, [(command, timeout)])
+    return results[0]
+
+
+def run_remote_commands(
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    commands: list[tuple[str, float]],
+) -> list[dict]:
+    """Run allowlisted commands on one SSH session. Stop after the first failure."""
+    if not commands:
+        raise ValueError("Нет команды")
     host, port, user, password = _check_login(host, port, user, password)
+    results: list[dict] = []
     try:
         with _ssh_client(host, port, user, password) as client:
-            code, text = _run(client, command, password, sudo=user != "root", timeout=timeout)
+            for command, timeout in commands:
+                code, text = _run(client, command, password, sudo=user != "root", timeout=timeout)
+                results.append({"ok": code == 0, "exit_code": code, "output": text})
+                if code != 0:
+                    break
     except (InstallError, ValueError):
         raise
     except Exception as exc:
         message = _redact(str(exc) or exc.__class__.__name__, password)
         raise InstallError(message[:400] or "SSH-подключение не удалось") from exc
-    return {"ok": code == 0, "exit_code": code, "output": text}
+    return results
 
 
 def push_script_update(host: str, port: int, user: str, password: str) -> dict:

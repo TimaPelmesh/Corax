@@ -35,6 +35,7 @@ const ROUTE_TITLES: Array<{ path: string; key: MessageKey; end?: boolean }> = [
   { path: '/software', key: 'titles.software' },
   { path: '/assist', key: 'titles.assist' },
   { path: '/server-audit', key: 'titles.serverAudit' },
+  { path: '/swarm', key: 'titles.swarm' },
   { path: '/computers', key: 'titles.computers' },
   { path: '/printers', key: 'titles.printers' },
   { path: '/network-map', key: 'titles.networkMap' },

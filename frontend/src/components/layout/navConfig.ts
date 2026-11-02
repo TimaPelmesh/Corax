@@ -130,6 +130,16 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           labelKey: 'nav.serverAudit',
           keywords: ['аудит', 'сервер', 'температура', 'linux', 'debian', 'cpu', 'audit', 'ssh', 'llama', 'gpu', 'журнал'],
         },
+        ...(user?.is_superuser || user?.role === 'editor'
+          ? [
+              {
+                to: '/swarm',
+                icon: IconServer,
+                labelKey: 'nav.swarm' as const,
+                keywords: ['docker', 'swarm', 'сервис', 'реплики', 'ssh', 'кластер'],
+              },
+            ]
+          : []),
         {
           to: '/software',
           icon: IconSoftware,

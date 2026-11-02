@@ -1517,6 +1517,40 @@ export type SearchResponse = {
   items: SearchResult[]
 }
 
+export type SwarmLogin = {
+  host: string
+  ssh_port: number
+  ssh_user: string
+  ssh_password: string
+}
+
+export type SwarmNode = {
+  id: string
+  hostname: string
+  status: string
+  availability: string
+  manager: string
+  engine: string
+}
+
+export type SwarmService = {
+  id: string
+  name: string
+  mode: string
+  replicas: string
+  image: string
+  ports: string
+}
+
+export type SwarmOverview = {
+  ok: boolean
+  swarm: string
+  manager: boolean
+  nodes: SwarmNode[]
+  services: SwarmService[]
+  output: string
+}
+
 export type ServerAuditHost = {
   id: number
   hostname: string
@@ -3646,6 +3680,15 @@ export const api = {
 
   createServerAuditJob: (id: number, body: { action: ServerAuditJobAction; target: string; body?: string | null }) =>
     request<ServerAuditJob>(`${API_PREFIX}/server-audit/hosts/${id}/jobs`, { method: 'POST', json: body }),
+
+  swarmOverview: (body: SwarmLogin) =>
+    request<SwarmOverview>(`${API_PREFIX}/swarm/overview`, { method: 'POST', json: body, timeout_ms: 90_000 }),
+
+  swarmScale: (body: SwarmLogin & { service: string; replicas: number }) =>
+    request<SwarmOverview>(`${API_PREFIX}/swarm/scale`, { method: 'POST', json: body, timeout_ms: 120_000 }),
+
+  swarmRollback: (body: SwarmLogin & { service: string }) =>
+    request<SwarmOverview>(`${API_PREFIX}/swarm/rollback`, { method: 'POST', json: body, timeout_ms: 150_000 }),
 
   serverAuditSsh: (
     id: number,

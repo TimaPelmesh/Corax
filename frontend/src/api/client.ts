@@ -136,7 +136,7 @@ async function readApiDetail(res: Response): Promise<string> {
 }
 
 function gatewayFallback(path: string, status: number, statusText: string): string {
-  if (status === 502 && (path.includes('/linux-ssh') || path.includes('/server-audit/'))) {
+  if (status === 502 && (path.includes('/linux-ssh') || path.includes('/server-audit/') || path.includes('/swarm/'))) {
     return 'SSH не завершился: панель не получила ответ хоста. Проверьте адрес, порт, пароль и что на машине есть python3.'
   }
   return statusText || `HTTP ${status}`
