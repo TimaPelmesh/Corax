@@ -37,6 +37,23 @@ def test_windows_11_is_not_labeled_as_windows_10():
     assert correct_windows_11_name("Windows 10 Pro", None, family="win11") == "Windows 11 Pro"
 
 
+def test_windows_10_pro_case_and_versions_merge():
+    assert normalize_os_display("Windows 10 pro") == "Windows 10 Pro"
+    assert normalize_os_display("WINDOWS 10 PRO") == "Windows 10 Pro"
+    assert normalize_os_display("Windows 10 Pro 22H2") == "Windows 10 Pro"
+    assert normalize_os_display("Windows 10 Pro 21H2") == "Windows 10 Pro"
+    assert normalize_os_display("Windows 10 Pro 10.0.19045") == "Windows 10 Pro"
+    assert normalize_os_display("Windows 11 Pro 24H2") == "Windows 11 Pro"
+    assert normalize_os_display("Windows Server 2019 Standard") == "Windows Server 2019 Standard"
+    assert normalize_os_display("Windows Server 2022") == "Windows Server 2022"
+    rows = [
+        ("Windows 10 pro", 2),
+        ("Windows 10 Pro", 3),
+        ("Windows 10 Pro 22H2", 4),
+    ]
+    assert dict(aggregate_os_counts(rows))["Windows 10 Pro"] == 9
+
+
 def test_aggregate_os_counts_merges_locales():
     rows = [
         ("Microsoft Windows 7 Professional", 3),

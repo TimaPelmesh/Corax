@@ -41,6 +41,37 @@ _EDITION_SHORT: tuple[tuple[re.Pattern[str], str], ...] = (
 
 _MS_PREFIX_RE = re.compile(r"^microsoft\s+", re.I)
 _SPACE_RE = re.compile(r"\s+")
+_CLIENT_WIN_RE = re.compile(r"\bwindows\s+(?:xp|vista|7|8(?:\.1)?|10|11)\b", re.I)
+# Feature updates and build strings. They do not change the edition the chart shows.
+_UPDATE_CODE_RE = re.compile(
+    r"\b(?:1507|1511|1607|1703|1709|1803|1809|1903|1909|2004|20h2|21h1|21h2|22h2|23h2|24h2|25h2)\b",
+    re.I,
+)
+_VERSION_WORD_RE = re.compile(r"\b(?:version|версия|build|сборка)\s+\d+(?:\.\d+)*\b", re.I)
+_DOTTED_BUILD_RE = re.compile(r"\b\d+\.\d+(?:\.\d+){1,3}\b")
+_ARCH_RE = re.compile(r"\b(?:x64|x86|amd64|arm64|64-bit|32-bit|64\s*bit|32\s*bit)\b", re.I)
+_EMPTY_PARENS_RE = re.compile(r"\(\s*\)")
+_TOKEN_CASE = {
+    "windows": "Windows",
+    "pro": "Pro",
+    "home": "Home",
+    "ent": "Ent",
+    "edu": "Edu",
+    "ult": "Ult",
+    "starter": "Starter",
+    "basic": "Basic",
+    "prem": "Prem",
+    "sl": "SL",
+    "ws": "WS",
+    "server": "Server",
+    "standard": "Standard",
+    "datacenter": "Datacenter",
+    "xp": "XP",
+    "vista": "Vista",
+    "n": "N",
+    "ltsc": "LTSC",
+    "iot": "IoT",
+}
 _WIN10_RE = re.compile(r"\bwindows\s+10\b", re.I)
 _WIN11_RE = re.compile(r"\bwindows\s+11\b", re.I)
 _SERVER_RE = re.compile(r"server|сервер", re.I)
@@ -74,6 +105,26 @@ def correct_windows_11_name(
     return _WIN10_RE.sub("Windows 11", raw, count=1)
 
 
+def _canon_tokens(text: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        word = match.group(0)
+        return _TOKEN_CASE.get(word.casefold(), word)
+
+    return re.sub(r"[A-Za-z]+", repl, text)
+
+
+def _strip_client_version_noise(text: str) -> str:
+    """Windows 10 Pro, Windows 10 pro and Windows 10 Pro 22H2 are one edition."""
+    if not _CLIENT_WIN_RE.search(text) or _SERVER_RE.search(text):
+        return text
+    cleaned = _UPDATE_CODE_RE.sub(" ", text)
+    cleaned = _VERSION_WORD_RE.sub(" ", cleaned)
+    cleaned = _DOTTED_BUILD_RE.sub(" ", cleaned)
+    cleaned = _ARCH_RE.sub(" ", cleaned)
+    cleaned = _EMPTY_PARENS_RE.sub(" ", cleaned)
+    return cleaned
+
+
 def normalize_os_display(name: str | None) -> str:
     """Короткая каноническая подпись ОС для группировки (БД не меняем)."""
     s = (name or "").strip()
@@ -82,7 +133,9 @@ def normalize_os_display(name: str | None) -> str:
     s = _MS_PREFIX_RE.sub("", s).strip()
     for pattern, replacement in _EDITION_SHORT:
         s = pattern.sub(replacement, s)
-    s = _SPACE_RE.sub(" ", s).strip()
+    s = _strip_client_version_noise(s)
+    s = _canon_tokens(s)
+    s = _SPACE_RE.sub(" ", s).strip(" .,-/")
     return s or _UNKNOWN_LABEL
 
 
