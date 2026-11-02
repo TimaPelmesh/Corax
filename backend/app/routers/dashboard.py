@@ -658,10 +658,12 @@ async def _summary_inventory_snapshot(stamp: tuple) -> DashboardSummary:
     if stored is None or stored[1] != key:
         dashboard_snapshot_worker.request_refresh()
     if stored is None:
+        logger.warning("dashboard snapshot missing; summary stays blank until the worker finishes")
         return _blank_summary()
     try:
         return DashboardSummary.model_validate_json(stored[0])
-    except Exception:
+    except Exception as exc:
+        logger.warning("dashboard snapshot rejected: %s", exc)
         dashboard_snapshot_worker.request_refresh()
         return _blank_summary()
 

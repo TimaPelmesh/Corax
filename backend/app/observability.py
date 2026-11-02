@@ -90,6 +90,12 @@ class HumanFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         rid = getattr(record, "request_id", "-")
         base = f"{self.formatTime(record, self.datefmt)} | {record.levelname:<7} | {rid} | {record.name} | {record.getMessage()}"
+        method = getattr(record, "method", None)
+        path = getattr(record, "path", None)
+        if method and path:
+            status = getattr(record, "status", "-")
+            duration = getattr(record, "duration_ms", "-")
+            base += f" | {method} {path} {status} {duration}ms"
         if record.exc_info:
             base += "\n" + self.formatException(record.exc_info)
         return base
@@ -321,16 +327,18 @@ class RequestLoggingMiddleware:
         else:
             duration_ms = round((time.perf_counter() - started) * 1000, 2)
             if not _skip_access_log(path):
-                _LOG.info(
-                    "request",
-                    extra={
-                        "method": method,
-                        "path": path,
-                        "status": status_holder["code"],
-                        "duration_ms": duration_ms,
-                        "client": client,
-                    },
-                )
+                fields = {
+                    "method": method,
+                    "path": path,
+                    "status": status_holder["code"],
+                    "duration_ms": duration_ms,
+                    "client": client,
+                }
+                line = f"{method} {path} {status_holder['code']} {duration_ms}ms"
+                if duration_ms >= 3000:
+                    _LOG.warning("SLOW %s", line, extra=fields)
+                else:
+                    _LOG.info(line, extra=fields)
         finally:
             request_id_var.reset(token)
 

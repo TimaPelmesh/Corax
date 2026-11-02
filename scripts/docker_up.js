@@ -151,6 +151,97 @@ function waitHealth(timeoutMs) {
   });
 }
 
+function composeCapture(args) {
+  const r = spawnSync(process.execPath, [path.join(__dirname, "docker_compose_env.js"), ...args], {
+    cwd: root,
+    encoding: "utf8",
+    shell: false,
+    env: process.env,
+  });
+  return {
+    status: r.status == null ? 1 : r.status,
+    stdout: r.stdout || "",
+    stderr: r.stderr || "",
+  };
+}
+
+function probeReady() {
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const req = http.get("http://127.0.0.1:3000/api/v1/health/ready", (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => {
+        if (body.length < 4000) body += chunk;
+      });
+      res.on("end", () => {
+        resolve({ ms: Date.now() - started, status: res.statusCode || 0, body: body.trim() });
+      });
+    });
+    req.on("error", (err) => {
+      resolve({ ms: Date.now() - started, status: 0, body: String(err && err.message ? err.message : err) });
+    });
+    req.setTimeout(8000, () => {
+      req.destroy();
+      resolve({ ms: Date.now() - started, status: 0, body: "timeout 8s" });
+    });
+  });
+}
+
+function printStartupReport(ready) {
+  console.log("--- проверка запуска ---");
+  console.log(`ready HTTP ${ready.status || "нет"} за ${ready.ms} мс`);
+  console.log(ready.body || "(пустое тело)");
+  let parsed = null;
+  try {
+    parsed = JSON.parse(ready.body);
+  } catch {
+    parsed = null;
+  }
+  if (ready.ms > 2000) {
+    console.log("ВНИМАНИЕ: /health/ready дольше 2 с. База или процесс уже заняты.");
+  }
+  if (parsed && parsed.database && parsed.database !== "up") {
+    console.log("ВНИМАНИЕ: база в пробе не up.");
+  }
+  if (parsed && parsed.snapshot === "missing") {
+    console.log(
+      "ВНИМАНИЕ: снимка дашборда ещё нет. Страница будет пустой, пока фоновый пересчёт не запишет строку. Это не падение контейнера.",
+    );
+  }
+  if (parsed && parsed.snapshot === "table_missing") {
+    console.log("ВНИМАНИЕ: таблицы dashboard_snapshots нет. Миграция не дошла.");
+  }
+  if (parsed && typeof parsed.snapshot_age_s === "number" && parsed.snapshot_age_s > 3600) {
+    console.log(`ВНИМАНИЕ: снимок дашборда старше ${parsed.snapshot_age_s} с.`);
+  }
+
+  const ps = composeCapture(["ps"]);
+  console.log("--- контейнеры ---");
+  process.stdout.write(ps.stdout || ps.stderr || "(ps пустой)\n");
+
+  const image = spawnSync("docker", ["image", "inspect", "corax:local", "--format", "{{.Created}}"], {
+    cwd: root,
+    encoding: "utf8",
+    shell: false,
+  });
+  console.log(`образ corax:local создан: ${(image.stdout || "").trim() || "(нет образа)"}`);
+
+  const logs = composeCapture(["logs", "--since", "15m", "--tail", "200", "app"]);
+  const interesting = (logs.stdout + "\n" + logs.stderr)
+    .split(/\r?\n/)
+    .filter((line) => /SLOW |ERROR|Error|Traceback|Exception|snapshot|not_ready|\[corax\]/.test(line))
+    .filter((line) => !/password|secret|token/i.test(line))
+    .slice(-40);
+  console.log("--- строки запуска и ошибки (без секретов) ---");
+  if (interesting.length === 0) console.log("(таких строк нет)");
+  else interesting.forEach((line) => console.log(line));
+  console.log(
+    "Дальше зависание дашборда смотрите так: docker compose logs app --since 5m | findstr SLOW",
+  );
+  console.log("--- конец проверки ---");
+}
+
 function startWolRelay() {
   const dir = path.join(root, "data", "wol-queue");
   fs.mkdirSync(dir, { recursive: true });
@@ -217,11 +308,18 @@ async function main() {
   if (up !== 0) process.exit(up);
 
   console.log("Ожидание health http://127.0.0.1:3000/api/v1/health/ready ...");
+  let readyOk = false;
   try {
     await waitHealth(180000);
+    readyOk = true;
     console.log("Health OK");
   } catch {
-    console.error("Health не ответил. Логи: npm run docker:logs");
+    console.error("Health не ответил за 180 с.");
+  }
+  const ready = await probeReady();
+  printStartupReport(ready);
+  if (!readyOk || !ready.status || ready.status >= 400) {
+    console.error("Запуск не готов. Выше тело /health/ready и строки логов.");
     process.exit(1);
   }
 

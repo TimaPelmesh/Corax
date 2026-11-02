@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 import ipaddress
 import time
@@ -226,6 +227,7 @@ async def lifespan(_: FastAPI):
         except Exception as exc:
             log.warning("printer purge failed: %s", exc)
 
+    print("[corax] database ready", flush=True)
     log.info(
         "ready — agents POST /api/v1/agent/inventory; UI typically http://127.0.0.1:3000"
     )
@@ -254,6 +256,13 @@ async def lifespan(_: FastAPI):
         from app.backup_schedule import backup_scheduler
 
         await backup_scheduler.start()
+        print(
+            "[corax] workers started: printer, ping, dashboard snapshot, wiki, llm, bitrix, backup",
+            flush=True,
+        )
+    else:
+        print("[corax] test mode: background workers skipped", flush=True)
+    print("[corax] http ready", flush=True)
 
     yield
 
@@ -538,20 +547,49 @@ async def health_ready():
 
     from app.database import AsyncSessionLocal
 
+    started = time.perf_counter()
+    snapshot = "unknown"
+    snapshot_age_s = None
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
             await db.execute(text("SELECT must_change_password, token_version FROM users LIMIT 1"))
-    except Exception:
+            try:
+                row = (
+                    await db.execute(text("SELECT updated_at FROM dashboard_snapshots WHERE id = 1"))
+                ).first()
+            except Exception:
+                await db.rollback()
+                snapshot = "table_missing"
+                row = None
+            if snapshot != "table_missing":
+                if row is None or row[0] is None:
+                    snapshot = "missing"
+                else:
+                    snapshot = "present"
+                    updated = row[0]
+                    if updated.tzinfo is None:
+                        updated = updated.replace(tzinfo=timezone.utc)
+                    snapshot_age_s = max(0, int((datetime.now(timezone.utc) - updated).total_seconds()))
+    except Exception as exc:
         return JSONResponse(
             status_code=503,
-            content={"status": "not_ready", "database": "down"},
+            content={
+                "status": "not_ready",
+                "database": "down",
+                "error": type(exc).__name__,
+                "db_ms": round((time.perf_counter() - started) * 1000, 1),
+            },
         )
     # No LAN discovery here — Docker healthcheck timeout is 5s; keep this DB-only.
+    # snapshot is only a timestamp, not the JSON blob, so a fat dashboard cannot stall the probe.
     return {
         "status": "ok",
         "api": "v1",
         "database": "up",
+        "db_ms": round((time.perf_counter() - started) * 1000, 1),
+        "snapshot": snapshot,
+        "snapshot_age_s": snapshot_age_s,
     }
 
 

@@ -40,6 +40,7 @@ export function DashboardPage() {
   const emptyPolls = useRef(0)
   const [data, setData] = useState<DashboardSummary | null>(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) ?? null)
   const [loading, setLoading] = useState(() => peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY) == null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [widgets, setWidgets] = useState<WidgetVisibility>(() => readWidgets())
   const [drilldown, setDrilldown] = useState<DashboardDrilldownSelection | null>(null)
 
@@ -58,6 +59,7 @@ export function DashboardPage() {
   )
 
   const load = useCallback(async () => {
+    setLoadError(null)
     try {
       const next = await api.dashboardSummary()
       putCache(DASHBOARD_SUMMARY_KEY, next)
@@ -71,12 +73,16 @@ export function DashboardPage() {
           const next = await api.dashboardSummary()
           putCache(DASHBOARD_SUMMARY_KEY, next)
           setData(next)
+          setLoadError(null)
           return
         } catch (again) {
-          toast.error(again instanceof Error ? again.message : message)
+          const text = again instanceof Error ? again.message : message
+          setLoadError(text)
+          toast.error(text)
           return
         }
       }
+      setLoadError(message)
       toast.error(message)
     } finally {
       setLoading(false)
@@ -120,6 +126,12 @@ export function DashboardPage() {
     <div>
       <h1 className="sr-only">{t('titles.dashboard')}</h1>
       <div className="dashboard-enter space-y-4" aria-busy={loading || undefined}>
+        {loadError ? (
+          <div className="app-card px-4 py-3 text-sm text-[var(--color-fg)]" role="alert">
+            {loadError}
+          </div>
+        ) : null}
+
         {data && data.computers_total === 0 ? (
           <div className="app-card flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm text-[var(--color-fg-muted)]">
             <p>{t('dashboard.emptyFleet')}</p>

@@ -37,8 +37,8 @@ export function requestTimeoutMessage(path: string): string {
     return 'Импорт CORAX занял слишком много времени. Проверьте, что API запущен, и повторите.'
   }
   return (
-    'Нет ответа от сервера (таймаут). Проверьте, что API запущен ' +
-    '(Docker: npm run docker:up / docker compose ps) и порт совпадает (обычно :3000).'
+    `Нет ответа за 25 с: ${path}. Контейнер может быть healthy — не ответил именно этот адрес. ` +
+    'Смотрите docker compose logs app и строку SLOW.'
   )
 }
 
