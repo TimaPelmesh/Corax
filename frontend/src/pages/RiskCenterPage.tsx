@@ -13,6 +13,8 @@ import { IconActivity, IconCheckBadge, IconLock, IconPcs, IconSignal } from '../
 import { PageHeader } from '../components/PageHeader'
 import { Skeleton, StatRowSkeleton } from '../components/Skeleton'
 import { useLocale } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
+import { RISK_OVERVIEW_KEY } from '../tabWarm'
 import { useToast } from '../ToastContext'
 import {
   countByFindingStatus,
@@ -221,9 +223,10 @@ export function RiskCenterPage() {
   const { user } = useAuth()
   const c = locale === 'ru' ? COPY.ru : COPY.en
   const toast = useToast()
-  const [overview, setOverview] = useState<RiskOverview | null>(null)
+  const cachedOverview = peekCache<RiskOverview>(RISK_OVERVIEW_KEY)
+  const [overview, setOverview] = useState<RiskOverview | null>(cachedOverview ?? null)
   const [history, setHistory] = useState<RiskHistoryPoint[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!cachedOverview)
   const [severity, setSeverity] = useState<SeverityFilter>('all')
   const [query, setQuery] = useState('')
   const [findingFilter, setFindingFilter] = useState<FindingFilter>('open')
@@ -239,13 +242,14 @@ export function RiskCenterPage() {
       api.riskOverview(),
       api.riskHistory(90).catch(() => ({ items: [] as RiskHistoryPoint[] })),
     ])
+    putCache(RISK_OVERVIEW_KEY, nextOverview)
     setOverview(nextOverview)
     setHistory(nextHistory.items)
   }, [])
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
+    if (!peekCache<RiskOverview>(RISK_OVERVIEW_KEY)) setLoading(true)
     void loadOverview()
       .catch((error) => {
         if (!cancelled) toast.error(error instanceof Error ? error.message : 'Risk analysis failed')

@@ -12,6 +12,9 @@ const IDEMPOTENT = new Set(['GET', 'HEAD'])
 const RETRY_STATUSES = new Set([502, 503, 504])
 const MAX_GET_ATTEMPTS = 3
 
+/** Identical GETs that overlap (hover prefetch + the page itself) share one flight. */
+const inflightGets = new Map<string, Promise<unknown>>()
+
 export type RequestOptions = RequestInit & { json?: unknown; timeout_ms?: number }
 
 /** Same base URL as `request()` — empty VITE_API_URL means same-origin `/api/v1/...`. */
@@ -194,21 +197,35 @@ async function requestOnce<T>(path: string, options: RequestOptions): Promise<T>
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = (options.method ?? 'GET').toUpperCase()
   const persistAcrossUnload = Boolean(options.keepalive)
-  const attempts = persistAcrossUnload || !IDEMPOTENT.has(method) ? 1 : MAX_GET_ATTEMPTS
-
-  let last: unknown
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      return await requestOnce<T>(path, options)
-    } catch (e) {
-      last = e
-      const status = e instanceof Error ? (e as Error & { status?: number }).status : undefined
-      const retryable = Boolean(status && RETRY_STATUSES.has(status)) || isTransientNetwork(e)
-      if (attempt === attempts || !retryable) throw e
-      await sleep(220 * attempt)
-    }
+  const share = IDEMPOTENT.has(method) && !persistAcrossUnload
+  if (share) {
+    const pending = inflightGets.get(path)
+    if (pending) return pending as Promise<T>
   }
-  throw last instanceof Error ? last : new Error(String(last))
+
+  const run = (async () => {
+    const attempts = persistAcrossUnload || !IDEMPOTENT.has(method) ? 1 : MAX_GET_ATTEMPTS
+    let last: unknown
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await requestOnce<T>(path, options)
+      } catch (e) {
+        last = e
+        const status = e instanceof Error ? (e as Error & { status?: number }).status : undefined
+        const retryable = Boolean(status && RETRY_STATUSES.has(status)) || isTransientNetwork(e)
+        if (attempt === attempts || !retryable) throw e
+        await sleep(220 * attempt)
+      }
+    }
+    throw last instanceof Error ? last : new Error(String(last))
+  })()
+
+  if (!share) return run
+  inflightGets.set(path, run)
+  void run.finally(() => {
+    if (inflightGets.get(path) === run) inflightGets.delete(path)
+  })
+  return run
 }
 
 export async function pingHealth(): Promise<boolean> {

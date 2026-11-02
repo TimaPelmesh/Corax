@@ -6,6 +6,8 @@ import { ComputerDetailModal } from '../components/ComputerDetailModal'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { AppFold } from '../components/ui/AppFold'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
+import { AUDIT_HOSTS_KEY } from '../tabWarm'
 import { useToast } from '../ToastContext'
 import { ServerAuditCharts } from './ServerAuditCharts'
 import { ServerAuditManageModal } from './ServerAuditManage'
@@ -206,9 +208,10 @@ export function ServerAuditPage() {
   const canSsh = canEdit || user?.role === 'llm-operator'
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const [hosts, setHosts] = useState<ServerAuditHost[]>([])
+  const cachedHosts = peekCache<ServerAuditHost[]>(AUDIT_HOSTS_KEY)
+  const [hosts, setHosts] = useState<ServerAuditHost[]>(cachedHosts ?? [])
   const [detail, setDetail] = useState<ServerAuditDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!cachedHosts?.length)
   const [hostname, setHostname] = useState('')
   const [label, setLabel] = useState('')
   const [intervalSec, setIntervalSec] = useState(900)
@@ -270,6 +273,7 @@ export function ServerAuditPage() {
 
   const loadHosts = useCallback(async () => {
     const rows = await api.serverAuditHosts()
+    putCache(AUDIT_HOSTS_KEY, rows)
     setHosts(rows)
     setDetail((current) => {
       if (!current) return current
@@ -385,7 +389,7 @@ export function ServerAuditPage() {
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
+    if (!peekCache<ServerAuditHost[]>(AUDIT_HOSTS_KEY)?.length) setLoading(true)
     loadHosts()
       .catch((error: unknown) => {
         if (alive) toast.error(error instanceof Error ? error.message : t('common.error'))

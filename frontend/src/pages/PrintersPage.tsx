@@ -21,6 +21,8 @@ import {
 import { TableSkeleton } from '../components/Skeleton'
 import { useLocale } from '../i18n/LocaleContext'
 import type { MessageKey } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
+import { PRINTERS_CACHE_KEY } from '../tabWarm'
 import { useToast } from '../ToastContext'
 
 type FilterChip = 'all' | 'offline' | 'low_toner' | 'snmp_error'
@@ -289,8 +291,9 @@ export function PrintersPage() {
   const toast = useToast()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
 
-  const [rows, setRows] = useState<NetworkPrinter[]>([])
-  const [loading, setLoading] = useState(true)
+  const cachedPrinters = peekCache<NetworkPrinter[]>(PRINTERS_CACHE_KEY)
+  const [rows, setRows] = useState<NetworkPrinter[]>(cachedPrinters ?? [])
+  const [loading, setLoading] = useState(!cachedPrinters)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterChip>('all')
   const [pollBusy, setPollBusy] = useState(false)
@@ -322,6 +325,7 @@ export function PrintersPage() {
 
   const reload = useCallback(async (q: string) => {
     const data = await api.printers({ q: q.trim() || undefined, limit: 3000 })
+    if (!q.trim()) putCache(PRINTERS_CACHE_KEY, data)
     setRows(data)
     setSelected(new Set())
     return data
@@ -410,7 +414,7 @@ export function PrintersPage() {
 
   useEffect(() => {
     void (async () => {
-      setLoading(true)
+      if (search.trim() || !peekCache<NetworkPrinter[]>(PRINTERS_CACHE_KEY)) setLoading(true)
       try {
         await Promise.all([reload(search), reloadMeta()])
       } catch (e) {

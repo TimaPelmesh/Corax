@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_serializer
@@ -8,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import get_current_user, get_current_editor_or_superuser, get_current_superuser
 from app.computer_ip import resolve_computer_ipv4
 from app.config import settings
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import (
     AssetChangeLog,
     DiskVolume,
@@ -426,31 +428,41 @@ def _with_computer_filters(stmt, *, joins_user: bool, wheres: list):
     return stmt
 
 
+async def _software_counts(db: AsyncSession, ids: list[int]) -> dict[int, int]:
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(InstalledSoftware.computer_id, func.count())
+            .where(InstalledSoftware.computer_id.in_(ids))
+            .group_by(InstalledSoftware.computer_id)
+        )
+    ).all()
+    return {int(computer_id): int(count) for computer_id, count in rows}
+
+
+async def _peripheral_counts(db: AsyncSession, ids: list[int]) -> dict[int, int]:
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(Peripheral.computer_id, func.count())
+            .where(Peripheral.computer_id.in_(ids))
+            .group_by(Peripheral.computer_id)
+        )
+    ).all()
+    return {int(computer_id): int(count) for computer_id, count in rows}
+
+
 async def _counts_for_computers(db: AsyncSession, ids: list[int]) -> tuple[dict[int, int], dict[int, int]]:
     """Software and peripheral totals for one page, not the whole fleet."""
-    if not ids:
-        return {}, {}
-    software = {
-        int(computer_id): int(count)
-        for computer_id, count in (
-            await db.execute(
-                select(InstalledSoftware.computer_id, func.count())
-                .where(InstalledSoftware.computer_id.in_(ids))
-                .group_by(InstalledSoftware.computer_id)
-            )
-        ).all()
-    }
-    peripherals = {
-        int(computer_id): int(count)
-        for computer_id, count in (
-            await db.execute(
-                select(Peripheral.computer_id, func.count())
-                .where(Peripheral.computer_id.in_(ids))
-                .group_by(Peripheral.computer_id)
-            )
-        ).all()
-    }
-    return software, peripherals
+    return await _software_counts(db, ids), await _peripheral_counts(db, ids)
+
+
+async def _aside(work):
+    """Page counts must not queue behind each other on the request session."""
+    async with AsyncSessionLocal() as session:
+        return await work(session)
 
 
 @router.get("")
@@ -561,8 +573,28 @@ async def list_computers(
     rows = (await db.execute(stmt)).all()
     ids = [int(row.id) for row in rows]
 
+    if not ids:
+        tags_by_pc = {}
+        software_counts = {}
+        peripheral_counts = {}
+    elif view == "map":
+        tags_by_pc = await _aside(lambda session: _tags_for_computers_bulk(session, ids))
+        software_counts = {}
+        peripheral_counts = {}
+    elif sort == "periph":
+        software_counts, tags_by_pc = await asyncio.gather(
+            _aside(lambda session: _software_counts(session, ids)),
+            _aside(lambda session: _tags_for_computers_bulk(session, ids)),
+        )
+        peripheral_counts = {int(row.id): int(row.peripheral_count) for row in rows}
+    else:
+        software_counts, peripheral_counts, tags_by_pc = await asyncio.gather(
+            _aside(lambda session: _software_counts(session, ids)),
+            _aside(lambda session: _peripheral_counts(session, ids)),
+            _aside(lambda session: _tags_for_computers_bulk(session, ids)),
+        )
+
     if view == "map":
-        tags_by_pc = await _tags_for_computers_bulk(db, ids)
         items = [
             ComputerMapItem(
                 id=int(row.id),
@@ -583,13 +615,6 @@ async def list_computers(
         ]
         return {"items": items, "total": total}
 
-    if sort == "periph":
-        software_counts, _ = await _counts_for_computers(db, ids)
-        peripheral_counts = {int(row.id): int(row.peripheral_count) for row in rows}
-    else:
-        software_counts, peripheral_counts = await _counts_for_computers(db, ids)
-
-    tags_by_pc = await _tags_for_computers_bulk(db, ids)
     out: list[ComputerOut] = []
     for row in rows:
         out.append(

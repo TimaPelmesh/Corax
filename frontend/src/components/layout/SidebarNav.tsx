@@ -1,6 +1,7 @@
 import { memo, type ComponentType, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { prefetchRoute } from '../../routePrefetch'
+import { warmTab } from '../../tabWarm'
 import { IconSettings } from '../icons'
 import { formatNavBadge } from '../../lib/navBadge'
 import type { NavBadgeKey, NavCounts, NavItemDef, NavSectionDef } from './navTypes'
@@ -37,8 +38,14 @@ export function SidebarNavLink({
       to={to}
       end={end}
       onClick={onNavigate}
-      onMouseEnter={() => prefetchRoute(to)}
-      onFocus={() => prefetchRoute(to)}
+      onMouseEnter={() => {
+        prefetchRoute(to)
+        warmTab(to)
+      }}
+      onFocus={() => {
+        prefetchRoute(to)
+        warmTab(to)
+      }}
       className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`}
     >
       <span className="sidebar-link-icon" aria-hidden>
@@ -117,8 +124,14 @@ export function SidebarGroupButton({
     <div className="sidebar-group">
       <NavLink
         to={to}
-        onMouseEnter={() => prefetchRoute(to)}
-        onFocus={() => prefetchRoute(to)}
+        onMouseEnter={() => {
+          prefetchRoute(to)
+          warmTab(to)
+        }}
+        onFocus={() => {
+          prefetchRoute(to)
+          warmTab(to)
+        }}
         className="flex min-w-0 flex-1 items-center no-underline text-inherit"
       >
         {body}

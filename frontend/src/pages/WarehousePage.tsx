@@ -14,6 +14,8 @@ import { PageHeader } from '../components/PageHeader'
 import { TableSkeleton } from '../components/Skeleton'
 import { AppModal } from '../components/ui/AppModal'
 import { useLocale, useT, type MessageKey } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
+import { WAREHOUSE_BOOT_KEY } from '../tabWarm'
 import { useToast } from '../ToastContext'
 
 type GroupFilter = 'all' | 'components' | 'peripherals' | 'network' | 'other'
@@ -151,11 +153,12 @@ export function WarehousePage() {
   const isAdmin = Boolean(user?.is_superuser)
   const helpRef = useRef<HTMLDivElement>(null)
 
-  const [rooms, setRooms] = useState<WarehouseRoom[]>([])
-  const [presets, setPresets] = useState<WarehousePreset[]>([])
-  const [activeRoomId, setActiveRoomId] = useState<number | null>(null)
+  const cachedBoot = peekCache<{ rooms: WarehouseRoom[]; presets: WarehousePreset[] }>(WAREHOUSE_BOOT_KEY)
+  const [rooms, setRooms] = useState<WarehouseRoom[]>(cachedBoot?.rooms ?? [])
+  const [presets, setPresets] = useState<WarehousePreset[]>(cachedBoot?.presets ?? [])
+  const [activeRoomId, setActiveRoomId] = useState<number | null>(cachedBoot?.rooms[0]?.id ?? null)
   const [items, setItems] = useState<WarehouseStockItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!cachedBoot)
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState<GroupFilter>('all')
   const [view, setView] = useState<PageView>('stock')
@@ -284,6 +287,7 @@ export function WarehousePage() {
 
   const reload = useCallback(async () => {
     const [roomRows, presetRows] = await Promise.all([api.warehouseRooms(), api.warehousePresets()])
+    putCache(WAREHOUSE_BOOT_KEY, { rooms: roomRows, presets: presetRows })
     setRooms(roomRows)
     setPresets(presetRows)
     setActiveRoomId((prev) => {
@@ -319,7 +323,7 @@ export function WarehousePage() {
 
   useEffect(() => {
     void (async () => {
-      setLoading(true)
+      if (!peekCache(WAREHOUSE_BOOT_KEY)) setLoading(true)
       try {
         await reload()
       } catch (e) {

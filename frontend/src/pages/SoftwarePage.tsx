@@ -129,9 +129,12 @@ export function SoftwarePage() {
       setRows(cached)
       setLoading(false)
     }
-    const timer = window.setTimeout(() => {
-      void load(kind, query)
-    }, cached ? 0 : 320)
+    const timer = window.setTimeout(
+      () => {
+        void load(kind, query)
+      },
+      query.trim() ? 280 : 0,
+    )
     return () => window.clearTimeout(timer)
   }, [kind, query, load])
 

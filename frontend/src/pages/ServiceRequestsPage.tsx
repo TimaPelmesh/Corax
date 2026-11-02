@@ -4,7 +4,6 @@ import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-
 import {
   api,
   type Computer,
-  type DashboardSummary,
   type RequestCategoryTreeNode,
   type ServiceRequestRow,
   type ServiceRequestTemplateRow,
@@ -15,7 +14,7 @@ import { IconCheckBadge, IconPencil } from '../components/icons'
 import { RemoteConnectMenu } from '../components/RemoteConnectMenu'
 import { collectCategoryPaths } from '../requestCategories'
 import { useLocale, useT } from '../i18n/LocaleContext'
-import { DASHBOARD_SUMMARY_KEY, peekCache, putCache } from '../lib/viewCache'
+import { peekCache, putCache } from '../lib/viewCache'
 import { useToast } from '../ToastContext'
 import {
   REQUEST_STATUSES,
@@ -94,6 +93,7 @@ function requestsLookSame(prev: ServiceRequestRow[], next: ServiceRequestRow[]) 
 }
 
 type RequestListSnap = { items: ServiceRequestRow[]; total: number }
+type TicketCounts = { all: number; active: number }
 
 function requestsListCacheKey(input: {
   tab: string
@@ -152,10 +152,7 @@ export function ServiceRequestsPage() {
       edit: searchParams.get('edit'),
     }),
   )
-  const initialSummary = peekCache<DashboardSummary>(DASHBOARD_SUMMARY_KEY)
-
-  const [summary, setSummary] = useState<DashboardSummary | null>(initialSummary ?? null)
-  const [summaryLoading, setSummaryLoading] = useState(!initialSummary)
+  const [ticketCounts, setTicketCounts] = useState<TicketCounts | null>(null)
 
   const [rows, setRows] = useState<ServiceRequestRow[]>(initialList?.items ?? [])
   const [total, setTotal] = useState(initialList?.total ?? 0)
@@ -279,16 +276,12 @@ export function ServiceRequestsPage() {
     [sortKey],
   )
 
-  const refreshSummary = useCallback(async () => {
-    try {
-      const next = await api.dashboardSummary()
-      putCache(DASHBOARD_SUMMARY_KEY, next)
-      setSummary(next)
-    } catch {
-      // Keep the last summary on screen. A slow refresh must not blank the header.
-    } finally {
-      setSummaryLoading(false)
-    }
+  const rememberCounts = useCallback((all: number | undefined, active: number | undefined) => {
+    if (all == null && active == null) return
+    setTicketCounts((prev) => ({
+      all: all ?? prev?.all ?? 0,
+      active: active ?? prev?.active ?? 0,
+    }))
   }, [])
 
   const {
@@ -521,12 +514,13 @@ export function ServiceRequestsPage() {
       putCache(key, { items: r.items, total: r.total })
       setRows(r.items)
       setTotal(r.total)
+      rememberCounts(r.all_total ?? r.total, r.active)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
     } finally {
       setLoading(false)
     }
-  }, [fetchList, filterCategory, filterStatus, dbPage, dbPageSize, query, searchParams, showAllRows, sortKey, t, tab, toast])
+  }, [fetchList, filterCategory, filterStatus, dbPage, dbPageSize, query, rememberCounts, searchParams, showAllRows, sortKey, t, tab, toast])
 
   const refreshList = useCallback(async () => {
     const key = requestsListCacheKey({
@@ -545,10 +539,11 @@ export function ServiceRequestsPage() {
       putCache(key, { items: r.items, total: r.total })
       setRows((prev) => (requestsLookSame(prev, r.items) ? prev : r.items))
       setTotal((prev) => (prev === r.total ? prev : r.total))
+      rememberCounts(r.all_total ?? r.total, r.active)
     } catch {
       // Keep the list already on screen. The next pass will try again.
     }
-  }, [dbPage, dbPageSize, fetchList, filterCategory, filterStatus, query, searchParams, showAllRows, sortKey, tab])
+  }, [dbPage, dbPageSize, fetchList, filterCategory, filterStatus, query, rememberCounts, searchParams, showAllRows, sortKey, tab])
 
   function stripEditQuery() {
     setSearchParams(
@@ -601,10 +596,6 @@ export function ServiceRequestsPage() {
       setTplLoading(false)
     }
   }, [t])
-
-  useEffect(() => {
-    void refreshSummary()
-  }, [refreshSummary])
 
   useEffect(() => {
     void load()
@@ -904,16 +895,25 @@ export function ServiceRequestsPage() {
       }
 
       if (editingRequestId != null) {
+        const previous = rows.find((r) => r.id === editingRequestId)
         const updated = await api.updateServiceRequest(editingRequestId, {
           ...body,
           closed_at: body.closed_at,
         })
         setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+        if (previous) {
+          const wasActive = previous.status === 'open' || previous.status === 'in_progress'
+          const nowActive = updated.status === 'open' || updated.status === 'in_progress'
+          if (wasActive !== nowActive) {
+            setTicketCounts((prev) =>
+              prev ? { ...prev, active: Math.max(0, prev.active + (nowActive ? 1 : -1)) } : prev,
+            )
+          }
+        }
         setTitle('')
         setDescription('')
         resetCreateFormAfterSubmit()
         toast.ok(t('requests.messages.saved'))
-        void refreshSummary()
         window.dispatchEvent(new Event('corax:assignee-notifications'))
       } else {
         await api.createServiceRequest(body)
@@ -924,7 +924,6 @@ export function ServiceRequestsPage() {
         resetCreateFormAfterSubmit()
         toast.ok(t('requests.messages.created'))
         await load()
-        void refreshSummary()
         window.dispatchEvent(new Event('corax:assignee-notifications'))
       }
     } catch (e) {
@@ -1316,7 +1315,6 @@ export function ServiceRequestsPage() {
       resetCreateFormAfterSubmit()
       toast.ok(t('requests.messages.deleted'))
       await load()
-      void refreshSummary()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('requests.errors.delete'))
     } finally {
@@ -1463,7 +1461,7 @@ export function ServiceRequestsPage() {
       }
       setCloseDialog(null)
       toast.ok(t('requests.close.done'))
-      void refreshSummary()
+      setTicketCounts((prev) => (prev ? { ...prev, active: Math.max(0, prev.active - 1) } : prev))
       window.dispatchEvent(new Event('corax:assignee-notifications'))
     } catch (e) {
       setCloseDialog((prev) => (prev ? { ...prev, saving: false } : prev))
@@ -1564,13 +1562,13 @@ export function ServiceRequestsPage() {
                   </div>
                 </div>
 
-                {!summaryLoading && summary ? (
+                {ticketCounts ? (
                   <div className="flex flex-wrap gap-3 text-sm">
                     <span className="rounded-lg bg-[var(--color-bg-muted)] px-3 py-1.5">
-                      {t('requests.create.total')}: <strong>{summary.service_requests_total}</strong>
+                      {t('requests.create.total')}: <strong>{ticketCounts.all}</strong>
                     </span>
                     <span className="rounded-lg bg-sky-500/10 px-3 py-1.5 text-sky-900 dark:text-sky-200">
-                      {t('requests.create.active')}: <strong>{summary.service_requests_active}</strong>
+                      {t('requests.create.active')}: <strong>{ticketCounts.active}</strong>
                     </span>
                   </div>
                 ) : null}

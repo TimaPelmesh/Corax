@@ -530,6 +530,9 @@ class ServiceRequestOut(BaseModel):
 class ServiceRequestListResponse(BaseModel):
     items: list[ServiceRequestOut]
     total: int
+    # Unfiltered counters for the create form. The list itself stays on `total`.
+    active: int = 0
+    all_total: int = 0
 
 
 class ServiceRequestTemplateCreate(BaseModel):

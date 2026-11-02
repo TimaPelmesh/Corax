@@ -6,6 +6,8 @@ import { DashboardCalendar } from '../components/dashboard/DashboardCalendar'
 import { IconBook, IconClose, IconPencil, IconTrash } from '../components/icons'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useT } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
+import { NOTES_LIST_KEY } from '../tabWarm'
 import { useToast } from '../ToastContext'
 import { formatNoteSelection, readNoteEditorHtml, sanitizeNoteHtml, type NoteFormat } from '../lib/notesHtml'
 import { formatNotePlanRange } from '../lib/notesPlan'
@@ -75,10 +77,11 @@ export function NotesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const selectedId = Number(searchParams.get('id') || 0) || null
 
-  const [list, setList] = useState<NoteListItem[]>([])
+  const cachedNotes = peekCache<NoteListItem[]>(NOTES_LIST_KEY)
+  const [list, setList] = useState<NoteListItem[]>(cachedNotes ?? [])
   const [query, setQuery] = useState('')
   const [panelUsers, setPanelUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!cachedNotes)
   const [note, setNote] = useState<NoteRow | null>(null)
   const [title, setTitle] = useState('')
   const [planStart, setPlanStart] = useState('')
@@ -110,16 +113,18 @@ export function NotesPage() {
 
   const reloadList = useCallback(async () => {
     const items = await api.notes()
+    putCache(NOTES_LIST_KEY, items)
     setList(items)
   }, [])
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      setLoading(true)
+      if (!peekCache<NoteListItem[]>(NOTES_LIST_KEY)) setLoading(true)
       try {
         const [items, users] = await Promise.all([api.notes(), api.users()])
         if (cancelled) return
+        putCache(NOTES_LIST_KEY, items)
         setList(items)
         setPanelUsers(users.filter((u) => !u.is_ldap && u.role !== 'directory' && u.is_active))
       } catch (e) {

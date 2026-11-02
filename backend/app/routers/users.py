@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.auth import get_current_superuser, get_current_user, hash_password, verify_password
 from app.password_change import is_forbidden_new_password
@@ -52,7 +53,11 @@ async def _linked_map(db: AsyncSession, users: list[User]) -> dict[int, User]:
     ids = {u.linked_directory_user_id for u in users if u.linked_directory_user_id}
     if not ids:
         return {}
-    r = await db.execute(select(User).where(User.id.in_(ids)))
+    r = await db.execute(
+        select(User)
+        .options(load_only(User.id, User.username, User.full_name))
+        .where(User.id.in_(ids))
+    )
     return {row.id: row for row in r.scalars().all()}
 
 
@@ -118,7 +123,26 @@ async def list_users(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    r = await db.execute(select(User).order_by(User.id))
+    r = await db.execute(
+        select(User)
+        .options(
+            load_only(
+                User.id,
+                User.username,
+                User.email,
+                User.full_name,
+                User.avatar_data,
+                User.is_active,
+                User.is_superuser,
+                User.is_ldap,
+                User.role,
+                User.created_at,
+                User.linked_directory_user_id,
+                User.must_change_password,
+            )
+        )
+        .order_by(User.id)
+    )
     return await _users_out(db, list(r.scalars().all()))
 
 
@@ -361,6 +385,16 @@ async def users_directory(
     # Справочник для ответственных и инициатора: все активные учётки в БД (локальные и импорт из LDAP).
     r = await db.execute(
         select(User)
+        .options(
+            load_only(
+                User.id,
+                User.username,
+                User.full_name,
+                User.is_ldap,
+                User.role,
+                User.linked_directory_user_id,
+            )
+        )
         .where(User.is_active == True)  # noqa: E712
         .order_by(User.username.asc())
     )

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Upl
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from fpdf import FPDF
 
@@ -147,12 +148,20 @@ async def _to_out_many(db: AsyncSession, rows: list[ServiceRequest]) -> list[Ser
 
     users: dict[int, User] = {}
     if user_ids:
-        ur = await db.execute(select(User).where(User.id.in_(user_ids)))
+        ur = await db.execute(
+            select(User)
+            .options(load_only(User.id, User.username))
+            .where(User.id.in_(user_ids))
+        )
         users = {u.id: u for u in ur.scalars().all()}
 
     computers: dict[int, Computer] = {}
     if computer_ids:
-        cr = await db.execute(select(Computer).where(Computer.id.in_(computer_ids)))
+        cr = await db.execute(
+            select(Computer)
+            .options(load_only(Computer.id, Computer.hostname))
+            .where(Computer.id.in_(computer_ids))
+        )
         computers = {c.id: c for c in cr.scalars().all()}
 
     assignees: dict[int, list[tuple[int, str]]] = {rid: [] for rid in request_ids}
@@ -224,7 +233,18 @@ async def list_service_requests(
     if status:
         total_stmt = total_stmt.where(ServiceRequest.status == status)
     total = int(await db.scalar(total_stmt) or 0)
-    return ServiceRequestListResponse(items=out, total=total)
+    active = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(ServiceRequest)
+            .where(ServiceRequest.status.in_(("open", "in_progress")))
+        )
+        or 0
+    )
+    all_total = total
+    if status:
+        all_total = int(await db.scalar(select(func.count()).select_from(ServiceRequest)) or 0)
+    return ServiceRequestListResponse(items=out, total=total, active=active, all_total=all_total)
 
 
 @router.post("", response_model=ServiceRequestOut)

@@ -11,6 +11,7 @@ import { ApiOfflineBanner } from '../components/ApiOfflineBanner'
 import { WikiRagIndexWatcher } from '../components/wikirag/WikiRagIndexWatcher'
 import { useNavCounts } from '../hooks/useNavCounts'
 import { prefetchRoute } from '../routePrefetch'
+import { warmTab } from '../tabWarm'
 import { useWelcomeToast } from '../hooks/useWelcomeToast'
 import { useLocale } from '../i18n/LocaleContext'
 
@@ -47,12 +48,18 @@ export function Layout() {
   const mobileNavVisible = mobileNavOpen && mobileNavPath === location.pathname
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      prefetchRoute('/computers')
-      prefetchRoute('/software')
-      prefetchRoute('/requests/database')
-    }, 1600)
-    return () => window.clearTimeout(timer)
+    const timers = [
+      window.setTimeout(() => {
+        prefetchRoute('/computers')
+        prefetchRoute('/software')
+        prefetchRoute('/requests/database')
+      }, 700),
+      window.setTimeout(() => warmTab('/computers'), 1100),
+      window.setTimeout(() => warmTab('/software'), 1600),
+      window.setTimeout(() => warmTab('/requests/database'), 2100),
+      window.setTimeout(() => warmTab('/printers'), 2600),
+    ]
+    return () => timers.forEach((id) => window.clearTimeout(id))
   }, [])
 
   useEffect(() => {

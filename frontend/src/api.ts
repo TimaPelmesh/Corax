@@ -869,7 +869,12 @@ export type ServiceRequestRow = {
   closed_at?: string | null
 }
 
-export type ServiceRequestListResponse = { items: ServiceRequestRow[]; total: number }
+export type ServiceRequestListResponse = {
+  items: ServiceRequestRow[]
+  total: number
+  active?: number
+  all_total?: number
+}
 
 export type ServiceRequestTemplateRow = {
   id: number
@@ -2915,6 +2920,8 @@ export const api = {
     const items: ServiceRequestRow[] = []
     let skip = 0
     let total = 0
+    let active = 0
+    let allTotal = 0
     for (let n = 0; n < 40; n += 1) {
       const r = await api.serviceRequests({
         status: opts?.status,
@@ -2922,11 +2929,13 @@ export const api = {
         skip,
       })
       total = r.total
+      active = r.active ?? active
+      allTotal = r.all_total ?? allTotal
       items.push(...r.items)
       skip += r.items.length
       if (r.items.length === 0 || skip >= total) break
     }
-    return { items, total }
+    return { items, total, active, all_total: allTotal || total }
   },
 
   createServiceRequest: (body: {

@@ -243,6 +243,32 @@ def _fold_physical_disks(raws):
 _NAV_BADGES_CACHE_SECONDS = 90.0
 _NAV_BADGES_CACHE: dict[int, tuple[float, DashboardNavBadges]] = {}
 
+# Catalog kinds that fold every PC (GPU names, raw disk payloads) are the slow
+# tab. A short memo makes the second open and the hover-prefetch instant.
+_CATALOG_TTL = 25.0
+_CATALOG_CACHE: dict[tuple, tuple[float, list]] = {}
+
+
+def _catalog_cache_get(key: tuple):
+    from app.config import settings
+
+    if (settings.environment or "").strip().lower() == "test":
+        return None
+    hit = _CATALOG_CACHE.get(key)
+    if hit and hit[0] > time.monotonic():
+        return hit[1]
+    return None
+
+
+def _catalog_cache_put(key: tuple, rows: list) -> None:
+    from app.config import settings
+
+    if (settings.environment or "").strip().lower() == "test":
+        return
+    if len(_CATALOG_CACHE) > 40:
+        _CATALOG_CACHE.clear()
+    _CATALOG_CACHE[key] = (time.monotonic() + _CATALOG_TTL, rows)
+
 
 def _nav_badges_cache_get(user_id: int, now_mono: float) -> DashboardNavBadges | None:
     entry = _NAV_BADGES_CACHE.get(user_id)
@@ -1275,6 +1301,15 @@ async def unified_catalog(
     limit: int = Query(2000, ge=1, le=5000),
 ):
     qv = (q or "").strip()
+    cache_key = (kind, qv.casefold(), int(limit))
+    cached = _catalog_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    def remember(rows: list[DashboardNameCount]) -> list[DashboardNameCount]:
+        _catalog_cache_put(cache_key, rows)
+        return rows
+
     if kind == "software":
         cnt = func.count(func.distinct(InstalledSoftware.computer_id)).label("pc_cnt")
         stmt = (
@@ -1286,7 +1321,7 @@ async def unified_catalog(
             stmt = stmt.where(InstalledSoftware.name.ilike(like_contains(qv), escape="\\"))
         stmt = stmt.order_by(cnt.desc()).limit(limit)
         r = await db.execute(stmt)
-        return [DashboardNameCount(name=str(row[0]), count=int(row[1])) for row in r.all()]
+        return remember([DashboardNameCount(name=str(row[0]), count=int(row[1])) for row in r.all()])
 
     if kind == "peripheral":
         cnt = func.count(func.distinct(Peripheral.computer_id)).label("pc_cnt")
@@ -1299,7 +1334,7 @@ async def unified_catalog(
             stmt = stmt.where(Peripheral.name.ilike(like_contains(qv), escape="\\"))
         stmt = stmt.order_by(cnt.desc()).limit(limit)
         r = await db.execute(stmt)
-        return [DashboardNameCount(name=str(row[0]), count=int(row[1])) for row in r.all()]
+        return remember([DashboardNameCount(name=str(row[0]), count=int(row[1])) for row in r.all()])
 
     if kind == "cpu":
         cnt = func.count().label("pc_cnt")
@@ -1313,7 +1348,7 @@ async def unified_catalog(
             stmt = stmt.where(Computer.cpu.ilike(like_contains(qv), escape="\\"))
         stmt = stmt.order_by(cnt.desc()).limit(limit)
         r = await db.execute(stmt)
-        return [DashboardNameCount(name=str(row[0]), count=int(row[1])) for row in r.all()]
+        return remember([DashboardNameCount(name=str(row[0]), count=int(row[1])) for row in r.all()])
 
     if kind == "os":
         os_r = await db.execute(select(Computer.os_name, func.count()).group_by(Computer.os_name))
@@ -1321,7 +1356,7 @@ async def unified_catalog(
         if qv:
             qlow = qv.lower()
             merged = [(n, c) for n, c in merged if qlow in n.lower()]
-        return [DashboardNameCount(name=n, count=c) for n, c in merged[:limit]]
+        return remember([DashboardNameCount(name=n, count=c) for n, c in merged[:limit]])
 
     if kind == "manufacturer":
         mfr_r = await db.execute(select(Computer.manufacturer, func.count()).group_by(Computer.manufacturer))
@@ -1329,7 +1364,7 @@ async def unified_catalog(
         if qv:
             qlow = qv.lower()
             merged = [(n, c) for n, c in merged if qlow in n.lower()]
-        return [DashboardNameCount(name=n, count=c) for n, c in merged[:limit]]
+        return remember([DashboardNameCount(name=n, count=c) for n, c in merged[:limit]])
 
     if kind == "system_model":
         model_r = await db.execute(select(Computer.model, func.count()).group_by(Computer.model))
@@ -1337,7 +1372,7 @@ async def unified_catalog(
         if qv:
             qlow = qv.lower()
             merged = [(n, c) for n, c in merged if qlow in n.lower()]
-        return [DashboardNameCount(name=n, count=c) for n, c in merged[:limit]]
+        return remember([DashboardNameCount(name=n, count=c) for n, c in merged[:limit]])
 
     if kind == "motherboard":
         mb_r = await db.execute(
@@ -1353,7 +1388,7 @@ async def unified_catalog(
         if qv:
             qlow = qv.lower()
             merged = [(n, c) for n, c in merged if qlow in n.lower()]
-        return [DashboardNameCount(name=n, count=c) for n, c in merged[:limit]]
+        return remember([DashboardNameCount(name=n, count=c) for n, c in merged[:limit]])
 
     if kind == "ram":
         ram_r = await db.execute(
@@ -1368,23 +1403,25 @@ async def unified_catalog(
         if qv:
             qlow = qv.lower()
             buckets = [b for b in buckets if qlow in b.name.lower()]
-        return buckets[:limit]
+        return remember(buckets[:limit])
 
     if kind == "gpu":
         gpu_r = await db.execute(select(Computer.gpu_name))
-        merged = catalog_gpu_counts([row[0] for row in gpu_r.all()])
+        names = [row[0] for row in gpu_r.all()]
+        merged = await asyncio.to_thread(catalog_gpu_counts, names)
         if qv:
             qlow = qv.lower()
             merged = [(n, c) for n, c in merged if qlow in n.lower()]
-        return [DashboardNameCount(name=n, count=c) for n, c in merged[:limit]]
+        return remember([DashboardNameCount(name=n, count=c) for n, c in merged[:limit]])
 
-    # physical_disk
+    # physical_disk — JSON fold of every payload. Off the event loop, then memoized.
     pd_r = await db.execute(select(Computer.raw_payload))
-    merged = aggregate_pc_disk_catalog([row[0] for row in pd_r.all()])
+    payloads = [row[0] for row in pd_r.all()]
+    merged = await asyncio.to_thread(aggregate_pc_disk_catalog, payloads)
     if qv:
         qlow = qv.lower()
         merged = [(n, c) for n, c in merged if qlow in n.lower()]
-    return [DashboardNameCount(name=n, count=c) for n, c in merged[:limit]]
+    return remember([DashboardNameCount(name=n, count=c) for n, c in merged[:limit]])
 
 
 @router.get("/catalog-hosts", response_model=SoftwareInstallHosts)

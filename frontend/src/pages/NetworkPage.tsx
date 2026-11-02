@@ -11,6 +11,8 @@ import { NetworkDeviceDetailModal } from '../components/NetworkDeviceDetailModal
 import { AppModal } from '../components/ui/AppModal'
 import { useLocale } from '../i18n/LocaleContext'
 import type { MessageKey } from '../i18n/LocaleContext'
+import { peekCache, putCache } from '../lib/viewCache'
+import { NETWORK_CACHE_KEY } from '../tabWarm'
 import { useToast } from '../ToastContext'
 
 type RoleFilter =
@@ -109,8 +111,9 @@ export function NetworkPage() {
   const { user } = useAuth()
   const canEdit = Boolean(user?.is_superuser || user?.role === 'editor')
 
-  const [rows, setRows] = useState<NetworkDevice[]>([])
-  const [loading, setLoading] = useState(true)
+  const cachedDevices = peekCache<NetworkDevice[]>(NETWORK_CACHE_KEY)
+  const [rows, setRows] = useState<NetworkDevice[]>(cachedDevices ?? [])
+  const [loading, setLoading] = useState(!cachedDevices)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -128,14 +131,16 @@ export function NetworkPage() {
   const [deleteBusy, setDeleteBusy] = useState(false)
 
   const reload = useCallback(async () => {
-    const devices = await api.networkDevices({ q: search.trim() || undefined, limit: 5000 })
+    const q = search.trim()
+    const devices = await api.networkDevices({ q: q || undefined, limit: 5000 })
+    if (!q) putCache(NETWORK_CACHE_KEY, devices)
     setRows(devices)
     return devices
   }, [search])
 
   useEffect(() => {
     void (async () => {
-      setLoading(true)
+      if (search.trim() || !peekCache<NetworkDevice[]>(NETWORK_CACHE_KEY)) setLoading(true)
       try {
         await reload()
       } catch (e) {
