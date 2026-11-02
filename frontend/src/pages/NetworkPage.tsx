@@ -50,13 +50,6 @@ function fmtWhen(iso: string | null | undefined, locale: string) {
   }
 }
 
-function statusTone(status: string | null | undefined) {
-  if (status === 'ok') return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-  if (status === 'error') return 'bg-red-500/15 text-red-700 dark:text-red-300'
-  if (status === 'n/a') return 'bg-sky-500/15 text-sky-800 dark:text-sky-200'
-  return 'bg-[var(--color-bg-muted)] text-[var(--color-fg-muted)]'
-}
-
 function roleTone(role: string) {
   switch (role) {
     case 'gateway':
@@ -98,6 +91,18 @@ function roleTone(role: string) {
   }
 }
 
+type PresenceFilter = 'all' | 'no_agent' | 'agent' | 'ping'
+
+function lacksAgent(row: NetworkDevice) {
+  if (row.agent_installed) return false
+  const kind = row.role || row.device_type
+  return kind === 'host' || kind === 'unknown' || row.source === 'ping'
+}
+
+function networkTitle(row: NetworkDevice) {
+  return row.network_name || row.sys_name || row.hostname || row.ip_address
+}
+
 function roleLabelKey(role: string): MessageKey {
   if (role === 'gateway' || role === 'dns' || role === 'infra') {
     return `network.role.${role}` as MessageKey
@@ -116,6 +121,7 @@ export function NetworkPage() {
   const [loading, setLoading] = useState(!cachedDevices)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
+  const [presence, setPresence] = useState<PresenceFilter>('all')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [detailId, setDetailId] = useState<number | null>(null)
   const [job, setJob] = useState<NetworkJobStatus | null>(null)
@@ -156,15 +162,21 @@ export function NetworkPage() {
   }, [reload, t, toast])
 
   const filtered = useMemo(() => {
-    if (roleFilter === 'all') return rows
-    return rows.filter((r) => (r.role || r.device_type) === roleFilter)
-  }, [rows, roleFilter])
+    return rows.filter((r) => {
+      if (roleFilter !== 'all' && (r.role || r.device_type) !== roleFilter) return false
+      if (presence === 'no_agent') return lacksAgent(r)
+      if (presence === 'agent') return Boolean(r.agent_installed)
+      if (presence === 'ping') return r.source === 'ping'
+      return true
+    })
+  }, [presence, roleFilter, rows])
 
   const stats = useMemo(
     () => ({
       total: rows.length,
       ok: rows.filter((r) => r.snmp_status === 'ok').length,
       err: rows.filter((r) => r.snmp_status === 'error').length,
+      noAgent: rows.filter((r) => lacksAgent(r)).length,
     }),
     [rows],
   )
@@ -355,6 +367,9 @@ export function NetworkPage() {
         <span className="rounded-lg bg-red-500/10 px-3 py-1.5 text-red-800 dark:text-red-200">
           {t('network.statErrors')}: <strong>{stats.err}</strong>
         </span>
+        <span className="rounded-lg bg-amber-500/10 px-3 py-1.5 text-amber-900 dark:text-amber-200">
+          {t('network.statNoAgent')}: <strong>{stats.noAgent}</strong>
+        </span>
       </div>
 
       {jobBusy && job ? (
@@ -392,6 +407,29 @@ export function NetworkPage() {
               className="min-w-[12rem] flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm sm:max-w-xs"
             />
             <div className="flex flex-wrap gap-1">
+              {(
+                [
+                  ['all', t('network.filterAll')],
+                  ['no_agent', t('network.filterNoAgent')],
+                  ['agent', t('network.filterWithAgent')],
+                  ['ping', t('network.filterPing')],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setPresence(id)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${
+                    presence === id
+                      ? 'bg-[var(--color-fg)] text-[var(--color-bg)]'
+                      : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1">
               {roleFilters.map((f) => {
                 const labelKey = (f === 'all' ? 'network.filterAll' : roleLabelKey(f)) as MessageKey
                 return (
@@ -427,24 +465,25 @@ export function NetworkPage() {
               <thead className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 text-[13px] font-medium text-[var(--color-fg-subtle)]">
                 <tr>
                   {canEdit ? <th className="w-10 px-3 py-2.5" /> : null}
-                  <th className="app-table-sticky-col px-3 py-2.5">{t('network.colHostname')}</th>
+                  <th className="app-table-sticky-col px-3 py-2.5">{t('network.colNetworkName')}</th>
                   <th className="px-3 py-2.5">{t('network.colIp')}</th>
                   <th className="px-3 py-2.5">{t('network.colRole')}</th>
-                  <th className="app-hide-xs px-3 py-2.5">{t('network.colVendor')}</th>
-                  <th className="px-3 py-2.5">{t('network.colStatus')}</th>
-                  <th className="app-hide-xs px-3 py-2.5">{t('network.colLastPoll')}</th>
+                  <th className="px-3 py-2.5">{t('network.colAgent')}</th>
+                  <th className="px-3 py-2.5">{t('network.panelStatus')}</th>
+                  <th className="app-hide-xs px-3 py-2.5">{t('network.colNote')}</th>
+                  <th className="app-hide-xs px-3 py-2.5">{t('network.colSeen')}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-[var(--color-fg-subtle)]">
+                    <td colSpan={8} className="px-3 py-8 text-center text-[var(--color-fg-subtle)]">
                       {t('common.loading')}
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-[var(--color-fg-subtle)]">
+                    <td colSpan={8} className="px-3 py-10 text-center text-[var(--color-fg-subtle)]">
                       <p>{t('network.empty')}</p>
                       {canEdit && rows.length === 0 && !search.trim() && roleFilter === 'all' ? (
                         <button
@@ -483,14 +522,21 @@ export function NetworkPage() {
                         </td>
                       ) : null}
                       <td className="app-table-sticky-col px-3 py-2 font-medium">
-                        <span>{r.hostname || r.sys_name || '—'}</span>
+                        <div>{networkTitle(r)}</div>
+                        {!r.network_name ? (
+                          <div className="text-[11px] font-normal text-[var(--color-fg-subtle)]">{t('network.noNetworkName')}</div>
+                        ) : r.hostname && r.hostname !== r.network_name ? (
+                          <div className="text-[11px] font-normal text-[var(--color-fg-subtle)]">{r.hostname}</div>
+                        ) : null}
+                        {r.source === 'ping' ? (
+                          <span className="mt-1 inline-flex rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:text-sky-200">
+                            ping
+                          </span>
+                        ) : null}
                         {r.zabbix?.hostid ? (
                           <span className="ml-1.5 inline-flex rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-800 dark:text-rose-200">
                             Zabbix
                           </span>
-                        ) : null}
-                        {(r.neighbor_count || 0) > 0 ? (
-                          <span className="ml-1 text-[10px] text-[var(--color-fg-subtle)]">LLDP {r.neighbor_count}</span>
                         ) : null}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">{r.ip_address}</td>
@@ -501,13 +547,34 @@ export function NetworkPage() {
                           {t(roleLabelKey(r.role || r.device_type))}
                         </span>
                       </td>
-                      <td className="app-hide-xs px-3 py-2">{r.vendor || '—'}</td>
                       <td className="px-3 py-2">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusTone(r.snmp_status)}`}>
-                          {r.snmp_status || '—'}
-                        </span>
+                        {r.agent_installed ? (
+                          <span className="text-xs text-emerald-700 dark:text-emerald-300">{t('network.agentYes')}</span>
+                        ) : lacksAgent(r) ? (
+                          <span className="inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-200">
+                            {t('network.agentGap')}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--color-fg-subtle)]">{t('network.agentNo')}</span>
+                        )}
                       </td>
-                      <td className="app-hide-xs px-3 py-2 text-[var(--color-fg-subtle)]">{fmtWhen(r.last_snmp_at, locale)}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {r.panel_status === 'known'
+                          ? t('network.panelKnown')
+                          : r.panel_status === 'needs_agent'
+                            ? t('network.panelNeedsAgent')
+                            : r.panel_status === 'ignore'
+                              ? t('network.panelIgnore')
+                              : r.panel_status === 'new'
+                                ? t('network.panelNew')
+                                : '—'}
+                      </td>
+                      <td className="app-hide-xs max-w-[16rem] px-3 py-2 text-xs text-[var(--color-fg-muted)]">
+                        <span className="line-clamp-2">{r.notes || '—'}</span>
+                      </td>
+                      <td className="app-hide-xs px-3 py-2 text-[var(--color-fg-subtle)]">
+                        {fmtWhen(r.last_seen_at || r.last_snmp_at, locale)}
+                      </td>
                     </tr>
                   ))
                 )}

@@ -3572,6 +3572,7 @@ export const api = {
       device_type?: string | null
       location?: string | null
       notes?: string | null
+      panel_status?: string | null
       ip_address?: string | null
     },
   ) => request<NetworkDevice>(`${API_PREFIX}/network/devices/${id}`, { method: 'PATCH', json: body }),
@@ -4113,6 +4114,11 @@ export type NetworkDevice = {
   extras: Record<string, unknown>
   source: string
   notes: string | null
+  network_name?: string | null
+  agent_installed?: boolean
+  computer_id?: number | null
+  computer_hostname?: string | null
+  panel_status?: string | null
   zabbix?: { hostid: string; name?: string | null; status?: number | null; ip?: string | null } | null
   port_count?: number | null
   neighbor_count?: number

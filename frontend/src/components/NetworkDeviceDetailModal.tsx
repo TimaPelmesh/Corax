@@ -84,6 +84,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
   const [deviceType, setDeviceType] = useState('unknown')
   const [location, setLocation] = useState('')
   const [notes, setNotes] = useState('')
+  const [panelStatus, setPanelStatus] = useState('')
   const [tab, setTab] = useState<CardTab>('overview')
   const [query, setQuery] = useState('')
   const traceRoute = getTraceRoute(row?.extras)
@@ -97,6 +98,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
       setDeviceType(d.device_type || 'unknown')
       setLocation(d.location || '')
       setNotes(d.notes || '')
+      setPanelStatus(d.panel_status || '')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('network.loadFailed'))
     }
@@ -131,6 +133,7 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
         device_type: deviceType,
         location: location.trim() || null,
         notes: notes.trim() || null,
+        panel_status: panelStatus || null,
       })
       setRow(d)
       setDeviceType(d.device_type || deviceType)
@@ -186,9 +189,12 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
             </span>
             <div className="min-w-0">
               <h2 className="truncate text-lg font-semibold text-[var(--color-fg)]">
-                {row?.hostname || row?.ip_address || t('network.device')}
+                {row?.network_name || row?.sys_name || row?.hostname || row?.ip_address || t('network.device')}
               </h2>
               <p className="mt-0.5 font-mono text-sm text-[var(--color-fg-subtle)]">{row?.ip_address}</p>
+              {row && !row.agent_installed && (row.device_type === 'host' || row.device_type === 'unknown' || row.source === 'ping') ? (
+                <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">{t('network.agentGap')}</p>
+              ) : null}
               {row ? (
                 <p className="mt-1 text-xs font-medium text-[var(--color-fg-muted)]">
                   {t(`network.type.${row.device_type}` as 'network.type.switch')}
@@ -462,6 +468,20 @@ export function NetworkDeviceDetailModal({ deviceId, onClose, onChanged }: Props
                       value={location}
                       onChange={(e) => setLocation(e.target.value)}
                     />
+                  </label>
+                  <label className="block text-sm sm:col-span-2">
+                    <span className="text-[var(--color-fg-subtle)]">{t('network.panelStatus')}</span>
+                    <select
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2"
+                      value={panelStatus}
+                      onChange={(e) => setPanelStatus(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      <option value="new">{t('network.panelNew')}</option>
+                      <option value="known">{t('network.panelKnown')}</option>
+                      <option value="needs_agent">{t('network.panelNeedsAgent')}</option>
+                      <option value="ignore">{t('network.panelIgnore')}</option>
+                    </select>
                   </label>
                   <label className="block text-sm sm:col-span-2">
                     <span className="text-[var(--color-fg-subtle)]">{t('network.notes')}</span>

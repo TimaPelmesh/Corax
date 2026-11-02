@@ -67,6 +67,11 @@ class NetworkDeviceOut(BaseModel):
     extras: dict[str, Any] = {}
     source: str
     notes: str | None
+    network_name: str | None = None
+    agent_installed: bool = False
+    computer_id: int | None = None
+    computer_hostname: str | None = None
+    panel_status: str | None = None
     zabbix: dict[str, Any] | None = None
     port_count: int | None = None
     neighbor_count: int = 0
@@ -91,6 +96,7 @@ class NetworkDevicePatch(BaseModel):
     device_type: str | None = Field(default=None, max_length=32)
     location: str | None = Field(default=None, max_length=255)
     notes: str | None = None
+    panel_status: str | None = Field(default=None, max_length=32)
     ip_address: str | None = Field(default=None, max_length=64)
 
 
@@ -459,6 +465,27 @@ def _scene_meta(row: NetworkMapScene) -> NetworkMapSceneMeta:
     )
 
 
+_PANEL_STATUSES = {"new", "known", "needs_agent", "ignore"}
+_SYNTHETIC_NAME = ("Host ·", "ПК ·", "Принтер ·")
+
+
+def _panel_status(extras: dict[str, Any]) -> str | None:
+    raw = extras.get("panel_status")
+    if isinstance(raw, str) and raw in _PANEL_STATUSES:
+        return raw
+    return None
+
+
+def _stored_network_name(row: NetworkDevice) -> str | None:
+    sys_name = (row.sys_name or "").strip()
+    if sys_name:
+        return sys_name
+    host = (row.hostname or "").strip()
+    if host and not host.startswith(_SYNTHETIC_NAME):
+        return host
+    return None
+
+
 def _device_out(row: NetworkDevice, *, include_details: bool = False) -> NetworkDeviceOut:
     dtype = row.device_type or "unknown"
     extras = _parse_extras(getattr(row, "extras_json", None))
@@ -493,6 +520,8 @@ def _device_out(row: NetworkDevice, *, include_details: bool = False) -> Network
         extras=extras if include_details else {},
         source=row.source or "snmp",
         notes=row.notes,
+        network_name=_stored_network_name(row),
+        panel_status=_panel_status(extras),
         zabbix=_zabbix_summary(extras),
         port_count=_port_count_from(extras, port_ifaces),
         neighbor_count=len(neighbors) if include_details else int(extras.get("neighbors_total") or 0),
@@ -554,6 +583,7 @@ async def list_devices(
                 func.lower(func.coalesce(NetworkDevice.vendor, "")).like(needle),
                 func.lower(func.coalesce(NetworkDevice.sys_name, "")).like(needle),
                 func.lower(func.coalesce(NetworkDevice.location, "")).like(needle),
+                func.lower(func.coalesce(NetworkDevice.notes, "")).like(needle),
             )
         )
     rows = (await db.execute(stmt.limit(limit))).scalars().all()
@@ -561,7 +591,39 @@ async def list_devices(
     role_f = (role or "").strip().lower()
     if role_f and role_f != "all":
         out = [d for d in out if d.role == role_f]
+    await _attach_fleet(db, out)
     return out
+
+
+async def _attach_fleet(db: AsyncSession, devices: list[NetworkDeviceOut]) -> None:
+    """Mark which addresses already have a CORAX agent. No ping, no SNMP."""
+    ips = [d.ip_address.strip() for d in devices if (d.ip_address or "").strip()]
+    if not ips:
+        return
+    rows = (
+        await db.execute(
+            select(Computer.id, Computer.hostname, Computer.ip_address, Computer.last_report_at).where(
+                Computer.ip_address.in_(ips)
+            )
+        )
+    ).all()
+    by_ip: dict[str, tuple[int, str | None, datetime | None]] = {}
+    for cid, host, ip, reported in rows:
+        ip_s = str(ip or "").strip()
+        if not ip_s:
+            continue
+        prev = by_ip.get(ip_s)
+        if prev is None or (reported is not None and prev[2] is None):
+            by_ip[ip_s] = (int(cid), host, reported)
+    for device in devices:
+        hit = by_ip.get((device.ip_address or "").strip())
+        if hit is None:
+            continue
+        device.computer_id = hit[0]
+        device.computer_hostname = hit[1]
+        device.agent_installed = hit[2] is not None
+        if not device.network_name and hit[1]:
+            device.network_name = hit[1]
 
 
 @router.get("/devices/{device_id}", response_model=NetworkDeviceOut)
@@ -573,7 +635,9 @@ async def get_device(
     row = (await db.execute(select(NetworkDevice).where(NetworkDevice.id == device_id))).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Устройство не найдено")
-    return _device_out(row, include_details=True)
+    out = _device_out(row, include_details=True)
+    await _attach_fleet(db, [out])
+    return out
 
 
 @router.post("/devices", response_model=NetworkDeviceOut)
@@ -706,6 +770,21 @@ async def patch_device(
     if "notes" in patch:
         notes = patch["notes"]
         row.notes = (notes or "").strip() or None
+    if "panel_status" in patch:
+        status = (patch["panel_status"] or "").strip().lower()
+        extras: dict[str, Any] = {}
+        if getattr(row, "extras_json", None):
+            try:
+                loaded = json.loads(row.extras_json)
+                if isinstance(loaded, dict):
+                    extras = loaded
+            except (TypeError, json.JSONDecodeError):
+                extras = {}
+        if status in _PANEL_STATUSES:
+            extras["panel_status"] = status
+        else:
+            extras.pop("panel_status", None)
+        row.extras_json = json.dumps(extras, ensure_ascii=False)
     if body.ip_address is not None:
         ip = _validate_ip(body.ip_address)
         assert ip
@@ -715,7 +794,9 @@ async def patch_device(
     await index_record(db, row)
     await db.commit()
     await db.refresh(row)
-    return _device_out(row, include_details=True)
+    out = _device_out(row, include_details=True)
+    await _attach_fleet(db, [out])
+    return out
 
 
 @router.delete("/devices/{device_id}", status_code=204)
