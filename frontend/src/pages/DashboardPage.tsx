@@ -63,7 +63,21 @@ export function DashboardPage() {
       putCache(DASHBOARD_SUMMARY_KEY, next)
       setData(next)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('common.error'))
+      const message = e instanceof Error ? e.message : t('common.error')
+      // One quiet retry: a rebuild can still be opening Postgres when the first summary lands.
+      if (message.includes('недоступна')) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000))
+        try {
+          const next = await api.dashboardSummary()
+          putCache(DASHBOARD_SUMMARY_KEY, next)
+          setData(next)
+          return
+        } catch (again) {
+          toast.error(again instanceof Error ? again.message : message)
+          return
+        }
+      }
+      toast.error(message)
     } finally {
       setLoading(false)
     }

@@ -12,13 +12,18 @@ export const NOTES_LIST_KEY = 'notes:list'
 export const WAREHOUSE_BOOT_KEY = 'warehouse:boot'
 
 const started = new Set<string>()
+let chain: Promise<void> = Promise.resolve()
 
 function once(key: string, run: () => Promise<void>) {
   if (started.has(key)) return
   started.add(key)
-  void run().catch(() => {
-    started.delete(key)
-  })
+  // One tab at a time. A burst of catalog/fleet queries empties the DB pool
+  // and the dashboard then answers "database unavailable".
+  chain = chain
+    .then(run)
+    .catch(() => {
+      started.delete(key)
+    })
 }
 
 async function warmComputers() {

@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_serializer
@@ -10,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import get_current_user, get_current_editor_or_superuser, get_current_superuser
 from app.computer_ip import resolve_computer_ipv4
 from app.config import settings
-from app.database import AsyncSessionLocal, get_db
+from app.database import get_db
 from app.models import (
     AssetChangeLog,
     DiskVolume,
@@ -459,12 +457,6 @@ async def _counts_for_computers(db: AsyncSession, ids: list[int]) -> tuple[dict[
     return await _software_counts(db, ids), await _peripheral_counts(db, ids)
 
 
-async def _aside(work):
-    """Page counts must not queue behind each other on the request session."""
-    async with AsyncSessionLocal() as session:
-        return await work(session)
-
-
 @router.get("")
 async def list_computers(
     _: User = Depends(get_current_user),
@@ -573,26 +565,24 @@ async def list_computers(
     rows = (await db.execute(stmt)).all()
     ids = [int(row.id) for row in rows]
 
+    # Same session as the page query. Extra sessions here deadlock the pool:
+    # this request already holds one connection and then waits for three more.
     if not ids:
         tags_by_pc = {}
         software_counts = {}
         peripheral_counts = {}
     elif view == "map":
-        tags_by_pc = await _aside(lambda session: _tags_for_computers_bulk(session, ids))
+        tags_by_pc = await _tags_for_computers_bulk(db, ids)
         software_counts = {}
         peripheral_counts = {}
     elif sort == "periph":
-        software_counts, tags_by_pc = await asyncio.gather(
-            _aside(lambda session: _software_counts(session, ids)),
-            _aside(lambda session: _tags_for_computers_bulk(session, ids)),
-        )
+        software_counts = await _software_counts(db, ids)
+        tags_by_pc = await _tags_for_computers_bulk(db, ids)
         peripheral_counts = {int(row.id): int(row.peripheral_count) for row in rows}
     else:
-        software_counts, peripheral_counts, tags_by_pc = await asyncio.gather(
-            _aside(lambda session: _software_counts(session, ids)),
-            _aside(lambda session: _peripheral_counts(session, ids)),
-            _aside(lambda session: _tags_for_computers_bulk(session, ids)),
-        )
+        software_counts = await _software_counts(db, ids)
+        peripheral_counts = await _peripheral_counts(db, ids)
+        tags_by_pc = await _tags_for_computers_bulk(db, ids)
 
     if view == "map":
         items = [
