@@ -2002,6 +2002,7 @@ export const en: MessageTree = {
       noSearchResults: 'Nothing matched the search',
       noItemsInFilter: 'No tickets in this filter yet',
       empty: 'No tickets yet',
+      loadFailed: 'The list did not load. Try again.',
       table: {
         id: 'ID',
         title: 'Title',

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -165,6 +165,8 @@ export function ServiceRequestsPage() {
   const [rows, setRows] = useState<ServiceRequestRow[]>(initialList?.items ?? [])
   const [total, setTotal] = useState(initialList?.total ?? 0)
   const [loading, setLoading] = useState(!initialList)
+  const [listError, setListError] = useState<string | null>(null)
+  const editingTicketRef = useRef(0)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [alignDatesBusy, setAlignDatesBusy] = useState(false)
@@ -487,12 +489,13 @@ export function ServiceRequestsPage() {
     const needAll =
       tab === 'stats' || Boolean(editId) || showAllRows || clientFiltered || sortKey !== 'id_desc'
     const statusFilter = filterStatus && !editId ? filterStatus : undefined
+    const listQuery = { brief: true as const, counts: true as const, ...(statusFilter ? { status: statusFilter } : {}) }
     return needAll
-      ? await api.serviceRequestsAll({ status: statusFilter })
+      ? await api.serviceRequestsAll(listQuery)
       : await api.serviceRequests({
           limit: dbPageSize,
           skip: (dbPage - 1) * dbPageSize,
-          ...(statusFilter ? { status: statusFilter } : {}),
+          ...listQuery,
         })
   }, [dbPage, dbPageSize, showAllRows, filterCategory, filterStatus, query, searchParams, sortKey, tab])
 
@@ -518,12 +521,17 @@ export function ServiceRequestsPage() {
     }
     try {
       const r = await fetchList()
-      putCache(key, { items: r.items, total: r.total })
-      setRows(r.items)
-      setTotal(r.total)
-      rememberCounts(r.all_total ?? r.total, r.active)
+      const items = Array.isArray(r.items) ? r.items : []
+      const nextTotal = typeof r.total === 'number' ? r.total : items.length
+      putCache(key, { items, total: nextTotal })
+      setRows(items)
+      setTotal(nextTotal)
+      setListError(null)
+      rememberCounts(r.all_total ?? nextTotal, r.active)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('requests.errors.generic'))
+      const message = e instanceof Error ? e.message : t('requests.errors.generic')
+      setListError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -543,12 +551,15 @@ export function ServiceRequestsPage() {
     })
     try {
       const r = await fetchList()
-      putCache(key, { items: r.items, total: r.total })
-      setRows((prev) => (requestsLookSame(prev, r.items) ? prev : r.items))
-      setTotal((prev) => (prev === r.total ? prev : r.total))
-      rememberCounts(r.all_total ?? r.total, r.active)
+      const items = Array.isArray(r.items) ? r.items : []
+      const nextTotal = typeof r.total === 'number' ? r.total : items.length
+      putCache(key, { items, total: nextTotal })
+      setRows((prev) => (requestsLookSame(prev, items) ? prev : items))
+      setTotal((prev) => (prev === nextTotal ? prev : nextTotal))
+      setListError(null)
+      rememberCounts(r.all_total ?? nextTotal, r.active)
     } catch {
-      // Keep the list already on screen. The next pass will try again.
+      // The list on screen stays. The next pass tries again.
     }
   }, [dbPage, dbPageSize, fetchList, filterCategory, filterStatus, query, rememberCounts, searchParams, showAllRows, sortKey, tab])
 
@@ -565,9 +576,21 @@ export function ServiceRequestsPage() {
   }
 
   function beginEditRequest(row: ServiceRequestRow) {
+    const token = ++editingTicketRef.current
     populateFormFromRequest(row)
     setEditingRequestId(row.id)
     setTicketFormOpen(true)
+    if (row.description != null) return
+    void api
+      .serviceRequest(row.id)
+      .then((full) => {
+        if (editingTicketRef.current !== token) return
+        setDescription(full.description ?? '')
+        setShowDescription(Boolean((full.description ?? '').trim()))
+      })
+      .catch(() => {
+        /* the form still opens; the body can be typed in */
+      })
   }
 
   useEffect(() => {
@@ -2311,11 +2334,18 @@ export function ServiceRequestsPage() {
             : null}
 
             {loading ? (
-              <p className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] py-14 text-center text-sm text-[var(--color-fg-muted)]">
+              <p className="flex w-full items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] py-14 text-center text-sm text-[var(--color-fg-muted)]">
                 {t('requests.database.loading')}
               </p>
+            ) : listError && rows.length === 0 ? (
+              <div className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-14 text-center text-sm text-[var(--color-fg-muted)]">
+                <p>{t('requests.database.loadFailed')}</p>
+                <button type="button" className="app-btn app-btn-primary mt-4" onClick={() => void load()}>
+                  {t('common.tryAgain')}
+                </button>
+              </div>
             ) : visibleRows.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-14 text-center text-sm text-[var(--color-fg-muted)]">
+              <div className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-14 text-center text-sm text-[var(--color-fg-muted)]">
                 <p>
                   {query.trim()
                     ? t('requests.database.noSearchResults')

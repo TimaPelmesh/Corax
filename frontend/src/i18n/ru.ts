@@ -2000,6 +2000,7 @@ export const ru = {
       noSearchResults: 'Ничего не найдено по поиску',
       noItemsInFilter: 'В этом фильтре пока нет заявок',
       empty: 'Пока нет заявок',
+      loadFailed: 'Список не загрузился. Повторите.',
       table: {
         id: 'ID',
         title: 'Заголовок',

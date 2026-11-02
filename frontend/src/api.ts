@@ -2947,6 +2947,7 @@ export const api = {
     q?: string
     assigned?: 'me'
     brief?: boolean
+    counts?: boolean
   }) => {
     const p = new URLSearchParams()
     if (opts?.status) p.set('status', opts.status)
@@ -2955,13 +2956,17 @@ export const api = {
     if (opts?.q) p.set('q', opts.q)
     if (opts?.assigned) p.set('assigned', opts.assigned)
     if (opts?.brief) p.set('brief', 'true')
+    if (opts?.counts) p.set('counts', 'true')
     const qs = p.toString()
     return request<ServiceRequestListResponse>(
       `${API_PREFIX}/service-requests${qs ? `?${qs}` : ''}`,
     )
   },
 
-  serviceRequestsAll: async (opts?: { status?: string }) => {
+  serviceRequest: (id: number) =>
+    request<ServiceRequestRow>(`${API_PREFIX}/service-requests/${id}`),
+
+  serviceRequestsAll: async (opts?: { status?: string; brief?: boolean; counts?: boolean }) => {
     const page = 1000
     const items: ServiceRequestRow[] = []
     let skip = 0
@@ -2973,6 +2978,8 @@ export const api = {
         status: opts?.status,
         limit: page,
         skip,
+        brief: opts?.brief,
+        counts: opts?.counts,
       })
       total = r.total
       active = r.active ?? active

@@ -45,7 +45,7 @@ async function warmSoftware() {
 async function warmRequests() {
   const pageSize = readDatabasePageSize()
   if (pageSize <= 0) return
-  const data = await api.serviceRequests({ limit: pageSize, skip: 0 })
+  const data = await api.serviceRequests({ limit: pageSize, skip: 0, brief: true, counts: true })
   putCache(['requests', 'database', 1, pageSize, 0, '', 'id_desc', '', '', ''].join('|'), {
     items: data.items,
     total: data.total,

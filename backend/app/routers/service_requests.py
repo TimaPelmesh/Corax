@@ -138,14 +138,15 @@ def _row_to_out(
     created_by = users.get(row.created_by_id)
     computer = computers.get(row.computer_id) if row.computer_id else None
     assignee_rows = assignees.get(row.id, [])
+    created_at = row.created_at or row.updated_at or datetime.now(timezone.utc)
     return ServiceRequestOut(
         id=row.id,
         ticket_no=row.ticket_no,
         glpi_id=row.glpi_id,
-        title=row.title,
+        title=(row.title or "").strip() or "—",
         description=row.description if include_description else None,
-        status=row.status,
-        priority=row.priority,
+        status=row.status or "open",
+        priority=row.priority or "normal",
         glpi_status=row.glpi_status,
         glpi_priority=row.glpi_priority,
         glpi_updated_at=row.glpi_updated_at,
@@ -157,14 +158,14 @@ def _row_to_out(
         location=row.location,
         ai_title_suggestion=getattr(row, "ai_title_suggestion", None),
         ai_enriched_at=getattr(row, "ai_enriched_at", None),
-        created_by_id=row.created_by_id,
-        created_by_username=(created_by.username if created_by else "unknown"),
+        created_by_id=int(row.created_by_id or 0),
+        created_by_username=(created_by.username if created_by and created_by.username else "unknown"),
         assignee_ids=[int(x[0]) for x in assignee_rows],
         assignee_usernames=[str(x[1]) for x in assignee_rows],
         computer_id=row.computer_id,
         computer_hostname=(computer.hostname if computer else None),
-        created_at=row.created_at,
-        updated_at=row.updated_at,
+        created_at=created_at,
+        updated_at=row.updated_at or created_at,
         opened_at=row.opened_at,
         planned_close_at=row.planned_close_at,
         closed_at=row.closed_at,
@@ -264,6 +265,7 @@ async def list_service_requests(
     q: str | None = Query(None, max_length=200),
     assigned: str | None = Query(None, max_length=16),
     brief: bool = Query(False),
+    counts: bool = Query(False),
 ):
     columns = _LIST_COLUMNS if not brief else tuple(c for c in _LIST_COLUMNS if c is not ServiceRequest.description)
     stmt = select(ServiceRequest).options(load_only(*columns))
@@ -308,7 +310,9 @@ async def list_service_requests(
     r = await db.execute(stmt)
     rows = list(r.scalars().all())
     out = await _to_out_many(db, rows, include_description=not brief)
-    if brief:
+    # Bell and search only need the page they asked for. The list screen asks
+    # for counts so pagination is the real total, still without the body text.
+    if brief and not counts:
         return ServiceRequestListResponse(items=out, total=len(out))
     total_stmt = select(func.count()).select_from(ServiceRequest)
     if status:
@@ -423,6 +427,18 @@ async def service_request_ai_insights(
     )
     _AI_CACHE[cache_key] = (now_mono + _AI_CACHE_SECONDS, result)
     return result
+
+
+@router.get("/{request_id}", response_model=ServiceRequestOut)
+async def get_service_request(
+    request_id: int,
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(ServiceRequest, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    return await _to_out(db, row)
 
 
 @router.patch("/{request_id}", response_model=ServiceRequestOut)
