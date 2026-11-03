@@ -11,11 +11,12 @@ from app.observability import get_logger
 
 log = get_logger("corax.network_job")
 
-JobKind = Literal["idle", "discover", "poll"]
+JobKind = Literal["idle", "discover", "poll", "ping"]
 JobPhase = Literal[
     "idle",
     "starting",
     "discover",
+    "ping",
     "deep_poll",
     "neighbors",
     "trace",
@@ -109,7 +110,13 @@ class NetworkJobRunner:
                 kind=kind,
                 phase="starting",
                 progress=2,
-                message="Запуск…" if kind == "poll" else "Запуск сканирования…",
+                message=(
+                    "Быстрый пинг…"
+                    if kind == "ping"
+                    else "Запуск…"
+                    if kind == "poll"
+                    else "Запуск сканирования…"
+                ),
                 started_at=datetime.now(timezone.utc),
             )
             self._task = asyncio.create_task(self._run(kind), name=f"network-job-{kind}")
@@ -120,6 +127,8 @@ class NetworkJobRunner:
             async with self._sessions()() as db:
                 if kind == "discover":
                     await self._run_discover(db)
+                elif kind == "ping":
+                    await self._run_ping(db)
                 else:
                     await self._run_poll(db)
             self.state.phase = "done"
@@ -130,7 +139,11 @@ class NetworkJobRunner:
         except Exception as e:
             self.state.phase = "error"
             self.state.error = "poll_failed"
-            self.state.message = "Опрос сети не завершился. Устройства, которые успели сохраниться, на месте."
+            self.state.message = (
+                "Быстрый пинг не завершился. Адреса, которые успели сохраниться, на месте."
+                if kind == "ping"
+                else "Опрос сети не завершился. Устройства, которые успели сохраниться, на месте."
+            )
             self.state.progress = 100
             log.warning("job error: %s", type(e).__name__)
         finally:
@@ -293,6 +306,28 @@ class NetworkJobRunner:
             "trace_gateways": r.trace_gateways,
             "links_devices": r.links_devices,
             "links_computers": r.links_computers,
+            "networks": r.networks,
+            "message": r.message,
+        }
+        self._set(progress=98, message=r.message)
+
+    async def _run_ping(self, db) -> None:
+        from app.network_ping_sweep import run_fast_ping_sweep
+
+        self._set(phase="ping", progress=3, message="Быстрый пинг зоны…")
+
+        async def on_phase(pct: int, msg: str) -> None:
+            self._set(phase="ping", progress=pct, message=msg)
+
+        r = await run_fast_ping_sweep(db, progress_cb=on_phase)
+        self.state.last_result = {
+            "kind": "ping",
+            "scanned": r.scanned,
+            "alive": r.alive,
+            "created": r.created,
+            "updated": r.updated,
+            "named": r.named,
+            "duration_ms": r.duration_ms,
             "networks": r.networks,
             "message": r.message,
         }

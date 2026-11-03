@@ -179,7 +179,7 @@ export function NetworkPage() {
 
   const jobBusy = Boolean(job?.running)
   const pollBusy = jobBusy && job?.kind === 'poll'
-  const discoverBusy = jobBusy && job?.kind === 'discover' // legacy jobs still in progress
+  const pingBusy = jobBusy && job?.kind === 'ping'
 
   useEffect(() => {
     let cancelled = false
@@ -262,6 +262,18 @@ export function NetworkPage() {
     }
   }
 
+  const runPingSweep = async () => {
+    if (!canEdit || jobBusy) return
+    try {
+      const st = await api.pingSweepNetwork()
+      setJob(st)
+      jobWasRunning.current = true
+      toast.info(t('network.jobStartedLeave'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('network.pollFailed'))
+    }
+  }
+
   const submitAdd = async () => {
     if (!canEdit || !addIp.trim()) return
     setAddBusy(true)
@@ -332,7 +344,16 @@ export function NetworkPage() {
               </button>
               <button
                 type="button"
-                disabled={pollBusy || discoverBusy}
+                disabled={jobBusy}
+                title={t('network.pingSweepHint')}
+                onClick={() => void runPingSweep()}
+                className="app-btn app-btn-secondary !min-h-9 w-full sm:w-auto"
+              >
+                {pingBusy ? t('network.pingSweepBusy') : t('network.pingSweep')}
+              </button>
+              <button
+                type="button"
+                disabled={jobBusy}
                 onClick={() => void runPoll()}
                 className="app-btn app-btn-primary !min-h-9 w-full sm:w-auto"
               >
@@ -341,6 +362,7 @@ export function NetworkPage() {
               <button type="button" onClick={() => setAddOpen(true)} className="app-btn app-btn-secondary !min-h-9 w-full sm:w-auto">
                 {t('network.addManual')}
               </button>
+              <p className="w-full text-xs text-[var(--color-fg-subtle)] sm:text-right">{t('network.scanModesHint')}</p>
             </>
           ) : null}
         </div>
@@ -371,7 +393,11 @@ export function NetworkPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-sm font-semibold text-[var(--color-fg)]">
-                  {job.kind === 'discover' ? t('network.jobDiscoverTitle') : t('network.jobPollTitle')}
+                  {job.kind === 'ping'
+                    ? t('network.jobPingTitle')
+                    : job.kind === 'discover'
+                      ? t('network.jobDiscoverTitle')
+                      : t('network.jobPollTitle')}
                 </p>
                 <span className="text-xs font-medium text-[var(--color-fg-subtle)]">{job.progress}%</span>
               </div>
@@ -475,14 +501,25 @@ export function NetworkPage() {
                     <td colSpan={8} className="px-3 py-10 text-center text-[var(--color-fg-subtle)]">
                       <p>{t('network.empty')}</p>
                       {canEdit && rows.length === 0 && !search.trim() && roleFilter === 'all' ? (
-                        <button
-                          type="button"
-                          className="app-btn app-btn-primary mt-4"
-                          disabled={pollBusy || discoverBusy}
-                          onClick={() => void runPoll()}
-                        >
-                          {pollBusy ? t('network.pollBusy') : t('network.pollAll')}
-                        </button>
+                        <div className="mt-4 flex flex-wrap justify-center gap-2">
+                          <button
+                            type="button"
+                            className="app-btn app-btn-secondary"
+                            disabled={jobBusy}
+                            title={t('network.pingSweepHint')}
+                            onClick={() => void runPingSweep()}
+                          >
+                            {pingBusy ? t('network.pingSweepBusy') : t('network.pingSweep')}
+                          </button>
+                          <button
+                            type="button"
+                            className="app-btn app-btn-primary"
+                            disabled={jobBusy}
+                            onClick={() => void runPoll()}
+                          >
+                            {pollBusy ? t('network.pollBusy') : t('network.pollAll')}
+                          </button>
+                        </div>
                       ) : null}
                     </td>
                   </tr>

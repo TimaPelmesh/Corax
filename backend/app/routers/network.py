@@ -869,6 +869,16 @@ async def poll_network(
     return NetworkJobStatusOut(**(await network_job_runner.start("poll")))
 
 
+@router.post("/ping-sweep", response_model=NetworkJobStatusOut)
+async def ping_sweep_network(
+    _: User = Depends(get_current_editor_or_superuser),
+):
+    """Manual fast ICMP sweep of the known zone. No SNMP. Poll /job-status."""
+    from app.network_job import network_job_runner
+
+    return NetworkJobStatusOut(**(await network_job_runner.start("ping")))
+
+
 @router.post("/devices/{device_id}/poll", response_model=NetworkDeviceOut)
 async def poll_device(
     device_id: int,

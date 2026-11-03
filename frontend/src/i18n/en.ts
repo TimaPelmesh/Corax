@@ -227,7 +227,7 @@ export const en: MessageTree = {
     printersSubtitle:
       'LAN SNMP discovery and polling: model, counters, supplies. Click a row for the full printer card.',
     networkSubtitle:
-      'One “Discover & poll” action: find LAN gear and poll SNMP. The diagram lives on the Network map page.',
+      '“Quick ping” marks live addresses. “Discover and poll” collects SNMP, device type, the agent and neighbors. The diagram is on the Network map page.',
     warehouseSubtitle: 'Warehouse items — you keep the records',
     requestsSubtitle: 'Service tickets and work tracking',
     requestHandlerSubtitle:
@@ -1090,12 +1090,18 @@ export const en: MessageTree = {
     pollBusy: 'Polling…',
     pollDone: 'Poll finished',
     pollFailed: 'Poll failed',
+    pingSweep: 'Quick ping',
+    pingSweepBusy: 'Pinging…',
+    pingSweepHint: 'Ping every address in the zone. Replies land in the list. No SNMP.',
     pollOne: 'Poll SNMP',
     jobDiscoverTitle: 'Network scan',
     jobPollTitle: 'Discover and poll',
+    jobPingTitle: 'Quick network ping',
     jobWorking: 'Working…',
     jobCanLeave: 'You can leave this page — the job keeps running on the server.',
     jobStartedLeave: 'Started in the background. You can leave the Network tab.',
+    scanModesHint:
+      'Quick ping only marks hosts that answer. Discover and poll then collects SNMP, device type, the agent and neighbors.',
     mapHint: 'Corax is the hub. Click a node for details, click a PC bubble to expand hosts.',
     mapLegendLan: 'to Corax',
     mapLegendTrace: 'traceroute',

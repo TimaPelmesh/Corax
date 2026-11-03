@@ -3646,6 +3646,9 @@ export const api = {
   pollAllNetworkDevices: () =>
     request<NetworkJobStatus>(`${API_PREFIX}/network/poll`, { method: 'POST', timeout_ms: 30_000 }),
 
+  pingSweepNetwork: () =>
+    request<NetworkJobStatus>(`${API_PREFIX}/network/ping-sweep`, { method: 'POST', timeout_ms: 30_000 }),
+
   networkJobStatus: () => request<NetworkJobStatus>(`${API_PREFIX}/network/job-status`),
 
   pollNetworkDevice: (id: number) =>
