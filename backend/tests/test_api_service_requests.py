@@ -82,6 +82,19 @@ def test_service_request_open_with_assignees(client: TestClient, auth_headers: d
     client.post(f"/api/v1/users/{uid}/delete", headers=auth_headers)
 
 
+def test_static_service_request_paths_are_not_swallowed_by_request_id(client: TestClient, auth_headers: dict[str, str]):
+    """Regression: GET /templates must not match GET /{request_id} as request_id='templates'."""
+    for path in (
+        "/api/v1/service-requests/templates",
+        "/api/v1/service-requests/import-status",
+        "/api/v1/service-requests/export-pdf",
+        "/api/v1/service-requests/export-glpi-csv",
+    ):
+        response = client.get(path, headers=auth_headers)
+        assert response.status_code == 200, f"{path} -> {response.status_code} {response.text}"
+        assert "request_id" not in response.text or "Input should be a valid integer" not in response.text
+
+
 def test_service_request_templates(client: TestClient, auth_headers: dict[str, str]):
     title = f"Шаблон {unique_hostname('tpl')}"
     created = client.post(

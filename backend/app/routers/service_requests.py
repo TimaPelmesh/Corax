@@ -429,104 +429,6 @@ async def service_request_ai_insights(
     return result
 
 
-@router.get("/{request_id}", response_model=ServiceRequestOut)
-async def get_service_request(
-    request_id: int,
-    _: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    row = await db.get(ServiceRequest, request_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
-    return await _to_out(db, row)
-
-
-@router.patch("/{request_id}", response_model=ServiceRequestOut)
-async def patch_service_request(
-    request_id: int,
-    body: ServiceRequestPatch,
-    _: User = Depends(get_current_editor_or_superuser),
-    db: AsyncSession = Depends(get_db),
-):
-    row = await db.get(ServiceRequest, request_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
-    was_closed = is_service_request_closed(row)
-    patch = body.model_dump(exclude_unset=True)
-    for k in [
-        "title",
-        "description",
-        "status",
-        "priority",
-        "requester_name",
-        "category",
-        "location",
-        "computer_id",
-        "opened_at",
-        "planned_close_at",
-        "closed_at",
-    ]:
-        if k in patch:
-            setattr(row, k, patch[k])
-    if "assignee_ids" in patch:
-        await db.execute(delete(service_request_assignees).where(service_request_assignees.c.request_id == request_id))
-        for uid in patch["assignee_ids"] or []:
-            await db.execute(service_request_assignees.insert().values(request_id=request_id, user_id=uid))
-    stamp_closed_at_if_needed(row, was_closed=was_closed)
-    await ensure_ticket_no(db, row)
-    if was_closed and not is_service_request_closed(row):
-        clear_close_notice(row)
-    if not was_closed and is_service_request_closed(row):
-        await notify_ticket_closed(db, row)
-    await index_service_request(db, row)
-    await db.commit()
-    await db.refresh(row)
-    return await _to_out(db, row)
-
-
-@router.post("/{request_id}/ai-suggest", response_model=ServiceRequestAiSuggestOut)
-async def ai_suggest_service_request(
-    request_id: int,
-    persist: bool = Query(default=True),
-    _: User = Depends(get_current_editor_or_superuser),
-    db: AsyncSession = Depends(get_db),
-):
-    """Classify category + suggest a cleaner title. Does not overwrite title.
-
-    persist=false is used by the ticket form: show recommendations first,
-    apply them only when the operator accepts the suggestion.
-    """
-    from app.routers.ticket_handler import _get_or_create_config
-    from app.ticket_handler_runtime import enrich_service_request
-
-    row = await db.get(ServiceRequest, request_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Заявка не найдена")
-    cfg = await _get_or_create_config(db)
-    result = await enrich_service_request(db, cfg=cfg, request_id=request_id, persist=persist)
-    return ServiceRequestAiSuggestOut(
-        ok=result.ok,
-        category=result.category,
-        title_suggestion=result.title_suggestion,
-        model=result.model,
-        error_detail=result.error_detail,
-    )
-
-
-@router.post("/{request_id}/delete")
-async def delete_service_request(
-    request_id: int,
-    _: User = Depends(get_current_editor_or_superuser),
-    db: AsyncSession = Depends(get_db),
-):
-    row = await db.get(ServiceRequest, request_id)
-    if row:
-        await delete_search_document(db, "service_request", row.id)
-        await db.delete(row)
-        await db.commit()
-    return {"ok": True}
-
-
 @router.post("/delete-all")
 async def delete_all_service_requests(
     current: User = Depends(get_current_editor_or_superuser),
@@ -825,6 +727,107 @@ async def delete_template(
 ):
     row = await db.get(ServiceRequestTemplate, template_id)
     if row:
+        await db.delete(row)
+        await db.commit()
+    return {"ok": True}
+
+
+# Parameterized ticket routes MUST stay after static paths (/templates, /export-*,
+# /import-*), otherwise FastAPI binds e.g. "templates" to request_id and returns
+# 422 "path.request_id: Input should be a valid integer".
+@router.get("/{request_id}", response_model=ServiceRequestOut)
+async def get_service_request(
+    request_id: int,
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(ServiceRequest, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    return await _to_out(db, row)
+
+
+@router.patch("/{request_id}", response_model=ServiceRequestOut)
+async def patch_service_request(
+    request_id: int,
+    body: ServiceRequestPatch,
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(ServiceRequest, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    was_closed = is_service_request_closed(row)
+    patch = body.model_dump(exclude_unset=True)
+    for k in [
+        "title",
+        "description",
+        "status",
+        "priority",
+        "requester_name",
+        "category",
+        "location",
+        "computer_id",
+        "opened_at",
+        "planned_close_at",
+        "closed_at",
+    ]:
+        if k in patch:
+            setattr(row, k, patch[k])
+    if "assignee_ids" in patch:
+        await db.execute(delete(service_request_assignees).where(service_request_assignees.c.request_id == request_id))
+        for uid in patch["assignee_ids"] or []:
+            await db.execute(service_request_assignees.insert().values(request_id=request_id, user_id=uid))
+    stamp_closed_at_if_needed(row, was_closed=was_closed)
+    await ensure_ticket_no(db, row)
+    if was_closed and not is_service_request_closed(row):
+        clear_close_notice(row)
+    if not was_closed and is_service_request_closed(row):
+        await notify_ticket_closed(db, row)
+    await index_service_request(db, row)
+    await db.commit()
+    await db.refresh(row)
+    return await _to_out(db, row)
+
+
+@router.post("/{request_id}/ai-suggest", response_model=ServiceRequestAiSuggestOut)
+async def ai_suggest_service_request(
+    request_id: int,
+    persist: bool = Query(default=True),
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    """Classify category + suggest a cleaner title. Does not overwrite title.
+
+    persist=false is used by the ticket form: show recommendations first,
+    apply them only when the operator accepts the suggestion.
+    """
+    from app.routers.ticket_handler import _get_or_create_config
+    from app.ticket_handler_runtime import enrich_service_request
+
+    row = await db.get(ServiceRequest, request_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Заявка не найдена")
+    cfg = await _get_or_create_config(db)
+    result = await enrich_service_request(db, cfg=cfg, request_id=request_id, persist=persist)
+    return ServiceRequestAiSuggestOut(
+        ok=result.ok,
+        category=result.category,
+        title_suggestion=result.title_suggestion,
+        model=result.model,
+        error_detail=result.error_detail,
+    )
+
+
+@router.post("/{request_id}/delete")
+async def delete_service_request(
+    request_id: int,
+    _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(ServiceRequest, request_id)
+    if row:
+        await delete_search_document(db, "service_request", row.id)
         await db.delete(row)
         await db.commit()
     return {"ok": True}

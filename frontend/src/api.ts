@@ -3025,8 +3025,12 @@ export const api = {
     )
   },
 
-  serviceRequest: (id: number) =>
-    request<ServiceRequestRow>(`${API_PREFIX}/service-requests/${id}`),
+  serviceRequest: (id: number) => {
+    if (!Number.isFinite(id) || id <= 0) {
+      return Promise.reject(new Error('Некорректный id заявки'))
+    }
+    return request<ServiceRequestRow>(`${API_PREFIX}/service-requests/${id}`)
+  },
 
   serviceRequestsAll: async (opts?: { status?: string; brief?: boolean; counts?: boolean }) => {
     const page = 1000
