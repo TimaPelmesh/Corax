@@ -326,11 +326,7 @@ export function ComputersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PageHeader
-        icon={<IconPcs className="h-6 w-6" />}
-        title={t('titles.computers')}
-        subtitle={t('pages.computersSubtitle')}
-      />
+      <PageHeader icon={<IconPcs className="h-6 w-6" />} title={t('titles.computers')} />
 
       <div className="chrome-glass-card mb-4 flex shrink-0 flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
         <div className="min-w-[min(100%,40rem)] flex-[1.5] basis-[min(100%,40rem)]">
