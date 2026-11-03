@@ -80,10 +80,14 @@ export function SettingsLlmPage() {
     setRoles(rows)
     const tickets = rows.find((row) => row.purpose === 'tickets')
     const bitrix = rows.find((row) => row.purpose === 'bitrix_bot')
+    const embed = rows.find((row) => row.purpose === 'embed')
     setTicketsEndpoint(tickets?.endpoint_key || '')
     setTicketsModel(tickets?.model || '')
     setBitrixEndpoint(bitrix?.endpoint_key || '')
     setBitrixModel(bitrix?.model || '')
+    const embedUrl = (embed?.resolved?.base_url || '').trim()
+    if (embedUrl) setEmbedBaseUrl(embedUrl)
+    if ((embed?.model || '').trim()) setEmbedModel(embed!.model.trim())
   }, [])
 
   const refreshRoles = useCallback(async () => {
@@ -287,7 +291,7 @@ export function SettingsLlmPage() {
         setSettings((s) => ({
           ...s,
           baseUrl: row.resolved?.base_url || s.baseUrl,
-          model: row.model || s.model,
+          model: row.model || row.resolved?.model || s.model,
           provider: detectProviderFromUrl(row.resolved?.base_url || s.baseUrl),
         }))
       }

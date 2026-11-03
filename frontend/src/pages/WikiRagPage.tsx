@@ -15,6 +15,7 @@ import {
   subscribeWikiRagIndexJob,
   syncWikiRagIndexJobFromDocs,
 } from '../lib/wikiragIndexJob'
+import { applyAgentsChatToWikiRagLm } from '../lib/wikiragLmSettings'
 import { useToast } from '../ToastContext'
 
 const ACCEPT =
@@ -287,6 +288,28 @@ export function WikiRagPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const bundle = await api.aiAgentsBundle()
+        if (cancelled) return
+        const chat = bundle.roles.find((row) => row.purpose === 'chat')
+        if (chat?.resolved) {
+          applyAgentsChatToWikiRagLm({
+            base_url: chat.resolved.base_url,
+            model: chat.model || chat.resolved.model,
+          })
+        }
+      } catch {
+        /* Agents not ready — keep browser LM settings */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     void api

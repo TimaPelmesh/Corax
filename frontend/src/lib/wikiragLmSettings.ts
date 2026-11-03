@@ -115,3 +115,22 @@ export function withProvider(settings: WikiRagLmSettings, provider: LlmProvider)
     baseUrl: defaultUrlForProvider(provider),
   }
 }
+
+/** Pull Agents «chat» role into browser LM settings used by WikiRAG chat. */
+export function applyAgentsChatToWikiRagLm(resolved: {
+  base_url?: string | null
+  model?: string | null
+}): boolean {
+  const baseUrl = (resolved.base_url || '').trim()
+  if (!baseUrl) return false
+  const current = loadWikiRagLmSettings()
+  const model = (resolved.model || '').trim() || current.model
+  const next: WikiRagLmSettings = {
+    ...current,
+    baseUrl,
+    model,
+    provider: detectProviderFromUrl(baseUrl),
+  }
+  if (wikiRagLmSettingsEqual(current, next)) return false
+  return saveWikiRagLmSettings(next)
+}

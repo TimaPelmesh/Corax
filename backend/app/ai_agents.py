@@ -194,6 +194,8 @@ async def replace_endpoints(db: AsyncSession, items: list[dict[str, Any]]) -> li
         [{"id": item["key"], "label": item["label"], "base_url": item["base_url"]} for item in cleaned]
     )
     await db.commit()
+    # Endpoint URL changes affect every role that points at them.
+    await _mirror_legacy(db, touch={"chat", "embed", "tickets"})
     return await list_endpoints(db)
 
 
@@ -233,26 +235,38 @@ async def upsert_role(
 
     await db.commit()
     await db.refresh(row)
-    await _mirror_legacy(db)
+    await _mirror_legacy(db, touch={purpose})
     return row
 
 
-async def _mirror_legacy(db: AsyncSession) -> None:
-    """Keep embed JSON + ticket_handler columns aligned with roles."""
-    resolved_embed = await resolve_ai(db, "embed")
-    if resolved_embed.base_url:
-        set_embed_base_url(resolved_embed.base_url)
-    if resolved_embed.model:
-        set_embed_model(resolved_embed.model)
+async def _mirror_legacy(db: AsyncSession, *, touch: set[str] | None = None) -> None:
+    """Keep embed JSON + ticket_handler columns aligned with roles.
 
-    resolved_tickets = await resolve_ai(db, "tickets")
-    ticket = await db.scalar(select(TicketHandlerConfig).where(TicketHandlerConfig.id == 1).limit(1))
-    if ticket is not None:
-        if resolved_tickets.base_url:
-            ticket.llm_base_url = resolved_tickets.base_url[:512]
-        if resolved_tickets.model:
-            ticket.llm_model = resolved_tickets.model[:255]
-        await db.commit()
+    Only rewrite legacy stores for purposes that actually changed (plus chat→embed
+    inherit). Saving tickets/bitrix must not clobber a WikiRAG embed model/URL.
+    """
+    changed = {purpose_ok(p) for p in (touch or set(AI_PURPOSES))}
+
+    if changed & {"embed", "chat"}:
+        embed_role = await db.scalar(select(AiRole).where(AiRole.purpose == "embed").limit(1))
+        resolved_embed = await resolve_ai(db, "embed")
+        if resolved_embed.base_url:
+            set_embed_base_url(resolved_embed.base_url)
+        role_model = (embed_role.model if embed_role else "") or ""
+        if role_model.strip():
+            set_embed_model(role_model.strip())
+        elif "embed" in changed and resolved_embed.model:
+            set_embed_model(resolved_embed.model)
+
+    if changed & {"tickets", "chat"}:
+        resolved_tickets = await resolve_ai(db, "tickets")
+        ticket = await db.scalar(select(TicketHandlerConfig).where(TicketHandlerConfig.id == 1).limit(1))
+        if ticket is not None:
+            if resolved_tickets.base_url:
+                ticket.llm_base_url = resolved_tickets.base_url[:512]
+            if resolved_tickets.model:
+                ticket.llm_model = resolved_tickets.model[:255]
+            await db.commit()
 
 
 async def resolve_ai(db: AsyncSession, purpose: str) -> ResolvedAi:

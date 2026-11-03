@@ -931,6 +931,26 @@ def _resolve_lm_base_url(raw: str | None) -> str | None:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+async def _resolve_chat_lm(body_url: str | None, body_model: str | None) -> tuple[str | None, str | None]:
+    """Prefer request body; if empty, fall back to Agents role «chat»."""
+    lm_base = _resolve_lm_base_url(body_url)
+    lm_model = (body_model or "").strip() or None
+    if lm_base and lm_model:
+        return lm_base, lm_model
+    try:
+        from app.ai_agents import resolve_ai
+
+        async with AsyncSessionLocal() as db:
+            resolved = await resolve_ai(db, "chat")
+        if not lm_base and resolved.base_url:
+            lm_base = resolved.base_url
+        if not lm_model and resolved.model:
+            lm_model = resolved.model
+    except Exception:  # noqa: BLE001 — chat still works via env defaults
+        pass
+    return lm_base, lm_model
+
+
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -973,8 +993,8 @@ async def wiki_rag_chat_preview(
         messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
             q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
         )
-    lm_base = _resolve_lm_base_url(body.lm_base_url)
-    await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
+    lm_base, lm_model = await _resolve_chat_lm(body.lm_base_url, body.lm_model)
+    await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
     stats = messages_stats(messages)
     tools = corax_stats.get("tools") or []
     return WikiRagChatPreviewOut(
@@ -999,14 +1019,14 @@ async def wiki_rag_chat(
     _: User = Depends(require_user),
 ):
     q = body.message.strip()
-    lm_base = _resolve_lm_base_url(body.lm_base_url)
+    lm_base, lm_model = await _resolve_chat_lm(body.lm_base_url, body.lm_model)
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
     started = time.perf_counter()
     async with AsyncSessionLocal() as db:
         messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
             q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
         )
-    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
     context_ms = round((time.perf_counter() - started) * 1000)
     stats = messages_stats(messages)
     meta = {
@@ -1024,7 +1044,7 @@ async def wiki_rag_chat(
         raw, model = await lm_studio_chat(
             messages,
             base_url=lm_base,
-            model=body.lm_model,
+            model=lm_model,
             mode=mode if mode in ("simple", "rag") else "rag",
             response_mode=body.response_mode,
         )
@@ -1053,13 +1073,13 @@ async def wiki_rag_chat_stream(
     """SSE-версия чата: meta → delta* → done или error."""
     started = time.perf_counter()
     q = body.message.strip()
-    lm_base = _resolve_lm_base_url(body.lm_base_url)
+    lm_base, lm_model = await _resolve_chat_lm(body.lm_base_url, body.lm_model)
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
     async with AsyncSessionLocal() as db:
         messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
             q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
         )
-    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
     context_ms = round((time.perf_counter() - started) * 1000)
     stats = messages_stats(messages)
     meta: dict[str, Any] = {
@@ -1084,7 +1104,7 @@ async def wiki_rag_chat_stream(
             async for delta, used_model, stats in lm_studio_chat_stream(
                 messages,
                 base_url=lm_base,
-                model=body.lm_model,
+                model=lm_model,
                 mode=mode if mode in ("simple", "rag") else "rag",
                 response_mode=body.response_mode,
             ):
@@ -1125,8 +1145,8 @@ async def wiki_rag_research_stream(
     """Ищет публичные инструкции. Базу CORAX и документы WikiRAG не читает."""
     started = time.perf_counter()
     q = body.message.strip()
-    lm_base = _resolve_lm_base_url(body.lm_base_url)
-    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=body.lm_model)
+    lm_base, lm_model = await _resolve_chat_lm(body.lm_base_url, body.lm_model)
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])[-6:]
 
     async def event_stream() -> AsyncIterator[str]:
@@ -1180,7 +1200,7 @@ async def wiki_rag_research_stream(
             async for delta, used_model, stats in lm_studio_chat_stream(
                 messages,
                 base_url=lm_base,
-                model=body.lm_model,
+                model=lm_model,
                 mode="rag",
                 response_mode="detailed",
             ):
@@ -1483,6 +1503,7 @@ async def get_index_status(
 async def patch_index_settings(
     body: WikiRagIndexSettingsUpdate,
     _: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
 ):
     if body.auto_index is not None:
         set_auto_index(bool(body.auto_index))
@@ -1502,6 +1523,32 @@ async def patch_index_settings(
         set_lm_context_tokens(body.lm_context_tokens)
     if "system_prompt" in body.model_fields_set:
         set_system_prompt(body.system_prompt)
+
+    # Keep Agents embed role aligned when WikiRAG library changes model/server.
+    if body.embed_model is not None or "embed_base_url" in body.model_fields_set:
+        try:
+            from app.ai_agents import list_endpoints, upsert_role
+
+            endpoint_key: str | None = None
+            if "embed_base_url" in body.model_fields_set:
+                want = (body.embed_base_url or "").strip().rstrip("/").lower()
+                if want:
+                    for ep in await list_endpoints(db):
+                        got = (ep.base_url or "").strip().rstrip("/").lower()
+                        if got == want or got.removesuffix("/v1") == want.removesuffix("/v1"):
+                            endpoint_key = ep.key
+                            break
+                else:
+                    endpoint_key = ""
+            await upsert_role(
+                db,
+                purpose="embed",
+                endpoint_key=endpoint_key,
+                model=body.embed_model if body.embed_model is not None else None,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
     return _index_settings_out()
 
 
