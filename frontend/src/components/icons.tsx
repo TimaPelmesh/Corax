@@ -638,20 +638,23 @@ export function IconServer({ className, title }: Props) {
   )
 }
 
-/** Docker Swarm / container cluster — distinct from rack server icon. */
+/** Docker Swarm — whale silhouette + stacked containers (not a server rack). */
 export function IconSwarm({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
       {title ? <title>{title}</title> : null}
-      <rect x="3.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...soft} />
-      <rect x="13.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...soft} />
-      <rect x="3.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...s} />
-      <rect x="13.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...s} />
-      <path d="M5.2 10.6h3.6M5.2 13.4h2.6M15.2 10.6h3.6M15.2 13.4h2.6" {...s} strokeWidth={sw * 0.85} opacity={0.85} />
-      <path d="M10.6 12h2.8" {...s} />
-      <circle cx="12" cy="5.6" r="2.15" {...soft} />
-      <circle cx="12" cy="5.6" r="2.15" {...s} />
-      <path d="M12 7.75v0.45" {...s} />
+      <path
+        d="M4.2 14.2c1.1-3.4 4.2-5.4 7.8-5.4 2.6 0 4.9 1 6.4 2.6.7-.15 1.5-.1 2.1.25v2.05c-.7.55-1.55.85-2.45.9-1.35 1.55-3.45 2.5-5.85 2.5-2.55 0-4.75-1.05-6.15-2.7-.55.05-1.1 0-1.55-.25-.55-.3-.9-.85-.9-1.45 0-.35.1-.7.3-1.05l.3-.41Z"
+        {...soft}
+      />
+      <path
+        d="M4.2 14.2c1.1-3.4 4.2-5.4 7.8-5.4 2.6 0 4.9 1 6.4 2.6.7-.15 1.5-.1 2.1.25v2.05c-.7.55-1.55.85-2.45.9-1.35 1.55-3.45 2.5-5.85 2.5-2.55 0-4.75-1.05-6.15-2.7-.55.05-1.1 0-1.55-.25-.55-.3-.9-.85-.9-1.45 0-.35.1-.7.3-1.05l.3-.41Z"
+        {...s}
+      />
+      <path d="M9.2 12.35h1.6M11.4 12.35h1.6M13.6 12.35h1.5" {...s} strokeWidth={sw * 0.85} opacity={0.8} />
+      <path d="M8.6 6.1h2.7v2.35H8.6zM11.55 4.35h2.7v2.35h-2.7zM14.5 6.1h2.7v2.35H14.5z" {...soft} />
+      <path d="M8.6 6.1h2.7v2.35H8.6zM11.55 4.35h2.7v2.35h-2.7zM14.5 6.1h2.7v2.35H14.5z" {...s} />
+      <circle cx="6.35" cy="13.55" r="0.7" fill="currentColor" stroke="none" />
     </svg>
   )
 }

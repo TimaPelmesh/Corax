@@ -111,7 +111,7 @@ from app.wikirag_research import (
     research_parsed_answer,
     research_sources,
 )
-from app.wikirag_tools import run_wikirag_tools
+from app.wikirag_tools import needs_live_inventory_tools, run_wikirag_tools
 from app.wikirag_lm import (
     build_messages,
     classify_wikirag_question,
@@ -880,10 +880,15 @@ async def _prepare_chat_messages(
         }
     )
 
-    # 2) Optional tools: only as a thin supplement when classic retrieve is empty/thin.
-    use_tools = bool(getattr(settings, "wiki_rag_use_tools", False))
+    # 2) Live inventory tools: for park/tickets questions RAG top-k alone only
+    #    sees a few similar PC chunks — search_* returns a focused selection + totals.
+    use_tools_flag = bool(getattr(settings, "wiki_rag_use_tools", False))
+    run_live = include_corax and (
+        needs_live_inventory_tools(search_q, question_focus)
+        or (use_tools_flag and len(doc_block or "") < 400)
+    )
     tool_block = ""
-    if use_tools and len(doc_block or "") < 400:
+    if run_live:
         pack = await run_wikirag_tools(
             db,
             q,
@@ -894,15 +899,18 @@ async def _prepare_chat_messages(
         if pack.sources_for_api():
             rag_sources.extend(pack.sources_for_api())
         corax_stats["tools"] = pack.tools_used
-        corax_stats["path"] = "classic+tools_fallback"
+        corax_stats["path"] = "classic+tools" if doc_block else "tools"
 
+    message_budget = context_cap
+    if tool_block:
+        message_budget = min(16_000, max(context_cap, len(tool_block) + 2_500))
     messages = build_messages(
         q,
         doc_block or "",
         history,
         corax_block=tool_block,
         mode=mode,
-        data_char_budget=context_cap,
+        data_char_budget=message_budget,
         question_focus=question_focus,
         response_mode=response_mode,
     )

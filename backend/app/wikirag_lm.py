@@ -567,9 +567,19 @@ def sanitize_chat_history(history: list[dict[str, str]]) -> list[dict[str, str]]
 
 
 def _rag_user_suffix(question: str, focus: QuestionFocus) -> str:
-    del focus  # focus reserved for future routing hints in the suffix
     q = question.strip()
-    return f"\n\nВопрос: {q}\n\nОтвет:"
+    hint = ""
+    if focus in {"os_hardware", "software"}:
+        hint = (
+            "\nЕсли в контексте есть tool:search_computers / выборка ПК — опирайся на неё и на поле "
+            "«Под фильтр попало»; не ограничивайся первыми двумя hostname из wiki-чанков."
+        )
+    elif focus == "tickets":
+        hint = (
+            "\nЕсли есть tool:search_tickets — разбери показанные заявки и итоги по статусам; "
+            "не делай вывод только по одному фрагменту."
+        )
+    return f"\n\nВопрос: {q}{hint}\n\nОтвет:"
 
 
 def build_messages(
@@ -605,14 +615,19 @@ def build_messages(
     else:
         default_cap = int(getattr(settings, "wiki_rag_classic_context_chars", None) or 9_000)
         max_data = data_char_budget or default_cap
-        max_data = max(4_000, min(max_data, 10_000))
+        # Live tool selections need headroom beyond classic RAG's ~9–10k slice.
+        hard_cap = 16_000 if (corax_block or "").strip() else 10_000
+        max_data = max(4_000, min(max_data, hard_cap))
         parts: list[str] = []
         corax = (corax_block or "").strip()
         ctx = (documents_block or "").strip()
         if corax:
             parts.append(corax)
+        # Prefer keeping the full tool selection; trim wiki chunks first if over budget.
         if ctx:
-            parts.append(ctx)
+            room = max_data - (len(corax) + (2 if corax else 0))
+            if room >= 400:
+                parts.append(ctx if len(ctx) <= room else ctx[: room - 20].rstrip() + "\n… [обрезано]")
         joined = "\n\n".join(parts).strip()
         if len(joined) > max_data:
             joined = joined[: max_data - 20].rstrip() + "\n… [обрезано]"

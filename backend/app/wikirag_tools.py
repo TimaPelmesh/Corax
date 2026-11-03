@@ -1,7 +1,12 @@
-"""Deterministic WikiRAG tools: search_wiki, query_corax, get_computer.
+"""Deterministic WikiRAG tools: search_wiki, query_corax, get_computer, search_*.
 
 Local 3B models often lack reliable function-calling, so the server runs tools
 and injects structured results + source citations into the prompt.
+
+Park-wide questions (lists, filters, ticket analysis) must not rely on RAG
+top-k alone — embeddings only surface a few similar PC chunks. Live search
+tools return a focused selection with totals so the model can reason over
+the right subset without dumping all 50+ hosts into the window.
 """
 
 from __future__ import annotations
@@ -25,12 +30,21 @@ from app.wikirag_corax import (
 )
 from app.network_classify import infer_network_role
 from app.wikirag_index import build_context_from_chunks, retrieve_relevant_chunks
-from app.wikirag_lm import classify_wikirag_question
+from app.wikirag_lm import QuestionFocus, classify_wikirag_question
 
 # Жёсткий потолок tool-контекста (legacy path). Classic RAG uses retrieve top-k instead.
 _TOOL_CONTEXT_MAX_CHARS = 18000
 _WIKI_CHUNK_MAX_CHARS = 12000
 _WIKI_TOP_K = 15
+_SEARCH_PC_LIMIT = 25
+_SEARCH_TICKET_LIMIT = 20
+
+_PARK_WIDE_RE = re.compile(
+    r"(список|все\s+пк|весь\s+парк|сколько|у\s+кого|каки[ех]\s+пк|по\s+парку|"
+    r"сравн|анализ|разбит|распредел|топ\s|слаб|фильтр|найди|покажи\s+пк|"
+    r"list\s+pc|how\s+many|which\s+pc|compare|analyze)",
+    re.IGNORECASE,
+)
 
 
 _HOSTNAME_RE = re.compile(
@@ -160,6 +174,124 @@ async def tool_search_wiki(
     return f"### tool:search_wiki\n{block}", sources
 
 
+def _pc_card(pc: Computer, *, software_n: int = 12) -> str:
+    tags = ", ".join(t.name for t in (pc.tags or [])[:10]) or "—"
+    sw = ", ".join((s.name or "") for s in (pc.software or [])[:software_n] if s.name) or "—"
+    return (
+        f"- computer_id={pc.id} hostname={pc.hostname} os={pc.os_name or '—'} "
+        f"ver={pc.os_version or '—'} ram_gb={pc.ram_gb if pc.ram_gb is not None else '—'} "
+        f"cpu={pc.cpu or '—'} ip={pc.ip_address or '—'} location={pc.location or '—'} "
+        f"tags=[{tags}] software=[{sw}]"
+    )
+
+
+def needs_live_inventory_tools(question: str, focus: QuestionFocus | str) -> bool:
+    """Park-wide / filter / ticket analysis — RAG top-k alone is too narrow."""
+    if focus in {"os_hardware", "software", "tickets"}:
+        return True
+    return bool(_PARK_WIDE_RE.search(question or ""))
+
+
+def _extract_pc_filters(question: str) -> dict[str, Any]:
+    low = (question or "").lower()
+    filters: dict[str, Any] = {"terms": []}
+    if any(k in low for k in ("win11", "win 11", "windows 11", "виндовс 11")):
+        filters["os"] = "11"
+    elif any(k in low for k in ("win10", "win 10", "windows 10", "виндовс 10")):
+        filters["os"] = "10"
+    elif "windows" in low or "виндов" in low:
+        filters["os"] = "windows"
+    elif "linux" in low or "линукс" in low:
+        filters["os"] = "linux"
+    ram_m = re.search(r"(?:меньше|менее|<|≤)\s*(\d+)\s*(?:гб|gb|ram|озу)?", low)
+    if ram_m:
+        filters["ram_lt"] = float(ram_m.group(1))
+    else:
+        ram_m = re.search(r"(?:больше|более|>|≥)\s*(\d+)\s*(?:гб|gb|ram|озу)?", low)
+        if ram_m:
+            filters["ram_gt"] = float(ram_m.group(1))
+        else:
+            ram_eq = re.search(r"(\d+)\s*(?:гб|gb)\s*(?:ram|озу|памят)?", low)
+            if ram_eq and int(ram_eq.group(1)) in {2, 4, 8, 16, 32, 64}:
+                filters["ram_eq"] = float(ram_eq.group(1))
+    stop = {
+        "какие",
+        "какой",
+        "какая",
+        "покажи",
+        "список",
+        "компьютер",
+        "компьютеры",
+        "парк",
+        "сколько",
+        "есть",
+        "у",
+        "кого",
+        "на",
+        "пк",
+        "pc",
+        "windows",
+        "linux",
+        "виндовс",
+        "заявк",
+        "тикет",
+        "установлен",
+        "установлено",
+        "установлена",
+        "анализ",
+        "сравни",
+        "лучше",
+        "нужно",
+        "можно",
+        "меньше",
+        "больше",
+        "менее",
+        "более",
+        "памяти",
+        "память",
+        "озу",
+        "гб",
+        "gb",
+        "ram",
+    }
+    for tok in re.findall(r"[a-zA-Zа-яА-Я0-9][a-zA-Zа-яА-Я0-9._+-]{2,}", low):
+        if tok in stop or tok.isdigit():
+            continue
+        if tok in {"win10", "win11", "chrome", "firefox", "office", "1с", "1c", "dr.web", "kaspersky"}:
+            filters["terms"].append(tok)
+        elif len(tok) >= 4 and tok not in filters["terms"]:
+            filters["terms"].append(tok)
+    filters["terms"] = filters["terms"][:8]
+    return filters
+
+
+def _pc_matches_filters(pc: Computer, filters: dict[str, Any]) -> bool:
+    os_blob = f"{pc.os_name or ''} {pc.os_version or ''}".lower()
+    want_os = filters.get("os")
+    if want_os == "11" and "11" not in os_blob:
+        return False
+    if want_os == "10" and ("10" not in os_blob or "11" in os_blob):
+        return False
+    if want_os == "windows" and "win" not in os_blob and "винд" not in os_blob:
+        return False
+    if want_os == "linux" and "linux" not in os_blob and "ubuntu" not in os_blob and "debian" not in os_blob:
+        return False
+    ram = pc.ram_gb
+    if filters.get("ram_lt") is not None and (ram is None or float(ram) >= float(filters["ram_lt"])):
+        return False
+    if filters.get("ram_gt") is not None and (ram is None or float(ram) <= float(filters["ram_gt"])):
+        return False
+    if filters.get("ram_eq") is not None and (ram is None or abs(float(ram) - float(filters["ram_eq"])) > 0.6):
+        return False
+    terms: list[str] = list(filters.get("terms") or [])
+    if not terms:
+        return True
+    sw = " ".join((s.name or "") for s in (pc.software or [])[:100]).lower()
+    tags = " ".join(t.name for t in (pc.tags or [])).lower()
+    blob = f"{pc.hostname or ''} {os_blob} {pc.cpu or ''} {pc.location or ''} {sw} {tags}".lower()
+    return any(term in blob for term in terms)
+
+
 async def tool_get_computer(db: AsyncSession, hostnames: list[str]) -> tuple[str, list[RagSource]]:
     if not hostnames:
         return "", []
@@ -180,14 +312,7 @@ async def tool_get_computer(db: AsyncSession, hostnames: list[str]) -> tuple[str
     lines: list[str] = ["### tool:get_computer"]
     sources: list[RagSource] = []
     for pc in pcs:
-        tags = ", ".join(t.name for t in (pc.tags or [])[:12]) or "—"
-        sw = ", ".join((s.name or "") for s in (pc.software or [])[:20] if s.name) or "—"
-        card = (
-            f"- computer_id={pc.id} hostname={pc.hostname} os={pc.os_name or '—'} "
-            f"ver={pc.os_version or '—'} ram_gb={pc.ram_gb if pc.ram_gb is not None else '—'} "
-            f"cpu={pc.cpu or '—'} ip={pc.ip_address or '—'} location={pc.location or '—'} "
-            f"tags=[{tags}] software=[{sw}]"
-        )
+        card = _pc_card(pc)
         lines.append(card)
         sources.append(
             RagSource(
@@ -199,6 +324,183 @@ async def tool_get_computer(db: AsyncSession, hostnames: list[str]) -> tuple[str
                 excerpt=card[:220],
             )
         )
+    return "\n".join(lines), sources
+
+
+async def tool_search_computers(db: AsyncSession, question: str) -> tuple[str, list[RagSource]]:
+    """Filtered park selection with totals — not RAG's first 2 similar chunks."""
+    data = await _load_snapshot(db)
+    computers: list[Computer] = list(data.get("computers") or [])
+    filters = _extract_pc_filters(question)
+    matched = [pc for pc in computers if _pc_matches_filters(pc, filters)]
+    # If filters were too aggressive and wiped everything, fall back to full park sample.
+    used_fallback = False
+    if not matched and (filters.get("os") or filters.get("terms") or filters.get("ram_lt") or filters.get("ram_gt") or filters.get("ram_eq")):
+        matched = computers
+        used_fallback = True
+    elif not matched:
+        matched = computers
+
+    if _is_weakest_pc_question(question):
+        table = build_weakest_pcs_table(data, limit=12)
+        sources = [
+            RagSource(
+                kind="corax_tool",
+                label=f"Слабые ПК ({min(12, len(computers))} из {len(computers)})",
+                source_table="computers",
+                excerpt=table[:220],
+            )
+        ]
+        return f"### tool:search_computers\n{table}", sources
+
+    show = matched[:_SEARCH_PC_LIMIT]
+    lines = [
+        "### tool:search_computers",
+        f"Всего в парке: {len(computers)}. Под фильтр попало: {len(matched)}"
+        + (" (фильтр смягчён — показана выборка парка)" if used_fallback else "")
+        + f". Показано: {len(show)}.",
+    ]
+    filt_bits = []
+    if filters.get("os"):
+        filt_bits.append(f"os={filters['os']}")
+    if filters.get("ram_lt") is not None:
+        filt_bits.append(f"ram<{filters['ram_lt']}")
+    if filters.get("ram_gt") is not None:
+        filt_bits.append(f"ram>{filters['ram_gt']}")
+    if filters.get("ram_eq") is not None:
+        filt_bits.append(f"ram≈{filters['ram_eq']}")
+    if filters.get("terms"):
+        filt_bits.append("terms=" + ",".join(filters["terms"]))
+    if filt_bits:
+        lines.append("Фильтр: " + "; ".join(filt_bits))
+    sources: list[RagSource] = [
+        RagSource(
+            kind="corax_tool",
+            label=f"Выборка ПК {len(show)}/{len(matched)}",
+            source_table="computers",
+            excerpt=f"park={len(computers)}; matched={len(matched)}",
+        )
+    ]
+    for pc in show:
+        card = _pc_card(pc, software_n=8)
+        lines.append(card)
+        sources.append(
+            RagSource(
+                kind="corax_tool",
+                label=f"ПК {pc.hostname}",
+                hostname=pc.hostname,
+                computer_id=pc.id,
+                source_table="computers",
+                excerpt=card[:220],
+            )
+        )
+    if len(matched) > len(show):
+        lines.append(f"- … ещё {len(matched) - len(show)} (уточните фильтр: ОС, RAM, ПО, hostname)")
+    return "\n".join(lines), sources
+
+
+async def tool_search_tickets(db: AsyncSession, question: str) -> tuple[str, list[RagSource]]:
+    """Focused ticket selection with status/text filters and totals."""
+    data = await _load_snapshot(db)
+    reqs: list[Any] = list(data.get("requests") or [])
+    pc_by_id = data.get("pc_by_id") or {}
+    low = (question or "").lower()
+
+    status_want: set[str] = set()
+    if any(k in low for k in ("открыт", "open", "активн", "в работе", "in_progress", "принят")):
+        status_want.update({"open", "in_progress"})
+    if any(k in low for k in ("закрыт", "выполнен", "done", "closed", "решён", "решен")):
+        status_want.update({"done", "cancelled"})
+    if "отмен" in low:
+        status_want.add("cancelled")
+
+    terms = [
+        tok
+        for tok in re.findall(r"[a-zA-Zа-яА-Я0-9][a-zA-Zа-яА-Я0-9._+-]{2,}", low)
+        if tok
+        not in {
+            "заявк",
+            "заявка",
+            "заявки",
+            "тикет",
+            "список",
+            "покажи",
+            "анализ",
+            "какие",
+            "открытые",
+            "закрытые",
+            "все",
+        }
+        and len(tok) >= 3
+    ][:8]
+
+    matched: list[Any] = []
+    for req in reqs:
+        status = str(getattr(req, "status", None) or "").lower()
+        if status_want and status not in status_want:
+            continue
+        title = str(getattr(req, "title", None) or "")
+        desc = str(getattr(req, "description", None) or "")
+        cid = getattr(req, "computer_id", None)
+        host = ""
+        if cid is not None and cid in pc_by_id:
+            host = str(getattr(pc_by_id[cid], "hostname", None) or "")
+        blob = f"{title} {desc} {host} {getattr(req, 'requester_name', '') or ''}".lower()
+        if terms and not any(t in blob for t in terms):
+            continue
+        matched.append(req)
+
+    if not matched and (status_want or terms):
+        matched = list(reqs)
+
+    # Prefer active tickets first for analysis.
+    def _rank(req: Any) -> tuple[int, int]:
+        st = str(getattr(req, "status", None) or "")
+        prio = {"high": 0, "normal": 1, "low": 2}.get(str(getattr(req, "priority", None) or "normal"), 1)
+        order = 0 if st in {"open", "in_progress"} else 1
+        return (order, prio)
+
+    matched.sort(key=_rank)
+    show = matched[:_SEARCH_TICKET_LIMIT]
+    lines = [
+        "### tool:search_tickets",
+        f"Всего заявок в снимке: {len(reqs)}. Под фильтр: {len(matched)}. Показано: {len(show)}.",
+    ]
+    if status_want:
+        lines.append("Статусы: " + ", ".join(sorted(status_want)))
+    if terms:
+        lines.append("Термины: " + ", ".join(terms))
+    sources: list[RagSource] = [
+        RagSource(
+            kind="corax_tool",
+            label=f"Заявки {len(show)}/{len(matched)}",
+            source_table="tickets",
+            excerpt=f"total={len(reqs)}; matched={len(matched)}",
+        )
+    ]
+    for req in show:
+        title = getattr(req, "title", None) or ""
+        status = getattr(req, "status", None) or ""
+        prio = getattr(req, "priority", None) or ""
+        cid = getattr(req, "computer_id", None)
+        host = ""
+        if cid is not None and cid in pc_by_id:
+            host = getattr(pc_by_id[cid], "hostname", None) or ""
+        tid = getattr(req, "ticket_no", None) or getattr(req, "id", None) or "?"
+        line = f"- #{tid} [{status}/{prio}] {title}" + (f" · {host}" if host else "")
+        lines.append(line)
+        sources.append(
+            RagSource(
+                kind="corax_tool",
+                label=f"Заявка #{tid}",
+                hostname=host or None,
+                computer_id=int(cid) if cid is not None else None,
+                source_table="tickets",
+                excerpt=line[:220],
+            )
+        )
+    if len(matched) > len(show):
+        lines.append(f"- … ещё {len(matched) - len(show)}")
     return "\n".join(lines), sources
 
 
@@ -291,7 +593,7 @@ async def tool_query_corax(db: AsyncSession, question: str) -> tuple[str, list[R
 
     if focus == "os_hardware":
         if _is_weakest_pc_question(question):
-            parts.append(build_weakest_pcs_table(data, limit=8))
+            parts.append(build_weakest_pcs_table(data, limit=12))
             return "\n".join(parts), sources
         hint = build_inventory_analysis_hint(data, question)
         if hint:
@@ -302,20 +604,19 @@ async def tool_query_corax(db: AsyncSession, question: str) -> tuple[str, list[R
             hist[key] = hist.get(key, 0) + 1
         top = sorted(hist.items(), key=lambda x: -x[1])[:8]
         parts.append("ОС в парке: " + ", ".join(f"{k}={v}" for k, v in top))
+        parts.append(f"Всего ПК: {len(computers)} — детальная выборка в tool:search_computers.")
         return "\n".join(parts), sources
 
     if focus == "tickets":
         reqs = data.get("requests") or []
-        pc_by_id = data.get("pc_by_id") or {}
+        by_status: dict[str, int] = {}
+        for req in reqs:
+            st = str(getattr(req, "status", None) or "unknown")
+            by_status[st] = by_status.get(st, 0) + 1
         parts.append(f"Заявок в снимке: {len(reqs)}")
-        for req in reqs[:15]:
-            title = getattr(req, "title", None) or ""
-            status = getattr(req, "status", None) or ""
-            cid = getattr(req, "computer_id", None)
-            host = ""
-            if cid is not None and cid in pc_by_id:
-                host = getattr(pc_by_id[cid], "hostname", None) or ""
-            parts.append(f"- [{status}] {title} · {host}".strip())
+        if by_status:
+            parts.append("По статусам: " + ", ".join(f"{k}={v}" for k, v in sorted(by_status.items())))
+        parts.append("Детальная выборка — в tool:search_tickets.")
         return "\n".join(parts), sources
 
     if focus == "network":
@@ -366,15 +667,32 @@ async def run_wikirag_tools(
 
     focus = classify_wikirag_question(q)
     # Для «топ слабых / железо» сначала живой рейтинг CORAX — wiki CSV только как дополнение.
-    if include_corax and focus in {"os_hardware", "network"}:
+    if include_corax and focus in {"os_hardware", "network", "tickets", "software"}:
         corax_block, corax_sources = await tool_query_corax(db, q)
         if corax_block:
             pack.tools_used.append("query_corax")
             blocks.append(corax_block)
             pack.sources.extend(corax_sources)
 
+    # Focused live selections: keep the model's attention on a filtered subset.
+    if include_corax and focus in {"os_hardware", "software", "general"} and needs_live_inventory_tools(q, focus):
+        search_block, search_sources = await tool_search_computers(db, q)
+        if search_block:
+            pack.tools_used.append("search_computers")
+            blocks.append(search_block)
+            pack.sources.extend(search_sources)
+
+    if include_corax and focus == "tickets":
+        ticket_block, ticket_sources = await tool_search_tickets(db, q)
+        if ticket_block:
+            pack.tools_used.append("search_tickets")
+            blocks.append(ticket_block)
+            pack.sources.extend(ticket_sources)
+
     # Wiki chunks по индексу (эмбеддинги / hybrid) — не целые файлы.
-    skip_wiki = include_corax and focus == "os_hardware" and _is_weakest_pc_question(q)
+    skip_wiki = include_corax and focus in {"os_hardware", "tickets"} and (
+        _is_weakest_pc_question(q) or needs_live_inventory_tools(q, focus)
+    )
     if not skip_wiki:
         wiki_block, wiki_sources = await tool_search_wiki(db, q, wiki_documents)
         if wiki_block:
