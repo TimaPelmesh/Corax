@@ -333,16 +333,26 @@ export function SettingsLlmPage() {
     void persist(rowsRef.current)
   }
 
-  function addServer() {
+  function addServer(preset?: { label: string; base_url: string }) {
     if (servers.length >= 12) return
-    const draft = servers.find((row) => !row.base_url.trim())
-    if (servers.length >= PAGE_SERVERS) setDialog('servers')
+    setDialog('servers')
+    if (preset?.base_url) {
+      const exists = servers.find((row) => sameLmEndpoint(row.base_url, preset.base_url))
+      if (exists) {
+        setFocusId(exists.id)
+        return
+      }
+    }
+    const draft = !preset ? servers.find((row) => !row.base_url.trim()) : undefined
     if (draft) {
       setFocusId(draft.id)
       return
     }
     const id = freshId()
-    setServers((prev) => [...prev, { id, label: '', base_url: '' }])
+    setServers((prev) => [
+      ...prev,
+      { id, label: preset?.label || '', base_url: preset?.base_url || '' },
+    ])
     setFocusId(id)
   }
 
@@ -353,6 +363,17 @@ export function SettingsLlmPage() {
     void persist(next).then((ok) => {
       if (!ok) setServers(previous)
     })
+  }
+
+  async function saveServersAndClose() {
+    const ok = await persist(rowsRef.current)
+    if (ok) setDialog(null)
+  }
+
+  function useServerForChat(row: LlmServerSetting) {
+    if (!row.base_url.trim()) return
+    chooseChat(row.id)
+    void probe(row.base_url, { chat: true, notify: true })
   }
 
   function chooseChat(id: string) {
@@ -472,71 +493,117 @@ export function SettingsLlmPage() {
       />
 
       {status && !status.ok && status.detail ? (
-        <p className="truncate text-[11px] text-[var(--color-fg-muted)]" title={status.detail}>
-          {status.detail}
-        </p>
+        <p className="break-words text-[11px] text-[var(--color-fg-muted)]">{status.detail}</p>
       ) : null}
 
-      <div className="flex flex-col gap-3">
-        <section className={`${PANEL} order-2`}>
-          <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2">
-            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.servers')}</h2>
-            <div className="flex items-center gap-1.5">
-              {servers.length > PAGE_SERVERS ? (
-                <button
-                  type="button"
-                  className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
-                  onClick={() => setDialog('servers')}
-                >
-                  {t('settingsLlm.moreServers', { n: servers.length - PAGE_SERVERS })}
-                </button>
-              ) : null}
+      <div className="flex flex-col gap-4">
+        <section className={PANEL}>
+          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.serversStep')}</h2>
+              <p className="mt-0.5 max-w-2xl text-xs text-[var(--color-fg-muted)]">{t('settingsLlm.serversLead')}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                className="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs font-medium text-[var(--color-fg)] disabled:opacity-40"
+                className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 text-xs"
                 disabled={servers.length >= 12}
-                onClick={() => {
-                  addServer()
-                  setDialog('servers')
-                }}
+                onClick={() => addServer({ label: 'Ollama', base_url: 'http://127.0.0.1:11434/v1' })}
+              >
+                {t('settingsLlm.addOllama')}
+              </button>
+              <button
+                type="button"
+                className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 text-xs"
+                disabled={servers.length >= 12}
+                onClick={() => addServer({ label: 'LM Studio', base_url: 'http://127.0.0.1:1234/v1' })}
+              >
+                {t('settingsLlm.addLmStudio')}
+              </button>
+              <button
+                type="button"
+                className="app-btn app-btn-primary !min-h-0 !px-2.5 !py-1.5 text-xs"
+                disabled={servers.length >= 12}
+                onClick={() => addServer()}
               >
                 {t('settingsLlm.addServer')}
+              </button>
+              <button
+                type="button"
+                className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 text-xs"
+                onClick={() => setDialog('servers')}
+              >
+                {t('settingsLlm.manageServers')}
               </button>
             </div>
           </div>
           {servers.length ? (
-            <ul className="grid gap-1 px-3 py-2 sm:grid-cols-2">
+            <ul className="grid gap-2 p-3 sm:grid-cols-2">
               {servers.slice(0, PAGE_SERVERS).map((row) => {
                 const hit = row.base_url.trim() ? probeFor(row.base_url) : undefined
+                const activeChat = sameLmEndpoint(row.base_url, settings.baseUrl)
                 return (
                   <li key={row.id}>
                     <button
                       type="button"
                       onClick={() => setDialog('servers')}
-                      className="flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-[var(--color-bg-muted)]"
+                      className={`flex w-full flex-col gap-1 rounded-lg border px-3 py-2.5 text-left transition hover:bg-[var(--color-bg-muted)] ${
+                        activeChat
+                          ? 'border-[var(--color-primary)] bg-[var(--color-primary-muted)]/30'
+                          : 'border-[var(--color-border)]'
+                      }`}
                     >
-                      <span
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                          hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
-                        }`}
-                      />
-                      <span className="truncate text-xs font-medium text-[var(--color-fg)]">
-                        {row.label || providerMark(row.base_url)}
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${
+                            hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
+                          }`}
+                        />
+                        <span className="truncate text-sm font-medium text-[var(--color-fg)]">
+                          {row.label || providerMark(row.base_url)}
+                        </span>
+                        <span className="shrink-0 rounded bg-[var(--color-bg-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-fg-subtle)]">
+                          {providerMark(row.base_url)}
+                        </span>
                       </span>
-                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--color-fg-subtle)]">
+                      <span className="break-all font-mono text-[12px] leading-snug text-[var(--color-fg-muted)]">
                         {row.base_url || t('settingsLlm.serverUrlPh')}
                       </span>
+                      {hit?.ok ? (
+                        <span className="text-[11px] text-[var(--color-fg-subtle)]">
+                          {t('settingsLlm.modelsFound', { n: hit.models.length })}
+                          {activeChat ? ` · ${t('settingsLlm.chatRole')}` : ''}
+                        </span>
+                      ) : null}
                     </button>
                   </li>
                 )
               })}
             </ul>
           ) : (
-            <p className="px-3 py-4 text-xs text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p>
+            <div className="flex flex-col items-start gap-3 px-3 py-5">
+              <p className="text-sm text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p>
+              <button type="button" className="app-btn app-btn-primary" onClick={() => addServer()}>
+                {t('settingsLlm.addServer')}
+              </button>
+            </div>
           )}
+          {servers.length > PAGE_SERVERS ? (
+            <div className="border-t border-[var(--color-border)] px-3 py-2">
+              <button
+                type="button"
+                className="text-xs font-medium text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                onClick={() => setDialog('servers')}
+              >
+                {t('settingsLlm.moreServers', { n: servers.length })}
+              </button>
+            </div>
+          ) : null}
         </section>
 
-        <div className="order-1 grid gap-3 lg:grid-cols-2">
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-[var(--color-fg)]">{t('settingsLlm.rolesStep')}</h2>
+          <div className="grid gap-3 lg:grid-cols-2">
           <section className={PANEL}>
             <div className="border-b border-[var(--color-border)] px-3 py-2">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]" title={t('settingsLlm.chatSeparate')}>
@@ -560,7 +627,7 @@ export function SettingsLlmPage() {
                     .filter((row) => row.base_url.trim())
                     .map((row) => (
                       <option key={row.id} value={row.id}>
-                        {row.label || row.base_url}
+                        {(row.label ? `${row.label} — ` : '') + row.base_url}
                       </option>
                     ))}
                 </select>
@@ -666,7 +733,7 @@ export function SettingsLlmPage() {
                     .filter((row) => row.base_url.trim())
                     .map((row) => (
                       <option key={row.id} value={row.id}>
-                        {row.label || row.base_url}
+                        {(row.label ? `${row.label} — ` : '') + row.base_url}
                       </option>
                     ))}
                 </select>
@@ -693,9 +760,7 @@ export function SettingsLlmPage() {
               </label>
             </div>
           </section>
-        </div>
 
-        <div className="order-3 grid gap-3 lg:grid-cols-2">
           <section className={PANEL}>
             <div className="border-b border-[var(--color-border)] px-3 py-2">
               <h2 className="text-sm font-semibold text-[var(--color-fg)]" title={t('settingsLlm.ticketsSeparate')}>
@@ -722,7 +787,7 @@ export function SettingsLlmPage() {
                     .filter((row) => row.base_url.trim())
                     .map((row) => (
                       <option key={row.id} value={row.id}>
-                        {row.label || row.base_url}
+                        {(row.label ? `${row.label} — ` : '') + row.base_url}
                       </option>
                     ))}
                 </select>
@@ -748,7 +813,7 @@ export function SettingsLlmPage() {
                 </select>
               </label>
               {roleHint('tickets') ? (
-                <p className="col-span-2 truncate text-[11px] text-[var(--color-fg-muted)]">{roleHint('tickets')}</p>
+                <p className="col-span-2 break-all text-[11px] text-[var(--color-fg-muted)]">{roleHint('tickets')}</p>
               ) : null}
             </div>
           </section>
@@ -779,7 +844,7 @@ export function SettingsLlmPage() {
                     .filter((row) => row.base_url.trim())
                     .map((row) => (
                       <option key={row.id} value={row.id}>
-                        {row.label || row.base_url}
+                        {(row.label ? `${row.label} — ` : '') + row.base_url}
                       </option>
                     ))}
                 </select>
@@ -805,10 +870,11 @@ export function SettingsLlmPage() {
                 </select>
               </label>
               {roleHint('bitrix_bot') ? (
-                <p className="col-span-2 truncate text-[11px] text-[var(--color-fg-muted)]">{roleHint('bitrix_bot')}</p>
+                <p className="col-span-2 break-all text-[11px] text-[var(--color-fg-muted)]">{roleHint('bitrix_bot')}</p>
               ) : null}
             </div>
           </section>
+          </div>
         </div>
       </div>
 
@@ -850,71 +916,140 @@ export function SettingsLlmPage() {
       </AppModal>
       <AppModal
         open={dialog === 'servers'}
-        title={t('settingsLlm.servers')}
+        title={t('settingsLlm.manageServers')}
         onClose={() => setDialog(null)}
-        size="lg"
+        size="xl"
       >
-        <ul className="grid gap-2 md:grid-cols-2">
+        <p className="mb-3 text-xs text-[var(--color-fg-muted)]">{t('settingsLlm.serverUrlHint')}</p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 text-xs"
+            disabled={servers.length >= 12}
+            onClick={() => addServer({ label: 'Ollama', base_url: 'http://127.0.0.1:11434/v1' })}
+          >
+            {t('settingsLlm.addOllama')}
+          </button>
+          <button
+            type="button"
+            className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1.5 text-xs"
+            disabled={servers.length >= 12}
+            onClick={() => addServer({ label: 'LM Studio', base_url: 'http://127.0.0.1:1234/v1' })}
+          >
+            {t('settingsLlm.addLmStudio')}
+          </button>
+          <button
+            type="button"
+            className="app-btn app-btn-primary !min-h-0 !px-2.5 !py-1.5 text-xs"
+            disabled={servers.length >= 12}
+            onClick={() => addServer()}
+          >
+            {t('settingsLlm.addServer')}
+          </button>
+        </div>
+        <ul className="flex max-h-[min(70vh,32rem)] flex-col gap-3 overflow-y-auto pr-1">
           {servers.map((row) => {
             const hit = row.base_url.trim() ? probeFor(row.base_url) : undefined
+            const checking = isBusy(row.base_url)
             return (
               <li
                 key={row.id}
-                className="grid grid-cols-[minmax(5.5rem,7rem)_minmax(0,1fr)_auto] items-center gap-1.5"
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
                 onBlur={onRowBlur}
               >
-                <input
-                  aria-label={t('settingsLlm.serverNamePh')}
-                  value={row.label}
-                  placeholder={t('settingsLlm.serverNamePh')}
-                  onChange={(e) => patchRow(row.id, { label: e.target.value })}
-                  className="app-input !min-h-8 text-xs"
-                />
-                <input
-                  id={`llm-url-${row.id}`}
-                  aria-label={t('settingsLlm.serverUrlPh')}
-                  value={row.base_url}
-                  placeholder={t('settingsLlm.serverUrlPh')}
-                  onChange={(e) => patchRow(row.id, { base_url: e.target.value })}
-                  className="app-input !min-h-8 font-mono text-xs"
-                />
-                <div className="flex items-center gap-1">
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+                  <label className="block min-w-0">
+                    <span className="app-label">{t('settingsLlm.serverName')}</span>
+                    <input
+                      aria-label={t('settingsLlm.serverNamePh')}
+                      value={row.label}
+                      placeholder={t('settingsLlm.serverNamePh')}
+                      onChange={(e) => patchRow(row.id, { label: e.target.value })}
+                      className="app-input mt-1"
+                    />
+                  </label>
+                  <label className="block min-w-0">
+                    <span className="app-label">{t('settingsLlm.serverUrl')}</span>
+                    <input
+                      id={`llm-url-${row.id}`}
+                      aria-label={t('settingsLlm.serverUrlPh')}
+                      value={row.base_url}
+                      placeholder={t('settingsLlm.serverUrlPh')}
+                      onChange={(e) => patchRow(row.id, { base_url: e.target.value })}
+                      className="app-input mt-1 font-mono text-sm"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </label>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] ${
+                      hit?.ok
+                        ? 'bg-[var(--color-success-bg,var(--color-bg-muted))] text-[var(--color-fg)]'
+                        : 'bg-[var(--color-bg-muted)] text-[var(--color-fg-subtle)]'
                     }`}
-                    title={hit?.detail || providerMark(row.base_url)}
-                  />
-                  <button
-                    type="button"
-                    title={t('settingsLlm.checkOne')}
-                    aria-label={t('settingsLlm.checkOne')}
-                    disabled={!row.base_url.trim() || isBusy(row.base_url)}
-                    onClick={() =>
-                      void probe(row.base_url, {
-                        chat: sameLmEndpoint(row.base_url, settings.baseUrl),
-                        notify: true,
-                      })
-                    }
-                    className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)] disabled:opacity-40"
                   >
-                    <IconActivity className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    title={t('settingsLlm.removeServer')}
-                    aria-label={t('settingsLlm.removeServer')}
-                    onClick={() => removeServer(row.id)}
-                    className="rounded-md p-1 text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-muted)]"
-                  >
-                    <IconClose className="h-3.5 w-3.5" />
-                  </button>
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        hit?.ok ? 'bg-[var(--color-primary)]' : hit ? 'bg-[var(--color-fg-subtle)]' : 'bg-[var(--color-border)]'
+                      }`}
+                    />
+                    {providerMark(row.base_url)}
+                    {hit?.ok ? ` · ${t('settingsLlm.modelsFound', { n: hit.models.length })}` : ''}
+                  </span>
+                  {hit?.detail && !hit.ok ? (
+                    <span className="min-w-0 flex-1 break-all text-[11px] text-[var(--color-fg-muted)]">{hit.detail}</span>
+                  ) : null}
+                  <div className="ml-auto flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary !min-h-0 !px-2.5 !py-1 text-xs"
+                      disabled={!row.base_url.trim() || checking}
+                      onClick={() =>
+                        void probe(row.base_url, {
+                          chat: sameLmEndpoint(row.base_url, settings.baseUrl),
+                          notify: true,
+                        })
+                      }
+                    >
+                      {checking ? t('settingsLlm.checking') : t('settingsLlm.checkOne')}
+                    </button>
+                    <button
+                      type="button"
+                      className="app-btn app-btn-primary !min-h-0 !px-2.5 !py-1 text-xs"
+                      disabled={!row.base_url.trim() || checking}
+                      onClick={() => useServerForChat(row)}
+                    >
+                      {t('settingsLlm.connectChat')}
+                    </button>
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary !min-h-0 !px-2 !py-1 text-xs"
+                      title={t('settingsLlm.removeServer')}
+                      aria-label={t('settingsLlm.removeServer')}
+                      onClick={() => removeServer(row.id)}
+                    >
+                      <IconClose className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </li>
             )
           })}
         </ul>
-        {!servers.length ? <p className="text-xs text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p> : null}
+        {!servers.length ? <p className="py-4 text-sm text-[var(--color-fg-subtle)]">{t('settingsLlm.serversEmpty')}</p> : null}
+        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[var(--color-border)] pt-3">
+          <button type="button" className="app-btn app-btn-secondary" onClick={() => setDialog(null)}>
+            {t('common.cancel')}
+          </button>
+          <button type="button" className="app-btn app-btn-secondary" onClick={() => void persist(rowsRef.current)}>
+            {t('settingsLlm.saveServers')}
+          </button>
+          <button type="button" className="app-btn app-btn-primary" onClick={() => void saveServersAndClose()}>
+            {t('settingsLlm.saveAndClose')}
+          </button>
+        </div>
       </AppModal>
     </div>
   )
