@@ -2129,6 +2129,52 @@ def _migrate_backup_schedule(sync_conn) -> None:
     sync_conn.execute(text(ddl))
 
 
+def _migrate_corax_bots(sync_conn) -> None:
+    if "corax_bots" in _table_names(sync_conn):
+        return
+    if sync_conn.dialect.name == "sqlite":
+        ddl = """
+            CREATE TABLE corax_bots (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name VARCHAR(128) NOT NULL DEFAULT '',
+              purpose VARCHAR(512) NOT NULL DEFAULT '',
+              channel VARCHAR(32) NOT NULL DEFAULT 'bitrix24',
+              status VARCHAR(16) NOT NULL DEFAULT 'draft',
+              code VARCHAR(64) NOT NULL DEFAULT '',
+              external_bot_id INTEGER,
+              bot_token VARCHAR(64) NOT NULL DEFAULT '',
+              dialogs_json TEXT NOT NULL DEFAULT '',
+              ai_enabled BOOLEAN NOT NULL DEFAULT 0,
+              ai_model VARCHAR(128) NOT NULL DEFAULT '',
+              ai_system_prompt TEXT NOT NULL DEFAULT '',
+              config_json TEXT NOT NULL DEFAULT '',
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+    else:
+        ddl = """
+            CREATE TABLE corax_bots (
+              id SERIAL PRIMARY KEY,
+              name VARCHAR(128) NOT NULL DEFAULT '',
+              purpose VARCHAR(512) NOT NULL DEFAULT '',
+              channel VARCHAR(32) NOT NULL DEFAULT 'bitrix24',
+              status VARCHAR(16) NOT NULL DEFAULT 'draft',
+              code VARCHAR(64) NOT NULL DEFAULT '',
+              external_bot_id INTEGER,
+              bot_token VARCHAR(64) NOT NULL DEFAULT '',
+              dialogs_json TEXT NOT NULL DEFAULT '',
+              ai_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+              ai_model VARCHAR(128) NOT NULL DEFAULT '',
+              ai_system_prompt TEXT NOT NULL DEFAULT '',
+              config_json TEXT NOT NULL DEFAULT '',
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+    sync_conn.execute(text(ddl))
+
+
 _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-04-16_schema_migrations", lambda c: None),
     ("2026-04-16_tags_color", _migrate_tags_color_column),
@@ -2206,6 +2252,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-27_bitrix_bot_email", _migrate_bitrix_bot_email),
     ("2026-10-29_backup_schedule", _migrate_backup_schedule),
     ("2026-10-30_dashboard_snapshots", _migrate_dashboard_snapshots),
+    ("2026-11-03_corax_bots", _migrate_corax_bots),
 ]
 
 

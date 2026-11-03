@@ -905,6 +905,39 @@ export type Bitrix24Config = {
   default_category: string
 }
 
+export type CoraxBotDialogNode = {
+  type?: string
+  text?: string
+  prompt?: string
+  next?: string
+  fallback?: string
+  buttons?: { label: string; next: string }[]
+  [key: string]: unknown
+}
+
+export type CoraxBotDialogs = {
+  entry?: string
+  nodes?: Record<string, CoraxBotDialogNode>
+}
+
+export type CoraxBot = {
+  id: number
+  name: string
+  purpose: string
+  channel: string
+  status: string
+  code: string
+  external_bot_id: number | null
+  token_set: boolean
+  dialogs: CoraxBotDialogs
+  ai_enabled: boolean
+  ai_model: string
+  ai_system_prompt: string
+  config: Record<string, unknown>
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export type BitrixBotSettings = {
   webhook_set: boolean
   webhook_host: string
@@ -2360,6 +2393,35 @@ export const api = {
 
   updateBitrix24Config: (body: Partial<Bitrix24Config>) =>
     request<Bitrix24Config>(`${API_PREFIX}/settings/bitrix24`, { method: 'PUT', json: body }),
+
+  coraxBots: () => request<CoraxBot[]>(`${API_PREFIX}/settings/bots`),
+
+  createCoraxBot: (body: { name: string; purpose?: string; channel?: string }) =>
+    request<CoraxBot>(`${API_PREFIX}/settings/bots`, { method: 'POST', json: body }),
+
+  updateCoraxBot: (
+    id: number,
+    body: {
+      name?: string
+      purpose?: string
+      channel?: string
+      status?: string
+      dialogs?: CoraxBotDialogs
+      ai_enabled?: boolean
+      ai_model?: string
+      ai_system_prompt?: string
+      config?: Record<string, unknown>
+    },
+  ) => request<CoraxBot>(`${API_PREFIX}/settings/bots/${id}`, { method: 'PATCH', json: body }),
+
+  deleteCoraxBot: (id: number) =>
+    request<{ ok: boolean }>(`${API_PREFIX}/settings/bots/${id}`, { method: 'DELETE' }),
+
+  registerCoraxBot: (id: number) =>
+    request<CoraxBot>(`${API_PREFIX}/settings/bots/${id}/register`, { method: 'POST' }),
+
+  unregisterCoraxBot: (id: number) =>
+    request<CoraxBot>(`${API_PREFIX}/settings/bots/${id}/unregister`, { method: 'POST' }),
 
   bitrixBot: () => request<BitrixBotSettings>(`${API_PREFIX}/settings/bitrix24/bot`),
 

@@ -422,6 +422,24 @@ def status_text(
     return head
 
 
+def status_list_text(
+    tickets: list[tuple[int, str, str]],
+    *,
+    voice: BotVoice | None = None,
+) -> str:
+    """All tickets for «Мои заявки»: (id, title, status), newest first."""
+    tone = voice or BotVoice()
+    if not tickets:
+        return _pick(tone.no_ticket, DEFAULT_LINES["no_ticket"])
+    if len(tickets) == 1:
+        ticket_id, title, state = tickets[0]
+        return status_text(ticket_id, title, state=state, voice=tone)
+    blocks = [f"Ваши заявки ({len(tickets)}):"]
+    for ticket_id, title, state in tickets:
+        blocks.append(status_text(ticket_id, title, state=state, voice=tone))
+    return "\n\n".join(blocks)
+
+
 def intake_step(event: str, command: str, text: str, *, enabled: bool, waiting: bool) -> str:
     """greet, ask, take, status, help, cancel, pc, stock, sla, nudge, off, or skip."""
     kind = (event or "").strip()

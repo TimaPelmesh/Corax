@@ -40,6 +40,7 @@ from app.routers import (
     bitrix24_bot_handler,
     bitrix24_imbot,
     bitrix24_incoming,
+    bots,
     computers,
     dashboard,
     database_backup,
@@ -499,6 +500,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(bitrix24.router, prefix=base)
     app.include_router(bitrix24_imbot.router, prefix=base)
     app.include_router(bitrix24_incoming.router, prefix=base)
+    app.include_router(bots.router, prefix=base)
     app.include_router(computers.router, prefix=base)
     app.include_router(monitors.router, prefix=base)
     app.include_router(printers.router, prefix=base)

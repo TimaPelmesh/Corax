@@ -13,6 +13,7 @@ from app.bot_intake import (
     intake_step,
     nudge_text,
     parse_scripts,
+    status_list_text,
     status_text,
     voice_from_phrases,
 )
@@ -319,6 +320,16 @@ def test_ticket_waits_for_the_button():
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "статус заявки.", enabled=True, waiting=False) == "status"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Мои заявки", enabled=True, waiting=False) == "status"
     assert status_text(7, "[Битрикс] Не печатает", state="in_progress") == "🔧 Заявка №7 — в работе.\n[Битрикс] Не печатает"
+    listed = status_list_text(
+        [
+            (12, "[Битрикс] Нет сети", "open"),
+            (7, "[Битрикс] Не печатает", "in_progress"),
+        ]
+    )
+    assert listed.startswith("Ваши заявки (2):")
+    assert "Заявка №12" in listed and "Заявка №7" in listed
+    assert "принята" in listed and "в работе" in listed
+    assert status_list_text([]) == "Заявок от вас пока нет. Нажмите на кнопку ниже, чтобы создать первую."
     assert bitrix_title("Не печатает") == "[Битрикс] Не печатает"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Помощь", enabled=True, waiting=False) == "help"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Отмена", enabled=True, waiting=True) == "cancel"

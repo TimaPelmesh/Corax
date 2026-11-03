@@ -608,6 +608,30 @@ class BitrixBotDialog(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class CoraxBot(Base):
+    """Bot blueprint from the constructor: dialogs, purpose, optional Bitrix/AI binding."""
+
+    __tablename__ = "corax_bots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), default="")
+    purpose: Mapped[str] = mapped_column(String(512), default="")
+    channel: Mapped[str] = mapped_column(String(32), default="bitrix24")
+    status: Mapped[str] = mapped_column(String(16), default="draft")
+    code: Mapped[str] = mapped_column(String(64), default="")
+    external_bot_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bot_token: Mapped[str] = mapped_column(String(64), default="")
+    dialogs_json: Mapped[str] = mapped_column(Text, default="")
+    ai_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    ai_model: Mapped[str] = mapped_column(String(128), default="")
+    ai_system_prompt: Mapped[str] = mapped_column(Text, default="")
+    config_json: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ZabbixConfig(Base):
     """Singleton read-only Zabbix API connection (scope A)."""
 

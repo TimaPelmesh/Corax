@@ -1745,3 +1745,43 @@ class AgentAuditJobResult(BaseModel):
     @classmethod
     def strip_job_nul(cls, data: Any) -> Any:
         return deep_strip_nul(data)
+
+
+class CoraxBotOut(BaseModel):
+    id: int
+    name: str
+    purpose: str = ""
+    channel: str = "bitrix24"
+    status: str = "draft"
+    code: str = ""
+    external_bot_id: int | None = None
+    token_set: bool = False
+    dialogs: dict[str, Any] = Field(default_factory=dict)
+    ai_enabled: bool = False
+    ai_model: str = ""
+    ai_system_prompt: str = ""
+    config: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @field_serializer("created_at", "updated_at")
+    def _ser_bot_ts(self, value: datetime | None):
+        return _iso_z(value)
+
+
+class CoraxBotCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    purpose: str = Field(default="", max_length=512)
+    channel: str = Field(default="bitrix24", max_length=32)
+
+
+class CoraxBotUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=128)
+    purpose: str | None = Field(default=None, max_length=512)
+    channel: str | None = Field(default=None, max_length=32)
+    status: str | None = Field(default=None, max_length=16)
+    dialogs: dict[str, Any] | None = None
+    ai_enabled: bool | None = None
+    ai_model: str | None = Field(default=None, max_length=128)
+    ai_system_prompt: str | None = Field(default=None, max_length=8000)
+    config: dict[str, Any] | None = None

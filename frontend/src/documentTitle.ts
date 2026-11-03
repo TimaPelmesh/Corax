@@ -24,6 +24,7 @@ const ROUTE_TITLES: Array<{ path: string; key: MessageKey; end?: boolean }> = [
   { path: '/settings/https', key: 'titles.https' },
   { path: '/settings/categories', key: 'titles.categories' },
   { path: '/settings/bitrix24', key: 'titles.bitrix24' },
+  { path: '/settings/bots', key: 'titles.bots' },
   { path: '/settings/zabbix', key: 'titles.zabbix' },
   { path: '/settings/database', key: 'titles.database' },
   { path: '/settings/ldap', key: 'titles.ldap' },

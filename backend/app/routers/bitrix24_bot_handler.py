@@ -31,7 +31,7 @@ from app.bot_intake import (
     nudge_text,
     off_text,
     phrases_for_bot,
-    status_text,
+    status_list_text,
     voice_from_phrases,
 )
 from app.config import settings
@@ -391,7 +391,13 @@ async def _guess_category(db: AsyncSession, title: str, description: str) -> str
         return None
 
 
-async def _last_bitrix_ticket(db: AsyncSession, event: dict[str, str]) -> ServiceRequest | None:
+async def _bitrix_tickets_for_user(
+    db: AsyncSession,
+    event: dict[str, str],
+    *,
+    limit: int = 20,
+) -> list[ServiceRequest]:
+    """Tickets left by this Bitrix person — newest first, not only the last one."""
     user_id = (event.get("user_id") or "").strip()
     dialog_id = (event.get("dialog_id") or "").strip()
     name = given_name(event.get("user_name") or "").casefold()
@@ -403,17 +409,21 @@ async def _last_bitrix_ticket(db: AsyncSession, event: dict[str, str]) -> Servic
             .limit(200)
         )
     ).all()
-    by_dialog: ServiceRequest | None = None
-    by_name: ServiceRequest | None = None
+    by_user: list[ServiceRequest] = []
+    by_dialog: list[ServiceRequest] = []
+    by_name: list[ServiceRequest] = []
     for row in rows:
         payload = _ticket_payload(row)
         if user_id and str(payload.get("user_id") or "") == user_id:
-            return row
-        if by_dialog is None and dialog_id and str(payload.get("dialog_id") or "") == dialog_id:
-            by_dialog = row
-        if by_name is None and name and given_name(row.requester_name or "").casefold() == name:
-            by_name = row
-    return by_dialog or by_name
+            by_user.append(row)
+            continue
+        if dialog_id and str(payload.get("dialog_id") or "") == dialog_id:
+            by_dialog.append(row)
+            continue
+        if name and given_name(row.requester_name or "").casefold() == name:
+            by_name.append(row)
+    matched = by_user or by_dialog or by_name
+    return matched[: max(1, limit)]
 
 
 async def _computers_for_person(db: AsyncSession, name: str) -> list[dict[str, Any]]:
@@ -520,11 +530,9 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
         await _v2_reply(cfg, event, help_text(voice), keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "help"}
     if step == "status":
-        last = await _last_bitrix_ticket(db, event)
-        body = status_text(
-            last.id if last is not None else None,
-            last.title if last is not None else "",
-            state=last.status if last is not None else "",
+        rows = await _bitrix_tickets_for_user(db, event)
+        body = status_list_text(
+            [(row.id, row.title or "", row.status or "") for row in rows],
             voice=voice,
         )
         await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)

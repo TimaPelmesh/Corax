@@ -21,6 +21,7 @@ const PURPOSE_KEY: Record<string, MessageKey> = {
   '/users': 'settingsPurpose.users',
   '/settings/ldap': 'settingsPurpose.ldap',
   '/settings/bitrix24': 'settingsPurpose.bitrix24',
+  '/settings/bots': 'settingsPurpose.bots',
   '/settings/zabbix': 'settingsPurpose.zabbix',
   '/settings/database': 'settingsPurpose.database',
   '/settings/glpi': 'settingsPurpose.glpi',
