@@ -638,6 +638,24 @@ export function IconServer({ className, title }: Props) {
   )
 }
 
+/** Docker Swarm / container cluster — distinct from rack server icon. */
+export function IconSwarm({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>
+      {title ? <title>{title}</title> : null}
+      <rect x="3.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...soft} />
+      <rect x="13.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...soft} />
+      <rect x="3.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...s} />
+      <rect x="13.4" y="8.2" width="7.2" height="7.6" rx="1.4" {...s} />
+      <path d="M5.2 10.6h3.6M5.2 13.4h2.6M15.2 10.6h3.6M15.2 13.4h2.6" {...s} strokeWidth={sw * 0.85} opacity={0.85} />
+      <path d="M10.6 12h2.8" {...s} />
+      <circle cx="12" cy="5.6" r="2.15" {...soft} />
+      <circle cx="12" cy="5.6" r="2.15" {...s} />
+      <path d="M12 7.75v0.45" {...s} />
+    </svg>
+  )
+}
+
 export function IconNas({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role={title ? 'img' : 'presentation'}>

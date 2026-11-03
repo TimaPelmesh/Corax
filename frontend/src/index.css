@@ -256,50 +256,24 @@ body {
   background: var(--color-primary-muted);
   color: var(--color-primary);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
 .sidebar-link-icon,
 .sidebar-group-icon {
   display: flex;
-  width: 1.625rem;
-  height: 1.625rem;
+  width: 1.125rem;
+  height: 1.125rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 0.45rem;
-  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
   color: var(--color-fg-subtle);
-  transition:
-    background-color 140ms ease,
-    color 140ms ease,
-    box-shadow 140ms ease;
+  transition: color 140ms ease;
 }
 
 .sidebar-link:hover .sidebar-link-icon,
-.sidebar-group:hover .sidebar-group-icon {
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  color: var(--color-primary);
-}
-
+.sidebar-group:hover .sidebar-group-icon,
 .sidebar-link-active .sidebar-link-icon {
-  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
   color: var(--color-primary);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 28%, transparent);
-}
-
-[data-theme='dark'] .sidebar-link-icon,
-[data-theme='dark'] .sidebar-group-icon {
-  background: color-mix(in srgb, var(--color-fg) 7%, transparent);
-}
-
-[data-theme='dark'] .sidebar-link:hover .sidebar-link-icon,
-[data-theme='dark'] .sidebar-group:hover .sidebar-group-icon {
-  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-}
-
-[data-theme='dark'] .sidebar-link-active .sidebar-link-icon {
-  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
 .sidebar-group {

@@ -49,7 +49,7 @@ export function SidebarNavLink({
       className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`}
     >
       <span className="sidebar-link-icon" aria-hidden>
-        <Icon className="h-[1.05rem] w-[1.05rem]" />
+        <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
       <NavCountBadge value={badge} />
@@ -87,7 +87,7 @@ export function SidebarGroupButton({
   const body = (
     <span className="flex min-w-0 flex-1 items-center gap-[0.55rem]">
       <span className="sidebar-group-icon" aria-hidden>
-        <Icon className="h-[1.05rem] w-[1.05rem]" />
+        <Icon className="h-4 w-4" />
       </span>
       <span className="truncate">{label}</span>
       <NavCountBadge value={badge} />
@@ -183,7 +183,7 @@ export function SettingsNavPanel({
         ) : null}
         <div className="flex w-full items-center justify-center gap-2">
           <span className="sidebar-group-icon text-[var(--color-fg)]" aria-hidden>
-            <IconSettings className="h-[1.05rem] w-[1.05rem]" />
+            <IconSettings className="h-4 w-4" />
           </span>
           <span className="text-[0.95rem] font-semibold tracking-tight text-[var(--color-fg)]">{title}</span>
         </div>

@@ -25,6 +25,7 @@ import {
   IconSettings,
   IconSignal,
   IconSoftware,
+  IconSwarm,
   IconTag,
   IconTicket,
   IconTree,
@@ -146,7 +147,7 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           ? [
               {
                 to: '/swarm',
-                icon: IconServer,
+                icon: IconSwarm,
                 labelKey: 'nav.swarm' as const,
                 keywords: ['docker', 'swarm', 'сервис', 'реплики', 'ssh', 'кластер'],
               },
