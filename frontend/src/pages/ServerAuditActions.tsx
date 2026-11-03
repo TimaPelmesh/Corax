@@ -3,6 +3,7 @@ import { api, type ServerAuditActionCatalog, type ServerAuditJob, type ServerAud
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { AppFold } from '../components/ui/AppFold'
 import { useT } from '../i18n/LocaleContext'
+import { ServerFileDesk } from './ServerFileDesk'
 
 const EMPTY_CATALOG: ServerAuditActionCatalog = {
   tests: ['nginx', 'sshd'],
@@ -12,7 +13,6 @@ const EMPTY_CATALOG: ServerAuditActionCatalog = {
 }
 
 const UNIT_RE = /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,80}$/
-const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,64}$/
 const CONTAINER_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/
 
 type RemoteAction = 'status' | 'show' | 'restart' | 'test'
@@ -43,16 +43,6 @@ function actionLabel(action: string, t: ReturnType<typeof useT>) {
   if (action === 'docker') return t('serverAudit.actKindDocker')
   if (action === 'playbook') return t('serverAudit.actKindPlaybook')
   return action
-}
-
-function parseList(output: string) {
-  const rows: { kind: 'd' | 'f'; name: string }[] = []
-  for (const line of output.split('\n')) {
-    const match = /^([df]) ([A-Za-z0-9][A-Za-z0-9._-]{0,120})$/.exec(line.trim())
-    if (!match) continue
-    rows.push({ kind: match[1] as 'd' | 'f', name: match[2] })
-  }
-  return rows
 }
 
 function parseDocker(output: string) {
@@ -103,13 +93,6 @@ export function ServerAuditActions({
   const [picked, setPicked] = useState('')
   const [remoteAction, setRemoteAction] = useState<RemoteAction>('status')
   const [remoteTarget, setRemoteTarget] = useState('nginx')
-  const [readPath, setReadPath] = useState('/etc/nginx/nginx.conf')
-  const [writePrefix, setWritePrefix] = useState('/etc/nginx/conf.d/')
-  const [writeName, setWriteName] = useState('corax.conf')
-  const [fileBody, setFileBody] = useState('')
-  const [folder, setFolder] = useState('')
-  const [editPath, setEditPath] = useState('')
-  const [filledReadId, setFilledReadId] = useState<number | null>(null)
   const [composePath, setComposePath] = useState('/etc/corax/compose/web')
   const [openId, setOpenId] = useState<number | null>(null)
 
@@ -124,23 +107,12 @@ export function ServerAuditActions({
           const picked = rows.restart.includes('nginx') ? 'nginx' : rows.restart[0]
           setRemoteTarget(picked)
         }
-        if (rows.read[0]) setReadPath(rows.read[0])
-        if (rows.write_prefixes[0]) setWritePrefix(rows.write_prefixes[0])
-        if (rows.list_prefixes?.[0]) setFolder((current) => current || rows.list_prefixes?.[0] || '')
       })
       .catch(() => undefined)
     return () => {
       alive = false
     }
   }, [])
-
-  useEffect(() => {
-    if (!editPath) return
-    const job = jobs.find((item) => item.action === 'read' && item.target === editPath && item.status === 'done' && item.output)
-    if (!job || job.id === filledReadId) return
-    setFileBody(job.output || '')
-    setFilledReadId(job.id)
-  }, [editPath, filledReadId, jobs])
 
   const when = (iso: string | null) => {
     if (!iso) return ''
@@ -161,13 +133,8 @@ export function ServerAuditActions({
     remoteAction === 'test'
       ? requestTarget === 'nginx' || requestTarget === 'sshd'
       : UNIT_RE.test(requestTarget)
-  const nameOk = FILE_RE.test(writeName.trim())
-  const writePath = `${writePrefix}${writeName.trim()}`
 
-  const listPrefixes = catalog.list_prefixes?.length ? catalog.list_prefixes : ['/etc/corax', '/etc/nginx']
   const composePrefixes = catalog.compose_prefixes?.length ? catalog.compose_prefixes : ['/etc/corax/compose']
-  const listJob = jobs.find((job) => job.action === 'list' && job.target === folder && job.status === 'done' && job.output)
-  const listed = parseList(listJob?.output || '')
   const dockerJob = jobs.find((job) => job.action === 'docker' && job.target === 'ps' && job.status === 'done' && job.output)
   const containers = parseDocker(dockerJob?.output || '')
   const unitsJob = jobs.find((job) => job.action === 'units' && job.status === 'done' && job.output)
@@ -364,133 +331,10 @@ export function ServerAuditActions({
           </AppFold>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-semibold text-[var(--color-fg)]">{t('serverAudit.folderTitle')}</div>
-            <select value={folder} onChange={(event) => setFolder(event.target.value)} className="app-input app-select min-w-0 flex-1 font-mono">
-              {folder && !listPrefixes.includes(folder) ? <option value={folder}>{folder}</option> : null}
-              {listPrefixes.map((path) => (
-                <option key={path} value={path}>
-                  {path}
-                </option>
-              ))}
-            </select>
-            <button type="button" className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" disabled={busy || !folder} onClick={() => void onQueue('list', folder)}>
-              {t('serverAudit.folderList')}
-            </button>
-            <button
-              type="button"
-              className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
-              disabled={!folder || listPrefixes.includes(folder)}
-              onClick={() => {
-                const root = listPrefixes.find((prefix) => folder === prefix || folder.startsWith(`${prefix}/`))
-                if (!root || folder === root) return
-                const parent = folder.slice(0, folder.lastIndexOf('/'))
-                setFolder(parent.length >= root.length ? parent : root)
-              }}
-            >
-              {t('serverAudit.folderUp')}
-            </button>
-          </div>
-          <p className="mt-2 truncate font-mono text-[11px] text-[var(--color-fg-subtle)]">{folder}</p>
-          {listed.length === 0 ? (
-            <p className="mt-2 text-sm text-[var(--color-fg-subtle)]">{t('serverAudit.folderEmpty')}</p>
-          ) : (
-            <div className="mt-2 grid max-h-48 gap-1 overflow-auto sm:grid-cols-2">
-              {listed.map((entry) => (
-                <button
-                  key={`${entry.kind}-${entry.name}`}
-                  type="button"
-                  className="truncate rounded-lg px-2 py-1 text-left font-mono text-xs hover:bg-[var(--color-surface)]"
-                  onClick={() => {
-                    const next = `${folder.replace(/\/+$/, '')}/${entry.name}`
-                    if (entry.kind === 'd') {
-                      setFolder(next)
-                      void onQueue('list', next)
-                      return
-                    }
-                    setEditPath(next)
-                    setWriteName(entry.name)
-                    const prefix = catalog.write_prefixes.find((item) => next.startsWith(item))
-                    if (prefix) setWritePrefix(prefix)
-                    void onQueue('read', next)
-                  }}
-                >
-                  {entry.kind === 'd' ? '▸ ' : ''}
-                  {entry.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-              {t('serverAudit.actRead')}
-            </div>
-            <select value={readPath} onChange={(event) => setReadPath(event.target.value)} className="app-input app-select font-mono">
-              {catalog.read.map((path) => (
-                <option key={path} value={path}>
-                  {path}
-                </option>
-              ))}
-            </select>
-            <span>
-              <button type="button" disabled={busy} className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2" onClick={() => void onQueue('read', readPath)}>
-                {t('serverAudit.actRead')}
-              </button>
-            </span>
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]">
-              {t('serverAudit.actWrite')}
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <select value={writePrefix} onChange={(event) => setWritePrefix(event.target.value)} className="app-input app-select min-w-0 flex-1 font-mono">
-                {catalog.write_prefixes.map((prefix) => (
-                  <option key={prefix} value={prefix}>
-                    {prefix}
-                  </option>
-                ))}
-              </select>
-              <label className="flex min-w-[9rem] flex-col gap-1 text-xs font-medium text-[var(--color-fg-subtle)]">
-                {t('serverAudit.actWriteName')}
-                <input
-                  value={writeName}
-                  onChange={(event) => {
-                    setEditPath('')
-                    setWriteName(event.target.value)
-                  }}
-                  className="app-input font-mono"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-              </label>
-            </div>
-            <textarea
-              value={fileBody}
-              onChange={(event) => setFileBody(event.target.value)}
-              rows={6}
-              className="app-input min-h-[8rem] resize-y font-mono"
-              spellCheck={false}
-              aria-label={t('serverAudit.fileBody')}
-            />
-            <span>
-              <button
-                type="button"
-                disabled={busy || !fileBody.trim() || !nameOk}
-                className="app-btn app-btn-primary !min-h-0 !px-3 !py-2"
-                onClick={() => void onQueue('write', editPath || writePath, fileBody)}
-              >
-                {t('serverAudit.actWrite')}
-              </button>
-            </span>
-          </div>
-        </div>
-        </div>
+        <ServerFileDesk jobs={jobs} busy={busy} onQueue={onQueue} />
       )}
 
+      {view === 'ops' ? (
       <section className="app-card app-table-shell overflow-hidden p-0">
         <h3 className="border-b border-[var(--color-border)] px-4 py-3 text-sm font-semibold">{t('serverAudit.jobHistory')}</h3>
         {jobs.length === 0 ? (
@@ -530,6 +374,7 @@ export function ServerAuditActions({
           </div>
         )}
       </section>
+      ) : null}
     </div>
   )
 }

@@ -29,7 +29,6 @@ describe('buildNavSections', () => {
       '/network-map',
       '/network',
       '/server-audit',
-      '/swarm',
       '/software',
       '/printers',
       '/warehouse',

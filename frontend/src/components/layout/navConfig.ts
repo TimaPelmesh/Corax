@@ -25,7 +25,6 @@ import {
   IconSettings,
   IconSignal,
   IconSoftware,
-  IconSwarm,
   IconTag,
   IconTicket,
   IconTree,
@@ -141,18 +140,8 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
           to: '/server-audit',
           icon: IconServer,
           labelKey: 'nav.serverAudit',
-          keywords: ['аудит', 'сервер', 'температура', 'linux', 'debian', 'cpu', 'audit', 'ssh', 'llama', 'gpu', 'журнал'],
+          keywords: ['аудит', 'сервер', 'управление', 'температура', 'linux', 'debian', 'cpu', 'audit', 'ssh', 'llama', 'gpu', 'журнал', 'файлы'],
         },
-        ...(user?.is_superuser || user?.role === 'editor'
-          ? [
-              {
-                to: '/swarm',
-                icon: IconSwarm,
-                labelKey: 'nav.swarm' as const,
-                keywords: ['docker', 'swarm', 'сервис', 'реплики', 'ssh', 'кластер'],
-              },
-            ]
-          : []),
         {
           to: '/software',
           icon: IconSoftware,

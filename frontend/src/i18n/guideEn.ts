@@ -178,7 +178,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'First run',
-          body: 'Panel → Agent build → Linux. The panel address is the LAN IP.\nInstall command is one line. On the server: sudo python3 -c \'...\'\nThe command puts the agent in /opt/corax-agent, writes the token, and starts the service.\nOr Install over SSH: host, user, and password. The password is not stored.\nInterval and actions after that are on the Server audit tab. The ZIP stays as a fallback.',
+          body: 'Panel → Agent build → Linux. The panel address is the LAN IP.\nInstall command is one line. On the server: sudo python3 -c \'...\'\nThe command puts the agent in /opt/corax-agent, writes the token, and starts the service.\nOr Install over SSH: host, user, and password. The password is not stored.\nInterval and actions after that are on the Servers tab. The ZIP stays as a fallback.',
         },
         {
           title: 'Files in the ZIP',
@@ -186,7 +186,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Schedule',
-          body: 'sudo ./corax_send.sh from /opt/corax-agent.\nCopy the same agent_env.sh to every server. The first run sends a report immediately and the host shows up on Server audit by itself. The minute timer then sends on Collect now and on the interval.\nOr sudo ./install_cron.sh: inventory Monday 09:15 and the same minute audit.',
+          body: 'sudo ./corax_send.sh from /opt/corax-agent.\nCopy the same agent_env.sh to every server. The first run sends a report immediately and the host shows up on Servers by itself. The minute timer then sends on Collect now and on the interval.\nOr sudo ./install_cron.sh: inventory Monday 09:15 and the same minute audit.',
         },
         {
           title: 'Update without wiping the token',
@@ -204,12 +204,12 @@ export const GUIDE_EN: GuideCopy = {
       links: [
         { to: '/settings/agent-bundle', label: 'Agent build' },
         { to: '/computers', label: 'Computers' },
-        { to: '/server-audit', label: 'Server audit' },
+        { to: '/server-audit', label: 'Servers' },
       ],
     },
     {
       id: 'server-audit',
-      title: 'Server audit',
+      title: 'Servers',
       summary:
         'Live Linux metrics and a short action list, on the same token. Not a shell and not Ansible.',
       steps: [
@@ -227,7 +227,7 @@ export const GUIDE_EN: GuideCopy = {
         },
         {
           title: 'Manage',
-          body: 'A button on the host header. The first tab is SSH to that host: service journal, status, start, stop, restart, nvidia-smi, and an agent script update. The password is not stored. The command stays on a list: llama-server, rpc-server-gpuN, corax-audit, and ordinary units such as nginx.\nScript update uploads the archive from the panel and applies it in /opt/corax-agent. The host does not hunt for the panel across ports.\nThe other tabs are the agent queue: nginx/sshd checks, config files, and collection.',
+          body: 'A button on the host header. The first tab is an explorer: folders on the left, the file on the right. The agent opens the folder and brings the text back, so no terminal is needed. Saving is limited to the config paths the panel already allows.\nSSH is a separate tab: service journal, status, start, stop, restart. The password is not stored. The command stays on a list.\nMetric collection has its own tab.',
         },
         {
           title: 'What the button does not do',
@@ -235,7 +235,7 @@ export const GUIDE_EN: GuideCopy = {
         },
       ],
       links: [
-        { to: '/server-audit', label: 'Server audit' },
+        { to: '/server-audit', label: 'Servers' },
         { to: '/settings/agent-bundle', label: 'Agent build' },
       ],
     },

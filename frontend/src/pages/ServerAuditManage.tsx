@@ -33,14 +33,14 @@ export function ServerAuditManageModal({
   sessionOnly?: boolean
 }) {
   const t = useT()
-  const [tab, setTab] = useState<ManageTab>(sessionOnly ? 'session' : 'actions')
+  const [tab, setTab] = useState<ManageTab>(sessionOnly ? 'session' : 'files')
 
   const tabs: { id: ManageTab; label: string }[] = sessionOnly
     ? [{ id: 'session', label: t('serverAudit.sshTab') }]
     : [
-        { id: 'session', label: t('serverAudit.sshTab') },
-        { id: 'actions', label: t('serverAudit.actions') },
         { id: 'files', label: t('serverAudit.actGroupFiles') },
+        { id: 'actions', label: t('serverAudit.actions') },
+        { id: 'session', label: t('serverAudit.sshTab') },
         { id: 'collect', label: t('serverAudit.settings') },
       ]
 

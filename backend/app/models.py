@@ -1025,32 +1025,6 @@ class AiRole(Base):
     )
 
 
-class SwarmHost(Base):
-    """Inventory host for Docker Swarm over SSH. Passwords are never stored."""
-
-    __tablename__ = "swarm_hosts"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    label: Mapped[str] = mapped_column(String(128), default="", server_default="")
-    host: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    ssh_port: Mapped[int] = mapped_column(Integer, default=22, server_default="22")
-    ssh_user: Mapped[str] = mapped_column(String(32), default="root", server_default="root")
-    role: Mapped[str] = mapped_column(String(16), default="worker", server_default="worker", index=True)
-    advertise_addr: Mapped[str] = mapped_column(String(255), default="", server_default="")
-    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    last_node_name: Mapped[str] = mapped_column(String(255), default="", server_default="")
-    last_node_id: Mapped[str] = mapped_column(String(64), default="", server_default="")
-    last_swarm_state: Mapped[str] = mapped_column(String(32), default="", server_default="")
-    last_is_manager: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
-    last_error: Mapped[str] = mapped_column(String(500), default="", server_default="")
-    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
 class RiskFindingAck(Base):
     """Operator acknowledgement or ignore for a deterministic finding id."""
 

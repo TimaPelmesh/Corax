@@ -56,7 +56,7 @@ async def host_jobs(
     db: AsyncSession = Depends(get_db),
 ):
     await _host_or_404(db, host_id)
-    return await list_jobs(db, host_id)
+    return await list_jobs(db, host_id, limit=40)
 
 
 @router.post("/hosts/{host_id}/jobs", response_model=ServerAuditJobOut)
