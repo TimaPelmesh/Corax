@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type LlmServerSetting, type WikiRagLmStudioStatus } from '../api'
+import { api, type AiPurpose, type AiRoleRow, type LlmServerSetting, type WikiRagLmStudioStatus } from '../api'
 import { IconActivity, IconClose } from '../components/icons'
 import { PageHeader } from '../components/PageHeader'
 import { StatusPill } from '../components/ui/StatusPill'
@@ -61,6 +61,12 @@ export function SettingsLlmPage() {
   const [ready, setReady] = useState(false)
   const [focusId, setFocusId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<null | 'servers' | 'prompt' | 'setup'>(null)
+  const [roles, setRoles] = useState<AiRoleRow[]>([])
+  const [ticketsModel, setTicketsModel] = useState('')
+  const [ticketsEndpoint, setTicketsEndpoint] = useState('')
+  const [bitrixModel, setBitrixModel] = useState('')
+  const [bitrixEndpoint, setBitrixEndpoint] = useState('')
+  const [savingRole, setSavingRole] = useState('')
   const settingsRef = useRef(settings)
   const rowsRef = useRef(servers)
   const embedRef = useRef(embedBaseUrl)
@@ -69,6 +75,38 @@ export function SettingsLlmPage() {
   settingsRef.current = settings
   rowsRef.current = servers
   embedRef.current = embedBaseUrl
+
+  const applyRoles = useCallback((rows: AiRoleRow[]) => {
+    setRoles(rows)
+    const tickets = rows.find((row) => row.purpose === 'tickets')
+    const bitrix = rows.find((row) => row.purpose === 'bitrix_bot')
+    setTicketsEndpoint(tickets?.endpoint_key || '')
+    setTicketsModel(tickets?.model || '')
+    setBitrixEndpoint(bitrix?.endpoint_key || '')
+    setBitrixModel(bitrix?.model || '')
+  }, [])
+
+  const refreshRoles = useCallback(async () => {
+    try {
+      const bundle = await api.aiAgentsBundle()
+      applyRoles(bundle.roles)
+      if (bundle.endpoints.length) {
+        setServers(
+          bundle.endpoints.map((row) => ({
+            id: row.key || row.id,
+            label: row.label,
+            base_url: row.base_url,
+          })),
+        )
+        savedKey.current = stampServers(
+          bundle.endpoints.map((row) => ({ id: row.key || row.id, label: row.label, base_url: row.base_url })),
+        )
+        setServersConfigured(true)
+      }
+    } catch {
+      /* first boot / migration — WikiRAG settings still load */
+    }
+  }, [applyRoles])
 
   useEffect(() => {
     return subscribeWikiRagLmSettings(() => {
@@ -83,9 +121,9 @@ export function SettingsLlmPage() {
 
   useEffect(() => {
     let cancelled = false
-    void api
-      .wikiRagIndexSettings()
-      .then((s) => {
+    void (async () => {
+      try {
+        const s = await api.wikiRagIndexSettings()
         if (cancelled) return
         const list = s.llm_servers ?? []
         setServers(list)
@@ -97,15 +135,18 @@ export function SettingsLlmPage() {
         setEffectiveLmContext(
           Number.isFinite(s.effective_lm_context_tokens) ? s.effective_lm_context_tokens : 16384,
         )
+      } catch {
+        /* ignore */
+      }
+      if (!cancelled) {
+        await refreshRoles()
         setReady(true)
-      })
-      .catch(() => {
-        if (!cancelled) setReady(true)
-      })
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [refreshRoles])
 
   const probe = useCallback(
     async (url: string, opts?: { chat?: boolean; notify?: boolean }) => {
@@ -178,6 +219,12 @@ export function SettingsLlmPage() {
           const drafts = current.filter((row) => !row.base_url.trim() && !saved.some((item) => item.id === row.id))
           return [...saved, ...drafts]
         })
+        try {
+          await api.putAiEndpoints(saved.map((row) => ({ key: row.id, id: row.id, label: row.label, base_url: row.base_url })))
+          await refreshRoles()
+        } catch {
+          /* AI agents table may migrate on next request */
+        }
         for (const server of saved) {
           const old = previous.find((row) => row.id === server.id)
           if (!old) continue
@@ -209,8 +256,48 @@ export function SettingsLlmPage() {
         return false
       }
     },
-    [t, toast],
+    [refreshRoles, t, toast],
   )
+
+  async function saveRole(purpose: AiPurpose, endpointKey: string, model: string, opts?: { quiet?: boolean }) {
+    setSavingRole(purpose)
+    try {
+      const row = await api.patchAiRole(purpose, {
+        endpoint_key: endpointKey,
+        model,
+      })
+      setRoles((prev) => {
+        const rest = prev.filter((item) => item.purpose !== purpose)
+        return [...rest, row]
+      })
+      if (purpose === 'tickets') {
+        setTicketsEndpoint(row.endpoint_key || '')
+        setTicketsModel(row.model || '')
+      }
+      if (purpose === 'bitrix_bot') {
+        setBitrixEndpoint(row.endpoint_key || '')
+        setBitrixModel(row.model || '')
+      }
+      if (purpose === 'embed') {
+        const url = row.resolved?.base_url || ''
+        if (endpointKey) setEmbedBaseUrl(url)
+        if (row.model) setEmbedModel(row.model)
+      }
+      if (purpose === 'chat' && row.resolved?.base_url) {
+        setSettings((s) => ({
+          ...s,
+          baseUrl: row.resolved?.base_url || s.baseUrl,
+          model: row.model || s.model,
+          provider: detectProviderFromUrl(row.resolved?.base_url || s.baseUrl),
+        }))
+      }
+      if (!opts?.quiet) toast.ok(t('settingsLlm.roleSaved'))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
+    } finally {
+      setSavingRole('')
+    }
+  }
 
   useEffect(() => {
     if (!ready || seeded.current) return
@@ -278,6 +365,7 @@ export function SettingsLlmPage() {
       model: sameLmEndpoint(s.baseUrl, server.base_url) ? s.model : '',
     }))
     void probe(server.base_url, { chat: true })
+    void saveRole('chat', server.id, settingsRef.current.model, { quiet: true })
   }
 
   async function chooseEmbed(id: string) {
@@ -288,6 +376,7 @@ export function SettingsLlmPage() {
     try {
       const res = await api.updateWikiRagIndexSettings({ embed_base_url: url })
       setEmbedBaseUrl((res.embed_base_url || '').trim())
+      await saveRole('embed', server?.id || '', embedModel, { quiet: true })
       toast.ok(t('settingsLlm.embedSaved'))
     } catch (e) {
       setEmbedBaseUrl(previous)
@@ -302,6 +391,8 @@ export function SettingsLlmPage() {
     try {
       const res = await api.updateWikiRagIndexSettings({ embed_model: cleaned })
       setEmbedModel((res.embed_model || 'bge-m3').trim() || 'bge-m3')
+      const embedKey = servers.find((row) => embedBaseUrl && sameLmEndpoint(row.base_url, embedBaseUrl))?.id || ''
+      await saveRole('embed', embedKey, cleaned, { quiet: true })
       toast.ok(t('settingsLlm.embedModelSaved'))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('wikirag.common.genericError'))
@@ -328,11 +419,26 @@ export function SettingsLlmPage() {
 
   const chatServer = servers.find((row) => sameLmEndpoint(row.base_url, settings.baseUrl))
   const embedServer = servers.find((row) => embedBaseUrl && sameLmEndpoint(row.base_url, embedBaseUrl))
+  const ticketsServer = servers.find((row) => row.id === ticketsEndpoint)
+  const bitrixServer = servers.find((row) => row.id === bitrixEndpoint)
   const chatModels = probeFor(settings.baseUrl)?.models ?? []
   const embedModels = embedBaseUrl ? (probeFor(embedBaseUrl)?.models ?? []) : []
+  const ticketsModels = ticketsServer ? (probeFor(ticketsServer.base_url)?.models ?? []) : chatModels
+  const bitrixModels = bitrixServer ? (probeFor(bitrixServer.base_url)?.models ?? []) : chatModels
   const chatOptions = chatModels.includes(settings.model) || !settings.model ? chatModels : [settings.model, ...chatModels]
   const embedOptions = embedModels.includes(embedModel) || !embedModel ? embedModels : [embedModel, ...embedModels]
+  const ticketsOptions =
+    ticketsModels.includes(ticketsModel) || !ticketsModel ? ticketsModels : [ticketsModel, ...ticketsModels]
+  const bitrixOptions = bitrixModels.includes(bitrixModel) || !bitrixModel ? bitrixModels : [bitrixModel, ...bitrixModels]
   const chatBusy = isBusy(settings.baseUrl)
+  const roleHint = (purpose: string) => {
+    const row = roles.find((item) => item.purpose === purpose)
+    if (!row?.resolved) return null
+    return t('settingsLlm.resolvedVia', {
+      url: row.resolved.endpoint_label || row.resolved.base_url || '—',
+      model: row.resolved.model || '—',
+    })
+  }
 
   return (
     <div className="settings-page settings-page--wide">
@@ -464,7 +570,11 @@ export function SettingsLlmPage() {
                 <select
                   id="settings-llm-model"
                   value={settings.model}
-                  onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
+                  onChange={(e) => {
+                    const model = e.target.value
+                    setSettings((s) => ({ ...s, model }))
+                    if (chatServer) void saveRole('chat', chatServer.id, model)
+                  }}
                   className="app-input mt-1 !min-h-8 text-xs"
                   disabled={!chatOptions.length}
                 >
@@ -581,6 +691,122 @@ export function SettingsLlmPage() {
                   )}
                 </select>
               </label>
+            </div>
+          </section>
+        </div>
+
+        <div className="order-3 grid gap-3 lg:grid-cols-2">
+          <section className={PANEL}>
+            <div className="border-b border-[var(--color-border)] px-3 py-2">
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]" title={t('settingsLlm.ticketsSeparate')}>
+                {t('settingsLlm.ticketsRole')}
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3">
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.roleServer')}</span>
+                <select
+                  value={ticketsEndpoint}
+                  disabled={savingRole === 'tickets'}
+                  onChange={(e) => {
+                    const key = e.target.value
+                    setTicketsEndpoint(key)
+                    const server = servers.find((row) => row.id === key)
+                    if (server) void probe(server.base_url)
+                    void saveRole('tickets', key, ticketsModel)
+                  }}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  <option value="">{t('settingsLlm.roleInheritChat')}</option>
+                  {servers
+                    .filter((row) => row.base_url.trim())
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.label || row.base_url}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.embedModelShort')}</span>
+                <select
+                  value={ticketsModel}
+                  disabled={savingRole === 'tickets'}
+                  onChange={(e) => {
+                    const model = e.target.value
+                    setTicketsModel(model)
+                    void saveRole('tickets', ticketsEndpoint, model)
+                  }}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  <option value="">{t('settingsLlm.roleInheritChat')}</option>
+                  {(ticketsOptions.length ? ticketsOptions : ticketsModel ? [ticketsModel] : []).map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {roleHint('tickets') ? (
+                <p className="col-span-2 truncate text-[11px] text-[var(--color-fg-muted)]">{roleHint('tickets')}</p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className={PANEL}>
+            <div className="border-b border-[var(--color-border)] px-3 py-2">
+              <h2 className="text-sm font-semibold text-[var(--color-fg)]" title={t('settingsLlm.bitrixSeparate')}>
+                {t('settingsLlm.bitrixRole')}
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3">
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.roleServer')}</span>
+                <select
+                  value={bitrixEndpoint}
+                  disabled={savingRole === 'bitrix_bot'}
+                  onChange={(e) => {
+                    const key = e.target.value
+                    setBitrixEndpoint(key)
+                    const server = servers.find((row) => row.id === key)
+                    if (server) void probe(server.base_url)
+                    void saveRole('bitrix_bot', key, bitrixModel)
+                  }}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  <option value="">{t('settingsLlm.roleInheritChat')}</option>
+                  {servers
+                    .filter((row) => row.base_url.trim())
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.label || row.base_url}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="block min-w-0">
+                <span className="app-label">{t('settingsLlm.embedModelShort')}</span>
+                <select
+                  value={bitrixModel}
+                  disabled={savingRole === 'bitrix_bot'}
+                  onChange={(e) => {
+                    const model = e.target.value
+                    setBitrixModel(model)
+                    void saveRole('bitrix_bot', bitrixEndpoint, model)
+                  }}
+                  className="app-input mt-1 !min-h-8 text-xs"
+                >
+                  <option value="">{t('settingsLlm.roleInheritChat')}</option>
+                  {(bitrixOptions.length ? bitrixOptions : bitrixModel ? [bitrixModel] : []).map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {roleHint('bitrix_bot') ? (
+                <p className="col-span-2 truncate text-[11px] text-[var(--color-fg-muted)]">{roleHint('bitrix_bot')}</p>
+              ) : null}
             </div>
           </section>
         </div>

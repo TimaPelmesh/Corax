@@ -2175,6 +2175,65 @@ def _migrate_corax_bots(sync_conn) -> None:
     sync_conn.execute(text(ddl))
 
 
+def _migrate_ai_agents(sync_conn) -> None:
+    names = _table_names(sync_conn)
+    if "ai_endpoints" not in names:
+        if sync_conn.dialect.name == "sqlite":
+            ddl = """
+                CREATE TABLE ai_endpoints (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  key VARCHAR(16) NOT NULL UNIQUE,
+                  label VARCHAR(64) NOT NULL DEFAULT '',
+                  base_url VARCHAR(512) NOT NULL,
+                  enabled BOOLEAN NOT NULL DEFAULT 1,
+                  notes TEXT,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+        else:
+            ddl = """
+                CREATE TABLE ai_endpoints (
+                  id SERIAL PRIMARY KEY,
+                  key VARCHAR(16) NOT NULL UNIQUE,
+                  label VARCHAR(64) NOT NULL DEFAULT '',
+                  base_url VARCHAR(512) NOT NULL,
+                  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                  notes TEXT,
+                  created_at TIMESTAMPTZ DEFAULT NOW(),
+                  updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+        sync_conn.execute(text(ddl))
+        sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_endpoints_key ON ai_endpoints (key)"))
+    if "ai_roles" not in names:
+        if sync_conn.dialect.name == "sqlite":
+            ddl = """
+                CREATE TABLE ai_roles (
+                  purpose VARCHAR(32) PRIMARY KEY,
+                  endpoint_key VARCHAR(16) NOT NULL DEFAULT '',
+                  model VARCHAR(255) NOT NULL DEFAULT '',
+                  system_prompt TEXT NOT NULL DEFAULT '',
+                  enabled BOOLEAN NOT NULL DEFAULT 1,
+                  extras_json TEXT NOT NULL DEFAULT '{}',
+                  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+        else:
+            ddl = """
+                CREATE TABLE ai_roles (
+                  purpose VARCHAR(32) PRIMARY KEY,
+                  endpoint_key VARCHAR(16) NOT NULL DEFAULT '',
+                  model VARCHAR(255) NOT NULL DEFAULT '',
+                  system_prompt TEXT NOT NULL DEFAULT '',
+                  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                  extras_json TEXT NOT NULL DEFAULT '{}',
+                  updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+                """
+        sync_conn.execute(text(ddl))
+
+
 def _migrate_swarm_hosts(sync_conn) -> None:
     if "swarm_hosts" in _table_names(sync_conn):
         return
@@ -2306,6 +2365,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-30_dashboard_snapshots", _migrate_dashboard_snapshots),
     ("2026-11-03_corax_bots", _migrate_corax_bots),
     ("2026-11-03_swarm_hosts", _migrate_swarm_hosts),
+    ("2026-11-03_ai_agents", _migrate_ai_agents),
 ]
 
 

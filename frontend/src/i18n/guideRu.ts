@@ -450,7 +450,7 @@ export const GUIDE_RU: GuideCopy = {
       ],
       links: [
         { to: '/knowledge-base/wikirag', label: 'WikiRAG' },
-        { to: '/settings/llm', label: 'ИИ агент' },
+        { to: '/settings/llm', label: 'Агенты' },
       ],
     },
     {
@@ -531,7 +531,7 @@ export const GUIDE_RU: GuideCopy = {
       ],
       links: [
         { to: '/users', label: 'Пользователи' },
-        { to: '/settings/llm', label: 'ИИ агент' },
+        { to: '/settings/llm', label: 'Агенты' },
         { to: '/settings/tags', label: 'Теги ПК' },
         { to: '/settings/ldap', label: 'LDAP' },
         { to: '/settings/bitrix24', label: 'Bitrix24' },

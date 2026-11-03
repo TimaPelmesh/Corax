@@ -992,6 +992,39 @@ class LlmControlAudit(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class AiEndpoint(Base):
+    """Named OpenAI-compatible AI server (Ollama / LM Studio / remote API)."""
+
+    __tablename__ = "ai_endpoints"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(16), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AiRole(Base):
+    """Per-purpose AI binding: chat, embed, tickets, bitrix_bot."""
+
+    __tablename__ = "ai_roles"
+
+    purpose: Mapped[str] = mapped_column(String(32), primary_key=True)
+    endpoint_key: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    model: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    system_prompt: Mapped[str] = mapped_column(Text, default="", server_default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    extras_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class SwarmHost(Base):
     """Inventory host for Docker Swarm over SSH. Passwords are never stored."""
 

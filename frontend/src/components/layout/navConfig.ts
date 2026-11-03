@@ -240,7 +240,7 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
       to: '/settings/llm',
       icon: IconActivity,
       labelKey: 'nav.llm',
-      keywords: ['ollama', 'lm studio', 'llm', 'модель', 'ассистент', 'ии', 'ai', 'агент'],
+      keywords: ['ollama', 'lm studio', 'llm', 'модель', 'ассистент', 'ии', 'ai', 'агент', 'агенты', 'agents', 'bitrix', 'эмбеддинг'],
     },
   ]
   if (user?.is_superuser || user?.role === 'editor') {

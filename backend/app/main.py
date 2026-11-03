@@ -55,6 +55,7 @@ from app.routers import (
     search,
     server_audit,
     swarm,
+    ai_agents,
     self_service,
     service_requests,
     tags,
@@ -513,6 +514,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(search.router, prefix=base)
     app.include_router(server_audit.router, prefix=base)
     app.include_router(swarm.router, prefix=base)
+    app.include_router(ai_agents.router, prefix=base)
     app.include_router(self_service.router, prefix=base)
     app.include_router(agent.router, prefix=base)
     app.include_router(assist.router, prefix=base)

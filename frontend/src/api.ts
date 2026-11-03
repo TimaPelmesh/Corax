@@ -3311,6 +3311,19 @@ export const api = {
   wikiRagIndexSettings: () =>
     request<WikiRagIndexSettings>(`${API_PREFIX}/wiki-rag/index-settings`),
 
+  aiAgentsBundle: () => request<AiAgentsBundle>(`${API_PREFIX}/ai-agents/bundle`),
+
+  putAiEndpoints: (endpoints: Array<{ id?: string; key?: string; label?: string; base_url: string; enabled?: boolean }>) =>
+    request<{ endpoints: AiEndpointRow[] }>(`${API_PREFIX}/ai-agents/endpoints`, {
+      method: 'PUT',
+      json: { endpoints },
+    }),
+
+  patchAiRole: (
+    purpose: AiPurpose | string,
+    body: { endpoint_key?: string | null; model?: string | null; system_prompt?: string | null; enabled?: boolean | null },
+  ) => request<AiRoleRow>(`${API_PREFIX}/ai-agents/roles/${purpose}`, { method: 'PATCH', json: body }),
+
   wikiRagIndexStatus: () =>
     request<WikiRagIndexStatus>(`${API_PREFIX}/wiki-rag/index-status`),
 
@@ -3913,6 +3926,38 @@ export type LlmServerSetting = {
   id: string
   label: string
   base_url: string
+}
+
+export type AiPurpose = 'chat' | 'embed' | 'tickets' | 'bitrix_bot'
+
+export type AiEndpointRow = {
+  id: string
+  key: string
+  label: string
+  base_url: string
+  enabled: boolean
+  notes: string | null
+}
+
+export type AiRoleRow = {
+  purpose: AiPurpose | string
+  endpoint_key: string
+  model: string
+  system_prompt: string
+  enabled: boolean
+  resolved?: {
+    base_url: string
+    model: string
+    endpoint_key: string
+    endpoint_label: string
+    inherited_from: string | null
+  }
+}
+
+export type AiAgentsBundle = {
+  purposes: AiPurpose[]
+  endpoints: AiEndpointRow[]
+  roles: AiRoleRow[]
 }
 
 export type WikiRagIndexSettings = {

@@ -656,10 +656,32 @@ async def classify_with_llm(
         {"role": "user", "content": user_content},
     ]
     try:
+        from app.ai_agents import resolve_ai
+        from app.database import AsyncSessionLocal
+
+        base_url = (cfg.llm_base_url or "").strip() or None
+        model = (cfg.llm_model or "").strip() or None
+        # Role "tickets" wins when an endpoint or model is set in Агенты.
+        try:
+            from sqlalchemy import select as sa_select
+            from app.models import AiRole
+
+            async with AsyncSessionLocal() as role_db:
+                role = await role_db.scalar(sa_select(AiRole).where(AiRole.purpose == "tickets").limit(1))
+                if role and ((role.endpoint_key or "").strip() or (role.model or "").strip()):
+                    resolved = await resolve_ai(role_db, "tickets")
+                    if resolved.base_url:
+                        base_url = resolved.base_url
+                    if resolved.model:
+                        model = resolved.model
+                    if resolved.system_prompt and not (cfg.system_prompt or "").strip():
+                        messages[0] = {"role": "system", "content": resolved.system_prompt}
+        except Exception:  # noqa: BLE001
+            pass
         raw, used_model = await lm_studio_chat(
             messages,
-            base_url=(cfg.llm_base_url or "").strip() or None,
-            model=(cfg.llm_model or "").strip() or None,
+            base_url=base_url,
+            model=model,
             mode="rag",
             response_mode="fast",
         )
