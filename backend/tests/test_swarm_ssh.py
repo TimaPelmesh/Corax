@@ -2,6 +2,7 @@ import pytest
 
 from app.swarm_ssh import (
     advertise_addr,
+    humanize_docker_error,
     init_commands,
     join_commands,
     join_token_commands,
@@ -89,3 +90,12 @@ def test_cluster_commands_are_fixed_and_quoted():
     assert manager_listen_addr("10.0.0.10") == "10.0.0.10:2377"
     assert leave_commands(force=True)[0][0] == "docker swarm leave --force"
     assert probe_commands()[0][0].startswith("docker info ")
+
+
+def test_humanize_docker_daemon_down():
+    msg = humanize_docker_error(
+        "|false\nCannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n"
+    )
+    assert "|false" not in msg
+    assert "Docker daemon" in msg or "docker" in msg.lower()
+    assert "systemctl" in msg

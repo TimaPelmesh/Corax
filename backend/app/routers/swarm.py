@@ -17,6 +17,7 @@ from app.models import SwarmHost, User
 from app.observability import get_logger
 from app.swarm_ssh import (
     advertise_addr,
+    humanize_docker_error,
     init_commands,
     join_commands,
     join_token_commands,
@@ -216,7 +217,10 @@ async def _run_row(row: SwarmHost, password: str, commands: list[tuple[str, floa
 def _overview(results: list[dict]) -> SwarmOverviewOut:
     info = results[0] if results else {"ok": False, "output": "", "exit_code": 1}
     if not info.get("ok"):
-        raise HTTPException(status_code=502, detail=(info.get("output") or "docker info не выполнился")[:500])
+        raise HTTPException(
+            status_code=502,
+            detail=humanize_docker_error(str(info.get("output") or ""), "docker info не выполнился"),
+        )
     state, manager = parse_swarm_info(str(info.get("output") or ""))
     nodes_text = results[1]["output"] if len(results) > 1 and results[1].get("ok") else ""
     services_text = results[2]["output"] if len(results) > 2 and results[2].get("ok") else ""
@@ -280,7 +284,7 @@ async def _apply_probe(db: AsyncSession, row: SwarmHost, results: list[dict]) ->
     row.last_checked_at = now
     head = results[0] if results else {"ok": False, "output": ""}
     if not head.get("ok"):
-        row.last_error = str(head.get("output") or "SSH/docker probe failed")[:500]
+        row.last_error = humanize_docker_error(str(head.get("output") or ""), "SSH/docker probe failed")
         await db.commit()
         await db.refresh(row)
         return row
@@ -403,8 +407,11 @@ async def init_host(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     results = await _run_row(row, body.ssh_password, commands)
     if not results or not results[0].get("ok"):
-        detail = (results[0].get("output") if results else "") or "docker swarm init не выполнен"
-        raise HTTPException(status_code=502, detail=str(detail)[:500])
+        detail = humanize_docker_error(
+            str((results[0].get("output") if results else "") or ""),
+            "docker swarm init не выполнен",
+        )
+        raise HTTPException(status_code=502, detail=detail)
     if addr:
         try:
             row.advertise_addr = advertise_addr(addr) or row.advertise_addr
@@ -434,11 +441,17 @@ async def host_join_token(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     results = await _run_row(row, body.ssh_password, commands)
     if not results or not results[0].get("ok"):
-        detail = (results[0].get("output") if results else "") or "join-token не получен"
-        raise HTTPException(status_code=502, detail=str(detail)[:500])
+        detail = humanize_docker_error(
+            str((results[0].get("output") if results else "") or ""),
+            "join-token не получен",
+        )
+        raise HTTPException(status_code=502, detail=detail)
     token = str(results[0].get("output") or "").strip().splitlines()[-1].strip() if results[0].get("output") else ""
     if not token.startswith("SWMTKN-"):
-        raise HTTPException(status_code=502, detail="Ответ join-token не похож на токен Swarm")
+        raise HTTPException(
+            status_code=502,
+            detail=humanize_docker_error(str(results[0].get("output") or ""), "Ответ join-token не похож на токен Swarm"),
+        )
     manager_host = (row.advertise_addr or row.host or "").strip()
     try:
         manager_addr = manager_listen_addr(manager_host)
@@ -462,8 +475,11 @@ async def join_host(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     results = await _run_row(row, body.ssh_password, commands)
     if not results or not results[0].get("ok"):
-        detail = (results[0].get("output") if results else "") or "docker swarm join не выполнен"
-        raise HTTPException(status_code=502, detail=str(detail)[:500])
+        detail = humanize_docker_error(
+            str((results[0].get("output") if results else "") or ""),
+            "docker swarm join не выполнен",
+        )
+        raise HTTPException(status_code=502, detail=detail)
     row = await _apply_probe(db, row, results[1:] or results)
     log.info("swarm join", extra={"user": user.username, "id": host_id, "host": row.host})
     return SwarmProbeOut(ok=True, host=_host_out(row), output=str(results[0].get("output") or "")[:4000])
@@ -479,8 +495,11 @@ async def leave_host(
     row = await _get_host(db, host_id)
     results = await _run_row(row, body.ssh_password, leave_commands(force=bool(body.force)))
     if not results or not results[0].get("ok"):
-        detail = (results[0].get("output") if results else "") or "docker swarm leave не выполнен"
-        raise HTTPException(status_code=502, detail=str(detail)[:500])
+        detail = humanize_docker_error(
+            str((results[0].get("output") if results else "") or ""),
+            "docker swarm leave не выполнен",
+        )
+        raise HTTPException(status_code=502, detail=detail)
     row = await _apply_probe(db, row, results[1:] or results)
     log.info("swarm leave", extra={"user": user.username, "id": host_id, "host": row.host})
     return SwarmProbeOut(ok=True, host=_host_out(row), output=str(results[0].get("output") or "")[:4000])
@@ -526,12 +545,18 @@ async def swarm_scale(body: SwarmScaleIn, user: User = Depends(_swarm_user)):
         extra={"user": user.username, "host": _host(body), "service": body.service, "replicas": body.replicas},
     )
     if not results or not results[0].get("ok"):
-        detail = (results[0].get("output") if results else "") or "Масштаб службы не изменился"
-        raise HTTPException(status_code=502, detail=str(detail)[:500])
+        detail = humanize_docker_error(
+            str((results[0].get("output") if results else "") or ""),
+            "Масштаб службы не изменился",
+        )
+        raise HTTPException(status_code=502, detail=detail)
     if len(results) < 2 or not results[-1].get("ok"):
         raise HTTPException(
             status_code=502,
-            detail=str(results[-1].get("output") if results else "")[:500] or "Список служб не обновился",
+            detail=humanize_docker_error(
+                str(results[-1].get("output") if results else ""),
+                "Список служб не обновился",
+            ),
         )
     services = services_from_output(results[-1]["output"])
     return SwarmOverviewOut(
@@ -550,12 +575,18 @@ async def swarm_rollback(body: SwarmRollbackIn, user: User = Depends(_swarm_user
     results = await _run_login(body, commands)
     log.info("swarm rollback", extra={"user": user.username, "host": _host(body), "service": body.service})
     if not results or not results[0].get("ok"):
-        detail = (results[0].get("output") if results else "") or "Откат службы не выполнен"
-        raise HTTPException(status_code=502, detail=str(detail)[:500])
+        detail = humanize_docker_error(
+            str((results[0].get("output") if results else "") or ""),
+            "Откат службы не выполнен",
+        )
+        raise HTTPException(status_code=502, detail=detail)
     if len(results) < 2 or not results[-1].get("ok"):
         raise HTTPException(
             status_code=502,
-            detail=str(results[-1].get("output") if results else "")[:500] or "Список служб не обновился",
+            detail=humanize_docker_error(
+                str(results[-1].get("output") if results else ""),
+                "Список служб не обновился",
+            ),
         )
     services = services_from_output(results[-1]["output"])
     return SwarmOverviewOut(

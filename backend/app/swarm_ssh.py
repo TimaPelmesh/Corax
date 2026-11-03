@@ -149,6 +149,36 @@ def parse_swarm_info(text: str) -> tuple[str, bool]:
     return state.strip(), manager.strip().lower() == "true"
 
 
+_TEMPLATE_JUNK = re.compile(r"^(?:\|?(?:true|false)?\|?)+\s*$", re.IGNORECASE)
+
+
+def humanize_docker_error(raw: str, fallback: str = "Команда docker на сервере не выполнилась") -> str:
+    """Turn docker CLI / template leftovers into a short operator-facing message."""
+    text = (raw or "").replace("\r", "\n").strip()
+    if not text:
+        return fallback
+    lines = [line.strip() for line in text.splitlines() if line.strip() and not _TEMPLATE_JUNK.fullmatch(line.strip())]
+    cleaned = "\n".join(lines).strip() or text
+    low = cleaned.lower()
+    if "cannot connect to the docker daemon" in low or "is the docker daemon running" in low:
+        return (
+            "На сервере не запущен Docker daemon (нет связи с /var/run/docker.sock). "
+            "Проверьте: systemctl status docker, что пакет docker установлен, "
+            "и что SSH-пользователь в группе docker или работает от root."
+        )
+    if "permission denied" in low and "docker.sock" in low:
+        return "Нет доступа к docker.sock — добавьте SSH-пользователя в группу docker или зайдите как root."
+    if "docker: command not found" in low or "not found" in low and "docker" in low:
+        return "На сервере нет команды docker — установите Docker Engine."
+    if "this node is not a swarm manager" in low:
+        return "Этот узел не менеджер Swarm — действия кластера делайте с менеджера."
+    if "this node is already part of a swarm" in low:
+        return "Узел уже в Swarm."
+    if "this node is not part of a swarm" in low:
+        return "Узел не состоит в Swarm."
+    return cleaned[:500]
+
+
 def parse_json_lines(text: str) -> list[dict]:
     rows: list[dict] = []
     for raw in (text or "").splitlines():
