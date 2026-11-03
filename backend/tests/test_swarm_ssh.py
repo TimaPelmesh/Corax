@@ -1,13 +1,21 @@
 import pytest
 
 from app.swarm_ssh import (
+    advertise_addr,
+    init_commands,
+    join_commands,
+    join_token_commands,
+    leave_commands,
+    manager_listen_addr,
     nodes_from_output,
     overview_commands,
     parse_swarm_info,
+    probe_commands,
     rollback_commands,
     scale_commands,
     service_name,
     services_from_output,
+    swarm_role,
 )
 
 
@@ -56,3 +64,28 @@ def test_parsers_read_docker_json_lines():
     services = services_from_output('{"ID":"s1","Name":"api","Mode":"replicated","Replicas":"2/2","Image":"api:1","Ports":"*:80->80/tcp"}')
     assert services[0]["replicas"] == "2/2"
     assert services[0]["name"] == "api"
+
+
+def test_cluster_commands_are_fixed_and_quoted():
+    assert swarm_role("Manager") == "manager"
+    with pytest.raises(ValueError):
+        swarm_role("leader")
+    assert advertise_addr("10.0.0.10") == "10.0.0.10"
+    with pytest.raises(ValueError):
+        advertise_addr("10.0.0.10;id")
+    init = [item[0] for item in init_commands("10.0.0.10")]
+    assert init[0] == "docker swarm init --advertise-addr 10.0.0.10"
+    assert "node ls" not in init[0]
+    token_cmd = join_token_commands("worker")[0][0]
+    assert token_cmd == "docker swarm join-token worker -q"
+    join = join_commands("SWMTKN-1-" + ("a" * 40), "10.0.0.10:2377")[0][0]
+    assert join.startswith("docker swarm join --token ")
+    assert "10.0.0.10:2377" in join
+    assert ";" not in join and "&&" not in join
+    with pytest.raises(ValueError):
+        join_commands("bad", "10.0.0.10:2377")
+    with pytest.raises(ValueError):
+        manager_listen_addr("10.0.0.10:22")
+    assert manager_listen_addr("10.0.0.10") == "10.0.0.10:2377"
+    assert leave_commands(force=True)[0][0] == "docker swarm leave --force"
+    assert probe_commands()[0][0].startswith("docker info ")

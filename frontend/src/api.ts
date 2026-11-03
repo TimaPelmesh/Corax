@@ -1557,6 +1557,28 @@ export type SwarmLogin = {
   ssh_password: string
 }
 
+export type SwarmRole = 'manager' | 'worker'
+
+export type SwarmHostRow = {
+  id: number
+  label: string
+  host: string
+  ssh_port: number
+  ssh_user: string
+  role: SwarmRole | string
+  advertise_addr: string
+  enabled: boolean
+  notes: string | null
+  last_node_name: string
+  last_node_id: string
+  last_swarm_state: string
+  last_is_manager: boolean
+  last_error: string
+  last_checked_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
 export type SwarmNode = {
   id: string
   hostname: string
@@ -1581,6 +1603,20 @@ export type SwarmOverview = {
   manager: boolean
   nodes: SwarmNode[]
   services: SwarmService[]
+  output: string
+}
+
+export type SwarmProbe = {
+  ok: boolean
+  host: SwarmHostRow
+  output: string
+}
+
+export type SwarmJoinToken = {
+  ok: boolean
+  token: string
+  token_role: SwarmRole | string
+  manager_addr: string
   output: string
 }
 
@@ -3756,6 +3792,62 @@ export const api = {
 
   createServerAuditJob: (id: number, body: { action: ServerAuditJobAction; target: string; body?: string | null }) =>
     request<ServerAuditJob>(`${API_PREFIX}/server-audit/hosts/${id}/jobs`, { method: 'POST', json: body }),
+
+  swarmHosts: () => request<SwarmHostRow[]>(`${API_PREFIX}/swarm/hosts`),
+
+  createSwarmHost: (body: {
+    label?: string
+    host: string
+    ssh_port?: number
+    ssh_user?: string
+    role?: SwarmRole | string
+    advertise_addr?: string
+    notes?: string | null
+    enabled?: boolean
+  }) => request<SwarmHostRow>(`${API_PREFIX}/swarm/hosts`, { method: 'POST', json: body }),
+
+  updateSwarmHost: (
+    id: number,
+    body: Partial<{
+      label: string
+      host: string
+      ssh_port: number
+      ssh_user: string
+      role: SwarmRole | string
+      advertise_addr: string
+      notes: string | null
+      enabled: boolean
+    }>,
+  ) => request<SwarmHostRow>(`${API_PREFIX}/swarm/hosts/${id}`, { method: 'PATCH', json: body }),
+
+  deleteSwarmHost: (id: number) =>
+    request<{ ok: boolean }>(`${API_PREFIX}/swarm/hosts/${id}/delete`, { method: 'POST' }),
+
+  swarmHostProbe: (id: number, body: { ssh_password: string }) =>
+    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/probe`, { method: 'POST', json: body, timeout_ms: 90_000 }),
+
+  swarmHostInit: (id: number, body: { ssh_password: string; advertise_addr?: string | null }) =>
+    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/init`, { method: 'POST', json: body, timeout_ms: 120_000 }),
+
+  swarmHostJoinToken: (id: number, body: { ssh_password: string; token_role?: SwarmRole | string }) =>
+    request<SwarmJoinToken>(`${API_PREFIX}/swarm/hosts/${id}/join-token`, {
+      method: 'POST',
+      json: body,
+      timeout_ms: 60_000,
+    }),
+
+  swarmHostJoin: (id: number, body: { ssh_password: string; token: string; manager_addr: string }) =>
+    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/join`, { method: 'POST', json: body, timeout_ms: 120_000 }),
+
+  swarmHostLeave: (id: number, body: { ssh_password: string; force?: boolean }) =>
+    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/leave`, { method: 'POST', json: body, timeout_ms: 90_000 }),
+
+  swarmHostOverview: (id: number, body: { ssh_password: string }) =>
+    request<SwarmOverview>(`${API_PREFIX}/swarm/hosts/${id}/overview`, {
+      method: 'POST',
+      json: body,
+      timeout_ms: 90_000,
+    }),
 
   swarmOverview: (body: SwarmLogin) =>
     request<SwarmOverview>(`${API_PREFIX}/swarm/overview`, { method: 'POST', json: body, timeout_ms: 90_000 }),

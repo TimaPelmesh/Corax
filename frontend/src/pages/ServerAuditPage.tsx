@@ -714,8 +714,15 @@ export function ServerAuditPage() {
     if (!ok) return
     try {
       await api.deleteServerAuditHost(host.id)
-      const rows = await loadHosts()
-      if (selectedId === host.id) setParams({ host: rows[0] ? String(rows[0].id) : null })
+      setHosts((current) => current.filter((row) => row.id !== host.id))
+      if (selectedId === host.id) {
+        setDetail(null)
+        setManageOpen(false)
+        const rest = hosts.filter((row) => row.id !== host.id)
+        setParams({ host: rest[0] ? String(rest[0].id) : null })
+      }
+      await loadHosts()
+      toast.ok(t('serverAudit.removed'))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'))
     }
@@ -1021,11 +1028,25 @@ export function ServerAuditPage() {
                     key={host.id}
                     aria-current={active ? 'true' : undefined}
                     onClick={() => setParams({ host: String(host.id) })}
-                    className={`flex cursor-pointer flex-col gap-1 border-b border-[var(--color-border)] px-2.5 py-2 text-left ${active ? 'app-table-row-selected' : 'hover:bg-[var(--color-surface-muted)]'}`}
+                    className={`group flex cursor-pointer flex-col gap-1 border-b border-[var(--color-border)] px-2.5 py-2 text-left ${active ? 'app-table-row-selected' : 'hover:bg-[var(--color-surface-muted)]'}`}
                   >
                     <div className="flex items-center gap-1.5">
                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
                       <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-tight">{title}</span>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          title={t('serverAudit.remove')}
+                          aria-label={t('serverAudit.remove')}
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-[var(--color-fg-subtle)] opacity-70 hover:bg-rose-500/15 hover:text-rose-600 group-hover:opacity-100 dark:hover:text-rose-300"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void onDelete(host)
+                          }}
+                        >
+                          ×
+                        </button>
+                      ) : null}
                       <span className={`shrink-0 font-mono text-xs tabular-nums ${tempQuiet ? 'text-[var(--color-fg-subtle)]' : heatClass(host.latest_cpu_temp_c)}`}>
                         {fmtTemp(host.latest_cpu_temp_c)}
                       </span>
@@ -1095,6 +1116,16 @@ export function ServerAuditPage() {
                       className="app-btn app-btn-secondary !min-h-0 !px-3 !py-2"
                     >
                       {t('serverAudit.collect')}
+                    </button>
+                  ) : null}
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void onDelete(detail)}
+                      className="app-btn app-btn-danger !min-h-0 !px-3 !py-2"
+                    >
+                      {t('serverAudit.remove')}
                     </button>
                   ) : null}
                   {detail.computer_id ? (

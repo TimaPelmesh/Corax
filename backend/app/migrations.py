@@ -2175,6 +2175,58 @@ def _migrate_corax_bots(sync_conn) -> None:
     sync_conn.execute(text(ddl))
 
 
+def _migrate_swarm_hosts(sync_conn) -> None:
+    if "swarm_hosts" in _table_names(sync_conn):
+        return
+    if sync_conn.dialect.name == "sqlite":
+        ddl = """
+            CREATE TABLE swarm_hosts (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              label VARCHAR(128) NOT NULL DEFAULT '',
+              host VARCHAR(255) NOT NULL,
+              ssh_port INTEGER NOT NULL DEFAULT 22,
+              ssh_user VARCHAR(32) NOT NULL DEFAULT 'root',
+              role VARCHAR(16) NOT NULL DEFAULT 'worker',
+              advertise_addr VARCHAR(255) NOT NULL DEFAULT '',
+              enabled BOOLEAN NOT NULL DEFAULT 1,
+              notes TEXT,
+              last_node_name VARCHAR(255) NOT NULL DEFAULT '',
+              last_node_id VARCHAR(64) NOT NULL DEFAULT '',
+              last_swarm_state VARCHAR(32) NOT NULL DEFAULT '',
+              last_is_manager BOOLEAN NOT NULL DEFAULT 0,
+              last_error VARCHAR(500) NOT NULL DEFAULT '',
+              last_checked_at TIMESTAMP,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+    else:
+        ddl = """
+            CREATE TABLE swarm_hosts (
+              id SERIAL PRIMARY KEY,
+              label VARCHAR(128) NOT NULL DEFAULT '',
+              host VARCHAR(255) NOT NULL,
+              ssh_port INTEGER NOT NULL DEFAULT 22,
+              ssh_user VARCHAR(32) NOT NULL DEFAULT 'root',
+              role VARCHAR(16) NOT NULL DEFAULT 'worker',
+              advertise_addr VARCHAR(255) NOT NULL DEFAULT '',
+              enabled BOOLEAN NOT NULL DEFAULT TRUE,
+              notes TEXT,
+              last_node_name VARCHAR(255) NOT NULL DEFAULT '',
+              last_node_id VARCHAR(64) NOT NULL DEFAULT '',
+              last_swarm_state VARCHAR(32) NOT NULL DEFAULT '',
+              last_is_manager BOOLEAN NOT NULL DEFAULT FALSE,
+              last_error VARCHAR(500) NOT NULL DEFAULT '',
+              last_checked_at TIMESTAMPTZ,
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+    sync_conn.execute(text(ddl))
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_swarm_hosts_host ON swarm_hosts (host)"))
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_swarm_hosts_role ON swarm_hosts (role)"))
+
+
 _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-04-16_schema_migrations", lambda c: None),
     ("2026-04-16_tags_color", _migrate_tags_color_column),
@@ -2253,6 +2305,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-10-29_backup_schedule", _migrate_backup_schedule),
     ("2026-10-30_dashboard_snapshots", _migrate_dashboard_snapshots),
     ("2026-11-03_corax_bots", _migrate_corax_bots),
+    ("2026-11-03_swarm_hosts", _migrate_swarm_hosts),
 ]
 
 

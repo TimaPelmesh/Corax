@@ -12,8 +12,28 @@ import shlex
 
 _SERVICE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 _MAX_REPLICAS = 32
+_ROLE = frozenset({"manager", "worker"})
+_ADVERTISE = re.compile(
+    r"^(?:"
+    r"(?:\d{1,3}\.){3}\d{1,3}"
+    r"|(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
+    r"(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*"
+    r")$"
+)
+_JOIN_TOKEN = re.compile(r"^SWMTKN-1-[A-Za-z0-9-]{16,220}$")
+_MANAGER_ADDR = re.compile(
+    r"^(?:"
+    r"(?:\d{1,3}\.){3}\d{1,3}"
+    r"|(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
+    r"(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*"
+    r"):2377$"
+)
 
 _INFO = "docker info --format '{{.Swarm.LocalNodeState}}|{{.Swarm.ControlAvailable}}'"
+_NODE_SELF = (
+    "docker info --format "
+    "'{{.Name}}|{{.Swarm.LocalNodeState}}|{{.Swarm.ControlAvailable}}|{{.Swarm.NodeID}}'"
+)
 _NODES = "docker node ls --format '{{json .}}'"
 _SERVICES = "docker service ls --format '{{json .}}'"
 
@@ -31,8 +51,81 @@ def replica_count(value: int) -> int:
     return value
 
 
+def swarm_role(raw: str) -> str:
+    role = (raw or "").strip().lower()
+    if role not in _ROLE:
+        raise ValueError("Роль узла: manager или worker")
+    return role
+
+
+def advertise_addr(raw: str | None) -> str | None:
+    value = (raw or "").strip()
+    if not value:
+        return None
+    if not _ADVERTISE.fullmatch(value) or ".." in value:
+        raise ValueError("Некорректный advertise-addr")
+    if value.count(".") == 3 and all(part.isdigit() for part in value.split(".")):
+        parts = [int(part) for part in value.split(".")]
+        if any(part > 255 for part in parts):
+            raise ValueError("Некорректный advertise-addr")
+    return value
+
+
+def join_token(raw: str) -> str:
+    token = (raw or "").strip()
+    if not _JOIN_TOKEN.fullmatch(token):
+        raise ValueError("Некорректный токен join Swarm")
+    return token
+
+
+def manager_listen_addr(raw: str) -> str:
+    value = (raw or "").strip()
+    if "://" in value:
+        raise ValueError("Адрес менеджера: host:2377 без схемы")
+    if ":" not in value:
+        value = f"{value}:2377"
+    if not _MANAGER_ADDR.fullmatch(value) or ".." in value:
+        raise ValueError("Адрес менеджера: host:2377")
+    host, _, port = value.rpartition(":")
+    if port != "2377":
+        raise ValueError("Порт Swarm join только 2377")
+    if host.count(".") == 3 and all(part.isdigit() for part in host.split(".")):
+        parts = [int(part) for part in host.split(".")]
+        if any(part > 255 for part in parts):
+            raise ValueError("Адрес менеджера: host:2377")
+    return value
+
+
 def overview_commands() -> list[tuple[str, float]]:
     return [(_INFO, 20), (_NODES, 25), (_SERVICES, 25)]
+
+
+def probe_commands() -> list[tuple[str, float]]:
+    return [(_NODE_SELF, 20)]
+
+
+def init_commands(addr: str | None = None) -> list[tuple[str, float]]:
+    if addr:
+        target = shlex.quote(advertise_addr(addr) or "")
+        return [(f"docker swarm init --advertise-addr {target}", 45), (_NODE_SELF, 20)]
+    return [("docker swarm init", 45), (_NODE_SELF, 20)]
+
+
+def join_token_commands(role: str) -> list[tuple[str, float]]:
+    kind = swarm_role(role)
+    return [(f"docker swarm join-token {kind} -q", 20)]
+
+
+def join_commands(token: str, manager_addr: str) -> list[tuple[str, float]]:
+    tok = shlex.quote(join_token(token))
+    addr = shlex.quote(manager_listen_addr(manager_addr))
+    return [(f"docker swarm join --token {tok} {addr}", 60), (_NODE_SELF, 20)]
+
+
+def leave_commands(*, force: bool = False) -> list[tuple[str, float]]:
+    if force:
+        return [("docker swarm leave --force", 30), (_NODE_SELF, 20)]
+    return [("docker swarm leave", 30), (_NODE_SELF, 20)]
 
 
 def scale_commands(name: str, replicas: int) -> list[tuple[str, float]]:
