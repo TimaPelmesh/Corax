@@ -1610,6 +1610,17 @@ export type SwarmProbe = {
   ok: boolean
   host: SwarmHostRow
   output: string
+  ensured?: boolean
+  os_name?: string
+}
+
+export type SwarmEnsure = {
+  ok: boolean
+  host: SwarmHostRow
+  os_name: string
+  started: string[]
+  skipped: string[]
+  output: string
 }
 
 export type SwarmJoinToken = {
@@ -3837,10 +3848,17 @@ export const api = {
     request<{ ok: boolean }>(`${API_PREFIX}/swarm/hosts/${id}/delete`, { method: 'POST' }),
 
   swarmHostProbe: (id: number, body: { ssh_password: string }) =>
-    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/probe`, { method: 'POST', json: body, timeout_ms: 90_000 }),
+    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/probe`, { method: 'POST', json: body, timeout_ms: 120_000 }),
+
+  swarmHostEnsure: (id: number, body: { ssh_password: string }) =>
+    request<SwarmEnsure>(`${API_PREFIX}/swarm/hosts/${id}/ensure`, {
+      method: 'POST',
+      json: body,
+      timeout_ms: 180_000,
+    }),
 
   swarmHostInit: (id: number, body: { ssh_password: string; advertise_addr?: string | null }) =>
-    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/init`, { method: 'POST', json: body, timeout_ms: 120_000 }),
+    request<SwarmProbe>(`${API_PREFIX}/swarm/hosts/${id}/init`, { method: 'POST', json: body, timeout_ms: 180_000 }),
 
   swarmHostJoinToken: (id: number, body: { ssh_password: string; token_role?: SwarmRole | string }) =>
     request<SwarmJoinToken>(`${API_PREFIX}/swarm/hosts/${id}/join-token`, {

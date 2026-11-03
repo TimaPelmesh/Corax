@@ -36,6 +36,10 @@ _NODE_SELF = (
 )
 _NODES = "docker node ls --format '{{json .}}'"
 _SERVICES = "docker service ls --format '{{json .}}'"
+_UNAME = "uname -s"
+_OS_RELEASE = "cat /etc/os-release"
+# Fixed systemd units for Linux Swarm nodes (never Asterion / Windows).
+_ENSURE_UNITS = ("containerd", "docker", "corax-audit")
 
 
 def service_name(raw: str) -> str:
@@ -104,6 +108,73 @@ def probe_commands() -> list[tuple[str, float]]:
     return [(_NODE_SELF, 20)]
 
 
+def detect_os_commands() -> list[tuple[str, float]]:
+    """uname + os-release — gate Linux Swarm automation (refuse Asterion)."""
+    return [(_UNAME, 10), (_OS_RELEASE, 10)]
+
+
+def ensure_services_commands() -> list[tuple[str, float]]:
+    """Enable and start fixed units needed for Docker Swarm on Linux.
+
+    Order: containerd → docker → corax-audit (optional if unit missing).
+    Caller should use stop_on_error=False so a missing optional unit does not
+    abort docker bring-up; then verify with probe_commands().
+    """
+    out: list[tuple[str, float]] = []
+    for unit in _ENSURE_UNITS:
+        quoted = shlex.quote(unit)
+        out.append((f"systemctl enable {quoted}", 25))
+        out.append((f"systemctl start {quoted}", 60))
+    out.append(("systemctl is-active docker", 15))
+    return out
+
+
+def parse_pretty_name(os_release: str) -> str:
+    pretty = ""
+    name = ""
+    for raw in (os_release or "").splitlines():
+        line = raw.strip()
+        if line.startswith("PRETTY_NAME="):
+            pretty = line.split("=", 1)[1].strip().strip('"').strip("'")
+        elif line.startswith("NAME=") and not name:
+            name = line.split("=", 1)[1].strip().strip('"').strip("'")
+    return (pretty or name or "").strip()[:128]
+
+
+def assert_linux_swarm_host(uname: str, os_release: str) -> str:
+    """Accept only Linux hosts that are not Asterion. Returns pretty OS name."""
+    system = ""
+    for raw in (uname or "").splitlines():
+        line = raw.strip()
+        if line:
+            system = line
+    if system.lower() != "linux":
+        raise ValueError(
+            f"Автозапуск Swarm-служб только на Linux (uname={system or '?'}). "
+            "Windows / Asterion сюда не подходят."
+        )
+    blob = f"{uname}\n{os_release}".lower()
+    if "asterion" in blob:
+        raise ValueError(
+            "Узел Asterion: автозапуск Docker Swarm служб через Corax отключён. "
+            "Используйте Linux-сервер с Docker Engine."
+        )
+    # Windows-like guests sometimes leak into os-release text
+    if any(token in blob for token in ("mingw", "cygwin", "msys", "windows_nt", "windows nt")):
+        raise ValueError("Автозапуск Swarm-служб только на Linux, не на Windows.")
+    return parse_pretty_name(os_release) or "Linux"
+
+
+def looks_like_docker_daemon_down(text: str) -> bool:
+    low = (text or "").lower()
+    return (
+        "cannot connect to the docker daemon" in low
+        or "is the docker daemon running" in low
+        or ("permission denied" in low and "docker.sock" in low)
+        or ("connect: no such file or directory" in low and "docker" in low)
+    )
+
+
 def init_commands(addr: str | None = None) -> list[tuple[str, float]]:
     if addr:
         target = shlex.quote(advertise_addr(addr) or "")
@@ -163,8 +234,9 @@ def humanize_docker_error(raw: str, fallback: str = "Команда docker на 
     if "cannot connect to the docker daemon" in low or "is the docker daemon running" in low:
         return (
             "На сервере не запущен Docker daemon (нет связи с /var/run/docker.sock). "
-            "Проверьте: systemctl status docker, что пакет docker установлен, "
-            "и что SSH-пользователь в группе docker или работает от root."
+            "На Linux Corax может поднять службы кнопкой «Запустить службы» "
+            "(systemctl enable/start docker + containerd). "
+            "Проверьте, что пакет docker установлен и SSH-пользователь в группе docker или root."
         )
     if "permission denied" in low and "docker.sock" in low:
         return "Нет доступа к docker.sock — добавьте SSH-пользователя в группу docker или зайдите как root."

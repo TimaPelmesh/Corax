@@ -17,11 +17,15 @@ from app.models import SwarmHost, User
 from app.observability import get_logger
 from app.swarm_ssh import (
     advertise_addr,
+    assert_linux_swarm_host,
+    detect_os_commands,
+    ensure_services_commands,
     humanize_docker_error,
     init_commands,
     join_commands,
     join_token_commands,
     leave_commands,
+    looks_like_docker_daemon_down,
     manager_listen_addr,
     nodes_from_output,
     overview_commands,
@@ -147,6 +151,17 @@ class SwarmProbeOut(BaseModel):
     ok: bool
     host: SwarmHostOut
     output: str = ""
+    ensured: bool = False
+    os_name: str = ""
+
+
+class SwarmEnsureOut(BaseModel):
+    ok: bool
+    host: SwarmHostOut
+    os_name: str = ""
+    started: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    output: str = ""
 
 
 class SwarmJoinTokenOut(BaseModel):
@@ -198,7 +213,13 @@ async def _run_login(body: SwarmLogin, commands: list[tuple[str, float]]) -> lis
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-async def _run_row(row: SwarmHost, password: str, commands: list[tuple[str, float]]) -> list[dict]:
+async def _run_row(
+    row: SwarmHost,
+    password: str,
+    commands: list[tuple[str, float]],
+    *,
+    stop_on_error: bool = True,
+) -> list[dict]:
     try:
         return await asyncio.to_thread(
             run_remote_commands,
@@ -207,11 +228,92 @@ async def _run_row(row: SwarmHost, password: str, commands: list[tuple[str, floa
             clean_ssh_user(row.ssh_user or "root"),
             password,
             commands,
+            stop_on_error=stop_on_error,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except InstallError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+async def _detect_linux_os(row: SwarmHost, password: str) -> str:
+    detected = await _run_row(row, password, detect_os_commands(), stop_on_error=True)
+    uname = str((detected[0].get("output") if detected else "") or "")
+    if not detected or not detected[0].get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Не удалось определить ОС узла (нужен Linux): {(uname or '')[:300]}",
+        )
+    os_release = str((detected[1].get("output") if len(detected) > 1 else "") or "")
+    if len(detected) > 1 and not detected[1].get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail="Нет /etc/os-release — автозапуск только на Linux.",
+        )
+    try:
+        return assert_linux_swarm_host(uname, os_release)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _summarize_ensure(results: list[dict]) -> tuple[list[str], list[str], str]:
+    """Map enable/start pairs for containerd, docker, corax-audit."""
+    units = ("containerd", "docker", "corax-audit")
+    started: list[str] = []
+    skipped: list[str] = []
+    chunks: list[str] = []
+    idx = 0
+    for unit in units:
+        enable = results[idx] if idx < len(results) else {"ok": False, "output": ""}
+        start = results[idx + 1] if idx + 1 < len(results) else {"ok": False, "output": ""}
+        idx += 2
+        enable_ok = bool(enable.get("ok"))
+        start_ok = bool(start.get("ok"))
+        if start_ok or enable_ok:
+            started.append(unit)
+        else:
+            skipped.append(unit)
+        for label, item in (("enable", enable), ("start", start)):
+            text = str(item.get("output") or "").strip()
+            if text:
+                chunks.append(f"[{unit} {label}] {text[:400]}")
+    active = results[idx] if idx < len(results) else {}
+    if active:
+        chunks.append(f"[docker is-active] {str(active.get('output') or '')[:200]}")
+    return started, skipped, "\n".join(chunks)[:4000]
+
+
+async def _ensure_linux_services(row: SwarmHost, password: str) -> tuple[str, list[str], list[str], str]:
+    """Detect Linux (not Asterion), enable/start docker stack, return os + summary."""
+    os_name = await _detect_linux_os(row, password)
+    results = await _run_row(row, password, ensure_services_commands(), stop_on_error=False)
+    started, skipped, output = _summarize_ensure(results)
+    active = results[-1] if results else {}
+    if not active.get("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"На {os_name} не удалось запустить docker.service. "
+                f"Установите Docker Engine и повторите. {output[-500:]}"
+            ),
+        )
+    return os_name, started, skipped, output
+
+
+async def _ensure_if_daemon_down(row: SwarmHost, password: str, results: list[dict]) -> tuple[list[dict], bool, str]:
+    """If docker daemon is down on Linux, start services and re-probe."""
+    head = results[0] if results else {}
+    if head.get("ok"):
+        return results, False, ""
+    text = str(head.get("output") or "")
+    if not looks_like_docker_daemon_down(text):
+        return results, False, ""
+    try:
+        os_name, _started, _skipped, _out = await _ensure_linux_services(row, password)
+    except HTTPException:
+        return results, False, ""
+    retry = await _run_row(row, password, probe_commands())
+    return retry, True, os_name
 
 
 def _overview(results: list[dict]) -> SwarmOverviewOut:
@@ -375,6 +477,33 @@ async def delete_host(host_id: int, user: User = Depends(_swarm_user), db: Async
     return {"ok": True}
 
 
+@router.post("/hosts/{host_id}/ensure", response_model=SwarmEnsureOut)
+async def ensure_host_services(
+    host_id: int,
+    body: SwarmHostAuth,
+    user: User = Depends(_swarm_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Linux only (not Asterion): systemctl enable/start containerd, docker, corax-audit."""
+    row = await _get_host(db, host_id)
+    os_name, started, skipped, ensure_out = await _ensure_linux_services(row, body.ssh_password)
+    probe = await _run_row(row, body.ssh_password, probe_commands())
+    row = await _apply_probe(db, row, probe)
+    ok = bool(probe and probe[0].get("ok") and not row.last_error)
+    log.info(
+        "swarm ensure services",
+        extra={"user": user.username, "id": host_id, "host": row.host, "os": os_name, "started": started},
+    )
+    return SwarmEnsureOut(
+        ok=ok,
+        host=_host_out(row),
+        os_name=os_name,
+        started=started,
+        skipped=skipped,
+        output=(ensure_out + "\n" + str((probe[-1] if probe else {}).get("output") or ""))[:4000],
+    )
+
+
 @router.post("/hosts/{host_id}/probe", response_model=SwarmProbeOut)
 async def probe_host(
     host_id: int,
@@ -384,10 +513,20 @@ async def probe_host(
 ):
     row = await _get_host(db, host_id)
     results = await _run_row(row, body.ssh_password, probe_commands())
+    results, ensured, os_name = await _ensure_if_daemon_down(row, body.ssh_password, results)
     row = await _apply_probe(db, row, results)
-    log.info("swarm host probe", extra={"user": user.username, "id": host_id, "host": row.host})
+    log.info(
+        "swarm host probe",
+        extra={"user": user.username, "id": host_id, "host": row.host, "ensured": ensured},
+    )
     ok = bool(results and results[0].get("ok") and not row.last_error)
-    return SwarmProbeOut(ok=ok, host=_host_out(row), output=str((results[-1] if results else {}).get("output") or "")[:4000])
+    return SwarmProbeOut(
+        ok=ok,
+        host=_host_out(row),
+        output=str((results[-1] if results else {}).get("output") or "")[:4000],
+        ensured=ensured,
+        os_name=os_name,
+    )
 
 
 @router.post("/hosts/{host_id}/init", response_model=SwarmProbeOut)
@@ -406,6 +545,14 @@ async def init_host(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     results = await _run_row(row, body.ssh_password, commands)
+    ensured = False
+    os_name = ""
+    if (not results or not results[0].get("ok")) and looks_like_docker_daemon_down(
+        str((results[0].get("output") if results else "") or "")
+    ):
+        os_name, _s, _k, _o = await _ensure_linux_services(row, body.ssh_password)
+        ensured = True
+        results = await _run_row(row, body.ssh_password, commands)
     if not results or not results[0].get("ok"):
         detail = humanize_docker_error(
             str((results[0].get("output") if results else "") or ""),
@@ -418,11 +565,13 @@ async def init_host(
         except ValueError:
             pass
     row = await _apply_probe(db, row, results[1:] or results)
-    log.info("swarm init", extra={"user": user.username, "id": host_id, "host": row.host})
+    log.info("swarm init", extra={"user": user.username, "id": host_id, "host": row.host, "ensured": ensured})
     return SwarmProbeOut(
         ok=True,
         host=_host_out(row),
         output=str(results[0].get("output") or "")[:4000],
+        ensured=ensured,
+        os_name=os_name,
     )
 
 
@@ -474,6 +623,14 @@ async def join_host(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     results = await _run_row(row, body.ssh_password, commands)
+    ensured = False
+    os_name = ""
+    if (not results or not results[0].get("ok")) and looks_like_docker_daemon_down(
+        str((results[0].get("output") if results else "") or "")
+    ):
+        os_name, _s, _k, _o = await _ensure_linux_services(row, body.ssh_password)
+        ensured = True
+        results = await _run_row(row, body.ssh_password, commands)
     if not results or not results[0].get("ok"):
         detail = humanize_docker_error(
             str((results[0].get("output") if results else "") or ""),
@@ -481,8 +638,14 @@ async def join_host(
         )
         raise HTTPException(status_code=502, detail=detail)
     row = await _apply_probe(db, row, results[1:] or results)
-    log.info("swarm join", extra={"user": user.username, "id": host_id, "host": row.host})
-    return SwarmProbeOut(ok=True, host=_host_out(row), output=str(results[0].get("output") or "")[:4000])
+    log.info("swarm join", extra={"user": user.username, "id": host_id, "host": row.host, "ensured": ensured})
+    return SwarmProbeOut(
+        ok=True,
+        host=_host_out(row),
+        output=str(results[0].get("output") or "")[:4000],
+        ensured=ensured,
+        os_name=os_name,
+    )
 
 
 @router.post("/hosts/{host_id}/leave", response_model=SwarmProbeOut)
@@ -514,6 +677,11 @@ async def host_overview(
 ):
     row = await _get_host(db, host_id)
     results = await _run_row(row, body.ssh_password, overview_commands())
+    if (not results or not results[0].get("ok")) and looks_like_docker_daemon_down(
+        str((results[0].get("output") if results else "") or "")
+    ):
+        await _ensure_linux_services(row, body.ssh_password)
+        results = await _run_row(row, body.ssh_password, overview_commands())
     overview = _overview(results)
     # Refresh probe fields from overview info line
     state, manager = overview.swarm, overview.manager

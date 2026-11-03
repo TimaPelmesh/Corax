@@ -149,8 +149,36 @@ export function SwarmPage() {
       const result = await api.swarmHostProbe(row.id, { ssh_password: password })
       upsertHost(result.host)
       setOutput(result.output || '')
-      if (result.ok) toast.ok(t('swarm.probeOk'))
-      else toast.error(result.host.last_error || t('common.error'))
+      if (result.ok) {
+        toast.ok(result.ensured ? t('swarm.ensureThenProbeOk') : t('swarm.probeOk'))
+      } else toast.error(result.host.last_error || t('common.error'))
+    } catch (error) {
+      setOutput(error instanceof Error ? error.message : t('common.error'))
+      toast.error(error instanceof Error ? error.message : t('common.error'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function ensureServices(row: SwarmHostRow) {
+    const password = passwordFor(row.id)
+    if (!password) {
+      toast.error(t('swarm.needPassword'))
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await api.swarmHostEnsure(row.id, { ssh_password: password })
+      upsertHost(result.host)
+      setOutput(result.output || '')
+      if (result.ok) {
+        toast.ok(
+          t('swarm.ensureOk', {
+            os: result.os_name || 'Linux',
+            started: (result.started || []).join(', ') || '—',
+          }),
+        )
+      } else toast.error(result.host.last_error || t('common.error'))
     } catch (error) {
       setOutput(error instanceof Error ? error.message : t('common.error'))
       toast.error(error instanceof Error ? error.message : t('common.error'))
@@ -527,6 +555,15 @@ export function SwarmPage() {
                       <div className="flex flex-wrap gap-1.5">
                         <button type="button" className="app-btn app-btn-secondary" disabled={busy} onClick={() => void probe(row)}>
                           {t('swarm.probe')}
+                        </button>
+                        <button
+                          type="button"
+                          className="app-btn app-btn-secondary"
+                          disabled={busy}
+                          title={t('swarm.ensureHint')}
+                          onClick={() => void ensureServices(row)}
+                        >
+                          {t('swarm.ensure')}
                         </button>
                         {row.role === 'manager' ? (
                           <>

@@ -322,8 +322,14 @@ def run_remote_commands(
     user: str,
     password: str,
     commands: list[tuple[str, float]],
+    *,
+    stop_on_error: bool = True,
 ) -> list[dict]:
-    """Run allowlisted commands on one SSH session. Stop after the first failure."""
+    """Run allowlisted commands on one SSH session.
+
+    By default stop after the first failure. Pass stop_on_error=False for
+    optional steps (missing systemd units) while still collecting every result.
+    """
     if not commands:
         raise ValueError("Нет команды")
     host, port, user, password = _check_login(host, port, user, password)
@@ -333,7 +339,7 @@ def run_remote_commands(
             for command, timeout in commands:
                 code, text = _run(client, command, password, sudo=user != "root", timeout=timeout)
                 results.append({"ok": code == 0, "exit_code": code, "output": text})
-                if code != 0:
+                if code != 0 and stop_on_error:
                     break
     except (InstallError, ValueError):
         raise

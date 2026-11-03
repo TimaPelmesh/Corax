@@ -2,11 +2,15 @@ import pytest
 
 from app.swarm_ssh import (
     advertise_addr,
+    assert_linux_swarm_host,
+    detect_os_commands,
+    ensure_services_commands,
     humanize_docker_error,
     init_commands,
     join_commands,
     join_token_commands,
     leave_commands,
+    looks_like_docker_daemon_down,
     manager_listen_addr,
     nodes_from_output,
     overview_commands,
@@ -98,4 +102,26 @@ def test_humanize_docker_daemon_down():
     )
     assert "|false" not in msg
     assert "Docker daemon" in msg or "docker" in msg.lower()
-    assert "systemctl" in msg
+    assert looks_like_docker_daemon_down(msg) or looks_like_docker_daemon_down(
+        "Cannot connect to the Docker daemon at unix:///var/run/docker.sock"
+    )
+
+
+def test_ensure_services_are_fixed_units():
+    commands = [item[0] for item in ensure_services_commands()]
+    assert "systemctl enable containerd" in commands
+    assert "systemctl start docker" in commands
+    assert "systemctl enable corax-audit" in commands
+    assert "systemctl is-active docker" in commands
+    assert not any(";" in item or "&&" in item or "|" in item for item in commands)
+    detect = [item[0] for item in detect_os_commands()]
+    assert detect == ["uname -s", "cat /etc/os-release"]
+
+
+def test_assert_linux_rejects_asterion_and_windows():
+    name = assert_linux_swarm_host("Linux\n", 'NAME="Ubuntu"\nPRETTY_NAME="Ubuntu 22.04.4 LTS"\n')
+    assert "Ubuntu" in name
+    with pytest.raises(ValueError, match="Asterion"):
+        assert_linux_swarm_host("Linux", 'NAME="Asterion OS"\nID=asterion\n')
+    with pytest.raises(ValueError, match="Linux"):
+        assert_linux_swarm_host("Windows_NT", 'NAME="Windows"\n')
