@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../AuthContext'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { PageHeader } from '../components/PageHeader'
-import { useT } from '../i18n/LocaleContext'
+import { useT, type MessageKey } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
 
 function desiredReplicas(value: string): number {
@@ -20,7 +20,7 @@ function desiredReplicas(value: string): number {
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 32 ? parsed : 1
 }
 
-function roleLabel(t: (key: string) => string, role: string) {
+function roleLabel(t: (key: MessageKey, params?: Record<string, string | number>) => string, role: string) {
   return role === 'manager' ? t('swarm.roleManager') : t('swarm.roleWorker')
 }
 

@@ -826,7 +826,20 @@ export function BitrixBotPanel({
         </div>
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
           {!bot?.webhook_set || !bot.token_set ? (
-            <p className="px-2 py-6 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botListNeedToken')}</p>
+            <div className="space-y-3 px-2 py-6">
+              <p className="text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botListNeedToken')}</p>
+              <button
+                type="button"
+                className="app-btn app-btn-primary w-full !min-h-0 !py-2 text-sm"
+                onClick={() => {
+                  setConnectOpen(true)
+                  setPickQuery('')
+                  setBotId('')
+                }}
+              >
+                {t('settingsBitrix.botListConnectCta')}
+              </button>
+            </div>
           ) : visible.length === 0 ? (
             <p className="px-2 py-6 text-sm text-[var(--color-fg-subtle)]">{needle ? t('settingsBitrix.botNoMatch') : t('settingsBitrix.botListEmpty')}</p>
           ) : (

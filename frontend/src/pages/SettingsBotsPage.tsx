@@ -29,7 +29,7 @@ function emptyCreate(): { name: string; purpose: string; channel: 'bitrix24' | '
   return { name: '', purpose: '', channel: 'bitrix24' }
 }
 
-export function SettingsBotsPage() {
+export function SettingsBotsPanel({ embedded = false }: { embedded?: boolean }) {
   const t = useT()
   const toast = useToast()
   const { ask, dialog: confirmDialog } = useConfirmDialog()
@@ -233,19 +233,31 @@ export function SettingsBotsPage() {
     patchNode(nodeId, { buttons })
   }
 
+  const createBtn = (
+    <button type="button" className="app-btn" disabled={busy} onClick={() => setShowCreate(true)}>
+      {t('settingsBots.create')}
+    </button>
+  )
+
   return (
-    <div className="settings-page settings-page--wide">
+    <div className={embedded ? 'flex flex-col gap-4' : 'settings-page settings-page--wide'}>
       {confirmDialog}
-      <PageHeader
-        icon={<IconAssistant className="h-5 w-5" />}
-        title={t('titles.bots')}
-        subtitle={t('settingsBots.subtitle')}
-        actions={
-          <button type="button" className="app-btn" disabled={busy} onClick={() => setShowCreate(true)}>
-            {t('settingsBots.create')}
-          </button>
-        }
-      />
+      {embedded ? (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--color-fg)]">{t('settingsBots.embeddedTitle')}</h2>
+            <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('settingsBots.subtitle')}</p>
+          </div>
+          {createBtn}
+        </div>
+      ) : (
+        <PageHeader
+          icon={<IconAssistant className="h-5 w-5" />}
+          title={t('titles.bots')}
+          subtitle={t('settingsBots.subtitle')}
+          actions={createBtn}
+        />
+      )}
 
       {showCreate ? (
         <div className="app-panel mb-4 grid gap-3 sm:grid-cols-2">
@@ -567,4 +579,9 @@ export function SettingsBotsPage() {
       )}
     </div>
   )
+}
+
+/** Standalone route kept for bookmarks; prefer Bitrix24 → Конструктор. */
+export function SettingsBotsPage() {
+  return <SettingsBotsPanel />
 }

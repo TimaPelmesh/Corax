@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { api, type Bitrix24Config } from '../api'
 import { useAuth } from '../AuthContext'
 import { IconKey } from '../components/icons'
 import { AppModal } from '../components/ui/AppModal'
 import { BitrixBotPanel } from './BitrixBotPanel'
+import { SettingsBotsPanel } from './SettingsBotsPage'
 import { PageHeader } from '../components/PageHeader'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
@@ -21,14 +23,28 @@ function genSecret() {
   return base64Url(arr)
 }
 
+type Tab = 'bitrix' | 'builder'
+
 export function SettingsBitrix24Page() {
   const t = useT()
   const toast = useToast()
   const { user } = useAuth()
+  const [params, setParams] = useSearchParams()
   const [cfg, setCfg] = useState<Bitrix24Config | null>(null)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [incomingOpen, setIncomingOpen] = useState(false)
+
+  const tab: Tab = params.get('tab') === 'builder' ? 'builder' : 'bitrix'
+
+  const setTab = (next: Tab) => {
+    setParams((prev) => {
+      const copy = new URLSearchParams(prev)
+      if (next === 'bitrix') copy.delete('tab')
+      else copy.set('tab', next)
+      return copy
+    }, { replace: true })
+  }
 
   const load = useCallback(async () => {
     try {
@@ -104,20 +120,41 @@ export function SettingsBitrix24Page() {
   }
 
   const edge = 'rounded-lg border border-[var(--color-border)] px-3 py-2 text-sm font-medium hover:bg-[var(--color-bg-muted)] disabled:opacity-50'
+  const tabBtn = (id: Tab, label: string) => (
+    <button
+      type="button"
+      className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+        tab === id ? 'bg-[var(--color-bg-muted)] text-[var(--color-fg)]' : 'text-[var(--color-fg-subtle)] hover:bg-[var(--color-bg-muted)]'
+      }`}
+      onClick={() => setTab(id)}
+    >
+      {label}
+    </button>
+  )
 
   return (
     <div className="settings-page settings-page--wide">
       <PageHeader title={t('titles.bitrix24')} subtitle={t('pages.bitrixSubtitle')} />
-      {!cfg ? (
-        <div className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</div>
+      <div className="mb-4 flex flex-wrap gap-1 border-b border-[var(--color-border)] pb-2">
+        {tabBtn('bitrix', t('settingsBitrix.tabBots'))}
+        {tabBtn('builder', t('settingsBitrix.tabBuilder'))}
+      </div>
+
+      {tab === 'bitrix' ? (
+        !cfg ? (
+          <div className="text-sm text-[var(--color-fg-muted)]">{t('common.loading')}</div>
+        ) : (
+          <BitrixBotPanel
+            incomingEnabled={cfg.enabled}
+            incomingBusy={saving}
+            onIncomingChange={(enabled) => void save({ enabled })}
+            onIncomingSettings={() => setIncomingOpen(true)}
+          />
+        )
       ) : (
-        <BitrixBotPanel
-          incomingEnabled={cfg.enabled}
-          incomingBusy={saving}
-          onIncomingChange={(enabled) => void save({ enabled })}
-          onIncomingSettings={() => setIncomingOpen(true)}
-        />
+        <SettingsBotsPanel embedded />
       )}
+
       <AppModal
         open={Boolean(incomingOpen && cfg)}
         onClose={() => setIncomingOpen(false)}
@@ -183,3 +220,7 @@ export function SettingsBitrix24Page() {
   )
 }
 
+/** Old bookmarks /settings/bots → Bitrix constructor tab. */
+export function SettingsBotsRedirect() {
+  return <Navigate to="/settings/bitrix24?tab=builder" replace />
+}

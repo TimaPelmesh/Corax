@@ -72,7 +72,6 @@ export function prefsNavItems(user: { is_superuser?: boolean; role?: string } | 
       { path: '/users', labelKey: 'nav.users' },
       { path: '/settings/ldap', labelKey: 'nav.ldap' },
       { path: '/settings/bitrix24', labelKey: 'nav.bitrix24' },
-      { path: '/settings/bots', labelKey: 'nav.bots' },
       { path: '/settings/zabbix', labelKey: 'nav.zabbix' },
       { path: '/settings/database', labelKey: 'nav.database' },
       { path: '/settings/glpi', labelKey: 'nav.glpi' },
@@ -252,12 +251,11 @@ export function buildNavSections(user: { is_superuser?: boolean; role?: string }
       settingsItems.push(
         { to: '/users', icon: IconUsers, labelKey: 'nav.users' },
         { to: '/settings/ldap', icon: IconUser, labelKey: 'nav.ldap' },
-        { to: '/settings/bitrix24', icon: IconSend, labelKey: 'nav.bitrix24' },
         {
-          to: '/settings/bots',
-          icon: IconAssistant,
-          labelKey: 'nav.bots',
-          keywords: ['бот', 'bot', 'конструктор', 'диалог', 'bitrix', 'ии', 'ai'],
+          to: '/settings/bitrix24',
+          icon: IconSend,
+          labelKey: 'nav.bitrix24',
+          keywords: ['бот', 'bot', 'конструктор', 'диалог', 'bitrix', 'webhook', 'fetch', 'imbot', 'ии', 'ai'],
         },
         { to: '/settings/zabbix', icon: IconSignal, labelKey: 'nav.zabbix' },
         {

@@ -58,8 +58,8 @@ const UsersPage = lazyPage(() => import('./pages/UsersPage').then((module) => ({
 const SettingsBitrix24Page = lazyPage(() =>
   import('./pages/SettingsBitrix24Page').then((module) => ({ default: module.SettingsBitrix24Page })),
 )
-const SettingsBotsPage = lazyPage(() =>
-  import('./pages/SettingsBotsPage').then((module) => ({ default: module.SettingsBotsPage })),
+const SettingsBotsRedirect = lazyPage(() =>
+  import('./pages/SettingsBitrix24Page').then((module) => ({ default: module.SettingsBotsRedirect })),
 )
 const SettingsZabbixPage = lazyPage(() =>
   import('./pages/SettingsZabbixPage').then((module) => ({ default: module.SettingsZabbixPage })),
@@ -206,7 +206,7 @@ export default function App() {
         <Route path="settings/categories" element={<SettingsCategoriesPage />} />
         <Route path="settings/ldap" element={<SettingsLdapPage />} />
         <Route path="settings/bitrix24" element={<SettingsBitrix24Page />} />
-        <Route path="settings/bots" element={<SettingsBotsPage />} />
+        <Route path="settings/bots" element={<SettingsBotsRedirect />} />
         <Route path="settings/zabbix" element={<SettingsZabbixPage />} />
         <Route path="settings/database" element={<SettingsDatabasePage />} />
         <Route path="settings/glpi" element={<SettingsGlpiPage />} />
