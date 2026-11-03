@@ -694,6 +694,21 @@ def _migrate_network_map_scenes(sync_conn) -> None:
     sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_network_map_scenes_updated_by ON network_map_scenes (updated_by)"))
 
 
+def _migrate_network_ping_settings(sync_conn) -> None:
+    if "network_poll_config" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "network_poll_config")
+    adds = {
+        "ping_cidr_json": "ALTER TABLE network_poll_config ADD COLUMN ping_cidr_json TEXT",
+        "ping_prefix": "ALTER TABLE network_poll_config ADD COLUMN ping_prefix INTEGER DEFAULT 24",
+        "ping_timeout_ms": "ALTER TABLE network_poll_config ADD COLUMN ping_timeout_ms INTEGER DEFAULT 1000",
+        "ping_gap_ms": "ALTER TABLE network_poll_config ADD COLUMN ping_gap_ms DOUBLE PRECISION DEFAULT 1",
+    }
+    for name, ddl in adds.items():
+        if name not in cols:
+            sync_conn.execute(text(ddl))
+
+
 def _migrate_network_extras_json(sync_conn) -> None:
     if "network_devices" not in _table_names(sync_conn):
         return
@@ -2366,6 +2381,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-11-03_corax_bots", _migrate_corax_bots),
     ("2026-11-03_swarm_hosts", _migrate_swarm_hosts),
     ("2026-11-03_ai_agents", _migrate_ai_agents),
+    ("2026-11-03_network_ping_settings", _migrate_network_ping_settings),
 ]
 
 

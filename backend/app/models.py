@@ -551,6 +551,10 @@ class NetworkPollConfig(Base):
     snmp_timeout_seconds: Mapped[float] = mapped_column(Float, default=3.5)
     poll_concurrency: Mapped[int] = mapped_column(Integer, default=8)
     cidr_list_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ping_cidr_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ping_prefix: Mapped[int] = mapped_column(Integer, default=24)
+    ping_timeout_ms: Mapped[int] = mapped_column(Integer, default=1000)
+    ping_gap_ms: Mapped[float] = mapped_column(Float, default=1.0)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_run_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(

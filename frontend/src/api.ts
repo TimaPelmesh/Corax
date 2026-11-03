@@ -4281,6 +4281,10 @@ export type NetworkPollConfig = {
   snmp_timeout_seconds: number
   poll_concurrency: number
   cidr_list: string[]
+  ping_cidr_list: string[]
+  ping_prefix: number
+  ping_timeout_ms: number
+  ping_gap_ms: number
   last_run_at: string | null
 }
 
@@ -4291,6 +4295,10 @@ export type NetworkPollConfigUpdate = {
   snmp_timeout_seconds?: number
   poll_concurrency?: number
   cidr_list?: string[]
+  ping_cidr_list?: string[]
+  ping_prefix?: number
+  ping_timeout_ms?: number
+  ping_gap_ms?: number
 }
 
 export type NetworkTopologyNode = {

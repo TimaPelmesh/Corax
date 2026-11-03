@@ -124,6 +124,7 @@ export function NetworkPage() {
   const [cfg, setCfg] = useState<NetworkPollConfig | null>(null)
   const [cfgBusy, setCfgBusy] = useState(false)
   const [cidrText, setCidrText] = useState('')
+  const [pingCidrText, setPingCidrText] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [addIp, setAddIp] = useState('')
   const [addHostname, setAddHostname] = useState('')
@@ -218,6 +219,7 @@ export function NetworkPage() {
       const c = await api.networkPollConfig()
       setCfg(c)
       setCidrText((c.cidr_list || []).join(', '))
+      setPingCidrText((c.ping_cidr_list || []).join('\n'))
       setCfgOpen(true)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('network.loadFailed'))
@@ -232,6 +234,10 @@ export function NetworkPage() {
         .split(/[,;\n]+/)
         .map((s) => s.trim())
         .filter(Boolean)
+      const ping_cidr_list = pingCidrText
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
       const saved = await api.updateNetworkPollConfig({
         poll_enabled: cfg.poll_enabled,
         poll_interval_minutes: cfg.poll_interval_minutes,
@@ -239,8 +245,14 @@ export function NetworkPage() {
         snmp_timeout_seconds: cfg.snmp_timeout_seconds,
         poll_concurrency: cfg.poll_concurrency,
         cidr_list,
+        ping_cidr_list,
+        ping_prefix: cfg.ping_prefix,
+        ping_timeout_ms: cfg.ping_timeout_ms,
+        ping_gap_ms: cfg.ping_gap_ms,
       })
       setCfg(saved)
+      setCidrText((saved.cidr_list || []).join(', '))
+      setPingCidrText((saved.ping_cidr_list || []).join('\n'))
       toast.ok(t('network.settingsSaved'))
       setCfgOpen(false)
     } catch (e) {
@@ -676,6 +688,94 @@ export function NetworkPage() {
                     onChange={(e) => setCfg({ ...cfg, poll_concurrency: Number(e.target.value) })}
                   />
                 </label>
+              </div>
+              <div className="space-y-3 border-t border-[var(--color-border)] pt-3">
+                <div>
+                  <p className="font-medium">{t('network.pingCfgTitle')}</p>
+                  <p className="text-xs text-[var(--color-fg-subtle)]">{t('network.pingCfgSub')}</p>
+                </div>
+                <label className="block">
+                  {t('network.pingCidr')}
+                  <textarea
+                    className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2 font-mono text-xs"
+                    rows={3}
+                    placeholder={'192.168.0.0/16\n10.1.0.0'}
+                    value={pingCidrText}
+                    onChange={(e) => setPingCidrText(e.target.value)}
+                  />
+                  <span className="mt-1 block text-xs text-[var(--color-fg-subtle)]">{t('network.pingCidrHint')}</span>
+                </label>
+                <div>
+                  <span className="text-xs text-[var(--color-fg-subtle)]">{t('network.pingPrefix')}</span>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {[16, 20, 22, 23, 24, 25, 28].map((prefix) => (
+                      <button
+                        key={prefix}
+                        type="button"
+                        onClick={() => setCfg({ ...cfg, ping_prefix: prefix })}
+                        className={`rounded-md border px-2 py-1 text-xs ${
+                          cfg.ping_prefix === prefix
+                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10'
+                            : 'border-[var(--color-border)]'
+                        }`}
+                      >
+                        /{prefix}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    {t('network.pingTimeout')}
+                    <input
+                      type="number"
+                      min={500}
+                      max={2000}
+                      step={100}
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
+                      value={cfg.ping_timeout_ms}
+                      onChange={(e) => setCfg({ ...cfg, ping_timeout_ms: Number(e.target.value) })}
+                    />
+                    <span className="mt-1 flex gap-1">
+                      {[500, 1000].map((ms) => (
+                        <button
+                          key={ms}
+                          type="button"
+                          onClick={() => setCfg({ ...cfg, ping_timeout_ms: ms })}
+                          className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs"
+                        >
+                          {ms}
+                        </button>
+                      ))}
+                    </span>
+                    <span className="mt-1 block text-xs text-[var(--color-fg-subtle)]">{t('network.pingTimeoutHint')}</span>
+                  </label>
+                  <label className="block">
+                    {t('network.pingGap')}
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={20}
+                      step={0.5}
+                      className="mt-1 w-full rounded-lg border border-[var(--color-border)] px-3 py-2"
+                      value={cfg.ping_gap_ms}
+                      onChange={(e) => setCfg({ ...cfg, ping_gap_ms: Number(e.target.value) })}
+                    />
+                    <span className="mt-1 flex gap-1">
+                      {[0.5, 1].map((ms) => (
+                        <button
+                          key={ms}
+                          type="button"
+                          onClick={() => setCfg({ ...cfg, ping_gap_ms: ms })}
+                          className="rounded-md border border-[var(--color-border)] px-2 py-0.5 text-xs"
+                        >
+                          {ms}
+                        </button>
+                      ))}
+                    </span>
+                    <span className="mt-1 block text-xs text-[var(--color-fg-subtle)]">{t('network.pingGapHint')}</span>
+                  </label>
+                </div>
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">

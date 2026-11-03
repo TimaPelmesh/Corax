@@ -28,7 +28,13 @@ from app.network_map_scene import (
     normalize_scene,
 )
 from app.network_poll import poll_single_device
-from app.network_poll_config import get_effective_network_poll_config, get_network_poll_config_row, parse_cidr_list
+from app.network_poll_config import (
+    PingCidrError,
+    get_effective_network_poll_config,
+    get_network_poll_config_row,
+    normalize_ping_cidrs,
+    parse_cidr_list,
+)
 from app.network_snmp import fetch_network_snmp
 from app.search_index import delete_search_document, index_record
 
@@ -152,6 +158,10 @@ class NetworkPollConfigOut(BaseModel):
     snmp_timeout_seconds: float
     poll_concurrency: int
     cidr_list: list[str] = []
+    ping_cidr_list: list[str] = []
+    ping_prefix: int = 24
+    ping_timeout_ms: int = 1000
+    ping_gap_ms: float = 1.0
     last_run_at: datetime | None = None
 
     @field_serializer("last_run_at")
@@ -166,6 +176,10 @@ class NetworkPollConfigUpdate(BaseModel):
     snmp_timeout_seconds: float | None = Field(default=None, ge=1.0, le=60.0)
     poll_concurrency: int | None = Field(default=None, ge=1, le=48)
     cidr_list: list[str] | None = None
+    ping_cidr_list: list[str] | None = None
+    ping_prefix: int | None = Field(default=None, ge=16, le=30)
+    ping_timeout_ms: int | None = Field(default=None, ge=500, le=2000)
+    ping_gap_ms: float | None = Field(default=None, ge=0.5, le=20)
 
 
 class TopologyNode(BaseModel):
@@ -894,20 +908,32 @@ async def poll_device(
     return _device_out(row, include_details=True)
 
 
+def _poll_config_out(row, *, reveal_community: str, community_set: bool) -> NetworkPollConfigOut:
+    return NetworkPollConfigOut(
+        poll_enabled=bool(row.poll_enabled),
+        poll_interval_minutes=int(row.poll_interval_minutes or 120),
+        snmp_community=reveal_community,
+        snmp_community_set=community_set,
+        snmp_timeout_seconds=float(row.snmp_timeout_seconds or 3.5),
+        poll_concurrency=int(row.poll_concurrency or 8),
+        cidr_list=parse_cidr_list(row.cidr_list_json),
+        ping_cidr_list=parse_cidr_list(row.ping_cidr_json),
+        ping_prefix=int(row.ping_prefix or 24),
+        ping_timeout_ms=int(row.ping_timeout_ms or 1000),
+        ping_gap_ms=float(row.ping_gap_ms or 1.0),
+        last_run_at=row.last_run_at,
+    )
+
+
 @router.get("/poll-config", response_model=NetworkPollConfigOut)
 async def get_poll_config(current: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     row = await get_network_poll_config_row(db)
     community = (row.snmp_community or "public").strip() or "public"
     reveal = can_read_integration_secrets(current)
-    return NetworkPollConfigOut(
-        poll_enabled=bool(row.poll_enabled),
-        poll_interval_minutes=int(row.poll_interval_minutes or 120),
-        snmp_community=community if reveal else mask_secret(community, reveal=False),
-        snmp_community_set=bool((row.snmp_community or "").strip()),
-        snmp_timeout_seconds=float(row.snmp_timeout_seconds or 3.5),
-        poll_concurrency=int(row.poll_concurrency or 8),
-        cidr_list=parse_cidr_list(row.cidr_list_json),
-        last_run_at=row.last_run_at,
+    return _poll_config_out(
+        row,
+        reveal_community=community if reveal else mask_secret(community, reveal=False),
+        community_set=bool((row.snmp_community or "").strip()),
     )
 
 
@@ -931,17 +957,26 @@ async def update_poll_config(
     if body.cidr_list is not None:
         cleaned = [c.strip() for c in body.cidr_list if c and c.strip()]
         row.cidr_list_json = json.dumps(cleaned, ensure_ascii=False) if cleaned else None
+    prefix = int(body.ping_prefix if body.ping_prefix is not None else (row.ping_prefix or 24))
+    if body.ping_prefix is not None:
+        row.ping_prefix = prefix
+    if body.ping_cidr_list is not None:
+        try:
+            cleaned_ping = normalize_ping_cidrs(body.ping_cidr_list, prefix)
+        except PingCidrError as e:
+            raise HTTPException(status_code=400, detail=f"Некорректная сеть для пинга: {e.token}") from None
+        row.ping_cidr_json = json.dumps(cleaned_ping, ensure_ascii=False) if cleaned_ping else None
+    if body.ping_timeout_ms is not None:
+        row.ping_timeout_ms = int(body.ping_timeout_ms)
+    if body.ping_gap_ms is not None:
+        row.ping_gap_ms = float(body.ping_gap_ms)
     await db.commit()
     await db.refresh(row)
-    return NetworkPollConfigOut(
-        poll_enabled=bool(row.poll_enabled),
-        poll_interval_minutes=int(row.poll_interval_minutes or 120),
-        snmp_community=(row.snmp_community or "public").strip() or "public",
-        snmp_community_set=bool((row.snmp_community or "").strip()),
-        snmp_timeout_seconds=float(row.snmp_timeout_seconds or 3.5),
-        poll_concurrency=int(row.poll_concurrency or 8),
-        cidr_list=parse_cidr_list(row.cidr_list_json),
-        last_run_at=row.last_run_at,
+    community = (row.snmp_community or "public").strip() or "public"
+    return _poll_config_out(
+        row,
+        reveal_community=community,
+        community_set=bool((row.snmp_community or "").strip()),
     )
 
 

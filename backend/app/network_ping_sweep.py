@@ -14,6 +14,7 @@ import subprocess
 import time
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -30,12 +31,12 @@ ProgressFn = Callable[[int, str], Awaitable[None]]
 
 _WIN32 = platform.system().lower() == "windows"
 _CREATE_NO_WINDOW = 0x08000000
-# Короткий таймаут и свой пул потоков: тихий опрос специально ждёт дольше и реже.
-_FAST_PING_TIMEOUT_MS = 250
-_FAST_PING_WORKERS = 96 if _WIN32 else 128
+# Дольше ждём эхо, чем в первом варианте, и держим больше пингов сразу.
+_FAST_PING_WORKERS = 384 if _WIN32 else 448
+_PING_MAX_UNITS = 256
+_PING_MAX_HOSTS = 65536
 _PTR_WORKERS = 32
 _PTR_TIMEOUT_SEC = 0.6
-_PING_SAFETY_SEC = 0.8 if _WIN32 else 1.4
 _PROGRESS_EVERY = 250
 _UPDATE_CHUNK = 500
 
@@ -54,9 +55,10 @@ class PingSweepResult:
     message: str = ""
 
 
-def _hosts(networks: list[ipaddress.IPv4Network]) -> list[str]:
+def _hosts(networks: list[ipaddress.IPv4Network]) -> tuple[list[str], bool]:
     seen: set[str] = set()
     out: list[str] = []
+    truncated = False
     for net in networks:
         for host in net.hosts():
             ip = str(host)
@@ -64,7 +66,32 @@ def _hosts(networks: list[ipaddress.IPv4Network]) -> list[str]:
                 continue
             seen.add(ip)
             out.append(ip)
-    return out
+            if len(out) >= _PING_MAX_HOSTS:
+                return out, True
+    return out, truncated
+
+
+def expand_ping_networks(cidrs: list[str], prefix: int) -> list[ipaddress.IPv4Network]:
+    """Широкую сеть режем на выбранную маску. Узкая сеть остаётся как написана."""
+    prefix = max(16, min(30, int(prefix)))
+    units: list[ipaddress.IPv4Network] = []
+    seen: set[ipaddress.IPv4Network] = set()
+    for raw in cidrs:
+        try:
+            net = ipaddress.ip_network(str(raw).strip(), strict=False)
+        except ValueError:
+            continue
+        if not isinstance(net, ipaddress.IPv4Network):
+            continue
+        parts = [net] if net.prefixlen >= prefix else net.subnets(new_prefix=prefix)
+        for part in parts:
+            if part.prefixlen < 16 or part.prefixlen > 30 or part in seen:
+                continue
+            seen.add(part)
+            units.append(part)
+            if len(units) >= _PING_MAX_UNITS:
+                return units
+    return units
 
 
 def _run_cmd(cmd: list[str], timeout: float) -> bytes | None:
@@ -78,12 +105,16 @@ def _run_cmd(cmd: list[str], timeout: float) -> bytes | None:
     return (proc.stdout or b"") + b"\n" + (proc.stderr or b"")
 
 
-def _ping_once(ip: str) -> bool:
+def _ping_once(ip: str, timeout_ms: int = 1000) -> bool:
+    wait_ms = max(500, min(int(timeout_ms), 2000))
     if _WIN32:
-        cmd = ["ping", "-n", "1", "-4", "-w", str(_FAST_PING_TIMEOUT_MS), ip]
+        cmd = ["ping", "-n", "1", "-4", "-w", str(wait_ms), ip]
+        safety = wait_ms / 1000 + 0.45
     else:
-        cmd = ["ping", "-c", "1", "-W", "1", ip]
-    blob = _run_cmd(cmd, _PING_SAFETY_SEC)
+        seconds = max(1, int(round(wait_ms / 1000)))
+        cmd = ["ping", "-c", "1", "-W", str(seconds), ip]
+        safety = seconds + 0.45
+    blob = _run_cmd(cmd, safety)
     return icmp_echo_ok(blob)
 
 
@@ -122,6 +153,8 @@ async def _map_alive(
     worker,
     workers: int,
     on_done: Callable[[int, int, int], Awaitable[None]],
+    *,
+    gap_sec: float,
 ) -> list[str]:
     if not ips:
         return []
@@ -131,17 +164,26 @@ async def _map_alive(
     done = 0
     total = len(ips)
     step = _progress_step(total)
+    pace = asyncio.Lock()
+    next_at = 0.0
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     for ip in ips:
         queue.put_nowait(ip)
 
     async def runner() -> None:
-        nonlocal done
+        nonlocal done, next_at
         while True:
             ip = await queue.get()
             if ip is None:
                 queue.task_done()
                 return
+            if gap_sec > 0:
+                async with pace:
+                    now = time.monotonic()
+                    wait = next_at - now
+                    if wait > 0:
+                        await asyncio.sleep(wait)
+                    next_at = time.monotonic() + gap_sec
             ok = False
             try:
                 ok = bool(await loop.run_in_executor(pool, worker, ip))
@@ -243,13 +285,18 @@ async def run_fast_ping_sweep(
             await progress_cb(progress, message)
 
     cfg = await get_effective_network_poll_config(db)
-    inventory = await _inventory_pc_entries(db, networks=None)
-    known = await _known_device_ips(db)
-    hint_ips = [ip for ip, _hn in inventory] + known
-    networks, _reasons = resolve_discovery_networks(cfg.cidr_list or None, hint_ips=hint_ips)
+    timeout_ms = cfg.ping_timeout_ms
+    gap_sec = cfg.ping_gap_ms / 1000.0
+    if cfg.ping_cidr_list:
+        networks = expand_ping_networks(cfg.ping_cidr_list, cfg.ping_prefix)
+    else:
+        inventory = await _inventory_pc_entries(db, networks=None)
+        known = await _known_device_ips(db)
+        hint_ips = [ip for ip, _hn in inventory] + known
+        networks, _reasons = resolve_discovery_networks(None, hint_ips=hint_ips)
     result.networks = [str(net) for net in networks]
     if not networks:
-        result.message = "Зона сети не определена. Задайте CIDR в настройках SNMP или оставьте автозону."
+        result.message = "Зона пинга не задана. Укажите сети и маску в настройках или оставьте автозону."
         result.duration_ms = int((time.monotonic() - started) * 1000)
         return result
 
@@ -276,9 +323,14 @@ async def run_fast_ping_sweep(
         if dedupe:
             by_key[str(dedupe)] = packed
 
-    ips = _hosts(networks)
+    ips, truncated = _hosts(networks)
     total = len(ips)
-    await report(4, f"Быстрый пинг: {len(networks)} подсетей, {total} адресов…")
+    cut = ", список обрезан" if truncated else ""
+    await report(
+        4,
+        f"Быстрый пинг: {len(networks)} сетей, {total} адресов, "
+        f"ждём ответ {timeout_ms} мс, пауза {cfg.ping_gap_ms:g} мс{cut}…",
+    )
     if total == 0:
         result.message = "В зоне нет адресов для пинга."
         result.duration_ms = int((time.monotonic() - started) * 1000)
@@ -296,7 +348,13 @@ async def run_fast_ping_sweep(
         pct = 5 + int(80 * done / max(count, 1))
         await report(pct, f"Пинг {done}/{count} (~{speed} адр/сек), живых {hits}")
 
-    alive = await _map_alive(ips, _ping_once, min(_FAST_PING_WORKERS, total), on_ping)
+    alive = await _map_alive(
+        ips,
+        partial(_ping_once, timeout_ms=timeout_ms),
+        min(_FAST_PING_WORKERS, total),
+        on_ping,
+        gap_sec=gap_sec,
+    )
     result.scanned = total
     result.alive = len(alive)
 
