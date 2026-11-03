@@ -1,21 +1,20 @@
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-sans/700.css";
-@import "@fontsource/ibm-plex-sans/400-italic.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
-@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/onest/400.css";
+@import "@fontsource/onest/500.css";
+@import "@fontsource/onest/600.css";
+@import "@fontsource/onest/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
 @import "tailwindcss";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme {
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-brand: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
-  --font-figures: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Onest", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Onest", ui-sans-serif, system-ui, sans-serif;
+  --font-brand: "Onest", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-figures: "Onest", ui-sans-serif, system-ui, sans-serif;
   --text-xs: 0.75rem;   /* 12px */
   --text-sm: 0.875rem;  /* 14px */
   --text-md: 1rem;      /* 16px */
@@ -66,36 +65,37 @@
 }
 
 [data-theme="dark"] {
-  --color-fg: #f4f4f5;
-  --color-fg-muted: #d4d4d8;
-  --color-fg-subtle: #a1a1aa;
-  --color-bg: #000000;
-  --color-bg-muted: #141414;
+  /* Soft charcoal with a cool blue undertone — easier on the eyes than pure black */
+  --color-fg: #e8ecf4;
+  --color-fg-muted: #a7b0c0;
+  --color-fg-subtle: #7c879a;
+  --color-bg: #0b0e14;
+  --color-bg-muted: #121722;
   --color-bg-gradient: none;
-  --color-surface: #0a0a0a;
-  --color-surface-muted: #111111;
-  --color-surface-elevated: #171717;
-  --color-panel: #0a0a0a;
-  --color-border: #1c1c1c;
-  --color-border-strong: #2a2a2a;
-  --color-primary: #60a5fa;
-  --color-primary-hover: #93c5fd;
-  --color-primary-muted: rgb(96 165 250 / 0.2);
-  --color-on-primary: #0a0a0a;
-  --color-success-bg: rgb(6 78 59 / 0.28);
-  --color-success-border: rgb(52 211 153 / 0.4);
+  --color-surface: #11161f;
+  --color-surface-muted: #1a2130;
+  --color-surface-elevated: #222b3c;
+  --color-panel: #11161f;
+  --color-border: #273041;
+  --color-border-strong: #384457;
+  --color-primary: #7eb0ff;
+  --color-primary-hover: #a3c7ff;
+  --color-primary-muted: rgb(126 176 255 / 0.16);
+  --color-on-primary: #0a0e14;
+  --color-success-bg: rgb(6 78 59 / 0.32);
+  --color-success-border: rgb(52 211 153 / 0.38);
   --color-success-fg: #6ee7b7;
-  --color-warning-bg: rgb(120 53 15 / 0.28);
-  --color-warning-border: rgb(251 191 36 / 0.4);
+  --color-warning-bg: rgb(120 53 15 / 0.32);
+  --color-warning-border: rgb(251 191 36 / 0.38);
   --color-warning-fg: #fcd34d;
-  --color-error-bg: rgb(127 29 29 / 0.32);
-  --color-error-border: rgb(248 113 113 / 0.5);
+  --color-error-bg: rgb(127 29 29 / 0.34);
+  --color-error-border: rgb(248 113 113 / 0.45);
   --color-error-fg: #fecaca;
-  --color-info-bg: rgb(30 58 138 / 0.32);
-  --color-info-border: rgb(96 165 250 / 0.45);
+  --color-info-bg: rgb(30 58 138 / 0.34);
+  --color-info-border: rgb(126 176 255 / 0.4);
   --color-info-fg: #bfdbfe;
-  --shadow-card: 0 0 0 1px rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.55);
-  --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.08), 0 4px 16px rgb(0 0 0 / 0.55);
+  --shadow-card: 0 0 0 1px rgb(255 255 255 / 0.04), 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.07), 0 12px 32px rgb(0 0 0 / 0.4);
 }
 
 html,
@@ -121,6 +121,10 @@ body {
   color: inherit;
 }
 
+[data-theme='dark'] ::selection {
+  background: rgb(126 176 255 / 0.28);
+}
+
 :where(button, a, input:not([type="hidden"]), select, textarea):focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
@@ -142,7 +146,7 @@ body {
   outline: none;
 }
 
-/* Counters use IBM Plex Sans tabular figures, the same open-source face as the UI. */
+/* Counters use Onest tabular figures, the same open-source face as the UI. */
 @utility admin-stat-value {
   font-family: var(--font-figures);
   font-weight: 600;
@@ -174,7 +178,7 @@ body {
   font-weight: 700;
   font-size: 1.35rem;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--color-fg);
 }
 
@@ -223,21 +227,23 @@ body {
 .sidebar-group {
   position: relative;
   display: flex;
-  min-height: 2rem;
+  min-height: 2.125rem;
   cursor: pointer;
   touch-action: manipulation;
   align-items: center;
-  gap: 0.55rem;
-  border-radius: 0.5rem;
-  padding: 0.35rem 0.55rem;
+  gap: 0.5rem;
+  border-radius: 0.625rem;
+  padding: 0.3rem 0.5rem;
   font-size: 0.8125rem;
   font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1.25;
   color: var(--color-fg-muted);
   text-decoration: none;
   transition:
-    background-color 120ms ease,
-    color 120ms ease;
+    background-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .sidebar-link:hover,
@@ -250,23 +256,50 @@ body {
   background: var(--color-primary-muted);
   color: var(--color-primary);
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
 .sidebar-link-icon,
 .sidebar-group-icon {
   display: flex;
-  width: 1.125rem;
-  height: 1.125rem;
+  width: 1.625rem;
+  height: 1.625rem;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
   color: var(--color-fg-subtle);
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .sidebar-link:hover .sidebar-link-icon,
-.sidebar-group:hover .sidebar-group-icon,
-.sidebar-link-active .sidebar-link-icon {
+.sidebar-group:hover .sidebar-group-icon {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   color: var(--color-primary);
+}
+
+.sidebar-link-active .sidebar-link-icon {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+[data-theme='dark'] .sidebar-link-icon,
+[data-theme='dark'] .sidebar-group-icon {
+  background: color-mix(in srgb, var(--color-fg) 7%, transparent);
+}
+
+[data-theme='dark'] .sidebar-link:hover .sidebar-link-icon,
+[data-theme='dark'] .sidebar-group:hover .sidebar-group-icon {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+
+[data-theme='dark'] .sidebar-link-active .sidebar-link-icon {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
 .sidebar-group {
@@ -363,11 +396,9 @@ body {
 
 [data-theme='dark'] .app-shell {
   background-image:
-    radial-gradient(ellipse 78% 48% at -8% -14%, rgb(37 99 235 / 0.34), transparent 58%),
-    radial-gradient(ellipse 46% 34% at 108% -8%, rgb(56 189 248 / 0.14), transparent 50%),
-    linear-gradient(rgb(255 255 255 / 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 0.03) 1px, transparent 1px);
-  background-size: auto, auto, 72px 72px, 72px 72px;
+    radial-gradient(ellipse 72% 48% at -6% -10%, rgb(59 130 246 / 0.18), transparent 58%),
+    radial-gradient(ellipse 48% 36% at 108% -6%, rgb(56 189 248 / 0.08), transparent 52%),
+    radial-gradient(ellipse 40% 30% at 50% 110%, rgb(99 102 241 / 0.06), transparent 55%);
   background-attachment: fixed;
 }
 
