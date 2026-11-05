@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,50 +36,74 @@ def clear_close_notice(row: ServiceRequest) -> None:
     _store(row, payload)
 
 
-async def notify_ticket_closed(db: AsyncSession, row: ServiceRequest) -> None:
+async def plan_close_notice(db: AsyncSession, row: ServiceRequest) -> dict[str, Any] | None:
+    """Read what the close message needs. Does not call Bitrix and does not commit."""
     if (row.external_source or "") != "bitrix24":
-        return
+        return None
     payload = _payload(row)
     if payload.get("close_notified"):
-        return
+        return None
     cfg = await db.get(Bitrix24Config, 1)
     if cfg is None or not cfg.bot_id or not (cfg.bot_webhook_url or "").strip() or not (cfg.bot_token or "").strip():
-        return
+        return None
     if cfg.bot_close_notice is False:
-        return
+        return None
     user_id = str(payload.get("user_id") or "").strip()
     dialog_id = str(payload.get("dialog_id") or user_id).strip()
     if not dialog_id:
-        return
-    state_key = f"user:{user_id}" if user_id else dialog_id
-    from app.routers.bitrix24_bot_handler import _menu, _v2_reply, _voice
+        return None
+    from app.routers.bitrix24_bot_handler import _voice
 
     voice = _voice(cfg)
-    text = closed_text(
-        row.id,
-        name=row.requester_name or "",
-        status=row.status or "",
-        voice=voice,
-    )
+    return {
+        "request_id": row.id,
+        "state_key": f"user:{user_id}" if user_id else dialog_id,
+        "text": closed_text(
+            row.id,
+            name=row.requester_name or "",
+            status=row.status or "",
+            voice=voice,
+        ),
+        "event": {
+            "event": "close",
+            "dialog_id": dialog_id,
+            "user_id": user_id,
+            "chat_id": "",
+        },
+        "cfg": SimpleNamespace(
+            bot_webhook_url=cfg.bot_webhook_url,
+            bot_token=cfg.bot_token,
+            bot_id=cfg.bot_id,
+        ),
+    }
+
+
+async def deliver_close_notice(plan: dict[str, Any]) -> None:
+    """Send the chat message with no panel connection checked out."""
+    from app.database import AsyncSessionLocal
+    from app.routers.bitrix24_bot_handler import _menu, _v2_reply
+
+    request_id = int(plan["request_id"])
     try:
         sent = await _v2_reply(
-            cfg,
-            {
-                "event": "close",
-                "dialog_id": dialog_id,
-                "user_id": str(payload.get("user_id") or ""),
-                "chat_id": "",
-            },
-            text,
+            plan["cfg"],
+            plan["event"],
+            plan["text"],
             keyboard=_menu(),
-            db=db,
-            state_key=state_key,
+            db=None,
+            state_key=str(plan["state_key"]),
         )
     except Exception:
-        log.warning("bitrix close notice failed request_id=%s", row.id)
+        log.warning("bitrix close notice failed request_id=%s", request_id)
         return
     if not sent:
         return
-    payload["close_notified"] = True
-    _store(row, payload)
-    log.info("bitrix close notice request_id=%s", row.id)
+    async with AsyncSessionLocal() as db:
+        fresh = await db.get(ServiceRequest, request_id)
+        if fresh is None:
+            return
+        payload = _payload(fresh)
+        payload["close_notified"] = True
+        _store(fresh, payload)
+        await db.commit()
+    log.info("bitrix close notice request_id=%s", request_id)

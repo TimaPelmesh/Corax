@@ -359,6 +359,9 @@ def _transient_database_error(exc: Exception) -> bool:
         "the database system is starting up",
         "the database system is shutting down",
         "too many connections",
+        "name resolution",
+        "temporary failure",
+        "name or service not known",
     )
     return any(marker in raw for marker in markers)
 

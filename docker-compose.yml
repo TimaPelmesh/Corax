@@ -107,6 +107,11 @@ services:
       - ./data/wol-queue:/wol-queue
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # glibc asks Docker DNS more than once. A single lost UDP reply is
+    # "Temporary failure in name resolution" and used to fail the whole request.
+    dns_opt:
+      - "timeout:1"
+      - "attempts:3"
     healthcheck:
       # HTTPS mode listens on the same port; -k skips local CA trust inside the container.
       test:

@@ -15,7 +15,7 @@ from sqlalchemy.orm import load_only
 from fpdf import FPDF
 
 from app.auth import get_current_user, get_current_editor_or_superuser
-from app.bitrix_bot_notify import clear_close_notice, notify_ticket_closed
+from app.bitrix_bot_notify import clear_close_notice, deliver_close_notice, plan_close_notice
 from app.database import get_db
 from app.models import (
     Computer,
@@ -782,12 +782,19 @@ async def patch_service_request(
     await ensure_ticket_no(db, row)
     if was_closed and not is_service_request_closed(row):
         clear_close_notice(row)
+    notice = None
     if not was_closed and is_service_request_closed(row):
-        await notify_ticket_closed(db, row)
+        notice = await plan_close_notice(db, row)
     await index_service_request(db, row)
     await db.commit()
     await db.refresh(row)
-    return await _to_out(db, row)
+    body = await _to_out(db, row)
+    # Bitrix waits up to 20s. The ticket row is already committed, so the
+    # panel connection goes back to the pool before that call.
+    await db.close()
+    if notice is not None:
+        await deliver_close_notice(notice)
+    return body
 
 
 @router.post("/{request_id}/ai-suggest", response_model=ServiceRequestAiSuggestOut)

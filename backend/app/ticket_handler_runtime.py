@@ -715,8 +715,21 @@ async def enrich_service_request(
         logger.warning("category paths fallback: %s", exc)
 
     fast = classify_category_fast(title, description, paths)
+    # The model wait is minutes. Holding this session that long pins a pool
+    # slot, Postgres kills the idle transaction, and the next connects stampede DNS.
+    from types import SimpleNamespace
+
+    from app.database import release_connection
+
+    cfg_view = SimpleNamespace(
+        llm_base_url=cfg.llm_base_url,
+        llm_model=cfg.llm_model,
+        system_prompt=cfg.system_prompt,
+        default_category=cfg.default_category,
+    )
+    await release_connection(db)
     parsed, model, llm_error = await classify_with_llm(
-        cfg=cfg,
+        cfg=cfg_view,
         title=title,
         description=description,
         paths=paths,
@@ -728,7 +741,7 @@ async def enrich_service_request(
         paths=paths,
         parsed=parsed,
         answer="",
-        fallback=(cfg.default_category or "").strip() or None,
+        fallback=(cfg_view.default_category or "").strip() or None,
     )
     suggestion = extract_title_suggestion(parsed, current_title=title)
 
@@ -741,12 +754,14 @@ async def enrich_service_request(
     }
 
     if persist:
-        row.category = category
-        if suggestion:
-            row.ai_title_suggestion = suggestion
-        row.ai_enriched_at = datetime.now(timezone.utc)
-        await index_service_request(db, row)
-        await db.commit()
+        row = await db.get(ServiceRequest, request_id)
+        if row is not None:
+            row.category = category
+            if suggestion:
+                row.ai_title_suggestion = suggestion
+            row.ai_enriched_at = datetime.now(timezone.utc)
+            await index_service_request(db, row)
+            await db.commit()
 
     return EnrichResult(
         ok=llm_error is None or bool(category),
@@ -838,12 +853,24 @@ async def run_intake(db: AsyncSession, cfg: TicketHandlerConfig, payload: Intake
     error_detail: str | None = None
     schedule_enrich_id: int | None = None
     dry_meta: dict[str, Any] = {}
+    computer_id = computer.id if computer else None
 
     if create:
         if payload.dry_run:
             status = "created_ticket"
+            from types import SimpleNamespace
+
+            from app.database import release_connection
+
+            cfg_view = SimpleNamespace(
+                llm_base_url=cfg.llm_base_url,
+                llm_model=cfg.llm_model,
+                system_prompt=cfg.system_prompt,
+                default_category=cfg.default_category,
+            )
+            await release_connection(db)
             parsed, model, llm_error = await classify_with_llm(
-                cfg=cfg,
+                cfg=cfg_view,
                 title=title,
                 description=description,
                 paths=category_paths,
@@ -892,7 +919,7 @@ async def run_intake(db: AsyncSession, cfg: TicketHandlerConfig, payload: Intake
     latency_ms = int((time.perf_counter() - started) * 1000)
     meta: dict[str, Any] = {
         "dry_run": payload.dry_run,
-        "computer_id": computer.id if computer else None,
+        "computer_id": computer_id,
         "create": create,
         "fast_category": fast_category,
         "provisional_category": provisional,
@@ -911,7 +938,8 @@ async def run_intake(db: AsyncSession, cfg: TicketHandlerConfig, payload: Intake
     run_id: int | None = None
     model_name = dry_meta.get("model") if isinstance(dry_meta.get("model"), str) else None
     if payload.dry_run:
-        await db.rollback()
+        if db.is_active:
+            await db.rollback()
     else:
         run = TicketHandlerRun(
             status=status,
