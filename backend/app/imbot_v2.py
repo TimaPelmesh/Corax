@@ -6,6 +6,7 @@ contain the Bitrix error code, not the webhook.
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 from urllib.parse import urlsplit
@@ -43,6 +44,66 @@ class ImbotError(Exception):
         self.code = (code or "BITRIX_ERROR")[:80]
         self.description = (description or "")[:300]
         super().__init__(self.code if not self.description else f"{self.code}: {self.description}")
+
+
+# Bitrix: BOT_OWNERSHIP_ERROR, description "Bot was installed by another rest application".
+# A webhook can list and change only bots registered with the botToken it passes.
+OWNERSHIP_DETAIL = (
+    "Этот бот принадлежит другому вебхуку или другому токену. "
+    "Битрикс24 показывает и меняет только ботов, созданных этим входящим вебхуком с этим токеном. "
+    "Чужого бота забрать нельзя: верните прежний вебхук и прежний токен "
+    "либо создайте нового бота, не подставляя старый номер."
+)
+
+
+def is_ownership_error(code: str, description: str = "") -> bool:
+    blob = f"{code} {description}".lower()
+    return (code or "") == "BOT_OWNERSHIP_ERROR" or "another rest application" in blob
+
+
+def client_error_text(code: str, description: str = "") -> str:
+    """Panel text. Ownership becomes a short explanation; the webhook is never included."""
+    if is_ownership_error(code, description):
+        return OWNERSHIP_DETAIL
+    return ((description or code or "BITRIX_ERROR").strip())[:300]
+
+
+def parse_token_vault(raw: str | None) -> dict[str, str]:
+    """bot id → botToken. Tokens never leave the server."""
+    try:
+        data = json.loads(raw or "")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, str] = {}
+    for key, value in data.items():
+        bot_id = str(key).strip()
+        token = str(value or "").strip()
+        if bot_id.isdigit() and int(bot_id) > 0 and token:
+            out[bot_id] = token[:BOT_TOKEN_MAX]
+    return out
+
+
+def dump_token_vault(vault: dict[str, str]) -> str:
+    clean = parse_token_vault(json.dumps(vault))
+    if not clean:
+        return ""
+    return json.dumps(clean, ensure_ascii=False, separators=(",", ":"))
+
+
+def remember_vault_token(raw: str | None, bot_id: int, token: str) -> str:
+    vault = parse_token_vault(raw)
+    text = (token or "").strip()
+    if int(bot_id) > 0 and text:
+        vault[str(int(bot_id))] = text[:BOT_TOKEN_MAX]
+    return dump_token_vault(vault)
+
+
+def forget_vault_token(raw: str | None, bot_id: int) -> str:
+    vault = parse_token_vault(raw)
+    vault.pop(str(int(bot_id)), None)
+    return dump_token_vault(vault)
 
 
 def webhook_base(value: str) -> str:

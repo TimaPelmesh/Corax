@@ -20,7 +20,10 @@ from app.imbot_v2 import (
     call,
     clean_code,
     clean_token,
+    client_error_text,
     delivery_fields,
+    forget_vault_token,
+    remember_vault_token,
     profile_properties,
     public_card,
     webhook_base,
@@ -107,7 +110,7 @@ def _handler_url(cfg: Bitrix24Config, origin: str) -> str:
 
 
 def _raise_imbot(exc: ImbotError) -> None:
-    raise HTTPException(status_code=400, detail=f"{exc.code}: {exc.description}" if exc.description else exc.code)
+    raise HTTPException(status_code=400, detail=client_error_text(exc.code, exc.description))
 
 
 async def _get_bot(db: AsyncSession, bot_id: int) -> CoraxBot:
@@ -288,6 +291,8 @@ async def register_bot(
         card = public_card(result)
         if card.get("bot_id") and not row.external_bot_id:
             row.external_bot_id = int(card["bot_id"])
+        if row.external_bot_id:
+            cfg.bot_token_vault = remember_vault_token(cfg.bot_token_vault, int(row.external_bot_id), token)
         row.status = "registered"
     except ImbotError as exc:
         _raise_imbot(exc)
@@ -317,6 +322,7 @@ async def unregister_bot(
         except ImbotError as exc:
             log.warning("bitrix unregister failed bot=%s code=%s", bot_id, exc.code)
             _raise_imbot(exc)
+        cfg.bot_token_vault = forget_vault_token(cfg.bot_token_vault, int(row.external_bot_id))
     row.external_bot_id = None
     row.status = "draft"
     await db.commit()

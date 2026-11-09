@@ -590,6 +590,7 @@ class Bitrix24Config(Base):
     bot_greeting_note: Mapped[str] = mapped_column(String(400), default="")
     bot_close_notice: Mapped[bool] = mapped_column(Boolean, default=True)
     bot_scripts_json: Mapped[str] = mapped_column(Text, default="")
+    bot_token_vault: Mapped[str] = mapped_column(Text, default="")
     bot_event_mode: Mapped[str] = mapped_column(String(16), default="fetch")
     bot_background: Mapped[str] = mapped_column(String(32), default="")
     bot_hidden: Mapped[bool] = mapped_column(Boolean, default=False)

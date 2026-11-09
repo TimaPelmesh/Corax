@@ -334,3 +334,27 @@ def test_ticket_waits_for_the_button():
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Помощь", enabled=True, waiting=False) == "help"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Отмена", enabled=True, waiting=True) == "cancel"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Не печатает", enabled=False, waiting=True) == "off"
+
+
+def test_ownership_error_hides_the_english_sentence():
+    from app.imbot_v2 import OWNERSHIP_DETAIL, client_error_text, is_ownership_error
+
+    assert is_ownership_error("BOT_OWNERSHIP_ERROR", "Bot was installed by another rest application")
+    text = client_error_text("BOT_OWNERSHIP_ERROR", "Bot was installed by another rest application")
+    assert text == OWNERSHIP_DETAIL
+    assert "another rest application" not in text
+    assert "webhook" not in text.lower()
+    assert client_error_text("WEBHOOK_REQUIRED", "Укажите входящий вебхук") == "Укажите входящий вебхук"
+
+
+def test_token_vault_keeps_each_bot_and_drops_secrets_from_junk():
+    from app.imbot_v2 import forget_vault_token, parse_token_vault, remember_vault_token
+
+    raw = remember_vault_token("", 15, "a" * 40)
+    raw = remember_vault_token(raw, 16, "second-token")
+    assert parse_token_vault(raw) == {"15": "a" * 40, "16": "second-token"}
+    raw = remember_vault_token(raw, 15, "b" * 50)
+    assert parse_token_vault(raw)["15"] == "b" * 40
+    raw = forget_vault_token(raw, 16)
+    assert "16" not in parse_token_vault(raw)
+    assert parse_token_vault('{"nope": "x", "0": "y", "15": ""}') == {}

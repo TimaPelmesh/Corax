@@ -2087,6 +2087,15 @@ def _migrate_bitrix_bot_scripts(sync_conn) -> None:
         sync_conn.execute(text("ALTER TABLE bitrix24_config ADD COLUMN bot_scripts_json TEXT"))
 
 
+def _migrate_bitrix_bot_vault(sync_conn) -> None:
+    """Per-bot tokens so one webhook can list every bot Corax registered."""
+    if "bitrix24_config" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "bitrix24_config")
+    if "bot_token_vault" not in cols:
+        sync_conn.execute(text("ALTER TABLE bitrix24_config ADD COLUMN bot_token_vault TEXT"))
+
+
 def _migrate_bitrix_bot_keyboard(sync_conn) -> None:
     if "bitrix_bot_dialogs" not in _table_names(sync_conn):
         return
@@ -2382,6 +2391,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-11-03_swarm_hosts", _migrate_swarm_hosts),
     ("2026-11-03_ai_agents", _migrate_ai_agents),
     ("2026-11-03_network_ping_settings", _migrate_network_ping_settings),
+    ("2026-11-09_bitrix_bot_vault", _migrate_bitrix_bot_vault),
 ]
 
 

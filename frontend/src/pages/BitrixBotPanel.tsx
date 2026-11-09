@@ -501,12 +501,12 @@ export function BitrixBotPanel({
   }, [take, t, toast])
 
   useEffect(() => {
-    if (bot?.token_set && bot.webhook_set) loadBots()
+    if (bot?.webhook_set) loadBots()
     else {
       setBots([])
       setListed(false)
     }
-  }, [bot?.token_set, bot?.webhook_set, loadBots])
+  }, [bot?.webhook_set, loadBots])
 
   useEffect(() => {
     if (boot.current || !bot) return
@@ -771,6 +771,14 @@ export function BitrixBotPanel({
     }
   }
 
+  function openNew() {
+    setConnectOpen(true)
+    setPickQuery('')
+    setBotId('')
+    setCode('')
+    setToken('')
+  }
+
   function roleLabel(kindName: string) {
     if (kindName === 'supervisor') return t('settingsBitrix.botTypeSupervisor')
     if (kindName === 'personal') return t('settingsBitrix.botTypePersonal')
@@ -804,11 +812,7 @@ export function BitrixBotPanel({
             aria-label={t('settingsBitrix.botCreateNew')}
             title={t('settingsBitrix.botCreateNew')}
             className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--color-border)] text-[var(--color-fg)] hover:bg-[var(--color-bg-muted)]"
-            onClick={() => {
-              setConnectOpen(true)
-              setPickQuery('')
-              setBotId('')
-            }}
+            onClick={openNew}
           >
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" aria-hidden>
               <path d="M10 4.5v11M4.5 10h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
@@ -824,24 +828,21 @@ export function BitrixBotPanel({
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
+        <p className="px-3 pb-1 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botListScope')}</p>
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
-          {!bot?.webhook_set || !bot.token_set ? (
+          {!bot?.webhook_set ? (
             <div className="space-y-3 px-2 py-6">
               <p className="text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botListNeedToken')}</p>
               <button
                 type="button"
                 className="app-btn app-btn-primary w-full !min-h-0 !py-2 text-sm"
-                onClick={() => {
-                  setConnectOpen(true)
-                  setPickQuery('')
-                  setBotId('')
-                }}
+                onClick={openNew}
               >
                 {t('settingsBitrix.botListConnectCta')}
               </button>
             </div>
           ) : visible.length === 0 ? (
-            <p className="px-2 py-6 text-sm text-[var(--color-fg-subtle)]">{needle ? t('settingsBitrix.botNoMatch') : t('settingsBitrix.botListEmpty')}</p>
+            <p className="px-2 py-6 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{needle ? t('settingsBitrix.botNoMatch') : t('settingsBitrix.botListEmpty')}</p>
           ) : (
             visible.map((item) => {
               const active = item.bot_id === selectedId
@@ -1177,6 +1178,9 @@ export function BitrixBotPanel({
           title={t('settingsBitrix.botConnectTab')}
         >
           <div className="space-y-4">
+            <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-muted)]/50 px-3 py-2 text-[12px] leading-relaxed text-[var(--color-fg-subtle)]">
+              {t('settingsBitrix.botSetupGuide')}
+            </p>
             <Field label={t('settingsBitrix.botWebhook')} hint={t('settingsBitrix.botWebhookHint')}>
               <input className="app-input font-mono" type="password" autoComplete="off" value={webhook} placeholder={bot?.webhook_host || 'https://portal/rest/1/…'} onChange={(event) => setWebhook(event.target.value)} />
             </Field>

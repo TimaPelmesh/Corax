@@ -9,6 +9,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_superuser
@@ -24,7 +25,12 @@ from app.imbot_v2 import (
     clean_email,
     clean_event_mode,
     clean_token,
+    client_error_text,
+    is_ownership_error,
+    forget_vault_token,
     legacy_email_body,
+    parse_token_vault,
+    remember_vault_token,
     delivery_fields,
     profile_properties,
     profile_update_fields,
@@ -33,7 +39,7 @@ from app.imbot_v2 import (
     webhook_base,
     webhook_host,
 )
-from app.models import Bitrix24Config, User
+from app.models import Bitrix24Config, CoraxBot, User
 from app.routers.bitrix24_bot_handler import _get_or_create_cfg, publish_menu, show_saved_phrases
 
 router = APIRouter(prefix="/settings/bitrix24/bot", tags=["bitrix24-imbot"])
@@ -318,7 +324,17 @@ def _handler_url(row: Bitrix24Config, origin: str) -> str:
 
 
 def _raise(exc: ImbotError) -> None:
-    raise HTTPException(status_code=400, detail=exc.description or exc.code) from exc
+    raise HTTPException(status_code=400, detail=client_error_text(exc.code, exc.description)) from exc
+
+
+def _auth_token(row: Bitrix24Config, bot_id: int | None) -> str:
+    """Token that registered this bot. The form token is not a substitute."""
+    vault = parse_token_vault(getattr(row, "bot_token_vault", "") or "")
+    if bot_id and vault.get(str(int(bot_id))):
+        return vault[str(int(bot_id))]
+    if bot_id and row.bot_id == int(bot_id):
+        return (row.bot_token or "").strip()
+    return ""
 
 
 def _look(row: Bitrix24Config) -> dict[str, Any]:
@@ -363,32 +379,80 @@ async def save_bot_settings(
     return _out(row, _panel_origin(request))
 
 
+async def _known_tokens(db: AsyncSession, row: Bitrix24Config) -> list[str]:
+    """Every botToken this webhook can ask about. A foreign token yields an empty list."""
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def add(token: str) -> None:
+        text = (token or "").strip()
+        if not text or text in seen or len(ordered) >= 25:
+            return
+        seen.add(text)
+        ordered.append(text)
+
+    add(row.bot_token or "")
+    for token in parse_token_vault(getattr(row, "bot_token_vault", "") or "").values():
+        add(token)
+    result = await db.execute(select(CoraxBot.bot_token).where(CoraxBot.bot_token != ""))
+    for (token,) in result.all():
+        add(str(token or ""))
+    return ordered
+
+
 @router.get("/bots")
 async def list_known_bots(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    """Bots of this webhook via imbot.v2.Bot.list. Empty until a token is stored."""
+    """Bots this incoming webhook can administer.
+
+    imbot.v2.Bot.list returns only bots registered with the passed botToken.
+    Corax asks once per token it still has: the bound bot, the vault, and constructor bots.
+    """
     row = await _get_or_create_cfg(db)
-    if not (row.bot_webhook_url or "").strip() or not (row.bot_token or "").strip():
+    if not (row.bot_webhook_url or "").strip():
         return {"items": []}
-    token = clean_token(row.bot_token or "", required=True)
-    items: list[dict[str, Any]] = []
-    offset = 0
-    try:
-        for _page in range(10):
-            result = await call(
-                row.bot_webhook_url or "",
-                "imbot.v2.Bot.list",
-                {"botToken": token, "limit": 50, "offset": offset},
-            )
-            items.extend(public_bots(result))
-            if not result.get("hasNextPage"):
-                break
-            offset += 50
-    except ImbotError as exc:
-        _raise(exc)
-    return {"items": items}
+    tokens = await _known_tokens(db, row)
+    if not tokens:
+        return {"items": []}
+    merged: dict[int, dict[str, Any]] = {}
+    owned_by: dict[int, str] = {}
+    errors: list[ImbotError] = []
+    for token in tokens:
+        offset = 0
+        try:
+            safe = clean_token(token, required=True)
+            for _page in range(10):
+                result = await call(
+                    row.bot_webhook_url or "",
+                    "imbot.v2.Bot.list",
+                    {"botToken": safe, "limit": 50, "offset": offset},
+                )
+                for item in public_bots(result):
+                    bot_id = int(item["bot_id"])
+                    if bot_id not in merged:
+                        merged[bot_id] = item
+                        owned_by[bot_id] = safe
+                if not result.get("hasNextPage"):
+                    break
+                offset += 50
+        except ImbotError as exc:
+            if is_ownership_error(exc.code, exc.description):
+                continue
+            errors.append(exc)
+    if not merged and errors:
+        _raise(errors[0])
+    vault_raw = getattr(row, "bot_token_vault", "") or ""
+    updated = vault_raw
+    for bot_id, token in owned_by.items():
+        updated = remember_vault_token(updated, bot_id, token)
+    if row.bot_id and (row.bot_token or "").strip():
+        updated = remember_vault_token(updated, int(row.bot_id), row.bot_token)
+    if updated != vault_raw:
+        row.bot_token_vault = updated
+        await db.commit()
+    return {"items": [merged[key] for key in sorted(merged)]}
 
 
 @router.post("/register", response_model=BotOut)
@@ -398,16 +462,23 @@ async def register_bot(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a bot, or point an existing bot id at this panel. Empty token and code are generated."""
+    """Create a bot, or bind one this webhook already owns. A foreign id is refused.
+
+    A new bot gets its own botToken. Binding an existing id uses the token that
+    registered it. A token typed into the form does not replace that token:
+    Bitrix answers BOT_OWNERSHIP_ERROR when the webhook or the token changed.
+    """
     row = await _get_or_create_cfg(db)
+    previous_token = (row.bot_token or "").strip()
+    target = int(body.bot_id) if body.bot_id else None
+    typed = (body.bot_token or "").strip()
+    saved_auth = _auth_token(row, target) if target else ""
+    if target and not saved_auth and row.bot_id == target:
+        saved_auth = previous_token
     try:
         _apply_save(row, body)
-        if not (row.bot_token or "").strip():
-            row.bot_token = secrets.token_hex(16)
-        if not (row.bot_code or "").strip():
+        if not target and not (body.code or "").strip():
             row.bot_code = "corax_" + secrets.token_hex(4)
-        clean_token(row.bot_token, required=True)
-        clean_code(row.bot_code)
         webhook = webhook_base(row.bot_webhook_url or "")
         properties = profile_properties(
             {
@@ -426,19 +497,35 @@ async def register_bot(
             **appearance_fields(_look(row)),
             **_delivery(row, _panel_origin(request)),
         }
-        if row.bot_id:
+        if target:
+            call_token = saved_auth or (clean_token(typed, required=True) if typed else previous_token)
+            if not call_token:
+                raise ImbotError("BOT_NOT_READY", "Сначала сохраните вебхук. Для чужого номера нужен его прежний токен")
+            if typed and saved_auth and clean_token(typed, required=True) != saved_auth:
+                fields["botToken"] = clean_token(typed, required=True)
+                final_token = fields["botToken"]
+            else:
+                final_token = call_token
             result = await call(
                 webhook,
                 "imbot.v2.Bot.update",
-                {"botId": int(row.bot_id), "botToken": row.bot_token, "fields": fields},
+                {"botId": target, "botToken": clean_token(call_token, required=True), "fields": fields},
             )
+            row.bot_id = target
+            row.bot_token = final_token
         else:
+            fresh = clean_token(typed, required=True) if typed else secrets.token_hex(16)
+            row.bot_token = fresh
+            row.bot_code = clean_code(row.bot_code)
             fields["code"] = row.bot_code
-            fields["botToken"] = row.bot_token
+            fields["botToken"] = fresh
             result = await call(webhook, "imbot.v2.Bot.register", {"fields": fields})
             card = public_card(result)
             if card.get("bot_id"):
                 row.bot_id = int(card["bot_id"])
+            final_token = fresh
+        if row.bot_id:
+            row.bot_token_vault = remember_vault_token(row.bot_token_vault, int(row.bot_id), row.bot_token or final_token)
         card = public_card(result)
         _remember(row, card)
         await _push_email(row)
@@ -462,15 +549,17 @@ async def set_bot_enabled(
     """Turn ticket intake on or off. Enabling keeps the saved fetch or webhook mode."""
     row = await _get_or_create_cfg(db)
     if body.enabled:
-        if not row.bot_id or not (row.bot_webhook_url or "").strip() or not (row.bot_token or "").strip():
+        token = _auth_token(row, int(row.bot_id) if row.bot_id else None)
+        if not row.bot_id or not (row.bot_webhook_url or "").strip() or not token:
             _raise(ImbotError("BOT_NOT_READY", "Сначала укажите вебхук и создайте или подключите бота"))
+        row.bot_token = token
         try:
             await call(
                 row.bot_webhook_url or "",
                 "imbot.v2.Bot.update",
                 {
                     "botId": int(row.bot_id),
-                    "botToken": clean_token(row.bot_token or "", required=True),
+                    "botToken": clean_token(token, required=True),
                     "fields": _delivery(row, _panel_origin(request)),
                 },
             )
@@ -494,10 +583,11 @@ async def read_bot(
     if not row.bot_id:
         raise HTTPException(status_code=400, detail="Сначала укажите ID бота или создайте его")
     try:
+        token = _auth_token(row, int(row.bot_id))
         result = await call(
             row.bot_webhook_url or "",
             "imbot.v2.Bot.get",
-            {"botId": int(row.bot_id), "botToken": clean_token(row.bot_token or "", required=True)},
+            {"botId": int(row.bot_id), "botToken": clean_token(token or row.bot_token or "", required=True)},
         )
         card = public_card(result)
         _remember(row, card)
@@ -582,13 +672,14 @@ async def unregister_bot(
 ):
     """Delete one bot of this webhook. Only the bound bot is cleared locally."""
     row = await _get_or_create_cfg(db)
-    if not (row.bot_webhook_url or "").strip() or not (row.bot_token or "").strip():
+    token = _auth_token(row, int(body.bot_id)) or (row.bot_token or "").strip()
+    if not (row.bot_webhook_url or "").strip() or not token:
         _raise(ImbotError("BOT_NOT_READY", "Сначала сохраните вебхук и токен бота"))
     try:
         await call(
             row.bot_webhook_url or "",
             "imbot.v2.Bot.unregister",
-            {"botId": int(body.bot_id), "botToken": clean_token(row.bot_token or "", required=True)},
+            {"botId": int(body.bot_id), "botToken": clean_token(token, required=True)},
         )
     except ImbotError as exc:
         _raise(exc)
@@ -596,8 +687,10 @@ async def unregister_bot(
     scripts.pop(str(int(body.bot_id)), None)
     drop_phrases(int(body.bot_id))
     row.bot_scripts_json = dump_scripts(scripts)
+    row.bot_token_vault = forget_vault_token(row.bot_token_vault, int(body.bot_id))
     if row.bot_id == int(body.bot_id):
         row.bot_id = None
+        row.bot_token = ""
         row.bot_enabled = False
         row.bot_paused = True
         _mirror_phrases(row, {})
@@ -670,12 +763,13 @@ async def update_profile(
         clean_email(body.email)
         fields = profile_update_fields(body.model_dump())
         _store_profile(row, body)
+        token = _auth_token(row, int(row.bot_id)) or (row.bot_token or "").strip()
         await call(
             row.bot_webhook_url or "",
             "imbot.v2.Bot.update",
             {
                 "botId": int(row.bot_id),
-                "botToken": clean_token(row.bot_token or "", required=True),
+                "botToken": clean_token(token, required=True),
                 "fields": fields,
             },
         )
