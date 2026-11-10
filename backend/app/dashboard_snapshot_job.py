@@ -40,6 +40,8 @@ async def _run() -> None:
     # The panel cuts a query off at 20s. This child is the heavy fold.
     os.environ["CORAX_DB_STATEMENT_TIMEOUT_MS"] = "180000"
     os.environ["CORAX_DB_IDLE_TX_TIMEOUT_MS"] = "180000"
+    os.environ["CORAX_DB_POOL_SIZE"] = "4"
+    os.environ["CORAX_DB_MAX_OVERFLOW"] = "2"
     from app.dashboard_snapshot import read_dashboard_snapshot, save_dashboard_snapshot
     from app.database import AsyncSessionLocal
     from app.routers.dashboard import (

@@ -112,6 +112,9 @@ class DashboardSnapshotWorker:
         backend = _backend_dir()
         env = os.environ.copy()
         env["PYTHONPATH"] = backend + os.pathsep + env.get("PYTHONPATH", "")
+        # The child folds charts. It must not open the panel's 60-slot pool.
+        env["CORAX_DB_POOL_SIZE"] = "4"
+        env["CORAX_DB_MAX_OVERFLOW"] = "2"
         heavy_due = (time.monotonic() - self._last_heavy_at) >= _HEAVY_EVERY_SEC
         env["CORAX_SNAPSHOT_HEAVY"] = "1" if heavy_due else "0"
         kwargs: dict = {}

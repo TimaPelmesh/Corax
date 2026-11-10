@@ -16,7 +16,22 @@ from app.config import settings
 
 _TTL_SECONDS = 8.0
 _MAX_BODY = 1_200_000
-_MAX_ENTRIES = 48
+# Fifty people each open a handful of screens. 48 entries used to evict the
+# answer before the next tab asked for it, so every user hit Postgres again.
+_MAX_ENTRIES = 800
+
+# Fleet reads are the same for every signed-in panel user. One query serves
+# the burst; notes, badges and "assigned to me" stay per session.
+_SHARED_PREFIXES = (
+    "/api/v1/computers",
+    "/api/v1/printers",
+    "/api/v1/network/devices",
+    "/api/v1/network/topology",
+    "/api/v1/software",
+    "/api/v1/monitors",
+    "/api/v1/tags",
+    "/api/v1/warehouse",
+)
 
 # List and summary reads. Job status, agents, health, and downloads stay live.
 _PREFIXES = (
@@ -64,15 +79,57 @@ def _cacheable(scope) -> bool:
     return True
 
 
+def _shared_path(path: str) -> bool:
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in _SHARED_PREFIXES)
+
+
+def _presented_token(scope) -> str:
+    """Cookie or bearer the panel already sent. Empty when the request is anonymous."""
+    from urllib.parse import unquote
+
+    cookie = ""
+    authorization = ""
+    for name, value in scope.get("headers") or []:
+        low = name.lower()
+        if low == b"cookie":
+            cookie = value.decode("latin1", "replace")
+        elif low == b"authorization":
+            authorization = value.decode("latin1", "replace")
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    for part in cookie.split(";"):
+        item = part.strip()
+        if item.lower().startswith("access_token="):
+            return unquote(item.split("=", 1)[1]).strip().strip('"')
+    return ""
+
+
+def _signed_session(scope) -> bool:
+    """A garbage cookie must not read the fleet answer another user just cached."""
+    token = _presented_token(scope)
+    if not token:
+        return False
+    try:
+        from app.jwtutil import decode_token
+
+        decode_token(token)
+    except Exception:
+        return False
+    return True
+
+
 def _key(scope) -> bytes:
+    path = _path_of(scope)
+    query = scope.get("query_string") or b""
+    if _shared_path(path) and _signed_session(scope):
+        return b"s|" + path.encode() + b"?" + query
     cookie = b""
     for name, value in scope.get("headers") or []:
         if name.lower() == b"cookie":
             cookie = value
             break
     digest = hashlib.sha256(cookie).hexdigest()[:16].encode()
-    query = scope.get("query_string") or b""
-    return _path_of(scope).encode() + b"?" + query + b"|" + digest
+    return path.encode() + b"?" + query + b"|" + digest
 
 
 def _lookup(key: bytes):

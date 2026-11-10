@@ -80,7 +80,7 @@ async def plan_close_notice(db: AsyncSession, row: ServiceRequest) -> dict[str, 
 
 async def deliver_close_notice(plan: dict[str, Any]) -> None:
     """Send the chat message with no panel connection checked out."""
-    from app.database import AsyncSessionLocal
+    from app.database import BitrixSessionLocal
     from app.routers.bitrix24_bot_handler import _menu, _v2_reply
 
     request_id = int(plan["request_id"])
@@ -98,7 +98,7 @@ async def deliver_close_notice(plan: dict[str, Any]) -> None:
         return
     if not sent:
         return
-    async with AsyncSessionLocal() as db:
+    async with BitrixSessionLocal() as db:
         fresh = await db.get(ServiceRequest, request_id)
         if fresh is None:
             return

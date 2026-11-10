@@ -35,7 +35,7 @@ from app.bot_intake import (
     voice_from_phrases,
 )
 from app.config import settings
-from app.database import get_db
+from app.database import get_bitrix_db, release_connection
 from app.imbot_v2 import ImbotError, call as imbot_call
 from app.imbot_v2 import (
     MENU_COMMANDS,
@@ -629,9 +629,17 @@ async def show_saved_phrases(db: AsyncSession, cfg: Bitrix24Config) -> bool:
     rows = (
         await db.scalars(select(BitrixBotDialog).order_by(BitrixBotDialog.updated_at.desc()).limit(8))
     ).all()
-    for row in rows:
-        message_id = (row.keyboard_message_id or "").strip()
-        label = (row.keyboard_sig or "").strip()
+    # Plain copies: the HTTP calls below must not keep a pool slot.
+    saved = [
+        (
+            row.dialog_id or "",
+            (row.keyboard_message_id or "").strip(),
+            (row.keyboard_sig or "").strip(),
+        )
+        for row in rows
+    ]
+    await release_connection(db)
+    for dialog_id, message_id, label in saved:
         body = _line_for_keyboard(label, voice)
         if not message_id.isdigit() or not body:
             continue
@@ -653,8 +661,8 @@ async def show_saved_phrases(db: AsyncSession, cfg: Bitrix24Config) -> bool:
             log.warning("bitrix phrase update failed code=%s", exc.code)
     buttons = send_keyboard(LEAVE)
     text = greeting_text("", voice)
-    for row in rows:
-        dialog_id = _personal_dialog(row.dialog_id or "")
+    for stored_id, _message_id, _label in saved:
+        dialog_id = _personal_dialog(stored_id)
         if not dialog_id:
             continue
         try:
@@ -668,7 +676,7 @@ async def show_saved_phrases(db: AsyncSession, cfg: Bitrix24Config) -> bool:
                     "fields": {"message": text[:4000], "keyboard": buttons},
                 },
             )
-            await _remember_keyboard(db, row.dialog_id, _sent_id(result), keyboard_sig(buttons))
+            await _remember_keyboard(db, stored_id, _sent_id(result), keyboard_sig(buttons))
             log.info("bitrix phrase posted dialog=%s", dialog_id)
             return True
         except ImbotError as exc:
@@ -713,9 +721,13 @@ async def _v2_reply(
     sig = keyboard_sig(keyboard)
     remembered = await db.get(BitrixBotDialog, state_key[:64]) if db is not None and state_key else None
     previous = (remembered.keyboard_sig or "") if remembered is not None else ""
+    previous_message = (remembered.keyboard_message_id or "").strip() if remembered is not None else ""
     attach = attach_keyboard(previous, keyboard)
-    if attach and remembered and (remembered.keyboard_message_id or "").strip():
-        await _clear_keyboard(cfg, remembered.keyboard_message_id)
+    # Bitrix HTTP can sit for seconds. Give the slot back before that wait.
+    if db is not None:
+        await release_connection(db)
+    if attach and previous_message:
+        await _clear_keyboard(cfg, previous_message)
     # imbot.v2.Chat.Message.send: fields.message is the bubble, fields.keyboard
     # is the button list. The portal already accepts this list and wraps it.
     fields: dict[str, Any] = {"message": (message or "").strip()[:4000]}
@@ -802,7 +814,7 @@ async def _legacy_reply(
 @router.api_route("/handler", methods=["GET", "POST"])
 async def handler(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_bitrix_db),
     token: str | None = Query(default=None),
     x_handler_token: str | None = Header(default=None, alias="X-Handler-Token"),
     debug: int = Query(default=0),

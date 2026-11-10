@@ -104,6 +104,32 @@ def _timeout_ms(value: int | None, env_name: str, default: int) -> int:
     return default
 
 
+def _int_env(name: str, default: int, *, lo: int, hi: int) -> int:
+    import os
+
+    raw = (os.environ.get(name) or "").strip()
+    value = int(raw) if raw.isdigit() else default
+    return max(lo, min(hi, value))
+
+
+def interactive_pool_limits() -> tuple[int, int]:
+    """Checkout slots for the panel, agents, and everything else on the API loop.
+
+    Fifty people opening the panel at once used to share 20 connections with
+    the Bitrix poller. A full pool waits out pool_timeout, and the bot goes
+    silent with the lists. 24 warm + 36 burst is 60 in-flight queries: one
+    slot per person, with room for a second request. The poller does not use
+    this pool. Tests stay small so a suite cannot open dozens of sessions.
+    """
+    env = (settings.environment or "").strip().lower()
+    if env == "test":
+        return 5, 5
+    return (
+        _int_env("CORAX_DB_POOL_SIZE", 24, lo=2, hi=80),
+        _int_env("CORAX_DB_MAX_OVERFLOW", 36, lo=0, hi=80),
+    )
+
+
 def _create_engine(
     url: str,
     *,
@@ -111,17 +137,17 @@ def _create_engine(
     max_overflow: int = 10,
     statement_timeout_ms: int | None = None,
     idle_in_transaction_ms: int | None = None,
+    application_name: str = "corax",
+    pool_timeout: int = 5,
 ):
     statement_timeout_ms = _timeout_ms(statement_timeout_ms, "CORAX_DB_STATEMENT_TIMEOUT_MS", 20_000)
     idle_in_transaction_ms = _timeout_ms(idle_in_transaction_ms, "CORAX_DB_IDLE_TX_TIMEOUT_MS", 20_000)
     kwargs: dict = {"echo": False}
     if url.strip().lower().startswith("postgresql"):
-        # Панель и агенты делят этот пул. Фоновые потоки (ping, SNMP)
-        # зовут _create_engine со своим маленьким пулом и сюда не лезут.
-        # Пул намеренно небольшой. Имя базы резолвится один раз (resolve_pg_host),
-        # а не на каждый новый коннект: рост пула только множит сессии Postgres.
-        # pre_ping отбраковывает соединение, которое Postgres уже закрыл.
-        # LIFO берёт недавно живое соединение, а не то, что простояло полчаса.
+        # Фоновые потоки (ping, SNMP) зовут _create_engine со своим маленьким
+        # пулом. Имя базы резолвится один раз (resolve_pg_host), а не на
+        # каждый новый коннект. pre_ping отбраковывает соединение, которое
+        # Postgres уже закрыл. LIFO берёт недавно живое соединение.
         # statement_timeout обрывает запрос, idle_in_transaction — сессию,
         # которую забыли закрыть. Фоновые движки передают свои лимиты.
         parsed = make_url(url)
@@ -129,6 +155,7 @@ def _create_engine(
         server_settings = {
             "statement_timeout": str(int(statement_timeout_ms)),
             "idle_in_transaction_session_timeout": str(int(idle_in_transaction_ms)),
+            "application_name": (application_name or "corax")[:63],
         }
 
         async def _connect():
@@ -162,7 +189,7 @@ def _create_engine(
             pool_pre_ping=True,
             pool_use_lifo=True,
             pool_recycle=1800,
-            pool_timeout=8,
+            pool_timeout=pool_timeout,
             async_creator=_connect,
         )
     return create_async_engine(url, **kwargs)
@@ -181,7 +208,13 @@ def _shared_engine(url: str):
     key = _normalize_url(url)
     eng = _engines_by_url.get(key)
     if eng is None:
-        eng = _create_engine(url)
+        size, overflow = interactive_pool_limits()
+        eng = _create_engine(
+            url,
+            pool_size=size,
+            max_overflow=overflow,
+            application_name="corax-api",
+        )
         _engines_by_url[key] = eng
     return eng
 
@@ -194,6 +227,19 @@ DiagramsSessionLocal = async_sessionmaker(diagrams_engine, class_=AsyncSession, 
 
 warehouse_engine = _shared_engine(settings.warehouse_database_url)
 WarehouseSessionLocal = async_sessionmaker(warehouse_engine, class_=AsyncSession, expire_on_commit=False)
+
+# Бот не стоит в очереди панели. Свой пул на том же DSN: пока списки занимают
+# слоты corax-api, poll и webhook отвечают через corax-bitrix.
+_bitrix_size = _int_env("CORAX_BITRIX_DB_POOL_SIZE", 4, lo=1, hi=16)
+_bitrix_overflow = _int_env("CORAX_BITRIX_DB_MAX_OVERFLOW", 4, lo=0, hi=16)
+bitrix_engine = _create_engine(
+    settings.database_url,
+    pool_size=_bitrix_size,
+    max_overflow=_bitrix_overflow,
+    application_name="corax-bitrix",
+    pool_timeout=4,
+)
+BitrixSessionLocal = async_sessionmaker(bitrix_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 class Base(DeclarativeBase):
@@ -245,3 +291,15 @@ async def get_diagrams_db() -> AsyncGenerator[AsyncSession, None]:
 async def get_warehouse_db() -> AsyncGenerator[AsyncSession, None]:
     async with WarehouseSessionLocal() as session:
         yield session
+
+
+async def get_bitrix_db() -> AsyncGenerator[AsyncSession, None]:
+    async with BitrixSessionLocal() as session:
+        try:
+            yield session
+        except BaseException:
+            try:
+                await session.rollback()
+            except BaseException:
+                pass
+            raise

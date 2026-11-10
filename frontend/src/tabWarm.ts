@@ -12,18 +12,35 @@ export const NOTES_LIST_KEY = 'notes:list'
 export const WAREHOUSE_BOOT_KEY = 'warehouse:boot'
 
 const started = new Set<string>()
-let chain: Promise<void> = Promise.resolve()
+const queue: Array<() => void> = []
+let active = 0
+const WARM_AT_ONCE = 3
+
+function pump() {
+  while (active < WARM_AT_ONCE && queue.length) {
+    const job = queue.shift()
+    if (!job) return
+    active += 1
+    job()
+  }
+}
 
 function once(key: string, run: () => Promise<void>) {
   if (started.has(key)) return
   started.add(key)
-  // One tab at a time. A burst of catalog/fleet queries empties the DB pool
-  // and the dashboard then answers "database unavailable".
-  chain = chain
-    .then(run)
-    .catch(() => {
-      started.delete(key)
-    })
+  // A few tabs at once. The server coalesces identical fleet reads, so this
+  // burst no longer empties the pool the way a serial chain was avoiding.
+  queue.push(() => {
+    run()
+      .catch(() => {
+        started.delete(key)
+      })
+      .finally(() => {
+        active -= 1
+        pump()
+      })
+  })
+  pump()
 }
 
 async function warmComputers() {

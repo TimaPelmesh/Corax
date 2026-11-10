@@ -13,7 +13,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import AsyncSessionLocal
+from app.database import BitrixSessionLocal
 from app.imbot_v2 import ImbotError
 from app.imbot_v2 import call as imbot_call
 from app.imbot_v2 import parse_fetch_event
@@ -155,7 +155,7 @@ async def poll_once(db: AsyncSession | None = None) -> None:
         cfg = await db.get(Bitrix24Config, 1, populate_existing=True)
         snap = _bot_snapshot(cfg) if cfg is not None else None
     else:
-        async with AsyncSessionLocal() as session:
+        async with BitrixSessionLocal() as session:
             cfg = await session.get(Bitrix24Config, 1, populate_existing=True)
             snap = _bot_snapshot(cfg) if cfg is not None else None
     if snap is None:
@@ -192,7 +192,7 @@ async def _poll_remote(snap: SimpleNamespace) -> None:
                 parsed_events.append(parsed)
         nxt = next_offset(result, events)
         if parsed_events or (nxt is not None and nxt != offset):
-            async with AsyncSessionLocal() as db:
+            async with BitrixSessionLocal() as db:
                 cfg = await db.get(Bitrix24Config, 1, populate_existing=True)
                 if cfg is None:
                     return
