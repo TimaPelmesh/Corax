@@ -327,6 +327,30 @@ def _raise(exc: ImbotError) -> None:
     raise HTTPException(status_code=400, detail=client_error_text(exc.code, exc.description)) from exc
 
 
+async def _keep_bot_on_new_webhook(row: Bitrix24Config, previous_url: str) -> None:
+    """A reissued webhook is a new secret, not a new bot.
+
+    Bitrix identifies the bot by the botToken saved at registration. Saving a
+    new incoming URL asks Bot.get with that token. A dead secret or a webhook
+    that cannot see this bot is refused, and the previous URL stays.
+    """
+    new_url = (row.bot_webhook_url or "").strip()
+    if not new_url or new_url == (previous_url or "").strip() or not row.bot_id:
+        return
+    token = _auth_token(row, int(row.bot_id))
+    if not token:
+        return
+    try:
+        await call(
+            new_url,
+            "imbot.v2.Bot.get",
+            {"botId": int(row.bot_id), "botToken": clean_token(token, required=True)},
+        )
+    except ImbotError:
+        row.bot_webhook_url = previous_url
+        raise
+
+
 def _auth_token(row: Bitrix24Config, bot_id: int | None) -> str:
     """Token that registered this bot. The form token is not a substitute."""
     vault = parse_token_vault(getattr(row, "bot_token_vault", "") or "")
@@ -370,8 +394,10 @@ async def save_bot_settings(
     db: AsyncSession = Depends(get_db),
 ):
     row = await _get_or_create_cfg(db)
+    previous_url = (row.bot_webhook_url or "").strip()
     try:
         _apply_save(row, body)
+        await _keep_bot_on_new_webhook(row, previous_url)
     except ImbotError as exc:
         _raise(exc)
     await db.commit()

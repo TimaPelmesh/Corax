@@ -61,10 +61,29 @@ def is_ownership_error(code: str, description: str = "") -> bool:
     return (code or "") == "BOT_OWNERSHIP_ERROR" or "another rest application" in blob
 
 
+# Bitrix: INVALID_CREDENTIALS, description "Invalid request credentials".
+# The secret in the incoming-webhook URL was reissued or deleted. The bot
+# itself is still owned by the botToken stored at registration.
+CREDENTIAL_DETAIL = (
+    "Секрет входящего вебхука больше не действует. Вставьте новый URL в поле вебхука и сохраните. "
+    "Бота создавать заново не нужно: его номер и токен Коракс уже хранит. "
+    "Старый адрес после перевыпуска не заработает."
+)
+
+
+def is_credential_error(code: str, description: str = "") -> bool:
+    blob = f"{code} {description}".lower()
+    if (code or "") in {"INVALID_CREDENTIALS", "NO_AUTH_FOUND", "expired_token"}:
+        return True
+    return "invalid request credentials" in blob
+
+
 def client_error_text(code: str, description: str = "") -> str:
-    """Panel text. Ownership becomes a short explanation; the webhook is never included."""
+    """Panel text. Ownership and a dead webhook become a short explanation."""
     if is_ownership_error(code, description):
         return OWNERSHIP_DETAIL
+    if is_credential_error(code, description):
+        return CREDENTIAL_DETAIL
     return ((description or code or "BITRIX_ERROR").strip())[:300]
 
 

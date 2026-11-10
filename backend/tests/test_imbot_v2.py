@@ -347,6 +347,16 @@ def test_ownership_error_hides_the_english_sentence():
     assert client_error_text("WEBHOOK_REQUIRED", "Укажите входящий вебхук") == "Укажите входящий вебхук"
 
 
+def test_reissued_webhook_is_explained_without_the_english_sentence():
+    from app.imbot_v2 import CREDENTIAL_DETAIL, client_error_text, is_credential_error
+
+    assert is_credential_error("INVALID_CREDENTIALS", "Invalid request credentials")
+    text = client_error_text("INVALID_CREDENTIALS", "Invalid request credentials")
+    assert text == CREDENTIAL_DETAIL
+    assert "Invalid request credentials" not in text
+    assert "заново не нужно" in text
+
+
 def test_token_vault_keeps_each_bot_and_drops_secrets_from_junk():
     from app.imbot_v2 import forget_vault_token, parse_token_vault, remember_vault_token
 

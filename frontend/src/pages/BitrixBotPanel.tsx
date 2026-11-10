@@ -617,6 +617,11 @@ export function BitrixBotPanel({
         if (draftRef.current?.phrases === snapshot) draftRef.current = null
         if (!saved) return
       }
+      if ((action === 'enable' || action === 'disable') && webhook.trim()) {
+        const savedUrl = await api.saveBitrixBot({ webhook_url: webhook.trim() })
+        take(savedUrl)
+        setWebhook('')
+      }
       const next =
         action === 'save'
           ? await api.saveBitrixBot(payload(undefined, false))
