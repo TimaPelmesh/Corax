@@ -553,11 +553,6 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
         return {"ok": True, "note": "own message"}
     if event.get("from_bot") == "1" or (event.get("user_id") and event["user_id"] == stored_id):
         return {"ok": True, "note": "own message"}
-    phase_key_early = _phase_key(event)
-    if swallow_keyboard_echo(phase_key_early, event.get("text") or "") or swallow_keyboard_echo(
-        phase_key_early, event.get("command") or ""
-    ):
-        return {"ok": True, "note": "keyboard echo"}
     dialogs = dialog_candidates(event)
     if not dialogs:
         log.warning("bitrix event without dialog event=%s", event["event"])

@@ -535,8 +535,8 @@ def decide_chat(
 ) -> tuple[str, ChatWait]:
     """One greeting, then silence until a person sends a button or a message.
 
-    A button caption that comes back inside the guard is the portal echoing the
-    keyboard the bot just posted. It is not a click, and it must not send again.
+    A click is a real message. Only the bot's own bubble, its own author, and a
+    message id already handled are ignored. The first press must be enough.
     """
     current = state or ChatWait()
     kind = (event or "").strip()
@@ -546,9 +546,6 @@ def decide_chat(
         return "quiet", current
     body = (text or "").strip()
     if current.last_body and _norm(body) and _norm(body) == _norm(current.last_body):
-        return "quiet", _remember_id(current, message_id)
-    token = _norm(body) or _norm(command)
-    if token and token in _ALL_BUTTONS and now < current.guard_until:
         return "quiet", _remember_id(current, message_id)
     if kind == "ONIMBOTV2JOINCHAT":
         if current.greeted:
