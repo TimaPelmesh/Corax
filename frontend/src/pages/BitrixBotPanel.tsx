@@ -469,6 +469,10 @@ export function BitrixBotPanel({
     if (saved?.name) applySettings(saved)
     else if (card) applyCard(card)
     else if (saved) applySettings(saved)
+    else {
+      setName(`#${id}`)
+      setCode('')
+    }
   }
 
   const loadBots = useCallback((overlay?: BitrixBotSettings | null) => {
@@ -776,6 +780,25 @@ export function BitrixBotPanel({
     }
   }
 
+  async function showWebhookBots() {
+    setBusy(true)
+    try {
+      if (webhook.trim()) {
+        const saved = await api.saveBitrixBot({ webhook_url: webhook.trim() })
+        take(saved)
+        setWebhook('')
+        loadBots(saved)
+      } else {
+        loadBots()
+      }
+      toast.ok(t('settingsBitrix.botSaved'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('settingsBitrix.saveFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function openNew() {
     setConnectOpen(true)
     setPickQuery('')
@@ -792,6 +815,12 @@ export function BitrixBotPanel({
 
   const needle = query.trim().toLowerCase()
   const visible = bots.filter((item) => matches(item, needle))
+  const portalIds = new Set(bots.map((item) => item.bot_id))
+  const libraryIds = Array.from(new Set([
+    ...Object.keys(scripts).map((key) => Number(key)).filter((id) => Number.isInteger(id) && id > 0),
+    ...(bot?.bot_id ? [bot.bot_id] : []),
+  ])).filter((id) => !portalIds.has(id) && (!needle || `${id === bot?.bot_id ? `${bot.name} ${bot.code}` : ''} ${id}`.toLowerCase().includes(needle)))
+  const selectedOnPortal = selectedId != null && portalIds.has(selectedId)
   const pickNeedle = pickQuery.trim().toLowerCase()
   const suggestions = bots.filter((item) => matches(item, pickNeedle))
   const typedId = Number(pickQuery.trim())
@@ -834,56 +863,93 @@ export function BitrixBotPanel({
           />
         </div>
         <p className="px-3 pb-1 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botListScope')}</p>
-        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
-          {!bot?.webhook_set ? (
-            <div className="space-y-3 px-2 py-6">
-              <p className="text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botListNeedToken')}</p>
-              <button
-                type="button"
-                className="app-btn app-btn-primary w-full !min-h-0 !py-2 text-sm"
-                onClick={openNew}
-              >
-                {t('settingsBitrix.botListConnectCta')}
-              </button>
-            </div>
-          ) : visible.length === 0 ? (
-            <p className="px-2 py-6 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{needle ? t('settingsBitrix.botNoMatch') : t('settingsBitrix.botListEmpty')}</p>
-          ) : (
-            visible.map((item) => {
-              const active = item.bot_id === selectedId
-              const current = item.bot_id === bot.bot_id
-              const dot = COLOR_HEX[item.color as (typeof COLORS)[number]] ?? COLOR_HEX.GRAY
-              const title = (current && bot.name.trim()) || item.name || item.code || `#${item.bot_id}`
-              return (
-                <div key={item.bot_id} className={`flex items-center gap-0.5 rounded-xl ${active ? 'bg-[var(--color-bg-muted)]' : 'hover:bg-[var(--color-bg-muted)]'}`}>
-                  <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left" onClick={() => select(item.bot_id)}>
-                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold text-white ${active ? 'ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg-muted)]' : ''}`} style={{ background: dot }}>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2 pb-3">
+          <div>
+            <div className="px-2 pb-1 text-[11px] font-medium text-[var(--color-fg-subtle)]">{t('settingsBitrix.botShelfPortal')}</div>
+            {!bot?.webhook_set ? (
+              <div className="space-y-3 px-2 py-3">
+                <p className="text-sm leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botListNeedToken')}</p>
+                <button
+                  type="button"
+                  className="app-btn app-btn-primary w-full !min-h-0 !py-2 text-sm"
+                  onClick={openNew}
+                >
+                  {t('settingsBitrix.botListConnectCta')}
+                </button>
+              </div>
+            ) : visible.length === 0 ? (
+              <p className="px-2 py-3 text-sm leading-relaxed text-[var(--color-fg-subtle)]">{needle ? t('settingsBitrix.botNoMatch') : t('settingsBitrix.botListEmpty')}</p>
+            ) : (
+              visible.map((item) => {
+                const active = item.bot_id === selectedId
+                const current = item.bot_id === bot.bot_id
+                const dot = COLOR_HEX[item.color as (typeof COLORS)[number]] ?? COLOR_HEX.GRAY
+                const title = (current && bot.name.trim()) || item.name || item.code || `#${item.bot_id}`
+                return (
+                  <div key={item.bot_id} className={`flex items-center gap-0.5 rounded-xl ${active ? 'bg-[var(--color-bg-muted)]' : 'hover:bg-[var(--color-bg-muted)]'}`}>
+                    <button type="button" className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left" onClick={() => select(item.bot_id, 'look')}>
+                      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold text-white ${active ? 'ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg-muted)]' : ''}`} style={{ background: dot }}>
+                        {(title.trim().slice(0, 1) || 'Б').toUpperCase()}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="truncate text-sm font-medium text-[var(--color-fg)]">{title}</span>
+                          <span className="shrink-0 font-mono text-[11px] text-[var(--color-fg-subtle)]">#{item.bot_id}</span>
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] text-[var(--color-fg-subtle)]">
+                          {item.code ? `${item.code} · ` : ''}
+                          {roleLabel(item.bot_type)}
+                          {current ? ` · ${t('settingsBitrix.botCurrent')}` : ''}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="mr-1 self-center rounded-lg p-2 text-[var(--color-fg-subtle)] hover:bg-[var(--color-error-bg)] hover:text-[var(--color-error-fg)] disabled:opacity-50"
+                      aria-label={t('settingsBitrix.botDelete')}
+                      disabled={busy}
+                      onClick={() => void removeBot(item.bot_id)}
+                    >
+                      <IconTrash className="h-4 w-4" />
+                    </button>
+                  </div>
+                )
+              })
+            )}
+          </div>
+          {libraryIds.length > 0 ? (
+            <div>
+              <div className="px-2 pb-1 text-[11px] font-medium text-[var(--color-fg-subtle)]">{t('settingsBitrix.botShelfLibrary')}</div>
+              <p className="px-2 pb-1 text-[11px] leading-relaxed text-[var(--color-fg-subtle)]">{t('settingsBitrix.botShelfLibraryHint')}</p>
+              {libraryIds.map((id) => {
+                const active = id === selectedId
+                const title = (id === bot?.bot_id && bot.name.trim()) || `#${id}`
+                const codeLabel = id === bot?.bot_id ? bot.code : ''
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left ${active ? 'bg-[var(--color-bg-muted)]' : 'hover:bg-[var(--color-bg-muted)]'}`}
+                    onClick={() => select(id, 'look')}
+                  >
+                    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-semibold text-white ${active ? 'ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg-muted)]' : ''}`} style={{ background: COLOR_HEX.GRAY }}>
                       {(title.trim().slice(0, 1) || 'Б').toUpperCase()}
                     </span>
                     <span className="min-w-0">
                       <span className="flex items-baseline gap-1.5">
                         <span className="truncate text-sm font-medium text-[var(--color-fg)]">{title}</span>
-                        <span className="shrink-0 font-mono text-[11px] text-[var(--color-fg-subtle)]">#{item.bot_id}</span>
+                        <span className="shrink-0 font-mono text-[11px] text-[var(--color-fg-subtle)]">#{id}</span>
                       </span>
                       <span className="mt-0.5 block truncate text-[11px] text-[var(--color-fg-subtle)]">
-                        {roleLabel(item.bot_type)}
-                        {current ? ` · ${t('settingsBitrix.botCurrent')}` : ''}
+                        {codeLabel ? `${codeLabel} · ` : ''}
+                        {t('settingsBitrix.botShelfLibrary')}
                       </span>
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    className="mr-1 self-center rounded-lg p-2 text-[var(--color-fg-subtle)] hover:bg-[var(--color-error-bg)] hover:text-[var(--color-error-fg)] disabled:opacity-50"
-                    aria-label={t('settingsBitrix.botDelete')}
-                    disabled={busy}
-                    onClick={() => void removeBot(item.bot_id)}
-                  >
-                    <IconTrash className="h-4 w-4" />
-                  </button>
-                </div>
-              )
-            })
-          )}
+                )
+              })}
+            </div>
+          ) : null}
         </div>
       </aside>
 
@@ -931,6 +997,12 @@ export function BitrixBotPanel({
           </div>
         </header>
 
+        {selectedId && listed && !selectedOnPortal ? (
+          <p className="border-b border-[var(--color-border)] bg-[var(--color-bg-muted)]/60 px-4 py-2 text-[12px] leading-relaxed text-[var(--color-fg-subtle)]">
+            {t('settingsBitrix.botLibraryOnly')}
+          </p>
+        ) : null}
+
         <div className="flex gap-1 border-b border-[var(--color-border)] px-3 py-2">
           {(['messages', 'look', 'extra'] as const).map((item) => (
             <button
@@ -943,6 +1015,9 @@ export function BitrixBotPanel({
             </button>
           ))}
         </div>
+        <p className="border-b border-[var(--color-border)] px-4 py-2 text-[12px] leading-relaxed text-[var(--color-fg-subtle)]">
+          {pane === 'look' ? t('settingsBitrix.botTabHintLook') : pane === 'messages' ? t('settingsBitrix.botTabHintMessages') : t('settingsBitrix.botEventFetchHint')}
+        </p>
 
         {pane === 'messages' ? (
           <div className="p-4">
@@ -1187,7 +1262,10 @@ export function BitrixBotPanel({
               {t('settingsBitrix.botSetupGuide')}
             </p>
             <Field label={t('settingsBitrix.botWebhook')} hint={t('settingsBitrix.botWebhookHint')}>
-              <input className="app-input font-mono" type="password" autoComplete="off" value={webhook} placeholder={bot?.webhook_host || 'https://portal/rest/1/…'} onChange={(event) => setWebhook(event.target.value)} />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input className="app-input font-mono min-w-0 flex-1" type="password" autoComplete="off" value={webhook} placeholder={bot?.webhook_host || 'https://portal/rest/1/…'} onChange={(event) => setWebhook(event.target.value)} />
+                <button type="button" className={`${btnPrimary} shrink-0`} disabled={busy} onClick={() => void showWebhookBots()}>{t('settingsBitrix.botShowBots')}</button>
+              </div>
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={t('settingsBitrix.botToken')} hint={t('settingsBitrix.botTokenHint')}>
@@ -1251,6 +1329,7 @@ export function BitrixBotPanel({
                     >
                       <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: dot }} />
                       <span className="min-w-0 flex-1 truncate">{title}</span>
+                      {item.code ? <span className="truncate font-mono text-[11px] text-[var(--color-fg-subtle)]">{item.code}</span> : null}
                       <span className="font-mono text-[11px] text-[var(--color-fg-subtle)]">#{item.bot_id}</span>
                       <span className="hidden text-[11px] text-[var(--color-fg-subtle)] sm:inline">{roleLabel(item.bot_type)}</span>
                     </button>
