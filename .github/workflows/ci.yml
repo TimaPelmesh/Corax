@@ -89,6 +89,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
 
+      - name: Bot waits instead of repeating
+        run: python -m pytest -q backend/tests/test_bot_wait.py
+
       - name: Backend tests
         run: python -m pytest -q backend/tests
 

@@ -440,6 +440,131 @@ def status_list_text(
     return "\n\n".join(blocks)
 
 
+GUARD_SECONDS = 4.0
+_MENU_BUTTONS = frozenset(_norm(item) for item in (LEAVE, MINE))
+_ASK_BUTTONS = frozenset({_norm(CANCEL)})
+_ONE_BUTTON = frozenset({_norm(LEAVE)})
+_ALL_BUTTONS = frozenset(
+    _norm(item) for item in (LEAVE, MINE, STATUS, HELP, CANCEL, PC, STOCK, SLA, "Моя заявка", "Мой пк", "Остатки", "Просроченные заявки")
+)
+
+
+@dataclass(frozen=True)
+class ChatWait:
+    """What this chat has already been told. Echoes of that must not send again."""
+
+    greeted: bool = False
+    waiting_text: bool = False
+    guard_until: float = 0.0
+    buttons: frozenset[str] = frozenset()
+    last_body: str = ""
+    seen_ids: frozenset[str] = frozenset()
+
+
+def _remember_id(state: ChatWait, message_id: str) -> ChatWait:
+    text = (message_id or "").strip()
+    if not text or text in state.seen_ids:
+        return state
+    seen = tuple(state.seen_ids) + (text,)
+    if len(seen) > 40:
+        seen = seen[-40:]
+    return ChatWait(
+        greeted=state.greeted,
+        waiting_text=state.waiting_text,
+        guard_until=state.guard_until,
+        buttons=state.buttons,
+        last_body=state.last_body,
+        seen_ids=frozenset(seen),
+    )
+
+
+def _with_reply(state: ChatWait, action: str, now: float) -> ChatWait:
+    buttons = state.buttons
+    waiting = state.waiting_text
+    greeted = state.greeted
+    if action == "greet":
+        greeted = True
+        waiting = False
+        buttons = _MENU_BUTTONS
+    elif action == "ask":
+        greeted = True
+        waiting = True
+        buttons = _ASK_BUTTONS
+    elif action == "cancel":
+        waiting = False
+        buttons = _ONE_BUTTON
+    elif action == "take":
+        waiting = False
+        buttons = _MENU_BUTTONS
+    elif action == "nudge":
+        buttons = _ONE_BUTTON
+    elif action in {"help", "status", "pc", "stock", "sla"}:
+        buttons = _MENU_BUTTONS
+    return ChatWait(
+        greeted=greeted,
+        waiting_text=waiting,
+        guard_until=now + GUARD_SECONDS,
+        buttons=buttons,
+        last_body=state.last_body,
+        seen_ids=state.seen_ids,
+    )
+
+
+def note_sent(state: ChatWait, body: str) -> ChatWait:
+    """Remember the exact bubble. If the portal echoes it, nothing else is sent."""
+    return ChatWait(
+        greeted=state.greeted,
+        waiting_text=state.waiting_text,
+        guard_until=state.guard_until,
+        buttons=state.buttons,
+        last_body=body,
+        seen_ids=state.seen_ids,
+    )
+
+
+def decide_chat(
+    event: str,
+    text: str,
+    command: str,
+    *,
+    message_id: str = "",
+    from_bot: bool = False,
+    enabled: bool = True,
+    state: ChatWait | None = None,
+    now: float = 0.0,
+) -> tuple[str, ChatWait]:
+    """One greeting, then silence until a person sends a button or a message.
+
+    A button caption that comes back inside the guard is the portal echoing the
+    keyboard the bot just posted. It is not a click, and it must not send again.
+    """
+    current = state or ChatWait()
+    kind = (event or "").strip()
+    if from_bot or (message_id and message_id in current.seen_ids):
+        return "quiet", _remember_id(current, message_id)
+    if kind not in {"ONIMBOTV2JOINCHAT", "ONIMBOTV2MESSAGEADD", "ONIMBOTV2COMMANDADD"}:
+        return "quiet", current
+    body = (text or "").strip()
+    if current.last_body and _norm(body) and _norm(body) == _norm(current.last_body):
+        return "quiet", _remember_id(current, message_id)
+    token = _norm(body) or _norm(command)
+    if token and token in _ALL_BUTTONS and now < current.guard_until:
+        return "quiet", _remember_id(current, message_id)
+    if kind == "ONIMBOTV2JOINCHAT":
+        if current.greeted:
+            return "quiet", _remember_id(current, message_id)
+        nxt = _remember_id(current, message_id)
+        return "greet", _with_reply(nxt, "greet", now)
+    if not enabled:
+        nxt = _remember_id(current, message_id)
+        return "off", _with_reply(nxt, "off", now)
+    step = intake_step(kind, command, body, enabled=True, waiting=current.waiting_text)
+    if step in {"skip", "greet"}:
+        return "quiet", _remember_id(current, message_id)
+    nxt = _remember_id(current, message_id)
+    return step, _with_reply(nxt, step, now)
+
+
 def intake_step(event: str, command: str, text: str, *, enabled: bool, waiting: bool) -> str:
     """greet, ask, take, status, help, cancel, pc, stock, sla, nudge, off, or skip."""
     kind = (event or "").strip()

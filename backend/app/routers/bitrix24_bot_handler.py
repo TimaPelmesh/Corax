@@ -28,7 +28,9 @@ from app.bot_intake import (
     given_name,
     greeting_text,
     help_text,
-    intake_step,
+    ChatWait,
+    decide_chat,
+    note_sent,
     nudge_text,
     off_text,
     phrases_for_bot,
@@ -326,6 +328,7 @@ async def _open_bitrix_ticket(db: AsyncSession, cfg: Bitrix24Config, event: dict
 _recent_reply: dict[str, float] = {}
 _own_messages: set[str] = set()
 _echo_labels: dict[str, set[str]] = {}
+_wait: dict[str, ChatWait] = {}
 
 
 def _reply_too_soon(key: str, seconds: float = 15) -> bool:
@@ -371,6 +374,10 @@ def remember_own_message(message_id: str) -> None:
     _own_messages.add(text)
     if len(_own_messages) > 300:
         _own_messages.clear()
+
+
+def _spoke(key: str, body: str) -> None:
+    _wait[key] = note_sent(_wait.get(key, ChatWait()), body)
 
 
 def _bot_talks(cfg: Bitrix24Config) -> bool:
@@ -556,36 +563,58 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
         log.warning("bitrix event without dialog event=%s", event["event"])
         return {"ok": True, "event": event["event"], "note": "no dialog"}
     phase_key = _phase_key(event) or dialogs[0]
-    waiting = (await _dialog_phase(db, phase_key)) == "await_text"
-    step = intake_step(
+    phase = await _dialog_phase(db, phase_key)
+    remembered = _wait.get(phase_key, ChatWait())
+    if phase in {"idle", "await_text"}:
+        remembered = ChatWait(
+            greeted=True,
+            waiting_text=phase == "await_text",
+            guard_until=remembered.guard_until,
+            buttons=remembered.buttons,
+            last_body=remembered.last_body,
+            seen_ids=remembered.seen_ids,
+        )
+    step, remembered = decide_chat(
         event["event"],
-        event.get("command") or "",
         event.get("text") or "",
+        event.get("command") or "",
+        message_id=event.get("message_id") or "",
+        from_bot=event.get("from_bot") == "1" or (bool(stored_id) and event.get("user_id") == stored_id),
         enabled=_bot_talks(cfg),
-        waiting=waiting,
+        state=remembered,
+        now=time.monotonic(),
     )
-    if step == "skip":
-        return {"ok": True, "event": event["event"], "note": step}
+    _wait[phase_key] = remembered
+    if step == "quiet":
+        return {"ok": True, "event": event["event"], "note": "quiet"}
     fresh = await db.get(Bitrix24Config, 1, populate_existing=True)
     if fresh is not None:
         cfg = fresh
     voice = _voice(cfg)
     if step == "off":
-        await _v2_reply(cfg, event, off_text(voice), db=db, state_key=phase_key)
+        body = off_text(voice)
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "disabled"}
     person = event.get("user_name") or ""
     if step == "ask":
         await _set_dialog_phase(db, phase_key, "await_text")
         await db.commit()
-        await _v2_reply(cfg, event, ask_text(person, voice), keyboard=send_keyboard("Отмена"), db=db, state_key=phase_key)
+        body = ask_text(person, voice)
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=send_keyboard("Отмена"), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "ask"}
     if step == "cancel":
         await _set_dialog_phase(db, phase_key, "idle")
         await db.commit()
-        await _v2_reply(cfg, event, cancel_text(person, voice), keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
+        body = cancel_text(person, voice)
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "cancel"}
     if step == "help":
-        await _v2_reply(cfg, event, help_text(voice), keyboard=_menu(), db=db, state_key=phase_key)
+        body = help_text(voice)
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "help"}
     if step == "status":
         rows = await _bitrix_tickets_for_user(db, event)
@@ -593,39 +622,45 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
             [(row.id, row.title or "", row.status or "") for row in rows],
             voice=voice,
         )
+        _spoke(phase_key, body)
         await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "status"}
     if step == "pc":
-        await _v2_reply(cfg, event, computer_reply(await _computers_for_person(db, person)), keyboard=_menu(), db=db, state_key=phase_key)
+        body = computer_reply(await _computers_for_person(db, person))
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "pc"}
     if step == "stock":
         stock_rows = await _low_stock()
-        stock_body = "Склад сейчас не открылся." if stock_rows is None else stock_reply(stock_rows)
-        await _v2_reply(cfg, event, stock_body, keyboard=_menu(), db=db, state_key=phase_key)
+        body = "Склад сейчас не открылся." if stock_rows is None else stock_reply(stock_rows)
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "stock"}
     if step == "sla":
-        await _v2_reply(cfg, event, sla_reply(await _overdue_tickets(db)), keyboard=_menu(), db=db, state_key=phase_key)
+        body = sla_reply(await _overdue_tickets(db))
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "sla"}
     if step == "nudge":
-        if _reply_too_soon(f"nudge:{phase_key}"):
-            log.info("bitrix nudge suppressed dialog=%s", phase_key)
-            return {"ok": True, "event": event["event"], "note": "nudge-suppressed"}
-        await _v2_reply(cfg, event, nudge_text(person, voice), keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
+        body = nudge_text(person, voice)
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "nudge"}
     if step == "greet":
-        if _reply_too_soon(f"greet:{phase_key}"):
-            log.info("bitrix greet suppressed dialog=%s", phase_key)
-            return {"ok": True, "event": event["event"], "note": "greet-suppressed"}
         await _set_dialog_phase(db, phase_key, "idle")
         await db.commit()
-        await _v2_reply(cfg, event, greeting_text(person, voice), keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
+        body = greeting_text(person, voice)
+        _spoke(phase_key, body)
+        await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "greet"}
     text = (event.get("text") or "").strip()
     row = await _open_bitrix_ticket(db, cfg, event, text)
     await _set_dialog_phase(db, phase_key, "idle")
     await db.commit()
     await db.refresh(row)
-    await _v2_reply(cfg, event, accepted_text(row.id, text, name=person, voice=voice), keyboard=_menu(), db=db, state_key=phase_key)
+    body = accepted_text(row.id, text, name=person, voice=voice)
+    _spoke(phase_key, body)
+    await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)
     return {"ok": True, "request_id": row.id, "event": event["event"]}
 
 
