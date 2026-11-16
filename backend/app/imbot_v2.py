@@ -428,13 +428,23 @@ def parse_v2_event(payload: dict[str, Any]) -> dict[str, str] | None:
         _ci(message, "authorId"),
         _ci(params, "FROM_USER_ID", "AUTHOR_ID", "USER_ID"),
     )
+    author_id = _first(
+        _ci(message, "authorId", "author_id"),
+        _ci(params, "AUTHOR_ID", "FROM_USER_ID"),
+        user_id,
+    )
     if not dialog:
         dialog = user_id or (f"chat{chat_id}" if chat_id else "")
     bot_flag = _ci(user, "bot")
-    from_bot = str(bot_flag).strip().lower() in {"1", "true", "y"}
+    bot_id = _first(_ci(bot, "id", "bot_id"), _ci(params, "BOT_ID"))
+    system = _first(_ci(message, "system"), _ci(params, "SYSTEM"))
+    from_bot = str(bot_flag).strip().lower() in {"1", "true", "y"} or (
+        bool(author_id) and author_id == bot_id
+    ) or system.lower() in {"1", "true", "y"}
     return {
         "event": event,
-        "bot_id": _first(_ci(bot, "id", "bot_id"), _ci(params, "BOT_ID")),
+        "bot_id": bot_id,
+        "author_id": author_id,
         "text": _first(_ci(message, "text", "message"), _ci(params, "MESSAGE", "MESSAGE_TEXT", "TEXT")),
         "dialog_id": dialog,
         "user_id": user_id,

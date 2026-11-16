@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_superuser
-from app.bot_intake import drop_phrases, dump_scripts, normalize_phrases, parse_scripts, publish_phrases
+from app.bot_intake import dump_scripts, normalize_phrases, parse_scripts, publish_phrases
 from app.database import get_db
 from app.imbot_v2 import (
     BACKGROUNDS,
@@ -28,7 +28,6 @@ from app.imbot_v2 import (
     client_error_text,
     explain_webhook_replace,
     is_ownership_error,
-    forget_vault_token,
     legacy_email_body,
     parse_token_vault,
     remember_vault_token,
@@ -654,6 +653,11 @@ async def register_bot(
             if card.get("bot_id"):
                 row.bot_id = int(card["bot_id"])
             final_token = fresh
+            row.bot_event_offset = None
+            if row.bot_id:
+                from app.bitrix_bot_poll import mark_drain
+
+                mark_drain(int(row.bot_id))
         if row.bot_id:
             row.bot_token_vault = remember_vault_token(row.bot_token_vault, int(row.bot_id), row.bot_token or final_token)
         card = public_card(result)
@@ -800,30 +804,15 @@ async def unregister_bot(
     _: User = Depends(get_current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete one bot of this webhook. Only the bound bot is cleared locally."""
+    """Stop using this bot in Corax. The bot stays registered in Bitrix24."""
     row = await _get_or_create_cfg(db)
-    token = _auth_token(row, int(body.bot_id)) or (row.bot_token or "").strip()
-    if not (row.bot_webhook_url or "").strip() or not token:
-        _raise(ImbotError("BOT_NOT_READY", "Сначала сохраните вебхук и токен бота"))
-    try:
-        await call(
-            row.bot_webhook_url or "",
-            "imbot.v2.Bot.unregister",
-            {"botId": int(body.bot_id), "botToken": clean_token(token, required=True)},
-        )
-    except ImbotError as exc:
-        _raise(exc)
-    scripts = parse_scripts(row.bot_scripts_json)
-    scripts.pop(str(int(body.bot_id)), None)
-    drop_phrases(int(body.bot_id))
-    row.bot_scripts_json = dump_scripts(scripts)
-    row.bot_token_vault = forget_vault_token(row.bot_token_vault, int(body.bot_id))
-    if row.bot_id == int(body.bot_id):
-        row.bot_id = None
-        row.bot_token = ""
-        row.bot_enabled = False
-        row.bot_paused = True
-        _mirror_phrases(row, {})
+    if row.bot_id != int(body.bot_id):
+        return _out(row, _panel_origin(request))
+    row.bot_id = None
+    row.bot_enabled = False
+    row.bot_paused = True
+    _mirror_phrases(row, {})
+    log.info("bitrix bot detached locally bot_id=%s", int(body.bot_id))
     await db.commit()
     await db.refresh(row)
     return _out(row, _panel_origin(request))

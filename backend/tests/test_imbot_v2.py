@@ -233,6 +233,22 @@ def test_fetch_event_uses_the_button_label():
     assert parsed is not None
     assert parsed["dialog_id"] == "chat5"
     assert parsed["from_bot"] == "0"
+    echo = parse_fetch_event(
+        {
+            "eventId": 13,
+            "type": "ONIMBOTV2MESSAGEADD",
+            "data": {
+                "message": {"id": 8, "text": "Я рядом", "authorId": 15},
+                "chat": {"dialogId": "4"},
+                "user": {"id": 4, "name": "Иван"},
+                "bot": {"id": 15},
+            },
+        }
+    )
+    assert echo is not None
+    assert echo["from_bot"] == "1"
+    assert echo["author_id"] == "15"
+    assert echo["user_id"] == "4"
     assert intake_step(parsed["event"], "", parsed["text"], enabled=True, waiting=False) == "ask"
     assert next_offset({"hasMore": False}, [{"eventId": 12}]) == 13
     assert send_keyboard("Оставить заявку")[0]["ACTION"] == "SEND"

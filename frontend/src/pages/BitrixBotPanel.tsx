@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, type BitrixBotCard, type BitrixBotPhrases, type BitrixBotSettings } from '../api'
 import { useConfirmDialog } from '../components/ConfirmDialog'
-import { IconSearch, IconTrash } from '../components/icons'
+import { IconSearch } from '../components/icons'
 import { AppModal } from '../components/ui/AppModal'
 import { StatusPill } from '../components/ui/StatusPill'
 import { useT, type MessageKey } from '../i18n/LocaleContext'
@@ -704,17 +704,8 @@ export function BitrixBotPanel({
     try {
       const next = await api.unregisterBitrixBot(id)
       take(next)
-      const rest = bots.filter((row) => row.bot_id !== id)
-      setBots(rest)
-      if (selectedId === id) {
-        if (rest[0]) select(rest[0].bot_id)
-        else {
-          setSelectedId(null)
-          setPane('messages')
-          setConnectOpen(true)
-        }
-      }
-      loadBots()
+      if (selectedId === id) setSelectedId(null)
+      loadBots(next)
       toast.ok(t('settingsBitrix.botSaved'))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('settingsBitrix.saveFailed'))
@@ -903,15 +894,16 @@ export function BitrixBotPanel({
                         </span>
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      className="mr-1 self-center rounded-lg p-2 text-[var(--color-fg-subtle)] hover:bg-[var(--color-error-bg)] hover:text-[var(--color-error-fg)] disabled:opacity-50"
-                      aria-label={t('settingsBitrix.botDelete')}
-                      disabled={busy}
-                      onClick={() => void removeBot(item.bot_id)}
-                    >
-                      <IconTrash className="h-4 w-4" />
-                    </button>
+                    {current ? (
+                      <button
+                        type="button"
+                        className="mr-1 self-center rounded-lg px-2 py-1 text-[11px] text-[var(--color-fg-subtle)] hover:bg-[var(--color-bg)] hover:text-[var(--color-fg)] disabled:opacity-50"
+                        disabled={busy}
+                        onClick={() => void removeBot(item.bot_id)}
+                      >
+                        {t('settingsBitrix.botDelete')}
+                      </button>
+                    ) : null}
                   </div>
                 )
               })

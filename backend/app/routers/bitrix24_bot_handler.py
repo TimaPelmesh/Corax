@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 import re
 import secrets
@@ -322,6 +323,31 @@ async def _open_bitrix_ticket(db: AsyncSession, cfg: Bitrix24Config, event: dict
     return row
 
 
+_recent_reply: dict[str, float] = {}
+_own_messages: set[str] = set()
+
+
+def _reply_too_soon(key: str, seconds: float = 15) -> bool:
+    """One greeting and one nudge per chat. A reply must not answer itself."""
+    now = time.monotonic()
+    previous = _recent_reply.get(key, 0.0)
+    if previous and now - previous < seconds:
+        return True
+    _recent_reply[key] = now
+    if len(_recent_reply) > 400:
+        _recent_reply.clear()
+    return False
+
+
+def remember_own_message(message_id: str) -> None:
+    text = (message_id or "").strip()
+    if not text:
+        return
+    _own_messages.add(text)
+    if len(_own_messages) > 300:
+        _own_messages.clear()
+
+
 def _bot_talks(cfg: Bitrix24Config) -> bool:
     """A connected bot answers until the admin pauses it."""
     return bool(cfg.bot_id) and not bool(cfg.bot_paused)
@@ -491,6 +517,8 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
     stored_id = str(cfg.bot_id or "").strip()
     if stored_id and event["bot_id"] and event["bot_id"] != stored_id:
         return {"ok": True, "note": "other bot"}
+    if event.get("message_id") and event["message_id"] in _own_messages:
+        return {"ok": True, "note": "own message"}
     if event.get("from_bot") == "1" or (event.get("user_id") and event["user_id"] == stored_id):
         return {"ok": True, "note": "own message"}
     dialogs = dialog_candidates(event)
@@ -549,9 +577,15 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
         await _v2_reply(cfg, event, sla_reply(await _overdue_tickets(db)), keyboard=_menu(), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "sla"}
     if step == "nudge":
+        if _reply_too_soon(f"nudge:{phase_key}"):
+            log.info("bitrix nudge suppressed dialog=%s", phase_key)
+            return {"ok": True, "event": event["event"], "note": "nudge-suppressed"}
         await _v2_reply(cfg, event, nudge_text(person, voice), keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
         return {"ok": True, "event": event["event"], "note": "nudge"}
     if step == "greet":
+        if _reply_too_soon(f"greet:{phase_key}"):
+            log.info("bitrix greet suppressed dialog=%s", phase_key)
+            return {"ok": True, "event": event["event"], "note": "greet-suppressed"}
         await _set_dialog_phase(db, phase_key, "idle")
         await db.commit()
         await _v2_reply(cfg, event, greeting_text(person, voice), keyboard=send_keyboard(LEAVE), db=db, state_key=phase_key)
@@ -746,6 +780,7 @@ async def _v2_reply(
                     "fields": fields,
                 },
             )
+            remember_own_message(_sent_id(result))
             if attach and db is not None:
                 await _remember_keyboard(db, state_key, _sent_id(result), sig)
             return True

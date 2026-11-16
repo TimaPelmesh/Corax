@@ -24,6 +24,13 @@ log = logging.getLogger("corax.bitrix.bot")
 POLL_SECONDS = 2
 _fetch_switched = False
 _menu_published: set[int] = set()
+_drain: set[int] = set()
+
+
+def mark_drain(bot_id: int) -> None:
+    """Skip the queue a brand-new bot already has, so old joins are not answered."""
+    if int(bot_id) > 0:
+        _drain.add(int(bot_id))
 
 
 class BitrixBotPoller:
@@ -191,16 +198,22 @@ async def _poll_remote(snap: SimpleNamespace) -> None:
             if parsed is not None:
                 parsed_events.append(parsed)
         nxt = next_offset(result, events)
+        draining = bot_id in _drain
         if parsed_events or (nxt is not None and nxt != offset):
             async with BitrixSessionLocal() as db:
                 cfg = await db.get(Bitrix24Config, 1, populate_existing=True)
                 if cfg is None:
                     return
-                for parsed in parsed_events:
-                    await _handle_v2(db, cfg, parsed)
+                if not draining:
+                    for parsed in parsed_events:
+                        await _handle_v2(db, cfg, parsed)
+                elif parsed_events:
+                    log.info("bitrix drain skipped events=%s bot_id=%s", len(parsed_events), bot_id)
                 if nxt is not None and nxt != cfg.bot_event_offset:
                     cfg.bot_event_offset = nxt
                     await db.commit()
+        if draining and not result.get("hasMore"):
+            _drain.discard(bot_id)
         if nxt is not None:
             offset = nxt
         if not result.get("hasMore"):
