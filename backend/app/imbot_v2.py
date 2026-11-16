@@ -7,11 +7,14 @@ contain the Bitrix error code, not the webhook.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+
+log = logging.getLogger("corax.bitrix.bot")
 
 BOT_TOKEN_MAX = 40
 BOT_TYPES = frozenset({"bot", "supervisor", "personal"})
@@ -78,13 +81,82 @@ def is_credential_error(code: str, description: str = "") -> bool:
     return "invalid request credentials" in blob
 
 
+def is_bot_missing(code: str, description: str = "") -> bool:
+    """Bitrix no longer has this bot id. A deleted bot cannot be undeleted."""
+    code_l = (code or "").lower()
+    blob = f"{code} {description}".lower()
+    if "bot" in code_l and "not_found" in code_l:
+        return True
+    if "bot" in blob and "not found" in blob:
+        return True
+    return "бот" in blob and "не найден" in blob
+
+
+def explain_webhook_replace(
+    bot_id: int,
+    probe: tuple[str, str] | None,
+    get_error: tuple[str, str] | None,
+    listed_ids: list[int] | None,
+) -> tuple[str, str] | None:
+    """What a replaced incoming webhook did to the bot Corax already stores.
+
+    None means the bot is still on that webhook. Otherwise (code, Russian text).
+    WEBHOOK_* means the new URL must not replace the stored one.
+    BOT_* means the new secret was accepted and the URL should stay.
+    probe and get_error are (code, description); None means that call succeeded.
+    listed_ids is None when Bot.list itself failed.
+    """
+    if get_error is None or (listed_ids is not None and int(bot_id) in listed_ids):
+        return None
+    code, description = get_error
+    if probe is not None and is_credential_error(probe[0], probe[1]):
+        return ("WEBHOOK_REJECTED", _secret_rejected_text())
+    if is_ownership_error(code, description):
+        return (
+            "WEBHOOK_OTHER_APP",
+            f"Этот адрес — другой вебхук. Бот №{int(bot_id)} к нему не привязан ({code}). "
+            "Чтобы вернуть того же бота, откройте в Битрикс24 прежний вебхук: "
+            "Разработчикам → Интеграции → Меню (≡) → Редактировать, и вставьте его новый секрет. "
+            "Вебхук, созданный заново, старого бота не видит. Адрес в Кораксе не заменён.",
+        )
+    if is_bot_missing(code, description):
+        return (
+            "BOT_MISSING",
+            f"Вебхук принят и сохранён, но бот №{int(bot_id)} на портале не найден ({code}). "
+            "Удалённого бота Битрикс24 не восстанавливает. Номер и токен в Кораксе оставлены. "
+            "Если этого бота уже нет, создайте нового и не подставляйте старый номер.",
+        )
+    portal_down = {"BITRIX_UNREACHABLE", "BITRIX_HTTP", "BITRIX_BAD_RESPONSE"}
+    if code in portal_down or (probe is not None and probe[0] in portal_down):
+        shown = probe[0] if probe is not None and probe[0] in portal_down else code
+        return (
+            "WEBHOOK_UNREACHABLE",
+            "Портал не ответил на проверку вебхука. Адрес в Кораксе не заменён. "
+            f"Битрикс24 вернул {shown}. Подробности в логе corax.bitrix.bot.",
+        )
+    return (
+        "BOT_UNREACHABLE",
+        f"Вебхук сохранён, но бот №{int(bot_id)} не прочитался ({code}). "
+        "Номер и токен в Кораксе оставлены. Подробности в логе corax.bitrix.bot.",
+    )
+
+
+def _secret_rejected_text() -> str:
+    return (
+        "Секрет этого адреса Битрикс24 не принял (INVALID_CREDENTIALS). "
+        "Откройте Разработчикам → Интеграции, найдите заблокированный вебхук, "
+        "Меню (≡) → Редактировать и вставьте новый секретный код того же вебхука. "
+        "Новый вебхук бота не подхватит. Адрес в Кораксе не заменён."
+    )
+
+
 def client_error_text(code: str, description: str = "") -> str:
     """Panel text. Ownership and a dead webhook become a short explanation."""
     if is_ownership_error(code, description):
         return OWNERSHIP_DETAIL
     if is_credential_error(code, description):
         return CREDENTIAL_DETAIL
-    return ((description or code or "BITRIX_ERROR").strip())[:300]
+    return ((description or code or "BITRIX_ERROR").strip())[:500]
 
 
 def parse_token_vault(raw: str | None) -> dict[str, str]:
@@ -407,6 +479,30 @@ def dialog_candidates(event: dict[str, str]) -> list[str]:
     return seen
 
 
+def _body_hint(body: dict[str, Any]) -> str:
+    """bot id only. The webhook secret and botToken stay out of the log."""
+    bot_id = body.get("botId")
+    if isinstance(bot_id, bool):
+        return ""
+    if isinstance(bot_id, int) and bot_id > 0:
+        return f" bot_id={bot_id}"
+    if isinstance(bot_id, str) and bot_id.isdigit() and int(bot_id) > 0:
+        return f" bot_id={int(bot_id)}"
+    return ""
+
+
+def _log_bitrix_failure(webhook: str, method: str, body: dict[str, Any], exc: ImbotError, http_status: int | None) -> None:
+    log.warning(
+        "bitrix call failed method=%s host=%s http=%s error=%s description=%s%s",
+        method,
+        webhook_host(webhook) or "-",
+        http_status if http_status is not None else "-",
+        exc.code,
+        (exc.description or "")[:300],
+        _body_hint(body),
+    )
+
+
 async def call(webhook: str, method: str, body: dict[str, Any]) -> dict[str, Any]:
     try:
         return await _post_json(webhook, method, body)
@@ -424,17 +520,27 @@ async def _post_json(webhook: str, method: str, body: dict[str, Any]) -> dict[st
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(url, json=body, headers={"Accept": "application/json"})
     except httpx.HTTPError as exc:
-        raise ImbotError("BITRIX_UNREACHABLE", exc.__class__.__name__) from exc
+        error = ImbotError("BITRIX_UNREACHABLE", exc.__class__.__name__)
+        _log_bitrix_failure(webhook, method, body, error, None)
+        raise error from exc
     try:
         data = response.json()
     except Exception as exc:
-        raise ImbotError("BITRIX_BAD_RESPONSE", f"HTTP {response.status_code}") from exc
+        error = ImbotError("BITRIX_BAD_RESPONSE", f"HTTP {response.status_code}")
+        _log_bitrix_failure(webhook, method, body, error, response.status_code)
+        raise error from exc
     if not isinstance(data, dict):
-        raise ImbotError("BITRIX_BAD_RESPONSE", f"HTTP {response.status_code}")
+        error = ImbotError("BITRIX_BAD_RESPONSE", f"HTTP {response.status_code}")
+        _log_bitrix_failure(webhook, method, body, error, response.status_code)
+        raise error
     if data.get("error"):
-        raise ImbotError(str(data.get("error")), str(data.get("error_description") or ""))
+        error = ImbotError(str(data.get("error")), str(data.get("error_description") or ""))
+        _log_bitrix_failure(webhook, method, body, error, response.status_code)
+        raise error
     if response.status_code >= 400:
-        raise ImbotError("BITRIX_HTTP", f"HTTP {response.status_code}")
+        error = ImbotError("BITRIX_HTTP", f"HTTP {response.status_code}")
+        _log_bitrix_failure(webhook, method, body, error, response.status_code)
+        raise error
     result = data.get("result")
     return result if isinstance(result, dict) else {"result": result}
 

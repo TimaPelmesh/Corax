@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from datetime import datetime, timedelta, timezone
@@ -345,6 +347,80 @@ def test_ownership_error_hides_the_english_sentence():
     assert "another rest application" not in text
     assert "webhook" not in text.lower()
     assert client_error_text("WEBHOOK_REQUIRED", "Укажите входящий вебхук") == "Укажите входящий вебхук"
+
+
+def test_replaced_webhook_tells_a_deleted_bot_from_a_new_webhook():
+    from app.imbot_v2 import client_error_text, explain_webhook_replace, is_bot_missing
+
+    assert is_bot_missing("BOT_NOT_FOUND", "Bot not found")
+    assert is_bot_missing("ERROR_BOT_NOT_FOUND", "")
+    assert not is_bot_missing("ERROR_METHOD_NOT_FOUND", "Method not found")
+
+    assert explain_webhook_replace(15, None, None, []) is None
+    assert explain_webhook_replace(15, None, ("BOT_NOT_FOUND", "Bot not found"), [15]) is None
+
+    rejected = explain_webhook_replace(
+        15,
+        ("INVALID_CREDENTIALS", "Invalid request credentials"),
+        ("INVALID_CREDENTIALS", "Invalid request credentials"),
+        None,
+    )
+    assert rejected is not None
+    assert rejected[0] == "WEBHOOK_REJECTED"
+    assert "Invalid request credentials" not in rejected[1]
+    assert "заблокированный вебхук" in rejected[1]
+    assert "секрет" not in rejected[1].lower() or "секретный код" in rejected[1]
+
+    other = explain_webhook_replace(15, None, ("BOT_OWNERSHIP_ERROR", "Bot was installed by another rest application"), [])
+    assert other is not None and other[0] == "WEBHOOK_OTHER_APP"
+    assert "another rest application" not in other[1]
+    assert "№15" in other[1]
+    text = client_error_text(other[0], other[1])
+    assert text == other[1]
+    assert len(text) == len(other[1])
+
+    gone = explain_webhook_replace(15, None, ("BOT_NOT_FOUND", "Bot not found"), [])
+    assert gone is not None and gone[0] == "BOT_MISSING"
+    assert "не найден" in gone[1]
+    assert "Bot not found" not in gone[1]
+    assert client_error_text(gone[0], gone[1]) == gone[1]
+
+    down = explain_webhook_replace(15, ("BITRIX_UNREACHABLE", "ConnectError"), ("BITRIX_UNREACHABLE", "ConnectError"), None)
+    assert down is not None and down[0] == "WEBHOOK_UNREACHABLE"
+
+
+def test_bitrix_failure_log_keeps_the_secret_and_the_token_out():
+    from app.imbot_v2 import _body_hint, _log_bitrix_failure, ImbotError
+
+    assert _body_hint({"botId": 15, "botToken": "super-secret-token"}) == " bot_id=15"
+    assert "super-secret-token" not in _body_hint({"botToken": "super-secret-token"})
+    records: list[str] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record.getMessage())
+
+    from app.imbot_v2 import log as bitrix_log
+
+    handler = _Capture()
+    bitrix_log.addHandler(handler)
+    bitrix_log.setLevel(logging.WARNING)
+    try:
+        _log_bitrix_failure(
+            "https://portal.example/rest/1/secret_value/",
+            "imbot.v2.Bot.get",
+            {"botId": 15, "botToken": "super-secret-token"},
+            ImbotError("BOT_NOT_FOUND", "Bot not found"),
+            401,
+        )
+    finally:
+        bitrix_log.removeHandler(handler)
+    assert len(records) == 1
+    assert "secret_value" not in records[0]
+    assert "super-secret-token" not in records[0]
+    assert "bot_id=15" in records[0]
+    assert "BOT_NOT_FOUND" in records[0]
+    assert "portal.example" in records[0]
 
 
 def test_reissued_webhook_is_explained_without_the_english_sentence():

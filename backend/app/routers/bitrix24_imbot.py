@@ -26,6 +26,7 @@ from app.imbot_v2 import (
     clean_event_mode,
     clean_token,
     client_error_text,
+    explain_webhook_replace,
     is_ownership_error,
     forget_vault_token,
     legacy_email_body,
@@ -327,28 +328,121 @@ def _raise(exc: ImbotError) -> None:
     raise HTTPException(status_code=400, detail=client_error_text(exc.code, exc.description)) from exc
 
 
-async def _keep_bot_on_new_webhook(row: Bitrix24Config, previous_url: str) -> None:
-    """A reissued webhook is a new secret, not a new bot.
+_KEEP_NEW_WEBHOOK = frozenset({"BOT_MISSING", "BOT_UNREACHABLE"})
 
-    Bitrix identifies the bot by the botToken saved at registration. Saving a
-    new incoming URL asks Bot.get with that token. A dead secret or a webhook
-    that cannot see this bot is refused, and the previous URL stays.
+
+async def _probe_webhook(url: str) -> ImbotError | None:
+    """profile checks the secret alone. A missing bot is a later call."""
+    try:
+        await call(url, "profile", {})
+    except ImbotError as exc:
+        log.warning(
+            "bitrix profile failed host=%s error=%s description=%s",
+            webhook_host(url) or "-",
+            exc.code,
+            exc.description,
+        )
+        return exc
+    log.info("bitrix profile ok host=%s", webhook_host(url) or "-")
+    return None
+
+
+async def _read_saved_bot(url: str, bot_id: int, token: str) -> tuple[ImbotError | None, list[int] | None]:
+    """Bot.get, then Bot.list. The list is how we see whether the id still exists."""
+    try:
+        safe = clean_token(token, required=True)
+    except ImbotError as exc:
+        return exc, None
+    try:
+        await call(url, "imbot.v2.Bot.get", {"botId": int(bot_id), "botToken": safe})
+    except ImbotError as exc:
+        log.warning(
+            "bitrix bot get failed bot_id=%s host=%s error=%s description=%s",
+            int(bot_id),
+            webhook_host(url) or "-",
+            exc.code,
+            exc.description,
+        )
+        get_error: ImbotError | None = exc
+    else:
+        log.info("bitrix bot get ok bot_id=%s host=%s", int(bot_id), webhook_host(url) or "-")
+        return None, [int(bot_id)]
+    try:
+        result = await call(url, "imbot.v2.Bot.list", {"botToken": safe, "limit": 50, "offset": 0})
+    except ImbotError as exc:
+        log.warning(
+            "bitrix bot list failed bot_id=%s host=%s error=%s description=%s",
+            int(bot_id),
+            webhook_host(url) or "-",
+            exc.code,
+            exc.description,
+        )
+        return get_error, None
+    listed = [int(item["bot_id"]) for item in public_bots(result)]
+    log.info(
+        "bitrix bot list host=%s looking_for=%s ids=%s",
+        webhook_host(url) or "-",
+        int(bot_id),
+        listed,
+    )
+    if int(bot_id) in listed:
+        return None, listed
+    return get_error, listed
+
+
+async def _keep_bot_on_new_webhook(row: Bitrix24Config, previous_url: str) -> ImbotError | None:
+    """A reissued secret can still see the saved bot. A brand-new webhook cannot.
+
+    Returns an error when the bot was not read. BOT_MISSING and BOT_UNREACHABLE
+    leave the new URL in place. Every other code has already put the previous
+    URL back. None means the stored bot answered on the new URL.
     """
     new_url = (row.bot_webhook_url or "").strip()
     if not new_url or new_url == (previous_url or "").strip() or not row.bot_id:
-        return
-    token = _auth_token(row, int(row.bot_id))
+        return None
+    bot_id = int(row.bot_id)
+    log.info(
+        "bitrix webhook replace bot_id=%s from_host=%s to_host=%s token_set=%s",
+        bot_id,
+        webhook_host(previous_url) or "-",
+        webhook_host(new_url) or "-",
+        bool(_auth_token(row, bot_id)),
+    )
+    probe = await _probe_webhook(new_url)
+    token = _auth_token(row, bot_id)
     if not token:
-        return
-    try:
-        await call(
-            new_url,
-            "imbot.v2.Bot.get",
-            {"botId": int(row.bot_id), "botToken": clean_token(token, required=True)},
-        )
-    except ImbotError:
+        if probe is None:
+            log.warning("bitrix webhook has no stored bot token bot_id=%s host=%s", bot_id, webhook_host(new_url) or "-")
+            return None
         row.bot_webhook_url = previous_url
-        raise
+        explained = explain_webhook_replace(
+            bot_id,
+            (probe.code, probe.description),
+            (probe.code, probe.description),
+            None,
+        )
+        if explained is None:
+            return None
+        code, text = explained
+        log.warning("bitrix webhook reverted bot_id=%s reason=%s listed=-", bot_id, code)
+        return ImbotError(code, text)
+    get_error, listed = await _read_saved_bot(new_url, bot_id, token)
+    explained = explain_webhook_replace(
+        bot_id,
+        None if probe is None else (probe.code, probe.description),
+        None if get_error is None else (get_error.code, get_error.description),
+        listed,
+    )
+    if explained is None:
+        log.info("bitrix bot still on webhook bot_id=%s host=%s ids=%s", bot_id, webhook_host(new_url) or "-", listed)
+        return None
+    code, text = explained
+    if code not in _KEEP_NEW_WEBHOOK:
+        row.bot_webhook_url = previous_url
+        log.warning("bitrix webhook reverted bot_id=%s reason=%s listed=%s", bot_id, code, listed)
+    else:
+        log.warning("bitrix webhook kept bot_id=%s reason=%s listed=%s", bot_id, code, listed)
+    return ImbotError(code, text)
 
 
 def _auth_token(row: Bitrix24Config, bot_id: int | None) -> str:
@@ -397,9 +491,13 @@ async def save_bot_settings(
     previous_url = (row.bot_webhook_url or "").strip()
     try:
         _apply_save(row, body)
-        await _keep_bot_on_new_webhook(row, previous_url)
+        kept = await _keep_bot_on_new_webhook(row, previous_url)
     except ImbotError as exc:
         _raise(exc)
+    if kept is not None:
+        if kept.code in _KEEP_NEW_WEBHOOK:
+            await db.commit()
+        _raise(kept)
     await db.commit()
     await db.refresh(row)
     return _out(row, _panel_origin(request))
@@ -464,6 +562,12 @@ async def list_known_bots(
                     break
                 offset += 50
         except ImbotError as exc:
+            log.warning(
+                "bitrix bot list token skipped host=%s error=%s description=%s",
+                webhook_host(row.bot_webhook_url or "") or "-",
+                exc.code,
+                exc.description,
+            )
             if is_ownership_error(exc.code, exc.description):
                 continue
             errors.append(exc)
