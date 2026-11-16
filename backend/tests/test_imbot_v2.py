@@ -330,7 +330,7 @@ def test_custom_phrase_replaces_only_that_line():
 
 
 def test_ticket_waits_for_the_button():
-    assert intake_step("ONIMBOTV2JOINCHAT", "", "", enabled=True, waiting=False) == "greet"
+    assert intake_step("ONIMBOTV2JOINCHAT", "", "", enabled=True, waiting=False) == "skip"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Оставить заявку", enabled=True, waiting=False) == "ask"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Не печатает", enabled=True, waiting=False) == "nudge"
     assert intake_step("ONIMBOTV2MESSAGEADD", "", "Не печатает", enabled=True, waiting=True) == "take"

@@ -25,6 +25,7 @@ POLL_SECONDS = 2
 _fetch_switched = False
 _menu_published: set[int] = set()
 _drain: set[int] = set()
+_startup_drained = False
 
 
 def mark_drain(bot_id: int) -> None:
@@ -171,8 +172,11 @@ async def poll_once(db: AsyncSession | None = None) -> None:
 
 
 async def _poll_remote(snap: SimpleNamespace) -> None:
+    global _startup_drained
     await _ensure_fetch(snap)  # type: ignore[arg-type]
     bot_id = int(snap.bot_id or 0)
+    if bot_id and not _startup_drained:
+        _drain.add(bot_id)
     if bot_id and bot_id not in _menu_published and await publish_menu(snap):  # type: ignore[arg-type]
         _menu_published.add(bot_id)
     offset = snap.bot_event_offset
@@ -214,6 +218,7 @@ async def _poll_remote(snap: SimpleNamespace) -> None:
                     await db.commit()
         if draining and not result.get("hasMore"):
             _drain.discard(bot_id)
+            _startup_drained = True
         if nxt is not None:
             offset = nxt
         if not result.get("hasMore"):

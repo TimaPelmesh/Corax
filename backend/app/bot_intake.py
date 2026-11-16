@@ -445,10 +445,10 @@ def intake_step(event: str, command: str, text: str, *, enabled: bool, waiting: 
     kind = (event or "").strip()
     if kind not in {"ONIMBOTV2JOINCHAT", "ONIMBOTV2MESSAGEADD", "ONIMBOTV2COMMANDADD"}:
         return "skip"
+    if kind == "ONIMBOTV2JOINCHAT":
+        return "skip"
     if not enabled:
         return "off"
-    if kind == "ONIMBOTV2JOINCHAT":
-        return "greet"
     body = (text or "").strip()
     if normalize_command(command) == TICKET_COMMAND or body == TICKET_COMMAND:
         return "ask"

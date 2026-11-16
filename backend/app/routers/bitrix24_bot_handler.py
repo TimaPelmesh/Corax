@@ -325,6 +325,7 @@ async def _open_bitrix_ticket(db: AsyncSession, cfg: Bitrix24Config, event: dict
 
 _recent_reply: dict[str, float] = {}
 _own_messages: set[str] = set()
+_echo_labels: dict[str, set[str]] = {}
 
 
 def _reply_too_soon(key: str, seconds: float = 15) -> bool:
@@ -337,6 +338,30 @@ def _reply_too_soon(key: str, seconds: float = 15) -> bool:
     if len(_recent_reply) > 400:
         _recent_reply.clear()
     return False
+
+
+def arm_keyboard_echo(state_key: str, keyboard: list[dict[str, str]] | None) -> None:
+    """The labels just sent. The next copy of each one is the portal echoing the keyboard, not a click."""
+    labels = {
+        str(button.get("TEXT") or "").strip().casefold()
+        for button in (keyboard or [])
+        if str(button.get("TEXT") or "").strip()
+    }
+    key = (state_key or "")[:64]
+    if key and labels:
+        _echo_labels[key] = labels
+
+
+def swallow_keyboard_echo(state_key: str, text: str) -> bool:
+    key = (state_key or "")[:64]
+    labels = _echo_labels.get(key)
+    token = (text or "").strip().casefold()
+    if not labels or token not in labels:
+        return False
+    labels.discard(token)
+    if not labels:
+        _echo_labels.pop(key, None)
+    return True
 
 
 def remember_own_message(message_id: str) -> None:
@@ -521,6 +546,11 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
         return {"ok": True, "note": "own message"}
     if event.get("from_bot") == "1" or (event.get("user_id") and event["user_id"] == stored_id):
         return {"ok": True, "note": "own message"}
+    phase_key_early = _phase_key(event)
+    if swallow_keyboard_echo(phase_key_early, event.get("text") or "") or swallow_keyboard_echo(
+        phase_key_early, event.get("command") or ""
+    ):
+        return {"ok": True, "note": "keyboard echo"}
     dialogs = dialog_candidates(event)
     if not dialogs:
         log.warning("bitrix event without dialog event=%s", event["event"])
@@ -631,90 +661,9 @@ async def _remember_keyboard(db: AsyncSession, state_key: str, message_id: str, 
     await db.commit()
 
 
-def _line_for_keyboard(sig: str, voice: BotVoice) -> str:
-    """Text that belongs on the bubble that still shows these buttons."""
-    label = (sig or "").strip()
-    if label == CANCEL:
-        return ask_text("", voice)
-    if label == LEAVE:
-        return greeting_text("", voice)
-    return ""
-
-
-def _personal_dialog(key: str) -> str:
-    if not key.startswith("user:"):
-        return ""
-    user_id = key.split(":", 1)[1].strip()
-    return user_id if user_id.isdigit() else ""
-
-
 async def show_saved_phrases(db: AsyncSession, cfg: Bitrix24Config) -> bool:
-    """Put the phrases just applied into the chat the admin is looking at.
-
-    Bitrix keeps old bubbles. Saving a script does not change them, so the
-    latest greeting (or the ask prompt) is rewritten in place. When that
-    message id is missing, one new greeting is posted into the newest chat.
-    """
-    webhook = (cfg.bot_webhook_url or "").strip()
-    token = (cfg.bot_token or "").strip()
-    if not cfg.bot_id or not webhook or not token:
-        return False
-    voice = _voice(cfg)
-    rows = (
-        await db.scalars(select(BitrixBotDialog).order_by(BitrixBotDialog.updated_at.desc()).limit(8))
-    ).all()
-    # Plain copies: the HTTP calls below must not keep a pool slot.
-    saved = [
-        (
-            row.dialog_id or "",
-            (row.keyboard_message_id or "").strip(),
-            (row.keyboard_sig or "").strip(),
-        )
-        for row in rows
-    ]
-    await release_connection(db)
-    for dialog_id, message_id, label in saved:
-        body = _line_for_keyboard(label, voice)
-        if not message_id.isdigit() or not body:
-            continue
-        buttons = send_keyboard(CANCEL if label == CANCEL else LEAVE)
-        try:
-            await imbot_call(
-                webhook,
-                "imbot.v2.Chat.Message.update",
-                {
-                    "botId": int(cfg.bot_id),
-                    "botToken": token,
-                    "messageId": int(message_id),
-                    "fields": {"message": body[:4000], "keyboard": buttons},
-                },
-            )
-            log.info("bitrix phrase rewritten message=%s", message_id)
-            return True
-        except ImbotError as exc:
-            log.warning("bitrix phrase update failed code=%s", exc.code)
-    buttons = send_keyboard(LEAVE)
-    text = greeting_text("", voice)
-    for stored_id, _message_id, _label in saved:
-        dialog_id = _personal_dialog(stored_id)
-        if not dialog_id:
-            continue
-        try:
-            result = await imbot_call(
-                webhook,
-                "imbot.v2.Chat.Message.send",
-                {
-                    "botId": int(cfg.bot_id),
-                    "botToken": token,
-                    "dialogId": dialog_id,
-                    "fields": {"message": text[:4000], "keyboard": buttons},
-                },
-            )
-            await _remember_keyboard(db, stored_id, _sent_id(result), keyboard_sig(buttons))
-            log.info("bitrix phrase posted dialog=%s", dialog_id)
-            return True
-        except ImbotError as exc:
-            log.warning("bitrix phrase send failed code=%s", exc.code)
+    """Keep the new phrases in Corax. The chat stays quiet until a person writes."""
+    del db, cfg
     return False
 
 
@@ -781,6 +730,8 @@ async def _v2_reply(
                 },
             )
             remember_own_message(_sent_id(result))
+            if attach:
+                arm_keyboard_echo(state_key, attach)
             if attach and db is not None:
                 await _remember_keyboard(db, state_key, _sent_id(result), sig)
             return True
