@@ -4,12 +4,18 @@ import json
 import re
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
 
 from app.config import settings
-from app.wikirag_context_budget import shrink_messages
+from app.wikirag_context_budget import (
+    human_lm_studio_error,
+    is_context_overflow_error,
+    parse_lm_error_body,
+    shrink_messages,
+)
 
 ChatMode = Literal["simple", "rag"]
 QuestionFocus = Literal["os_hardware", "software", "tickets", "network", "general"]
@@ -74,14 +80,16 @@ def completion_max_tokens(
     max_tokens = max(768, configured)
     rm = (response_mode or "fast").strip().lower()
     if mode == "rag":
-        floor = 768 if rm == "detailed" else 512
-        max_tokens = max(min(max_tokens, 1024), floor)
+        # detailed (Research / длинные списки) — до 3072; fast Ask — до 1536.
+        ceiling = 3072 if rm == "detailed" else 1536
+        floor = 1024 if rm == "detailed" else 768
+        max_tokens = max(min(max_tokens, ceiling), floor)
     else:
-        max_tokens = min(max(max_tokens, 512), 1024)
+        max_tokens = min(max(max_tokens, 512), 1536)
         if last_user_chars < 80:
-            max_tokens = min(max_tokens, 768)
+            max_tokens = min(max_tokens, 1024)
     ctx = ollama_num_ctx()
-    hard_cap = max(512, min(4096, ctx // 5))
+    hard_cap = max(768, min(4096, ctx // 4))
     return max(512, min(max_tokens, hard_cap))
 
 
@@ -881,41 +889,82 @@ def _pick_model(configured: str, available: list[str], preferred: str | None = N
     return available[0]
 
 
-async def lm_studio_chat(
-    messages: list[dict[str, str]],
+def _parse_tool_calls(msg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize OpenAI-style tool_calls from a chat completion message."""
+    raw = msg.get("tool_calls")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for i, tc in enumerate(raw):
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = str(fn.get("name") or tc.get("name") or "").strip()
+        if not name:
+            continue
+        args_raw = fn.get("arguments", tc.get("arguments", "{}"))
+        if isinstance(args_raw, dict):
+            args = args_raw
+        else:
+            try:
+                args = json.loads(args_raw or "{}")
+                if not isinstance(args, dict):
+                    args = {}
+            except (TypeError, json.JSONDecodeError):
+                args = {}
+        out.append(
+            {
+                "id": str(tc.get("id") or f"call_{i}"),
+                "type": "function",
+                "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
+                "name": name,
+                "arguments": args,
+            }
+        )
+    return out
+
+
+@dataclass
+class LmChatResult:
+    content: str
+    model: str | None
+    tool_calls: list[dict[str, Any]]
+    finish_reason: str
+    raw_message: dict[str, Any]
+
+
+async def lm_studio_chat_raw(
+    messages: list[dict[str, Any]],
     *,
     base_url: str | None = None,
     model: str | None = None,
     mode: ChatMode = "rag",
     response_mode: str = "fast",
-) -> tuple[str, str | None]:
-    from app.wikirag_context_budget import (
-        human_lm_studio_error,
-        is_context_overflow_error,
-        parse_lm_error_body,
-    )
-
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
+    max_tokens_override: int | None = None,
+) -> LmChatResult:
+    """One non-stream completion; optionally with OpenAI tools. Returns tool_calls when present."""
     base = _base_url(base_url)
     provider = detect_llm_provider(base)
     label = llm_provider_label(provider)
     read_timeout = float(settings.lm_studio_timeout_seconds or 300)
     configured = (settings.lm_studio_model or "").strip()
     preferred = (model or "").strip() or None
-    last_len = len((messages[-1].get("content") or "")) if messages else 0
-    max_tokens = completion_max_tokens(mode=mode, response_mode=response_mode, last_user_chars=last_len)
+    last_len = len(str((messages[-1].get("content") or ""))) if messages else 0
+    max_tokens = max_tokens_override or completion_max_tokens(
+        mode=mode, response_mode=response_mode, last_user_chars=last_len
+    )
 
-    attempt_messages = [dict(m) for m in messages]
+    attempt_messages: list[dict[str, Any]] = [dict(m) for m in messages]
     last_detail = ""
     role_fallback_applied = False
     length_retry_done = False
+    tools_stripped = False
     _MAX_OUT_TOKENS = 4096
+    picked_model = preferred or configured or None
 
     async with _lm_client(read=read_timeout) as client:
-        # Не спрашиваем /models на каждом сообщении: это отдельный round-trip
-        # в критическом пути и большинство OpenAI-compatible серверов принимают
-        # явно заданную модель без предварительного discovery.
-        picked_model = preferred or configured or None
-
         url = f"{base}/chat/completions"
         for attempt in range(4):
             payload: dict[str, Any] = {
@@ -928,6 +977,9 @@ async def lm_studio_chat(
                 payload["options"] = _ollama_options(max_tokens=max_tokens, mode=mode)
             if picked_model:
                 payload["model"] = picked_model
+            if tools and not tools_stripped:
+                payload["tools"] = tools
+                payload["tool_choice"] = tool_choice or "auto"
 
             try:
                 res = await client.post(url, json=payload)
@@ -960,14 +1012,26 @@ async def lm_studio_chat(
                 msg = choice0.get("message") or {}
                 if not isinstance(msg, dict):
                     msg = {}
+                tool_calls = _parse_tool_calls(msg)
                 content = _message_text_from_lm(msg)
-                if content:
-                    used_model = data.get("model") or picked_model
-                    return content, used_model
-
                 fr = str(choice0.get("finish_reason") or data.get("finish_reason") or "").lower()
-                # Thinking-модель исчерпала бюджет на reasoning → content пустой.
-                # Повторяем с большим max_tokens и явной просьбой без CoT.
+                used_model = data.get("model") or picked_model
+                if tool_calls:
+                    return LmChatResult(
+                        content=content or "",
+                        model=used_model,
+                        tool_calls=tool_calls,
+                        finish_reason=fr or "tool_calls",
+                        raw_message=msg,
+                    )
+                if content:
+                    return LmChatResult(
+                        content=content,
+                        model=used_model,
+                        tool_calls=[],
+                        finish_reason=fr or "stop",
+                        raw_message=msg,
+                    )
                 if (
                     not length_retry_done
                     and attempt < 3
@@ -975,6 +1039,9 @@ async def lm_studio_chat(
                 ):
                     length_retry_done = True
                     max_tokens = min(_MAX_OUT_TOKENS, max(max_tokens * 2, 3072))
+                    attempt_messages = _append_no_think_hint(
+                        [{**m, "content": str(m.get("content") or "")} for m in attempt_messages]
+                    )
                     continue
                 raise RuntimeError(
                     f"{label} вернул пустой текст (finish_reason={fr!r}). "
@@ -987,22 +1054,32 @@ async def lm_studio_chat(
             except Exception:
                 body_json = None
             last_detail = parse_lm_error_body(body_text, body_json)
+            low = (last_detail or "").lower()
+            if tools and not tools_stripped and (
+                "tool" in low or "function" in low or res.status_code in (400, 422)
+            ):
+                tools_stripped = True
+                continue
             if is_context_overflow_error(last_detail) and attempt < 3:
-                attempt_messages = shrink_messages(attempt_messages)
+                attempt_messages = shrink_messages(
+                    [{**m, "content": str(m.get("content") or "")} for m in attempt_messages]
+                )
                 max_tokens = max(256, int(max_tokens * 0.8))
                 continue
             if (
-                "only user and assistant roles are supported" in (last_detail or "").lower()
+                "only user and assistant roles are supported" in low
                 and not role_fallback_applied
                 and attempt < 3
             ):
-                attempt_messages = _messages_without_system_role(attempt_messages)
+                attempt_messages = _messages_without_system_role(
+                    [{**m, "content": str(m.get("content") or "")} for m in attempt_messages]
+                )
                 role_fallback_applied = True
                 continue
             if _CHANNEL_ERR_RE.search(last_detail or "") and attempt < 3:
-                # Часто на локальных моделях это перегруз контекста/памяти:
-                # ужимаем контекст и выход, затем пробуем ещё раз.
-                attempt_messages = shrink_messages(attempt_messages)
+                attempt_messages = shrink_messages(
+                    [{**m, "content": str(m.get("content") or "")} for m in attempt_messages]
+                )
                 max_tokens = max(256, int(max_tokens * 0.7))
                 continue
             if res.status_code == 504:
@@ -1012,6 +1089,50 @@ async def lm_studio_chat(
     raise RuntimeError(
         human_lm_studio_error(0, last_detail or "неизвестная ошибка", provider=provider)
     )
+
+
+async def lm_studio_chat(
+    messages: list[dict[str, str]],
+    *,
+    base_url: str | None = None,
+    model: str | None = None,
+    mode: ChatMode = "rag",
+    response_mode: str = "fast",
+) -> tuple[str, str | None]:
+    result = await lm_studio_chat_raw(
+        list(messages),
+        base_url=base_url,
+        model=model,
+        mode=mode,
+        response_mode=response_mode,
+    )
+    return result.content, result.model
+
+
+def _continuation_messages(messages: list[dict[str, Any]], partial: str) -> list[dict[str, str]]:
+    """Ask the model to continue from a truncated answer without re-dumping tools."""
+    system = ""
+    for m in messages:
+        if m.get("role") == "system":
+            system = str(m.get("content") or "")
+            break
+    clipped = (partial or "").strip()
+    if len(clipped) > 2500:
+        clipped = clipped[-2500:]
+    out: list[dict[str, str]] = []
+    if system:
+        out.append({"role": "system", "content": system})
+    out.append(
+        {
+            "role": "user",
+            "content": (
+                "Предыдущий ответ оборвался. Продолжи строго с места обрыва "
+                "по-русски, без повтора уже сказанного и без thinking process.\n\n"
+                f"Обрыв:\n{clipped}"
+            ),
+        }
+    )
+    return _append_no_think_hint(out)
 
 
 def read_stream_usage(event: dict[str, Any]) -> tuple[int | None, int | None]:
@@ -1074,12 +1195,12 @@ async def lm_studio_chat_stream(
     model: str | None = None,
     mode: ChatMode = "rag",
     response_mode: str = "fast",
+    question: str = "",
 ) -> AsyncIterator[tuple[str, str | None, dict[str, Any] | None]]:
     """Стримит текстовые delta OpenAI-compatible chat completion.
 
     Модель выбирается без /models, чтобы первый токен не ждал лишний запрос.
-    Повторная отправка запроса во время уже начатого стрима недопустима:
-    она может продублировать ответ, поэтому ошибки передаются вызывающему коду.
+    При finish_reason=length / пустом / слабом ответе — один non-stream continuation.
     """
     base = _base_url(base_url)
     provider = detect_llm_provider(base)
@@ -1104,6 +1225,10 @@ async def lm_studio_chat_stream(
     if picked_model:
         payload["model"] = picked_model
 
+    assembled: list[str] = []
+    finish_reason = ""
+    used_model = picked_model
+
     async with _lm_client(read=read_timeout) as client:
         try:
             body = payload
@@ -1117,7 +1242,6 @@ async def lm_studio_chat_stream(
                     if res.status_code != 200:
                         detail = await res.aread()
                         raise RuntimeError(f"{label}: HTTP {res.status_code}: {detail.decode(errors='replace')[:500]}")
-                    used_model = picked_model
                     usage_tokens: int | None = None
                     eval_duration_ns: int | None = None
                     chunk_count = 0
@@ -1146,6 +1270,9 @@ async def lm_studio_chat_stream(
                         if not isinstance(choices, list) or not choices:
                             continue
                         choice = choices[0] if isinstance(choices[0], dict) else {}
+                        fr = choice.get("finish_reason") or event.get("finish_reason")
+                        if isinstance(fr, str) and fr:
+                            finish_reason = fr.lower()
                         delta = choice.get("delta") or {}
                         if not isinstance(delta, dict):
                             continue
@@ -1168,6 +1295,7 @@ async def lm_studio_chat_stream(
                             gen_end = now
                             chunk_count += len(pieces)
                         for piece in pieces:
+                            assembled.append(piece)
                             yield piece, used_model, None
                     if provider == "ollama":
                         tokens = usage_tokens or chunk_count
@@ -1181,6 +1309,7 @@ async def lm_studio_chat_stream(
                                     "provider": "ollama",
                                     "completion_tokens": tokens,
                                     "tokens_per_second": rate,
+                                    "finish_reason": finish_reason or None,
                                 },
                             )
                     break
@@ -1195,6 +1324,44 @@ async def lm_studio_chat_stream(
             raise RuntimeError(f"Нет соединения с {label} ({base}). {hint}") from e
         except httpx.HTTPError as e:
             raise RuntimeError(f"Нет связи с {label} ({base}): {e}") from e
+
+    text = _sanitize_model_output("".join(assembled))
+    need_continue = (
+        finish_reason in ("length", "max_tokens")
+        or not text
+        or is_weak_or_truncated_answer(text, question=question)
+    )
+    if not need_continue:
+        return
+    try:
+        cont_msgs = _continuation_messages(list(messages), text or "".join(assembled))
+        cont_budget = min(4096, max(max_tokens * 2, 2048))
+        result = await lm_studio_chat_raw(
+            cont_msgs,
+            base_url=base_url,
+            model=model,
+            mode=mode,
+            response_mode=response_mode,
+            max_tokens_override=cont_budget,
+        )
+        extra = (result.content or "").strip()
+        if not extra:
+            return
+        # If first pass was empty/weak — replace by yielding only continuation
+        # (UI already got weak deltas; append continuation so the answer completes).
+        if text and not is_weak_or_truncated_answer(text, question=question):
+            # True length cut: append with a newline separator if needed.
+            if not text.endswith(("\n", " ", "-", "—")):
+                yield "\n", result.model or used_model, {"continued": True}
+            yield extra, result.model or used_model, {"continued": True}
+        else:
+            # Weak/empty first pass: still append so user sees something usable.
+            if text:
+                yield "\n", result.model or used_model, {"continued": True}
+            yield extra, result.model or used_model, {"continued": True}
+    except Exception:
+        # Continuation is best-effort — keep whatever the stream already sent.
+        return
 
 
 async def lm_studio_health(*, base_url: str | None = None, preferred_model: str | None = None) -> dict[str, Any]:

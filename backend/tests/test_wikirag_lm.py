@@ -1,15 +1,19 @@
 from app.wikirag_lm import (
     _append_no_think_hint,
+    _continuation_messages,
     _has_reasoning_only,
     _looks_like_reasoning_dump,
     _message_text_from_lm,
     _parse_model_context_length,
+    _parse_tool_calls,
     _sanitize_model_output,
     _strip_think_blocks,
     coerce_parsed,
+    completion_max_tokens,
     detect_llm_provider,
     extract_answer_text,
     is_bad_lm_answer,
+    is_weak_or_truncated_answer,
     llm_provider_label,
     normalize_lm_base_url,
     rewrite_lm_base_url_for_runtime,
@@ -140,3 +144,48 @@ def test_rewrite_localhost_for_docker(monkeypatch):
     assert rewrite_lm_base_url_for_runtime("http://127.0.0.1:11434/v1") == "http://host.docker.internal:11434/v1"
     assert rewrite_lm_base_url_for_runtime("http://localhost:1234/v1") == "http://host.docker.internal:1234/v1"
     assert rewrite_lm_base_url_for_runtime("http://192.168.1.10:11434/v1") == "http://192.168.1.10:11434/v1"
+
+
+def test_completion_max_tokens_rag_ceilings(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "lm_studio_max_tokens", 4096)
+    monkeypatch.setattr("app.wikirag_lm.ollama_num_ctx", lambda: 16384)
+    fast = completion_max_tokens(mode="rag", response_mode="fast")
+    detailed = completion_max_tokens(mode="rag", response_mode="detailed")
+    assert 768 <= fast <= 1536
+    assert 1024 <= detailed <= 3072
+    assert detailed >= fast
+
+
+def test_parse_tool_calls_normalizes_arguments():
+    msg = {
+        "tool_calls": [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "search_wiki", "arguments": '{"query": "chrome"}'},
+            }
+        ]
+    }
+    parsed = _parse_tool_calls(msg)
+    assert len(parsed) == 1
+    assert parsed[0]["name"] == "search_wiki"
+    assert parsed[0]["arguments"]["query"] == "chrome"
+
+
+def test_continuation_messages_are_compact():
+    msgs = _continuation_messages(
+        [{"role": "system", "content": "sys"}, {"role": "user", "content": "long context"}],
+        "Ответ оборвался на сло",
+    )
+    assert msgs[0]["role"] == "system"
+    assert "оборвался" in msgs[-1]["content"]
+    assert "Ответ оборвался на сло" in msgs[-1]["content"]
+
+
+def test_weak_or_truncated_answer():
+    assert is_weak_or_truncated_answer("ПК PC-1 на")
+    assert not is_weak_or_truncated_answer(
+        "Вывод: приоритет PC-OLD. Сравнил ОС и RAM по выборке."
+    )

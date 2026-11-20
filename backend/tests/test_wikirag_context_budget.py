@@ -42,3 +42,16 @@ def test_shrink_user_content_removes_corax_block():
     text = "Данные CORAX\n" + ("a" * 5000) + "\n\nЗагруженные документы:\nфайл\n\nВопрос: q"
     out = shrink_user_content(text)
     assert "aaaa" not in out or len(out) < len(text) // 2
+
+
+def test_shrink_user_content_keeps_question_and_tool_header():
+    wiki = "### tool:search_wiki\n" + ("w" * 4000)
+    pcs = "### tool:search_computers\nПод фильтр попало: 500. Показано: 15.\n" + "\n".join(
+        f"- PC-{i} os=Windows 10 ram=8" for i in range(80)
+    )
+    text = f"Факты.\n\nКонтекст:\n{pcs}\n\n{wiki}\n\nВопрос: какие ПК на Win10?\n\nОтвет:"
+    out = shrink_user_content(text, keep_ratio=0.35)
+    assert "Вопрос: какие ПК на Win10?" in out
+    assert "### tool:search_computers" in out
+    assert "Под фильтр попало" in out
+    assert len(out) < len(text)

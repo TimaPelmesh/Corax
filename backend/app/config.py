@@ -120,9 +120,8 @@ class Settings(BaseSettings):
     # Explicit opt-in only: auto-importing CORAX at boot can unexpectedly
     # replace a user's WikiRAG corpus and trigger a full reindex.
     wiki_rag_corax_sync_minutes: int = 0
-    # False = classic RAG like script.py (retrieve MD chunks → strict prompt).
-    # True = legacy tools summaries (often too thin for inventory Q&A).
-    wiki_rag_use_tools: bool = False
+    # True = agent loop (OpenAI tools + compact fallback). False = classic RAG only.
+    wiki_rag_use_tools: bool = True
     # Потолок контекста классического RAG. 8 чанков × ~1–1.5 тыс. символов
     # помещаются в окно локальной 7B (около 8k токенов) вместе с ответом.
     wiki_rag_classic_context_chars: int = 9000

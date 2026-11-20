@@ -34,10 +34,12 @@ from app.wikirag_lm import QuestionFocus, classify_wikirag_question
 
 # Жёсткий потолок tool-контекста (legacy path). Classic RAG uses retrieve top-k instead.
 _TOOL_CONTEXT_MAX_CHARS = 18000
-_WIKI_CHUNK_MAX_CHARS = 12000
-_WIKI_TOP_K = 15
-_SEARCH_PC_LIMIT = 25
+_WIKI_CHUNK_MAX_CHARS = 6000
+_WIKI_TOP_K = 8
+_SEARCH_PC_LIMIT = 15
+_SEARCH_PC_LIMIT_MAX = 40
 _SEARCH_TICKET_LIMIT = 20
+_TOOL_RESULT_MAX_CHARS = 6000
 
 _PARK_WIDE_RE = re.compile(
     r"(список|все\s+пк|весь\s+парк|сколько|у\s+кого|каки[ех]\s+пк|по\s+парку|"
@@ -143,19 +145,29 @@ def _guess_hostnames(question: str, known: set[str]) -> list[str]:
     return hits[:8]
 
 
+def _clip_tool_text(text: str, *, max_chars: int = _TOOL_RESULT_MAX_CHARS) -> str:
+    t = (text or "").strip()
+    if len(t) <= max_chars:
+        return t
+    return t[: max_chars - 20].rstrip() + "\n… [обрезано]"
+
+
 async def tool_search_wiki(
     db: AsyncSession,
     question: str,
     documents: list[WikiRagDocument],
     *,
     top_k: int = _WIKI_TOP_K,
+    max_chars: int = _WIKI_CHUNK_MAX_CHARS,
 ) -> tuple[str, list[RagSource]]:
     if not documents:
         return "", []
-    ranked = await retrieve_relevant_chunks(db, question, documents, top_k=top_k)
+    k = max(1, min(int(top_k or _WIKI_TOP_K), 15))
+    cap = max(800, min(int(max_chars or _WIKI_CHUNK_MAX_CHARS), 12_000))
+    ranked = await retrieve_relevant_chunks(db, question, documents, top_k=k)
     if not ranked:
         return "", []
-    block, _meta = build_context_from_chunks(ranked, max_chars=_WIKI_CHUNK_MAX_CHARS)
+    block, _meta = build_context_from_chunks(ranked, max_chars=cap)
     sources = [
         RagSource(
             kind="wiki_chunk",
@@ -171,10 +183,16 @@ async def tool_search_wiki(
         )
         for ch in ranked
     ]
-    return f"### tool:search_wiki\n{block}", sources
+    return _clip_tool_text(f"### tool:search_wiki\n{block}"), sources
 
 
-def _pc_card(pc: Computer, *, software_n: int = 12) -> str:
+def _pc_card(pc: Computer, *, software_n: int = 12, compact: bool = False) -> str:
+    if compact:
+        return (
+            f"- {pc.hostname} os={pc.os_name or '—'} "
+            f"ver={pc.os_version or '—'} ram={pc.ram_gb if pc.ram_gb is not None else '—'} "
+            f"cpu={pc.cpu or '—'} ip={pc.ip_address or '—'}"
+        )
     tags = ", ".join(t.name for t in (pc.tags or [])[:10]) or "—"
     sw = ", ".join((s.name or "") for s in (pc.software or [])[:software_n] if s.name) or "—"
     return (
@@ -185,11 +203,75 @@ def _pc_card(pc: Computer, *, software_n: int = 12) -> str:
     )
 
 
+def _pc_aggregates(pcs: list[Computer], *, term: str | None = None) -> list[str]:
+    """Compact histograms so a 500-PC match set does not dump into the prompt."""
+    if not pcs:
+        return []
+    os_hist: dict[str, int] = {}
+    ram_buckets = {"≤4": 0, "5–8": 0, "9–16": 0, ">16": 0, "?": 0}
+    for pc in pcs:
+        key = (pc.os_name or "неизвестно").strip() or "неизвестно"
+        if pc.os_version:
+            key = f"{key} {pc.os_version}".strip()
+        os_hist[key] = os_hist.get(key, 0) + 1
+        ram = pc.ram_gb
+        if ram is None:
+            ram_buckets["?"] += 1
+        elif float(ram) <= 4:
+            ram_buckets["≤4"] += 1
+        elif float(ram) <= 8:
+            ram_buckets["5–8"] += 1
+        elif float(ram) <= 16:
+            ram_buckets["9–16"] += 1
+        else:
+            ram_buckets[">16"] += 1
+    lines = [
+        "Агрегаты по совпавшим:",
+        "ОС: " + ", ".join(f"{k}={v}" for k, v in sorted(os_hist.items(), key=lambda x: -x[1])[:10]),
+        "RAM: " + ", ".join(f"{k}={v}" for k, v in ram_buckets.items() if v),
+    ]
+    needle = (term or "").strip().lower()
+    if needle:
+        hits = 0
+        for pc in pcs:
+            sw = " ".join((s.name or "") for s in (pc.software or [])[:100]).lower()
+            if needle in sw:
+                hits += 1
+        lines.append(f"ПО «{term}»: на {hits} из {len(pcs)}")
+    return lines
+
+
 def needs_live_inventory_tools(question: str, focus: QuestionFocus | str) -> bool:
-    """Park-wide / filter / ticket analysis — RAG top-k alone is too narrow."""
-    if focus in {"os_hardware", "software", "tickets"}:
+    """Park-wide / filter / ticket / network analysis — RAG top-k alone is too narrow."""
+    if focus in {"os_hardware", "software", "tickets", "network"}:
         return True
     return bool(_PARK_WIDE_RE.search(question or ""))
+
+
+def merge_pc_filters(question: str, explicit: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Merge NL-extracted filters with explicit tool args (explicit wins)."""
+    filters = _extract_pc_filters(question)
+    if not explicit:
+        return filters
+    out = dict(filters)
+    for key in ("os", "ram_lt", "ram_gt", "ram_eq"):
+        if explicit.get(key) is not None and explicit.get(key) != "":
+            out[key] = explicit[key]
+    terms: list[str] = list(out.get("terms") or [])
+    for extra in (
+        explicit.get("terms"),
+        [explicit["software"]] if explicit.get("software") else None,
+    ):
+        if not extra:
+            continue
+        if isinstance(extra, str):
+            extra = [extra]
+        for tok in extra:
+            t = str(tok).strip().lower()
+            if t and t not in terms:
+                terms.append(t)
+    out["terms"] = terms[:8]
+    return out
 
 
 def _extract_pc_filters(question: str) -> dict[str, Any]:
@@ -327,15 +409,27 @@ async def tool_get_computer(db: AsyncSession, hostnames: list[str]) -> tuple[str
     return "\n".join(lines), sources
 
 
-async def tool_search_computers(db: AsyncSession, question: str) -> tuple[str, list[RagSource]]:
+async def tool_search_computers(
+    db: AsyncSession,
+    question: str,
+    *,
+    filters: dict[str, Any] | None = None,
+    limit: int | None = None,
+) -> tuple[str, list[RagSource]]:
     """Filtered park selection with totals — not RAG's first 2 similar chunks."""
     data = await _load_snapshot(db)
     computers: list[Computer] = list(data.get("computers") or [])
-    filters = _extract_pc_filters(question)
+    filters = merge_pc_filters(question, filters)
     matched = [pc for pc in computers if _pc_matches_filters(pc, filters)]
     # If filters were too aggressive and wiped everything, fall back to full park sample.
     used_fallback = False
-    if not matched and (filters.get("os") or filters.get("terms") or filters.get("ram_lt") or filters.get("ram_gt") or filters.get("ram_eq")):
+    if not matched and (
+        filters.get("os")
+        or filters.get("terms")
+        or filters.get("ram_lt")
+        or filters.get("ram_gt")
+        or filters.get("ram_eq")
+    ):
         matched = computers
         used_fallback = True
     elif not matched:
@@ -351,9 +445,12 @@ async def tool_search_computers(db: AsyncSession, question: str) -> tuple[str, l
                 excerpt=table[:220],
             )
         ]
-        return f"### tool:search_computers\n{table}", sources
+        return _clip_tool_text(f"### tool:search_computers\n{table}"), sources
 
-    show = matched[:_SEARCH_PC_LIMIT]
+    show_n = max(1, min(int(limit or _SEARCH_PC_LIMIT), _SEARCH_PC_LIMIT_MAX))
+    # Large match sets: prefer aggregates + compact rows over fat software dumps.
+    large = len(matched) > show_n
+    show = matched[:show_n]
     lines = [
         "### tool:search_computers",
         f"Всего в парке: {len(computers)}. Под фильтр попало: {len(matched)}"
@@ -373,6 +470,9 @@ async def tool_search_computers(db: AsyncSession, question: str) -> tuple[str, l
         filt_bits.append("terms=" + ",".join(filters["terms"]))
     if filt_bits:
         lines.append("Фильтр: " + "; ".join(filt_bits))
+    if large:
+        term0 = (filters.get("terms") or [None])[0]
+        lines.extend(_pc_aggregates(matched, term=term0 if isinstance(term0, str) else None))
     sources: list[RagSource] = [
         RagSource(
             kind="corax_tool",
@@ -382,7 +482,7 @@ async def tool_search_computers(db: AsyncSession, question: str) -> tuple[str, l
         )
     ]
     for pc in show:
-        card = _pc_card(pc, software_n=8)
+        card = _pc_card(pc, software_n=3 if large else 8, compact=large)
         lines.append(card)
         sources.append(
             RagSource(
@@ -395,8 +495,11 @@ async def tool_search_computers(db: AsyncSession, question: str) -> tuple[str, l
             )
         )
     if len(matched) > len(show):
-        lines.append(f"- … ещё {len(matched) - len(show)} (уточните фильтр: ОС, RAM, ПО, hostname)")
-    return "\n".join(lines), sources
+        lines.append(
+            f"- … ещё {len(matched) - len(show)} "
+            "(уточните фильтр: os / ram_lt / software — не просите весь парк)"
+        )
+    return _clip_tool_text("\n".join(lines)), sources
 
 
 async def tool_search_tickets(db: AsyncSession, question: str) -> tuple[str, list[RagSource]]:
@@ -501,7 +604,7 @@ async def tool_search_tickets(db: AsyncSession, question: str) -> tuple[str, lis
         )
     if len(matched) > len(show):
         lines.append(f"- … ещё {len(matched) - len(show)}")
-    return "\n".join(lines), sources
+    return _clip_tool_text("\n".join(lines)), sources
 
 
 def _guess_ips(question: str) -> list[str]:

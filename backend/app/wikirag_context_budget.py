@@ -112,8 +112,9 @@ def parse_lm_error_body(res_text: str, data: Any) -> str:
 
 
 def shrink_user_content(content: str, *, keep_ratio: float = 0.5) -> str:
-    """Ужимает последнее user-сообщение: сначала убирает CORAX, потом обрезает документы."""
+    """Ужимает последнее user-сообщение: tool-блоки и wiki, вопрос сохраняем."""
     text = content or ""
+    # Legacy markers (older prompts).
     if "Данные CORAX" in text:
         text = re.sub(
             r"Данные CORAX[\s\S]*?(?=\nЗагруженные документы:|\nВопрос:)",
@@ -129,11 +130,46 @@ def shrink_user_content(content: str, *, keep_ratio: float = 0.5) -> str:
             if len(block) > max_len:
                 block = block[: max_len - 20].rstrip() + "\n… [документы обрезаны]"
             text = text[: m.start(1)] + block + m.group(2) + text[m.end(2) :]
+
+    # Current prompt shape: «Контекст:» + optional ### tool: blocks + «Вопрос:».
+    if "Контекст:" in text:
+        m = re.search(r"(Контекст:\n)([\s\S]*?)(\n\nВопрос:)", text)
+        if m:
+            body = m.group(2)
+            # Prefer keeping live tool headers/totals; trim wiki / long tails first.
+            tool_parts = re.split(r"(?=### tool:)", body)
+            kept: list[str] = []
+            budget = max(600, int(len(body) * keep_ratio))
+            used = 0
+            for part in tool_parts:
+                if not part.strip():
+                    continue
+                # Keep first ~40 lines of search_computers / query_corax (totals + sample).
+                if part.lstrip().startswith("### tool:search_computers") or part.lstrip().startswith(
+                    "### tool:query_corax"
+                ):
+                    lines = part.splitlines()
+                    part = "\n".join(lines[:40])
+                    if len(lines) > 40:
+                        part += "\n… [tool сжат]"
+                elif part.lstrip().startswith("### tool:search_wiki") or not part.lstrip().startswith(
+                    "### tool:"
+                ):
+                    max_wiki = max(400, budget // 3)
+                    if len(part) > max_wiki:
+                        part = part[: max_wiki - 20].rstrip() + "\n… [wiki сжато]"
+                if used + len(part) + 2 > budget and kept:
+                    break
+                kept.append(part)
+                used += len(part) + 2
+            new_body = "\n\n".join(kept).strip() or "(контекст сжат)"
+            text = text[: m.start(1)] + m.group(1) + new_body + m.group(3) + text[m.end(3) :]
+
     if estimate_tokens(text) > prompt_token_budget() and len(text) > 600:
         qm = re.search(r"\n\nВопрос:[\s\S]*$", text)
         tail = qm.group(0) if qm else ""
         head_budget = chars_for_tokens(prompt_token_budget() // 2)
-        head = text[: head_budget - len(tail) - 30].rstrip() + "\n… [контекст сжат]"
+        head = text[: max(200, head_budget - len(tail) - 30)].rstrip() + "\n… [контекст сжат]"
         text = head + tail
     return text
 

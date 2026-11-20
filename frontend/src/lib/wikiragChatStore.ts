@@ -13,6 +13,8 @@ export type WikiRagChatTurn = {
   error?: boolean
   meta?: WikiRagChatResponse['meta']
   reveal?: boolean
+  /** Live agent progress (tool rounds) while waiting for the first delta. */
+  progressLabel?: string
   /** Ollama chunks and characters seen during this answer. Dropped once the reply settles. */
   streamTokens?: number
   streamChars?: number
@@ -346,6 +348,19 @@ export function sendWikiRagChatMessage(opts: {
               return { ...s, turns }
             })
           },
+          onProgress: (progress) => {
+            const label = typeof progress.label === 'string' ? progress.label.trim() : ''
+            if (!label) return
+            patchSession(fallbackTitle, sessionId, (s) => {
+              const turns = [...s.turns]
+              const last = turns.length - 1
+              const current = turns[last]
+              if (!current || current.role !== 'assistant') return s
+              if (current.content) return s
+              turns[last] = { ...current, progressLabel: label }
+              return { ...s, turns }
+            })
+          },
           onDelta: (text) => {
             patchSession(fallbackTitle, sessionId, (s) => {
               const turns = [...s.turns]
@@ -355,6 +370,7 @@ export function sendWikiRagChatMessage(opts: {
               turns[last] = {
                 ...current,
                 content: current.content + text,
+                progressLabel: undefined,
                 streamTokens: (current.streamTokens ?? 0) + 1,
                 streamChars: (current.streamChars ?? 0) + text.length,
                 streamStartedAt: current.streamStartedAt ?? Date.now(),
@@ -389,6 +405,7 @@ export function sendWikiRagChatMessage(opts: {
                 parsed,
                 meta: res.meta,
                 reveal: false,
+                progressLabel: undefined,
                 streamTokens: undefined,
                 streamChars: undefined,
                 streamStartedAt: undefined,

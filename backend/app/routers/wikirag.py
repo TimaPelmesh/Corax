@@ -111,6 +111,7 @@ from app.wikirag_research import (
     research_parsed_answer,
     research_sources,
 )
+from app.wikirag_agent import iter_wikirag_agent_stream, run_wikirag_agent_loop
 from app.wikirag_tools import needs_live_inventory_tools, run_wikirag_tools
 from app.wikirag_lm import (
     build_messages,
@@ -1013,6 +1014,27 @@ async def wiki_rag_chat_preview(
     )
 
 
+async def _load_chat_documents(
+    db: AsyncSession,
+    document_ids: list[int] | None,
+    *,
+    include_corax: bool,
+    question: str,
+) -> list[WikiRagDocument]:
+    r = await db.execute(select(WikiRagDocument).order_by(WikiRagDocument.id.desc()))
+    rows = list(r.scalars().all())
+    if document_ids:
+        id_set = set(document_ids)
+        rows = [row for row in rows if row.id in id_set]
+    elif rows:
+        rows = rows[:80]
+    if not include_corax:
+        rows = [row for row in rows if not _is_corax_doc_name(row.original_filename)]
+    else:
+        rows = _prioritize_corax_docs(rows, question=question)
+    return rows
+
+
 @router.post("/chat", response_model=WikiRagChatResponse)
 async def wiki_rag_chat(
     body: WikiRagChatRequest,
@@ -1022,11 +1044,63 @@ async def wiki_rag_chat(
     lm_base, lm_model = await _resolve_chat_lm(body.lm_base_url, body.lm_model)
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
     started = time.perf_counter()
+    use_agent = bool(getattr(settings, "wiki_rag_use_tools", True)) and not is_small_talk(q)
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
+
+    if use_agent:
+        async with AsyncSessionLocal() as db:
+            docs = await _load_chat_documents(
+                db, body.document_ids, include_corax=body.include_corax, question=q
+            )
+            try:
+                agent = await run_wikirag_agent_loop(
+                    db=db,
+                    question=q,
+                    documents=docs,
+                    history=history,
+                    include_corax=body.include_corax,
+                    base_url=lm_base,
+                    model=lm_model,
+                    response_mode=body.response_mode,
+                    system_prompt=get_system_prompt() or None,
+                )
+            except httpx.HTTPError as e:
+                shown_url = lm_base or settings.lm_studio_base_url
+                label = llm_provider_label(detect_llm_provider(shown_url))
+                return WikiRagChatResponse(
+                    ok=False,
+                    error=f"Нет связи с {label} ({shown_url}): {e}",
+                    meta={"mode": "rag", "path": "agent"},
+                )
+            except Exception as e:
+                return WikiRagChatResponse(ok=False, error=str(e), meta={"mode": "rag", "path": "agent"})
+        rag_sources = agent.sources
+        meta = {
+            "mode": "rag",
+            "path": agent.path,
+            "total_chars": len(agent.content or ""),
+            "documents": [],
+            "corax": {
+                "tools": agent.tools_used,
+                "path": agent.path,
+                "agent_rounds": agent.rounds,
+                **(agent.stats or {}),
+            },
+            "sources": rag_sources,
+            "lm_base_url": lm_base or settings.lm_studio_base_url,
+            "num_ctx": num_ctx,
+            "proxy_bypass": True,
+            "timings_ms": {"total": round((time.perf_counter() - started) * 1000)},
+        }
+        parsed = _attach_rag_sources(coerce_parsed(agent.content), rag_sources)
+        return WikiRagChatResponse(
+            ok=True, raw=agent.content, parsed=parsed, model=agent.model, meta=meta
+        )
+
     async with AsyncSessionLocal() as db:
         messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
             q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
         )
-    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
     context_ms = round((time.perf_counter() - started) * 1000)
     stats = messages_stats(messages)
     meta = {
@@ -1070,16 +1144,110 @@ async def wiki_rag_chat_stream(
     body: WikiRagChatRequest,
     _: User = Depends(require_user),
 ):
-    """SSE-версия чата: meta → delta* → done или error."""
+    """SSE-версия чата: meta → progress* → delta* → done или error."""
     started = time.perf_counter()
     q = body.message.strip()
     lm_base, lm_model = await _resolve_chat_lm(body.lm_base_url, body.lm_model)
     history = sanitize_chat_history([{"role": m.role, "content": m.content} for m in body.history])
+    use_agent = bool(getattr(settings, "wiki_rag_use_tools", True)) and not is_small_talk(q)
+    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
+
+    if use_agent:
+
+        async def agent_stream() -> AsyncIterator[str]:
+            meta: dict[str, Any] = {
+                "mode": "rag",
+                "path": "agent",
+                "total_chars": 0,
+                "documents": [],
+                "corax": {},
+                "sources": [],
+                "lm_base_url": lm_base or settings.lm_studio_base_url,
+                "num_ctx": num_ctx,
+                "proxy_bypass": True,
+                "timings_ms": {"context": round((time.perf_counter() - started) * 1000)},
+                "provider": detect_llm_provider(lm_base or settings.lm_studio_base_url),
+            }
+            yield _sse("meta", meta)
+            raw_parts: list[str] = []
+            first_token_at: float | None = None
+            model: str | None = None
+            rag_sources: list[dict[str, Any]] = []
+            try:
+                async with AsyncSessionLocal() as db:
+                    docs = await _load_chat_documents(
+                        db, body.document_ids, include_corax=body.include_corax, question=q
+                    )
+                    async for kind, payload in iter_wikirag_agent_stream(
+                        db=db,
+                        question=q,
+                        documents=docs,
+                        history=history,
+                        include_corax=body.include_corax,
+                        base_url=lm_base,
+                        model=lm_model,
+                        response_mode=body.response_mode,
+                        system_prompt=get_system_prompt() or None,
+                    ):
+                        if kind == "progress":
+                            yield _sse("progress", payload or {})
+                        elif kind == "meta_llm":
+                            meta["llm"] = payload
+                        elif kind == "delta":
+                            text = str((payload or {}).get("text") or "")
+                            if not text:
+                                continue
+                            if first_token_at is None:
+                                first_token_at = time.perf_counter()
+                            raw_parts.append(text)
+                            model = (payload or {}).get("model") or model
+                            yield _sse("delta", {"text": text})
+                        elif kind == "error":
+                            meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
+                            yield _sse(
+                                "error",
+                                {"error": str((payload or {}).get("error") or "agent error"), "meta": meta},
+                            )
+                            return
+                        elif kind == "done":
+                            rag_sources = list((payload or {}).get("sources") or [])
+                            meta["corax"] = {
+                                "tools": (payload or {}).get("tools_used") or [],
+                                "path": (payload or {}).get("path") or "agent",
+                                "agent_rounds": (payload or {}).get("rounds") or 0,
+                                "focus": (payload or {}).get("focus"),
+                            }
+                            meta["sources"] = rag_sources
+                            meta["path"] = (payload or {}).get("path") or "agent"
+                            model = (payload or {}).get("model") or model
+                            if not raw_parts and (payload or {}).get("content"):
+                                raw_parts.append(str(payload["content"]))
+                raw = "".join(raw_parts)
+                parsed = _attach_rag_sources(coerce_parsed(raw), rag_sources)
+                meta["timings_ms"]["first_token"] = (
+                    round((first_token_at - started) * 1000) if first_token_at is not None else None
+                )
+                meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
+                meta["total_chars"] = len(raw)
+                _LOG.info(
+                    "WikiRAG agent stream completed",
+                    extra={"timings_ms": meta["timings_ms"], "path": meta.get("path")},
+                )
+                yield _sse("done", {"raw": raw, "parsed": parsed, "model": model, "meta": meta})
+            except Exception as e:
+                meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
+                yield _sse("error", {"error": str(e), "meta": meta})
+
+        return StreamingResponse(
+            agent_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     async with AsyncSessionLocal() as db:
         messages, mode, doc_meta, corax_stats, _corax_fallback, rag_sources = await _prepare_chat_messages(
             q, body.document_ids, history, db, include_corax=body.include_corax, response_mode=body.response_mode
         )
-    num_ctx = await ensure_model_num_ctx(base_url=lm_base, model=lm_model)
     context_ms = round((time.perf_counter() - started) * 1000)
     stats = messages_stats(messages)
     meta: dict[str, Any] = {
@@ -1107,6 +1275,7 @@ async def wiki_rag_chat_stream(
                 model=lm_model,
                 mode=mode if mode in ("simple", "rag") else "rag",
                 response_mode=body.response_mode,
+                question=q,
             ):
                 if stats:
                     meta["llm"] = stats
@@ -1203,6 +1372,7 @@ async def wiki_rag_research_stream(
                 model=lm_model,
                 mode="rag",
                 response_mode="detailed",
+                question=q,
             ):
                 if stats:
                     meta["llm"] = stats

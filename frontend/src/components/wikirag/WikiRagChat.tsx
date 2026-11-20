@@ -437,7 +437,11 @@ export function WikiRagChat({
                     <p className="whitespace-pre-wrap">{display}</p>
                   ) : (
                     <div className="wikirag-msg-in rounded-2xl rounded-bl-md bg-[var(--color-bg-muted)]/55 px-3.5 py-2.5">
-                      <WikiRagStreamAnswer text={display} streaming={streamingThis} />
+                      {streamingThis && !display && turn.progressLabel ? (
+                        <p className="text-[12px] text-[var(--color-fg-subtle)]">{turn.progressLabel}</p>
+                      ) : (
+                        <WikiRagStreamAnswer text={display} streaming={streamingThis} />
+                      )}
                       <WikiRagTokenRate
                         provider={turn.meta?.llm?.provider || turn.meta?.provider}
                         streaming={streamingThis}
