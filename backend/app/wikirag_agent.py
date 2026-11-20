@@ -423,166 +423,29 @@ async def run_wikirag_agent_loop(
     system_prompt: str | None = None,
     on_progress: ProgressCb | None = None,
 ) -> AgentResult:
-    """Tool-first agent: seed live tools, then model; extra tools / refusal retry."""
-    raw_q = (question or "").strip()
-    q = _effective_question(raw_q, history)
-    focus = classify_wikirag_question(q)
-    messages = build_agent_seed_messages(q, history or [], system_prompt=system_prompt)
-    tools = wikirag_tool_schemas()
-    used: list[str] = []
-    sources: list[RagSource] = []
-    rounds = 0
-    last_model: str | None = None
-    path = "agent"
-    seeded = False
+    """Goal-driven loop (plan → tool → observe → critique → answer)."""
+    from app.wikirag_goal import run_goal_agent_loop
 
-    async def _prog(payload: dict[str, Any]) -> None:
-        if on_progress is None:
-            return
-        maybe = on_progress(payload)
-        if maybe is not None and hasattr(maybe, "__await__"):
-            await maybe  # type: ignore[misc]
-
-    # Deterministic seed: inventory/printer questions always get live tool data first.
-    if (include_corax and needs_live_inventory_tools(q, focus)) or (
-        bool(documents) and focus in {"general", "printers"}
-    ):
-        await _prog({"stage": "tool", "label": "Тулы (сервер)…", "tool": "seed"})
-        pack = await _fallback_tool_pack(db, q, documents=documents, include_corax=include_corax)
-        if pack.context:
-            _inject_pack_as_tool(
-                messages,
-                pack,
-                call_id="seed_pack",
-                tool_name=(pack.tools_used[0] if pack.tools_used else "query_corax"),
-            )
-            used.extend(pack.tools_used)
-            used.append("seed")
-            sources.extend(pack.sources)
-            seeded = True
-            path = "agent+seed"
-
-    for round_i in range(_MAX_TOOL_ROUNDS):
-        rounds = round_i + 1
-        await _prog({"stage": "think", "label": f"Агент · раунд {rounds}…", "round": rounds})
-        # After seed, first pass answers or asks more tools; later rounds keep tools.
-        result = await lm_studio_chat_raw(
-            messages,
-            base_url=base_url,
-            model=model,
-            mode="rag",
-            response_mode=response_mode,
-            tools=tools,
-            tool_choice="auto",
-        )
-        last_model = result.model or last_model
-
-        if result.tool_calls:
-            messages.append(_assistant_tool_message(result))
-            for tc in result.tool_calls:
-                name = tc["name"]
-                args = tc.get("arguments") or {}
-                await _prog({"stage": "tool", "label": f"Тул: {name}", "tool": name})
-                text, srcs = await execute_wikirag_tool(
-                    name,
-                    args if isinstance(args, dict) else {},
-                    db=db,
-                    documents=documents,
-                    question=q,
-                    include_corax=include_corax,
-                )
-                used.append(name)
-                sources.extend(srcs)
-                messages.append(_tool_result_message(tc["id"], name, text))
-            continue
-
-        content = (result.content or "").strip()
-        # Refusal / empty after seed → one forced re-search then final answer.
-        if _looks_like_refusal(content) and seeded and "refusal_retry" not in used:
-            path = "agent+retry"
-            await _prog({"stage": "tool", "label": "Повторный поиск…", "tool": "retry"})
-            pack = await _fallback_tool_pack(db, q, documents=documents, include_corax=include_corax)
-            _inject_pack_as_tool(messages, pack, call_id="refusal_retry", tool_name="search_wiki")
-            used.extend(pack.tools_used)
-            used.append("refusal_retry")
-            sources.extend(pack.sources)
-            messages.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "Выше — результаты тулов. Ответь по ним конкретно. "
-                        "Не пиши «в контексте нет», если в блоках tool: есть строки данных."
-                    ),
-                }
-            )
-            final = await lm_studio_chat_raw(
-                messages,
-                base_url=base_url,
-                model=model,
-                mode="rag",
-                response_mode=response_mode,
-                tools=None,
-            )
-            return AgentResult(
-                content=final.content,
-                model=final.model or last_model,
-                tools_used=list(dict.fromkeys(used)),
-                sources=[s.to_dict() for s in sources][:24],
-                rounds=rounds + 1,
-                path=path,
-                stats={"focus": focus, "retry": True},
-            )
-
-        # No tools and no refusal — done.
-        if content:
-            return AgentResult(
-                content=content,
-                model=last_model,
-                tools_used=list(dict.fromkeys(used)),
-                sources=[s.to_dict() for s in sources][:24],
-                rounds=rounds,
-                path=path,
-                stats={"focus": focus, "seeded": seeded},
-            )
-
-        # Empty content without tools — fall through if not yet seeded.
-        if not seeded and (
-            (include_corax and needs_live_inventory_tools(q, focus)) or bool(documents)
-        ):
-            path = "agent+fallback"
-            await _prog({"stage": "tool", "label": "Тулы (сервер)…", "tool": "fallback"})
-            pack = await _fallback_tool_pack(db, q, documents=documents, include_corax=include_corax)
-            _inject_pack_as_tool(messages, pack, call_id="fallback_pack")
-            used.extend(pack.tools_used)
-            used.append("fallback")
-            sources.extend(pack.sources)
-            seeded = True
-            continue
-        break
-
-    await _prog({"stage": "generate", "label": "Финальный ответ…"})
-    messages.append(
-        {
-            "role": "user",
-            "content": "Достаточно данных. Дай финальный ответ по результатам тулов.",
-        }
-    )
-    final = await lm_studio_chat_raw(
-        messages,
+    result = await run_goal_agent_loop(
+        db=db,
+        question=question,
+        documents=documents,
+        history=history,
+        include_corax=include_corax,
         base_url=base_url,
         model=model,
-        mode="rag",
         response_mode=response_mode,
-        tools=None,
+        system_prompt=system_prompt,
+        on_progress=on_progress,
     )
     return AgentResult(
-        content=final.content,
-        model=final.model or last_model,
-        tools_used=list(dict.fromkeys(used)),
-        sources=[s.to_dict() for s in sources][:24],
-        rounds=rounds,
-        path=path,
-        stats={"focus": focus, "seeded": seeded},
+        content=result.content,
+        model=result.model,
+        tools_used=result.tools_used,
+        sources=result.sources,
+        rounds=result.rounds,
+        path=result.path,
+        stats={**(result.stats or {}), "goal": result.goal, "trace": result.trace},
     )
 
 
@@ -598,101 +461,18 @@ async def iter_wikirag_agent_stream(
     response_mode: str = "fast",
     system_prompt: str | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any] | None]]:
-    """Yield progress/delta/done. Tools run non-stream; answer is streamed."""
-    progress_events: list[dict[str, Any]] = []
+    """Yield step/progress/delta/done from the goal orchestrator."""
+    from app.wikirag_goal import _iter_goal_live
 
-    async def _on_progress(payload: dict[str, Any]) -> None:
-        progress_events.append(payload)
-
-    try:
-        # Drain progress collected during the sync-ish tool loop via callback,
-        # then stream the final answer text for the UI typewriter.
-        # We run the full agent first so seed/retry logic stays in one place.
-        for ev in progress_events:
-            yield ("progress", ev)
-
-        # Emit early progress before the blocking loop.
-        yield ("progress", {"stage": "think", "label": "Агент · готовит тулы…", "round": 0})
-
-        result = await run_wikirag_agent_loop(
-            db=db,
-            question=question,
-            documents=documents,
-            history=history,
-            include_corax=include_corax,
-            base_url=base_url,
-            model=model,
-            response_mode=response_mode,
-            system_prompt=system_prompt,
-            on_progress=_on_progress,
-        )
-        for ev in progress_events:
-            yield ("progress", ev)
-
-        content = (result.content or "").strip()
-        # Refusal after tools — last-chance rewrite from packed context is already in loop.
-        if content:
-            # Stream in chunks so the UI typewriter still animates.
-            step = max(24, len(content) // 40)
-            for i in range(0, len(content), step):
-                yield ("delta", {"text": content[i : i + step], "model": result.model})
-        yield (
-            "done",
-            {
-                "content": content,
-                "model": result.model,
-                "tools_used": result.tools_used,
-                "sources": result.sources,
-                "rounds": result.rounds,
-                "path": result.path,
-                "focus": (result.stats or {}).get("focus"),
-            },
-        )
-    except Exception as e:
-        yield ("error", {"error": str(e)})
-
-
-def _messages_for_final_completion(
-    messages: list[dict[str, Any]],
-    *,
-    question: str,
-) -> list[dict[str, str]]:
-    """Flatten tool results into a classic Контекст block for stream-safe completion."""
-    system = resolve_agent_system_prompt(None)
-    tool_blocks: list[str] = []
-    hist: list[dict[str, str]] = []
-    for m in messages:
-        role = m.get("role")
-        if role == "system":
-            system = str(m.get("content") or system)
-        elif role == "tool":
-            body = str(m.get("content") or "").strip()
-            if body:
-                tool_blocks.append(body)
-        elif role in ("user", "assistant"):
-            # Skip synthetic tool_calls-only assistant turns.
-            if m.get("tool_calls") and not (m.get("content") or "").strip():
-                continue
-            content = str(m.get("content") or "").strip()
-            if content:
-                hist.append({"role": role, "content": content[:1200]})
-
-    ctx = "\n\n".join(tool_blocks).strip() or "(результаты тулов пусты)"
-    if len(ctx) > 14000:
-        ctx = ctx[:13980].rstrip() + "\n… [обрезано]"
-    out: list[dict[str, str]] = [{"role": "system", "content": system or WIKIRAG_SYSTEM_RAG}]
-    # Keep at most last user/assistant pair before the tool turn.
-    for h in hist[-3:]:
-        if h["role"] == "user" and h["content"].startswith("Вопрос:"):
-            continue
-        out.append(h)
-    out.append(
-        {
-            "role": "user",
-            "content": (
-                "Факты бери из контекста. Сначала вывод, затем краткий расчёт.\n\n"
-                f"Контекст:\n{ctx}\n\nВопрос: {question.strip()}\n\nОтвет:"
-            ),
-        }
-    )
-    return out
+    async for kind, payload in _iter_goal_live(
+        db=db,
+        question=question,
+        documents=documents,
+        history=history,
+        include_corax=include_corax,
+        base_url=base_url,
+        model=model,
+        response_mode=response_mode,
+        system_prompt=system_prompt,
+    ):
+        yield kind, payload

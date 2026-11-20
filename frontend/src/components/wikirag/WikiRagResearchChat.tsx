@@ -12,6 +12,7 @@ import {
 } from '../../lib/wikiragResearchStore'
 import { cleanAssistantText, streamDisplayText } from '../../lib/wikiragStreamDisplay'
 import { IconClose, IconMenu, IconSend } from '../icons'
+import { WikiRagAgentTrace } from './WikiRagAgentTrace'
 import { WikiRagStreamAnswer } from './WikiRagStreamAnswer'
 import { WikiRagTokenRate } from './WikiRagTokenRate'
 
@@ -314,10 +315,16 @@ export function WikiRagResearchChat() {
                         <p className="whitespace-pre-wrap">{display}</p>
                       ) : (
                         <div className="wikirag-msg-in rounded-2xl rounded-bl-md bg-[var(--color-bg-muted)]/55 px-3.5 py-2.5">
+                          {streaming && turn.trace?.length ? (
+                            <WikiRagAgentTrace steps={turn.trace} streaming defaultOpen />
+                          ) : null}
                           {streaming || display.trim() ? (
                             <WikiRagStreamAnswer text={display} streaming={streaming} />
                           ) : null}
-                          {showStatus && !display.trim() && turn.progress?.stage !== 'generate' ? (
+                          {!streaming && turn.trace?.length ? (
+                            <WikiRagAgentTrace steps={turn.trace} defaultOpen={false} />
+                          ) : null}
+                          {showStatus && !display.trim() && !turn.trace?.length && turn.progress?.stage !== 'generate' ? (
                             <div className="space-y-2">
                               <p className="wikirag-progress-live inline-flex items-center gap-2 text-[13px] font-medium text-[var(--color-fg-muted)]">
                                 <span className="wikirag-index-spinner" aria-hidden />

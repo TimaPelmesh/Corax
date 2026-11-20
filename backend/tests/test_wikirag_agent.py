@@ -70,32 +70,11 @@ async def test_execute_search_computers_passes_filters():
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_uses_tool_calls_then_answers():
-    calls = {"n": 0}
-
-    class Pack:
-        context = "### tool:search_computers\nseed"
-        tools_used = ["search_computers"]
-        sources = []
+async def test_agent_loop_goal_path_runs_tools_then_answers():
+    async def fake_exec(name, args, **kwargs):
+        return "### tool:search_computers\nПод фильтр: 3. Показано: 3.\n- pc1\n- pc2\n- pc3", []
 
     async def fake_raw(messages, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return LmChatResult(
-                content="",
-                model="test",
-                tool_calls=[
-                    {
-                        "id": "c1",
-                        "type": "function",
-                        "function": {"name": "search_computers", "arguments": "{}"},
-                        "name": "search_computers",
-                        "arguments": {"os": "10", "limit": 5},
-                    }
-                ],
-                finish_reason="tool_calls",
-                raw_message={},
-            )
         return LmChatResult(
             content="Вывод: 3 ПК на Windows 10.",
             model="test",
@@ -104,13 +83,10 @@ async def test_agent_loop_uses_tool_calls_then_answers():
             raw_message={},
         )
 
-    async def fake_exec(name, args, **kwargs):
-        return "### tool:search_computers\nПод фильтр: 3. Показано: 3.", []
-
     with (
-        patch("app.wikirag_agent.lm_studio_chat_raw", new=fake_raw),
-        patch("app.wikirag_agent.execute_wikirag_tool", new=fake_exec),
-        patch("app.wikirag_agent._fallback_tool_pack", new=AsyncMock(return_value=Pack())),
+        patch("app.wikirag_goal._execute_tool", new=fake_exec),
+        patch("app.wikirag_goal.lm_studio_chat_raw", new=fake_raw),
+        patch("app.wikirag_goal.classify_wikirag_question", return_value="os_hardware"),
     ):
         result = await run_wikirag_agent_loop(
             db=AsyncMock(),
@@ -119,13 +95,18 @@ async def test_agent_loop_uses_tool_calls_then_answers():
             include_corax=True,
         )
     assert "Windows 10" in result.content or "Вывод" in result.content
-    assert "search_computers" in result.tools_used
+    assert result.path == "goal"
     assert result.rounds >= 1
+    assert result.stats.get("trace")
+    assert len(result.stats["trace"]) >= 3
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_seeds_tools_and_retries_refusal():
+async def test_agent_loop_retries_refusal_with_facts():
     calls = {"n": 0}
+
+    async def fake_exec(name, args, **kwargs):
+        return "### tool:search_computers\nВсего: 2\n- weak-1\n- weak-2", []
 
     async def fake_raw(messages, **kwargs):
         calls["n"] += 1
@@ -145,14 +126,10 @@ async def test_agent_loop_seeds_tools_and_retries_refusal():
             raw_message={},
         )
 
-    class Pack:
-        context = "### tool:search_computers\nВсего: 2"
-        tools_used = ["search_computers"]
-        sources = []
-
     with (
-        patch("app.wikirag_agent.lm_studio_chat_raw", new=fake_raw),
-        patch("app.wikirag_agent._fallback_tool_pack", new=AsyncMock(return_value=Pack())),
+        patch("app.wikirag_goal._execute_tool", new=fake_exec),
+        patch("app.wikirag_goal.lm_studio_chat_raw", new=fake_raw),
+        patch("app.wikirag_goal.classify_wikirag_question", return_value="os_hardware"),
     ):
         result = await run_wikirag_agent_loop(
             db=AsyncMock(),
@@ -160,9 +137,10 @@ async def test_agent_loop_seeds_tools_and_retries_refusal():
             documents=[],
             include_corax=True,
         )
-    assert "seed" in result.tools_used or "search_computers" in result.tools_used
-    assert result.path in {"agent+seed", "agent+retry"}
+    assert "search_computers" in result.tools_used or "query_corax" in result.tools_used
+    assert result.path == "goal"
     assert "слабых" in result.content.lower() or "Вывод" in result.content
+    assert calls["n"] >= 2
 
 
 @pytest.mark.asyncio

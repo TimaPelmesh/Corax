@@ -61,6 +61,17 @@ export type WikiRagProgress = {
   found?: number
   pages?: number
   titles?: string[]
+  iteration?: number
+  detail?: string
+}
+
+export type WikiRagAgentStep = {
+  id: string
+  kind: 'goal' | 'plan' | 'tool' | 'observe' | 'critique' | 'answer' | string
+  title: string
+  detail?: string
+  status?: 'running' | 'done' | 'failed' | string
+  iteration?: number
 }
 
 async function streamWikiRagSse(
@@ -69,6 +80,7 @@ async function streamWikiRagSse(
   callbacks: {
     onMeta?: (meta: WikiRagChatResponse['meta']) => void
     onProgress?: (progress: WikiRagProgress) => void
+    onStep?: (step: WikiRagAgentStep) => void
     onDelta: (text: string) => void
     onDone: (response: WikiRagChatResponse) => void
   },
@@ -105,6 +117,7 @@ async function streamWikiRagSse(
       }
       if (event === 'meta') callbacks.onMeta?.((data as { meta?: WikiRagChatResponse['meta'] }).meta ?? (data as WikiRagChatResponse['meta']))
       if (event === 'progress') callbacks.onProgress?.(data as WikiRagProgress)
+      if (event === 'step') callbacks.onStep?.(data as WikiRagAgentStep)
       if (event === 'delta' && typeof data.text === 'string') callbacks.onDelta(data.text)
       if (event === 'done') callbacks.onDone(data as WikiRagChatResponse)
       if (event === 'error') throw new Error(typeof data.error === 'string' ? data.error : 'Ошибка потока модели')
@@ -141,6 +154,7 @@ export function streamWikiRagChat(
   callbacks: {
     onMeta?: (meta: WikiRagChatResponse['meta']) => void
     onProgress?: (progress: WikiRagProgress) => void
+    onStep?: (step: WikiRagAgentStep) => void
     onDelta: (text: string) => void
     onDone: (response: WikiRagChatResponse) => void
   },
@@ -159,6 +173,7 @@ export function streamWikiRagResearch(
   callbacks: {
     onMeta?: (meta: WikiRagChatResponse['meta']) => void
     onProgress?: (progress: WikiRagProgress) => void
+    onStep?: (step: WikiRagAgentStep) => void
     onDelta: (text: string) => void
     onDone: (response: WikiRagChatResponse) => void
   },
@@ -3938,6 +3953,8 @@ export type WikiRagChatResponse = {
       completion_tokens?: number
       tokens_per_second?: number
     } | null
+    goal?: string
+    trace?: WikiRagAgentStep[]
   } | null
 }
 

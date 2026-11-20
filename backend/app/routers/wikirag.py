@@ -1076,6 +1076,7 @@ async def wiki_rag_chat(
             except Exception as e:
                 return WikiRagChatResponse(ok=False, error=str(e), meta={"mode": "rag", "path": "agent"})
         rag_sources = agent.sources
+        stats = dict(agent.stats or {})
         meta = {
             "mode": "rag",
             "path": agent.path,
@@ -1085,9 +1086,11 @@ async def wiki_rag_chat(
                 "tools": agent.tools_used,
                 "path": agent.path,
                 "agent_rounds": agent.rounds,
-                **(agent.stats or {}),
+                "focus": stats.get("focus"),
             },
             "sources": rag_sources,
+            "goal": stats.get("goal"),
+            "trace": stats.get("trace") or [],
             "lm_base_url": lm_base or settings.lm_studio_base_url,
             "num_ctx": num_ctx,
             "proxy_bypass": True,
@@ -1190,7 +1193,19 @@ async def wiki_rag_chat_stream(
                         response_mode=body.response_mode,
                         system_prompt=get_system_prompt() or None,
                     ):
-                        if kind == "progress":
+                        if kind == "step":
+                            yield _sse("step", payload or {})
+                            # Keep last progress label in sync for older UI.
+                            if isinstance(payload, dict) and payload.get("title"):
+                                yield _sse(
+                                    "progress",
+                                    {
+                                        "stage": payload.get("kind") or "step",
+                                        "label": payload.get("title"),
+                                        "iteration": payload.get("iteration"),
+                                    },
+                                )
+                        elif kind == "progress":
                             yield _sse("progress", payload or {})
                         elif kind == "meta_llm":
                             meta["llm"] = payload
@@ -1214,12 +1229,14 @@ async def wiki_rag_chat_stream(
                             rag_sources = list((payload or {}).get("sources") or [])
                             meta["corax"] = {
                                 "tools": (payload or {}).get("tools_used") or [],
-                                "path": (payload or {}).get("path") or "agent",
+                                "path": (payload or {}).get("path") or "goal",
                                 "agent_rounds": (payload or {}).get("rounds") or 0,
                                 "focus": (payload or {}).get("focus"),
                             }
                             meta["sources"] = rag_sources
-                            meta["path"] = (payload or {}).get("path") or "agent"
+                            meta["path"] = (payload or {}).get("path") or "goal"
+                            meta["goal"] = (payload or {}).get("goal")
+                            meta["trace"] = (payload or {}).get("trace") or []
                             model = (payload or {}).get("model") or model
                             if not raw_parts and (payload or {}).get("content"):
                                 raw_parts.append(str(payload["content"]))
@@ -1337,16 +1354,83 @@ async def wiki_rag_research_stream(
             "timings_ms": {},
             "provider": detect_llm_provider(lm_base or settings.lm_studio_base_url),
         }
+        research_trace: list[dict[str, Any]] = []
+        step_n = 0
+
+        def _rstep(
+            kind: str,
+            title: str,
+            *,
+            detail: str = "",
+            status: str = "done",
+            iteration: int = 0,
+        ) -> dict[str, Any]:
+            nonlocal step_n
+            step_n += 1
+            item = {
+                "id": f"r{step_n}",
+                "kind": kind,
+                "title": title,
+                "detail": detail,
+                "status": status,
+                "iteration": iteration,
+            }
+            research_trace.append(item)
+            return item
+
+        goal_step = _rstep(
+            "goal",
+            "Собрать публичную инструкцию по вопросу",
+            detail=q[:200],
+        )
+        yield _sse("step", goal_step)
         yield _sse(
             "progress",
             {"stage": "search", "label": "Ищет публичные источники…", "query": q[:120]},
         )
         try:
+            iter_i = 0
             async for kind, payload in iterate_public_research(q):
                 if kind == "progress":
-                    yield _sse("progress", payload)
+                    yield _sse("progress", payload or {})
+                    stage = str((payload or {}).get("stage") or "")
+                    label = str((payload or {}).get("label") or stage)
+                    if stage in {"search", "queries"}:
+                        iter_i += 1
+                        st = _rstep(
+                            "plan" if stage == "queries" else "tool",
+                            label[:160],
+                            detail=str((payload or {}).get("query") or "")[:200],
+                            iteration=iter_i,
+                        )
+                        yield _sse("step", st)
+                    elif stage == "open":
+                        st = _rstep(
+                            "tool",
+                            label[:160],
+                            detail=str((payload or {}).get("url") or "")[:200],
+                            iteration=iter_i,
+                        )
+                        yield _sse("step", st)
+                    elif stage in {"found", "ready"}:
+                        st = _rstep(
+                            "observe",
+                            label[:160],
+                            detail=str((payload or {}).get("titles") or (payload or {}).get("found") or "")[
+                                :200
+                            ],
+                            iteration=iter_i,
+                        )
+                        yield _sse("step", st)
                 elif kind == "pages":
                     pages = payload or []
+            enough = bool(pages)
+            crit = _rstep(
+                "critique",
+                "Страницы найдены" if enough else "Публичные страницы не открылись",
+                detail=f"pages={len(pages)}",
+            )
+            yield _sse("step", crit)
             sources = research_sources(pages)
             messages = build_research_messages(q, pages, history)
             meta.update(
@@ -1355,9 +1439,17 @@ async def wiki_rag_research_stream(
                     "sources": sources,
                     "pages": len(pages),
                     "timings_ms": {"context": round((time.perf_counter() - started) * 1000)},
+                    "goal": {
+                        "text": "Собрать публичную инструкцию по вопросу",
+                        "criteria": ["открытые страницы с шагами", "URL в конце"],
+                        "question": q,
+                    },
+                    "trace": list(research_trace),
                 }
             )
             yield _sse("meta", meta)
+            ans = _rstep("answer", "Формирую инструкцию…", status="running")
+            yield _sse("step", ans)
             yield _sse(
                 "progress",
                 {
@@ -1386,6 +1478,11 @@ async def wiki_rag_research_stream(
             parsed = _attach_rag_sources(research_parsed_answer(raw, pages), sources)
             if not str(parsed.get("answer") or "").strip():
                 parsed["answer"] = RESEARCH_EMPTY
+            ans["status"] = "done"
+            ans["title"] = "Ответ готов"
+            ans["detail"] = f"{len(raw)} симв."
+            yield _sse("step", ans)
+            meta["trace"] = list(research_trace)
             meta["timings_ms"]["total"] = round((time.perf_counter() - started) * 1000)
             yield _sse("done", {"raw": raw, "parsed": parsed, "model": model, "meta": meta})
         except httpx.ConnectError:

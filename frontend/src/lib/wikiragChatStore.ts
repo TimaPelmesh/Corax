@@ -1,4 +1,9 @@
-import { streamWikiRagChat, type WikiRagChatParsed, type WikiRagChatResponse } from '../api'
+import {
+  streamWikiRagChat,
+  type WikiRagAgentStep,
+  type WikiRagChatParsed,
+  type WikiRagChatResponse,
+} from '../api'
 import { measuredTokenRate, settledTokenRate } from './wikiragTokenRate'
 import { loadWikiRagLmSettings } from './wikiragLmSettings'
 import { randomId } from './randomId'
@@ -15,6 +20,8 @@ export type WikiRagChatTurn = {
   reveal?: boolean
   /** Live agent progress (tool rounds) while waiting for the first delta. */
   progressLabel?: string
+  /** Goal-loop steps streamed as SSE `step` (and mirrored in done.meta.trace). */
+  trace?: WikiRagAgentStep[]
   /** Ollama chunks and characters seen during this answer. Dropped once the reply settles. */
   streamTokens?: number
   streamChars?: number
@@ -361,6 +368,23 @@ export function sendWikiRagChatMessage(opts: {
               return { ...s, turns }
             })
           },
+          onStep: (step) => {
+            if (!step?.id) return
+            patchSession(fallbackTitle, sessionId, (s) => {
+              const turns = [...s.turns]
+              const last = turns.length - 1
+              const current = turns[last]
+              if (!current || current.role !== 'assistant') return s
+              const prev = current.trace || []
+              const idx = prev.findIndex((row) => row.id === step.id)
+              const trace =
+                idx >= 0
+                  ? prev.map((row, i) => (i === idx ? { ...row, ...step } : row))
+                  : [...prev, step]
+              turns[last] = { ...current, trace, progressLabel: step.title || current.progressLabel }
+              return { ...s, turns }
+            })
+          },
           onDelta: (text) => {
             patchSession(fallbackTitle, sessionId, (s) => {
               const turns = [...s.turns]
@@ -399,6 +423,7 @@ export function sendWikiRagChatMessage(opts: {
                 res.meta,
                 measuredTokenRate(current.streamTokens, current.streamStartedAt, Date.now(), current.streamChars),
               )
+              const metaTrace = Array.isArray(res.meta?.trace) ? res.meta.trace : []
               turns[last] = {
                 ...current,
                 content: text,
@@ -406,6 +431,7 @@ export function sendWikiRagChatMessage(opts: {
                 meta: res.meta,
                 reveal: false,
                 progressLabel: undefined,
+                trace: metaTrace.length ? metaTrace : current.trace,
                 streamTokens: undefined,
                 streamChars: undefined,
                 streamStartedAt: undefined,

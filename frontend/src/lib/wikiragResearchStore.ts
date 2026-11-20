@@ -1,4 +1,10 @@
-import { streamWikiRagResearch, type WikiRagChatParsed, type WikiRagChatResponse, type WikiRagProgress } from '../api'
+import {
+  streamWikiRagResearch,
+  type WikiRagAgentStep,
+  type WikiRagChatParsed,
+  type WikiRagChatResponse,
+  type WikiRagProgress,
+} from '../api'
 import { measuredTokenRate, settledTokenRate } from './wikiragTokenRate'
 import { loadWikiRagLmSettings } from './wikiragLmSettings'
 import { randomId } from './randomId'
@@ -16,6 +22,7 @@ export type WikiRagResearchTurn = {
   progress?: WikiRagProgress | null
   opened?: string[]
   queries?: string[]
+  trace?: WikiRagAgentStep[]
   streamTokens?: number
   streamChars?: number
   streamStartedAt?: number
@@ -316,6 +323,22 @@ export function sendWikiRagResearchMessage(opts: {
               return { ...s, turns }
             })
           },
+          onStep: (step) => {
+            if (!step?.id) return
+            patchSession(fallbackTitle, sessionId, (s) => {
+              const turns = [...s.turns]
+              const last = turns[turns.length - 1]
+              if (!last || last.role !== 'assistant') return s
+              const prev = last.trace || []
+              const idx = prev.findIndex((row) => row.id === step.id)
+              const trace =
+                idx >= 0
+                  ? prev.map((row, i) => (i === idx ? { ...row, ...step } : row))
+                  : [...prev, step]
+              turns[turns.length - 1] = { ...last, trace }
+              return { ...s, turns }
+            })
+          },
           onMeta: (meta) => {
             patchSession(fallbackTitle, sessionId, (s) => {
               const turns = [...s.turns]
@@ -357,6 +380,7 @@ export function sendWikiRagResearchMessage(opts: {
                 : sources.length
                   ? { answer: text, sources }
                   : res.parsed
+              const metaTrace = Array.isArray(res.meta?.trace) ? res.meta.trace : []
               turns[turns.length - 1] = {
                 ...last,
                 content: text,
@@ -364,6 +388,7 @@ export function sendWikiRagResearchMessage(opts: {
                 meta: res.meta,
                 progress: null,
                 queries: last.queries,
+                trace: metaTrace.length ? metaTrace : last.trace,
                 streamTokens: undefined,
                 streamChars: undefined,
                 streamStartedAt: undefined,

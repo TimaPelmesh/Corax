@@ -15,6 +15,7 @@ import {
 import { cleanAssistantText, streamDisplayText } from '../../lib/wikiragStreamDisplay'
 import { SystemPromptEditor } from './SystemPromptEditor'
 import { IconClose, IconFolder, IconMenu, IconSend } from '../icons'
+import { WikiRagAgentTrace } from './WikiRagAgentTrace'
 import { WikiRagStreamAnswer } from './WikiRagStreamAnswer'
 import { WikiRagTokenRate } from './WikiRagTokenRate'
 
@@ -453,13 +454,19 @@ export function WikiRagChat({
                     <p className="whitespace-pre-wrap">{display}</p>
                   ) : (
                     <div className="wikirag-msg-in rounded-2xl rounded-bl-md bg-[var(--color-bg-muted)]/55 px-3.5 py-2.5">
-                      {streamingThis && !display && turn.progressLabel ? (
+                      {streamingThis && turn.trace?.length ? (
+                        <WikiRagAgentTrace steps={turn.trace} streaming defaultOpen />
+                      ) : null}
+                      {streamingThis && !display && !turn.trace?.length && turn.progressLabel ? (
                         <p className="wikirag-progress-live text-[12px] text-[var(--color-fg-subtle)]">
                           {turn.progressLabel}
                         </p>
-                      ) : (
+                      ) : display || !streamingThis ? (
                         <WikiRagStreamAnswer text={display} streaming={streamingThis} />
-                      )}
+                      ) : null}
+                      {!streamingThis && turn.trace?.length ? (
+                        <WikiRagAgentTrace steps={turn.trace} defaultOpen={false} />
+                      ) : null}
                       <WikiRagTokenRate
                         provider={turn.meta?.llm?.provider || turn.meta?.provider}
                         streaming={streamingThis}
