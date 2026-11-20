@@ -1,9 +1,10 @@
 /** Reveal the answer by words. A long queue takes a few words per frame, never the whole paragraph. */
 
 function wordsThisFrame(backlogChars: number): number {
-  if (backlogChars > 700) return 4
-  if (backlogChars > 280) return 3
-  if (backlogChars > 80) return 2
+  if (backlogChars > 900) return 5
+  if (backlogChars > 400) return 4
+  if (backlogChars > 160) return 3
+  if (backlogChars > 60) return 2
   return 1
 }
 
@@ -37,8 +38,9 @@ export function nextTypewriterChunk(shown: string, target: string): string {
 
 /** Fast enough to feel like generation, slow enough that each word is visible. */
 export function typewriterDelayMs(backlogChars: number): number {
-  if (backlogChars > 700) return 16
-  if (backlogChars > 280) return 20
-  if (backlogChars > 80) return 26
-  return 34
+  if (backlogChars > 900) return 12
+  if (backlogChars > 400) return 16
+  if (backlogChars > 160) return 20
+  if (backlogChars > 60) return 24
+  return 28
 }

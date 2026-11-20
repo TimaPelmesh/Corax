@@ -205,6 +205,21 @@ export function WikiRagChat({
     persist(next, nextActive)
   }
 
+  function focusComposer() {
+    const el = textareaRef.current
+    if (!el) return
+    // Keep typing during generation — do not leave focus on the send button.
+    requestAnimationFrame(() => {
+      el.focus({ preventScroll: true })
+      const len = el.value.length
+      try {
+        el.setSelectionRange(len, len)
+      } catch {
+        /* ignore */
+      }
+    })
+  }
+
   function send() {
     const q = input.trim()
     if (!q || !active || sending) return
@@ -217,6 +232,7 @@ export function WikiRagChat({
       errorFallback,
     })
     setPendingTick((n) => n + 1)
+    focusComposer()
   }
 
   const lastAssistantIdx = (() => {
@@ -438,7 +454,9 @@ export function WikiRagChat({
                   ) : (
                     <div className="wikirag-msg-in rounded-2xl rounded-bl-md bg-[var(--color-bg-muted)]/55 px-3.5 py-2.5">
                       {streamingThis && !display && turn.progressLabel ? (
-                        <p className="text-[12px] text-[var(--color-fg-subtle)]">{turn.progressLabel}</p>
+                        <p className="wikirag-progress-live text-[12px] text-[var(--color-fg-subtle)]">
+                          {turn.progressLabel}
+                        </p>
                       ) : (
                         <WikiRagStreamAnswer text={display} streaming={streamingThis} />
                       )}
@@ -481,8 +499,7 @@ export function WikiRagChat({
             onChange={(e) => setInput(e.target.value)}
             rows={1}
             placeholder={t('wikirag.chat.promptPlaceholder')}
-            className="wikirag-composer-input max-h-[140px] min-h-[44px] flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[13px] leading-relaxed outline-none ring-0 placeholder:text-[var(--color-fg-subtle)] focus:outline-none focus:ring-0 focus-visible:outline-none disabled:opacity-50"
-            disabled={sending}
+            className="wikirag-composer-input max-h-[140px] min-h-[44px] flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[13px] leading-relaxed outline-none ring-0 placeholder:text-[var(--color-fg-subtle)] focus:outline-none focus:ring-0 focus-visible:outline-none"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -494,6 +511,7 @@ export function WikiRagChat({
             type="button"
             disabled={sending || !input.trim()}
             onClick={send}
+            onMouseDown={(e) => e.preventDefault()}
             className="mb-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white shadow-sm outline-none transition hover:bg-[var(--color-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/35 disabled:cursor-not-allowed disabled:opacity-35"
             aria-label={t('wikirag.chat.send')}
             title={t('wikirag.chat.send')}

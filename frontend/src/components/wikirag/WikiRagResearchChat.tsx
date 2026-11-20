@@ -127,6 +127,20 @@ export function WikiRagResearchChat() {
     persist(next, activeId === id ? next[0].id : activeId)
   }
 
+  function focusComposer() {
+    const el = textareaRef.current
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.focus({ preventScroll: true })
+      const len = el.value.length
+      try {
+        el.setSelectionRange(len, len)
+      } catch {
+        /* ignore */
+      }
+    })
+  }
+
   function send(text?: string) {
     const q = (text ?? input).trim()
     if (!q || !active || sending) return
@@ -139,6 +153,7 @@ export function WikiRagResearchChat() {
       errorFallback,
     })
     setPendingTick((n) => n + 1)
+    focusComposer()
   }
 
   const lastAssistantIdx = (() => {
@@ -304,7 +319,7 @@ export function WikiRagResearchChat() {
                           ) : null}
                           {showStatus && !display.trim() && turn.progress?.stage !== 'generate' ? (
                             <div className="space-y-2">
-                              <p className="inline-flex items-center gap-2 text-[13px] font-medium text-[var(--color-fg-muted)]">
+                              <p className="wikirag-progress-live inline-flex items-center gap-2 text-[13px] font-medium text-[var(--color-fg-muted)]">
                                 <span className="wikirag-index-spinner" aria-hidden />
                                 {copy.title}
                               </p>
@@ -419,11 +434,11 @@ export function WikiRagResearchChat() {
               rows={1}
               placeholder={t('wikirag.research.placeholder')}
               className="wikirag-composer-input max-h-[140px] min-h-[44px] flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[13px] leading-relaxed outline-none"
-              disabled={sending}
             />
             <button
               type="submit"
               disabled={!input.trim() || sending}
+              onMouseDown={(e) => e.preventDefault()}
               className="mb-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)] text-white disabled:opacity-40"
               aria-label={t('wikirag.chat.send')}
             >

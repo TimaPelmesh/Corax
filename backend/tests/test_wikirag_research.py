@@ -75,6 +75,14 @@ def test_research_queries_keep_the_object():
     assert any("инструкция" in item for item in queries)
 
 
+def test_research_queries_add_english_tech_for_ollama():
+    queries = research_queries("Как выставить num_ctx в Ollama для модели 7B")
+    blob = " ".join(queries).lower()
+    assert "num_ctx" in blob
+    assert "ollama" in blob
+    assert any("github.com" in q or "ollama.com" in q for q in queries)
+
+
 def test_wikipedia_host_is_trusted_without_dns():
     assert host_is_public("ru.wikipedia.org") is True
     assert host_is_public("en.wikipedia.org") is True

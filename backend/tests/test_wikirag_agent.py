@@ -10,6 +10,7 @@ import pytest
 from app.wikirag_agent import (
     build_agent_seed_messages,
     execute_wikirag_tool,
+    resolve_agent_system_prompt,
     run_wikirag_agent_loop,
     wikirag_tool_schemas,
 )
@@ -29,9 +30,17 @@ def test_tool_schemas_cover_vector_and_inventory():
 def test_seed_messages_advertise_tools_flow():
     msgs = build_agent_seed_messages("какие ПК на Win10", [])
     assert msgs[0]["role"] == "system"
-    assert "search_wiki" in msgs[0]["content"]
+    assert "search_computers" in msgs[0]["content"]
+    assert "get_computer" in msgs[0]["content"]
     assert msgs[-1]["role"] == "user"
     assert "Win10" in msgs[-1]["content"]
+    assert "search_computers" in msgs[-1]["content"].lower() or "query_corax" in msgs[-1]["content"].lower()
+
+
+def test_resolve_agent_system_keeps_tools_when_custom():
+    out = resolve_agent_system_prompt("Отвечай кратко.")
+    assert "search_computers" in out
+    assert "Отвечай кратко" in out
 
 
 @pytest.mark.asyncio

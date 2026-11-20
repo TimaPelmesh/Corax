@@ -38,15 +38,36 @@ ProgressCb = Callable[[dict[str, Any]], Awaitable[None] | None]
 
 _MAX_TOOL_ROUNDS = 3
 
-WIKIRAG_AGENT_SYSTEM = """Ты аналитик парка CORAX. Отвечаешь по-русски.
-У тебя есть инструменты: search_wiki (векторная БД документов), search_computers,
-search_tickets, get_computer, get_network_device, query_corax.
-Правила:
-- Сначала вызови нужные тулы с фильтрами (os, ram_lt, software). Не проси весь парк.
-- Hostname, IP, версии и количества бери только из результатов тулов. Не выдумывай.
-- После тулов дай структурированный ответ: сначала вывод, затем 2–5 строк расчёта.
-- Если данных мало — уточни фильтр, а не отказывайся.
+WIKIRAG_AGENT_SYSTEM = """Ты аналитик парка CORAX. Отвечаешь по-русски. Поведение детерминированное.
+
+Инструменты (используй узко — не забивай контекст всем парком):
+- search_computers — фильтр ПК (os, ram_lt/gt/eq, software, limit). Для «сколько / у кого / список».
+- get_computer — один/несколько hostname или id. Для «карточка ПК X».
+- query_corax — краткая статистика/сводка (ОС, ПО, заявки), без полного списка.
+- search_tickets — заявки по статусу/тексту.
+- get_network_device — IP / hostname / sysName сетевого устройства.
+- search_wiki — векторный поиск по документам WikiRAG (регламенты, заметки). Не дублируй им живой инвентарь.
+
+Правила выбора тулов:
+1) Конкретный ПК/IP → get_computer или get_network_device (не search_* на весь парк).
+2) Фильтр/статистика парка → search_computers или query_corax с фильтрами; limit ≤ 15.
+3) Документы/регламент → search_wiki с коротким query; top_k ≤ 8.
+4) Никогда не проси «все 500 ПК» и не повторяй один тул без новых аргументов.
+5) Факты (hostname, IP, версии, количества) — только из результатов тулов. Не выдумывай.
+6) Ответ: сначала вывод (1–2 предложения), затем 2–5 строк расчёта. Без воды и без советов «пополните базу».
 """
+
+
+def resolve_agent_system_prompt(custom: str | None = None) -> str:
+    """Agent tool rules always win; operator custom text is appended, never replaces tools."""
+    base = WIKIRAG_AGENT_SYSTEM.strip()
+    extra = (custom or "").strip()
+    if not extra or extra == base:
+        return base
+    # Avoid duplicating the default RAG prompt if someone saved it as custom.
+    if "Hostname, IP, версии" in extra and "Контекст" in extra and len(extra) < 900:
+        return base
+    return f"{base}\n\nДоп. инструкции оператора:\n{extra[:4000]}"
 
 
 def wikirag_tool_schemas() -> list[dict[str, Any]]:
@@ -264,7 +285,7 @@ def build_agent_seed_messages(
     *,
     system_prompt: str | None = None,
 ) -> list[dict[str, Any]]:
-    system = (system_prompt or "").strip() or WIKIRAG_AGENT_SYSTEM
+    system = resolve_agent_system_prompt(system_prompt)
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     for h in (history or [])[-4:]:
         role = h.get("role") or "user"
@@ -273,13 +294,21 @@ def build_agent_seed_messages(
         content = (h.get("content") or "").strip()[:1200]
         if content:
             messages.append({"role": role, "content": content})
+    focus = classify_wikirag_question(question)
+    tool_hint = {
+        "os_hardware": "Предпочти: query_corax и/или search_computers с os/ram фильтрами.",
+        "software": "Предпочти: search_computers(software=…) или query_corax; не тащи весь парк.",
+        "tickets": "Предпочти: search_tickets, при необходимости query_corax.",
+        "network": "Предпочти: get_network_device или query_corax focus=network.",
+        "general": "Выбери минимальный набор тулов под вопрос.",
+    }.get(focus, "Выбери минимальный набор тулов под вопрос.")
     messages.append(
         {
             "role": "user",
             "content": (
                 f"Вопрос: {question.strip()}\n\n"
-                "Если нужны факты из базы — вызови тулы с узкими фильтрами, "
-                "затем дай ответ: сначала вывод, потом краткий расчёт."
+                f"{tool_hint}\n"
+                "Сначала тулы с узкими фильтрами, затем ответ: вывод → краткий расчёт."
             ),
         }
     )
@@ -642,7 +671,7 @@ def _messages_for_final_completion(
     question: str,
 ) -> list[dict[str, str]]:
     """Flatten tool results into a classic Контекст block for stream-safe completion."""
-    system = WIKIRAG_AGENT_SYSTEM
+    system = resolve_agent_system_prompt(None)
     tool_blocks: list[str] = []
     hist: list[dict[str, str]] = []
     for m in messages:

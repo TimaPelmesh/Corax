@@ -17,11 +17,11 @@ RESEARCH_SYSTEM = """Ты публичный исследователь. Теб�
 Базы CORAX, инвентаря, документов WikiRAG и внутренних сетей у тебя нет и быть не должно.
 Правила:
 - Сложи готовую инструкцию: кратко суть, затем нумерованные шаги, команды и настройки — как в источниках.
-- Пиши по-русски, связно, без воды.
+- Пиши по-русски, связно, без воды. Команды/ключи (num_ctx, Modelfile) оставляй как в источнике.
 - Не выдумывай шаги, которых нет в выдержках.
 - Не упоминай CORAX, инвентарь, хосты, пользователей, токены и локальную базу.
-- Если страниц нет или в них нет ответа — скажи, что публичная инструкция не найдена, и перечисли, какие запросы уже ушли в поиск.
-- В конце перечисли URL, на которые опирался.
+- Если страниц нет или в них нет ответа — скажи, что публичная инструкция не найдена, и перечисли, какие запросы уже ушли в поиск. Не выдумывай URL.
+- Если выдержки есть — опирайся на них и в конце перечисли URL.
 """
 
 RESEARCH_EMPTY = "Модель не сформулировала ответ по найденным страницам."
@@ -98,6 +98,8 @@ _TRUSTED_PUBLIC_SUFFIXES = (
     "stackexchange.com",
     "gnu.org",
     "python.org",
+    "ollama.com",
+    "docs.ollama.com",
 )
 _LITE_SEARCH_URL = "https://lite.duckduckgo.com/lite/"
 _LITE_LINK_RE = re.compile(
@@ -264,21 +266,32 @@ def research_queries(question: str) -> list[str]:
     ru = bool(re.search(r"[а-яё]", raw.lower()))
     queries = [raw]
     core = " ".join(_tokens(raw)[:8]).strip()
+    # Latin/tech tokens (num_ctx, ollama, BIOS…) — English docs beat RU-only DDG hits.
+    latin = " ".join(re.findall(r"[A-Za-z][A-Za-z0-9_\-.]{2,}", raw))[:120].strip()
     if core and core.lower() != raw.lower():
         queries.append(core)
     if core:
         queries.append(f"{core} инструкция" if ru else f"{core} how to")
         queries.append(f"{core} настройка" if ru else f"{core} setup guide")
         queries.append(f"{core} site:wikipedia.org")
+    if latin:
+        low = latin.lower()
+        queries.append(latin)
+        queries.append(f"{latin} how to")
+        if "ollama" in low or "num_ctx" in low:
+            queries.append(f"{latin} site:github.com")
+            queries.append(f"{latin} site:ollama.com")
+        else:
+            queries.append(f"{latin} site:github.com")
     seen: set[str] = set()
     out: list[str] = []
     for item in queries:
-        key = item.lower()
-        if key in seen:
+        key = item.lower().strip()
+        if not key or key in seen:
             continue
         seen.add(key)
-        out.append(item)
-    return out[:6]
+        out.append(item.strip())
+    return out[:8]
 
 
 def page_relevance(question: str, page: dict[str, str]) -> int:
