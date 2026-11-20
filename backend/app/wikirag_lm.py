@@ -18,7 +18,7 @@ from app.wikirag_context_budget import (
 )
 
 ChatMode = Literal["simple", "rag"]
-QuestionFocus = Literal["os_hardware", "software", "tickets", "network", "general"]
+QuestionFocus = Literal["os_hardware", "software", "tickets", "network", "printers", "general"]
 
 WIKIRAG_SYSTEM_RAG = """Ты аналитик парка CORAX. Отвечаешь по-русски по блоку «Контекст».
 Правила:
@@ -371,6 +371,22 @@ def retrieval_question(question: str, history: list[dict[str, str]] | None) -> s
 
 def classify_wikirag_question(question: str) -> QuestionFocus:
     low = (question or "").strip().lower()
+    # Принтеры/тонер раньше «сеть», иначе «принтер на сети» уходит в network.
+    if any(
+        k in low
+        for k in (
+            "принтер",
+            "принтеры",
+            "тонер",
+            "toner",
+            "картридж",
+            "cartridge",
+            "мфу",
+            "расходник",
+            "чернил",
+        )
+    ):
+        return "printers"
     # ПО раньше «установ*», иначе «у кого установлено Chrome» уходит в os_hardware.
     if any(
         k in low
@@ -587,6 +603,11 @@ def _rag_user_suffix(question: str, focus: QuestionFocus) -> str:
         hint = (
             "\nЕсли есть tool:search_tickets — разбери показанные заявки и итоги по статусам; "
             "не делай вывод только по одному фрагменту."
+        )
+    elif focus == "printers":
+        hint = (
+            "\nЕсли есть tool:search_printers — перечисли принтеры из выборки (имя, IP, тонер %). "
+            "Не пиши «в контексте нет», если в блоке есть строки принтеров."
         )
     return f"\n\nВопрос: {q}{hint}\n\nОтвет:"
 

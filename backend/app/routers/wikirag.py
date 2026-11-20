@@ -784,7 +784,8 @@ def _prioritize_corax_docs(rows: list[WikiRagDocument], *, question: str = "") -
 _FOCUS_TABLES: dict[str, set[str]] = {
     "software": {"software", "software_stats"},
     "tickets": {"tickets"},
-    "network": {"network", "printers"},
+    "network": {"network"},
+    "printers": {"printers"},
     "os_hardware": {"computers", "hardware"},
 }
 

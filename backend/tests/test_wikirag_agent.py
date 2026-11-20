@@ -22,6 +22,7 @@ def test_tool_schemas_cover_vector_and_inventory():
     assert "search_wiki" in names
     assert "search_computers" in names
     assert "search_tickets" in names
+    assert "search_printers" in names
     assert "get_computer" in names
     assert "get_network_device" in names
     assert "query_corax" in names
@@ -72,6 +73,11 @@ async def test_execute_search_computers_passes_filters():
 async def test_agent_loop_uses_tool_calls_then_answers():
     calls = {"n": 0}
 
+    class Pack:
+        context = "### tool:search_computers\nseed"
+        tools_used = ["search_computers"]
+        sources = []
+
     async def fake_raw(messages, **kwargs):
         calls["n"] += 1
         if calls["n"] == 1:
@@ -104,6 +110,7 @@ async def test_agent_loop_uses_tool_calls_then_answers():
     with (
         patch("app.wikirag_agent.lm_studio_chat_raw", new=fake_raw),
         patch("app.wikirag_agent.execute_wikirag_tool", new=fake_exec),
+        patch("app.wikirag_agent._fallback_tool_pack", new=AsyncMock(return_value=Pack())),
     ):
         result = await run_wikirag_agent_loop(
             db=AsyncMock(),
@@ -117,15 +124,14 @@ async def test_agent_loop_uses_tool_calls_then_answers():
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_fallback_when_no_tool_calls():
+async def test_agent_loop_seeds_tools_and_retries_refusal():
     calls = {"n": 0}
 
     async def fake_raw(messages, **kwargs):
         calls["n"] += 1
-        # First call: plain answer without tools (weak model).
         if calls["n"] == 1:
             return LmChatResult(
-                content="Не знаю",
+                content="В контексте нет информации.",
                 model="test",
                 tool_calls=[],
                 finish_reason="stop",
@@ -154,6 +160,23 @@ async def test_agent_loop_fallback_when_no_tool_calls():
             documents=[],
             include_corax=True,
         )
-    assert result.path == "agent+fallback"
-    assert "fallback" in result.tools_used or "search_computers" in result.tools_used
+    assert "seed" in result.tools_used or "search_computers" in result.tools_used
+    assert result.path in {"agent+seed", "agent+retry"}
     assert "слабых" in result.content.lower() or "Вывод" in result.content
+
+
+@pytest.mark.asyncio
+async def test_execute_search_printers():
+    async def fake_printers(db, question, *, toner_lt=None, limit=None):
+        assert toner_lt == 5
+        return "### tool:search_printers\ntoner=2%", []
+
+    with patch("app.wikirag_agent.tool_search_printers", new=fake_printers):
+        text, _ = await execute_wikirag_tool(
+            "search_printers",
+            {"query": "без тонера", "toner_lt": 5},
+            db=AsyncMock(),
+            documents=[],
+            question="fallback",
+        )
+    assert "search_printers" in text

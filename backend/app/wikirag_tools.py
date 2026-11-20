@@ -21,14 +21,17 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Computer, NetworkDevice, WikiRagDocument
+from app.models import Computer, NetworkDevice, Printer, WikiRagDocument
 from app.wikirag_corax import (
     _is_weakest_pc_question,
     _load_snapshot,
+    _parse_printer_supplies,
+    _toner_min_percent,
     build_inventory_analysis_hint,
     build_weakest_pcs_table,
 )
 from app.network_classify import infer_network_role
+from app.printer_cleanup import is_noise_printer_name
 from app.wikirag_index import build_context_from_chunks, retrieve_relevant_chunks
 from app.wikirag_lm import QuestionFocus, classify_wikirag_question
 
@@ -39,6 +42,8 @@ _WIKI_TOP_K = 8
 _SEARCH_PC_LIMIT = 15
 _SEARCH_PC_LIMIT_MAX = 40
 _SEARCH_TICKET_LIMIT = 20
+_SEARCH_PRINTER_LIMIT = 25
+_SEARCH_PRINTER_LIMIT_MAX = 60
 _TOOL_RESULT_MAX_CHARS = 6000
 
 _PARK_WIDE_RE = re.compile(
@@ -242,10 +247,130 @@ def _pc_aggregates(pcs: list[Computer], *, term: str | None = None) -> list[str]
 
 
 def needs_live_inventory_tools(question: str, focus: QuestionFocus | str) -> bool:
-    """Park-wide / filter / ticket / network analysis — RAG top-k alone is too narrow."""
-    if focus in {"os_hardware", "software", "tickets", "network"}:
+    """Park-wide / filter / ticket / network / printers — RAG top-k alone is too narrow."""
+    if focus in {"os_hardware", "software", "tickets", "network", "printers"}:
         return True
     return bool(_PARK_WIDE_RE.search(question or ""))
+
+
+def _printer_toner_intent(question: str) -> dict[str, Any]:
+    """Parse toner filters from NL: empty / low / threshold."""
+    low = (question or "").lower()
+    out: dict[str, Any] = {}
+    # «без тонера», «закончился», «пустой» → почти 0 / пустые + низкие
+    if any(
+        k in low
+        for k in (
+            "без тонер",
+            "без картридж",
+            "закончил",
+            "кончился",
+            "пуст",
+            "нет тонер",
+            "out of toner",
+            "empty",
+        )
+    ):
+        out["toner_lt"] = 5
+        out["include_unknown"] = False
+    elif any(k in low for k in ("мало", "низк", "заканчива", "low toner", "≤15", "<=15")):
+        out["toner_lt"] = 15
+    else:
+        m = re.search(r"(?:тонер|toner)\s*(?:<|>|≤|меньше|менее)\s*(\d+)", low)
+        if m:
+            out["toner_lt"] = int(m.group(1))
+        elif "тонер" in low or "toner" in low or "картридж" in low:
+            out["toner_lt"] = 15
+    return out
+
+
+def _printer_card(p: Printer, *, toner: int | None) -> str:
+    toner_s = f"{toner}%" if toner is not None else "н/д"
+    return (
+        f"- printer_id={p.id} name={p.name or '—'} ip={p.ip_address or '—'} "
+        f"model={p.snmp_model or p.glpi_model or p.driver_name or '—'} "
+        f"kind={p.printer_kind or '—'} toner={toner_s} "
+        f"snmp={p.snmp_status or '—'} location={p.location or '—'} "
+        f"network={'yes' if p.is_network else 'no'}"
+    )
+
+
+async def tool_search_printers(
+    db: AsyncSession,
+    question: str,
+    *,
+    toner_lt: int | None = None,
+    limit: int | None = None,
+) -> tuple[str, list[RagSource]]:
+    """Live printer selection with toner filters — not wiki top-k chunks."""
+    data = await _load_snapshot(db)
+    printers: list[Printer] = list(data.get("printers") or [])
+    real = [p for p in printers if not is_noise_printer_name(p.name or "")]
+    intent = _printer_toner_intent(question)
+    threshold = toner_lt if toner_lt is not None else intent.get("toner_lt")
+    show_n = max(1, min(int(limit or _SEARCH_PRINTER_LIMIT), _SEARCH_PRINTER_LIMIT_MAX))
+
+    scored: list[tuple[int, Printer, int | None]] = []
+    for p in real:
+        supplies = _parse_printer_supplies(getattr(p, "supplies_json", None))
+        toner = _toner_min_percent(supplies)
+        if threshold is not None:
+            if toner is None:
+                continue
+            if int(toner) > int(threshold):
+                continue
+        scored.append((int(toner) if toner is not None else 999, p, toner))
+
+    scored.sort(key=lambda x: (x[0], (x[1].name or "").lower()))
+    matched = scored
+    # If strict filter wiped everything, show lowest known toners as sample.
+    used_fallback = False
+    if not matched and threshold is not None:
+        used_fallback = True
+        all_scored: list[tuple[int, Printer, int | None]] = []
+        for p in real:
+            supplies = _parse_printer_supplies(getattr(p, "supplies_json", None))
+            toner = _toner_min_percent(supplies)
+            all_scored.append((int(toner) if toner is not None else 999, p, toner))
+        all_scored.sort(key=lambda x: (x[0], (x[1].name or "").lower()))
+        matched = all_scored
+
+    show = matched[:show_n]
+    lines = [
+        "### tool:search_printers",
+        f"Всего принтеров (без шума): {len(real)}. Под фильтр: {len(matched)}"
+        + (" (фильтр смягчён — показаны с самым низким тонером)" if used_fallback else "")
+        + f". Показано: {len(show)}.",
+    ]
+    if threshold is not None:
+        lines.append(f"Фильтр: toner≤{threshold}%")
+    sources: list[RagSource] = [
+        RagSource(
+            kind="corax_tool",
+            label=f"Принтеры {len(show)}/{len(matched)}",
+            source_table="printers",
+            excerpt=f"total={len(real)}; matched={len(matched)}; toner_lt={threshold}",
+        )
+    ]
+    if not show:
+        lines.append("Совпадений нет — в снимке нет принтеров с данными тонера под фильтр.")
+        return _clip_tool_text("\n".join(lines)), sources
+
+    for _rank, p, toner in show:
+        card = _printer_card(p, toner=toner)
+        lines.append(card)
+        sources.append(
+            RagSource(
+                kind="corax_tool",
+                label=f"Принтер {p.name}",
+                hostname=p.name,
+                source_table="printers",
+                excerpt=card[:220],
+            )
+        )
+    if len(matched) > len(show):
+        lines.append(f"- … ещё {len(matched) - len(show)} (уточните имя / toner_lt)")
+    return _clip_tool_text("\n".join(lines)), sources
 
 
 def merge_pc_filters(question: str, explicit: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -747,6 +872,24 @@ async def tool_query_corax(db: AsyncSession, question: str) -> tuple[str, list[R
             parts.append(f"- … ещё {len(devices) - 80}")
         return "\n".join(parts), sources
 
+    if focus == "printers":
+        printers: list[Printer] = list(data.get("printers") or [])
+        real = [p for p in printers if not is_noise_printer_name(p.name or "")]
+        sources[0].excerpt = f"focus=printers; printers={len(real)}"
+        sources[0].label = f"Живой снимок принтеров ({len(real)})"
+        sources[0].source_table = "printers"
+        low = 0
+        unknown = 0
+        for p in real:
+            toner = _toner_min_percent(_parse_printer_supplies(getattr(p, "supplies_json", None)))
+            if toner is None:
+                unknown += 1
+            elif toner <= 15:
+                low += 1
+        parts.append(f"Принтеров в снимке: {len(real)} (тонер≤15%: {low}, без данных SNMP: {unknown})")
+        parts.append("Детальная выборка — в tool:search_printers.")
+        return "\n".join(parts), sources
+
     # general: short park stats
     parts.append(
         f"Парк: {len(computers)} ПК, тегов={len(data.get('tags') or [])}, "
@@ -770,7 +913,7 @@ async def run_wikirag_tools(
 
     focus = classify_wikirag_question(q)
     # Для «топ слабых / железо» сначала живой рейтинг CORAX — wiki CSV только как дополнение.
-    if include_corax and focus in {"os_hardware", "network", "tickets", "software"}:
+    if include_corax and focus in {"os_hardware", "network", "tickets", "software", "printers"}:
         corax_block, corax_sources = await tool_query_corax(db, q)
         if corax_block:
             pack.tools_used.append("query_corax")
@@ -792,8 +935,15 @@ async def run_wikirag_tools(
             blocks.append(ticket_block)
             pack.sources.extend(ticket_sources)
 
+    if include_corax and focus == "printers":
+        printer_block, printer_sources = await tool_search_printers(db, q)
+        if printer_block:
+            pack.tools_used.append("search_printers")
+            blocks.append(printer_block)
+            pack.sources.extend(printer_sources)
+
     # Wiki chunks по индексу (эмбеддинги / hybrid) — не целые файлы.
-    skip_wiki = include_corax and focus in {"os_hardware", "tickets"} and (
+    skip_wiki = include_corax and focus in {"os_hardware", "tickets", "printers"} and (
         _is_weakest_pc_question(q) or needs_live_inventory_tools(q, focus)
     )
     if not skip_wiki:

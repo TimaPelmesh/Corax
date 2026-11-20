@@ -29,7 +29,17 @@ def test_needs_live_for_park_and_tickets():
     assert needs_live_inventory_tools("анализ открытых заявок", "tickets")
     assert needs_live_inventory_tools("сколько компьютеров в парке", "general")
     assert needs_live_inventory_tools("какой шлюз cisco", "network")
+    assert needs_live_inventory_tools("принтеры без тонера", "printers")
     assert not needs_live_inventory_tools("что такое VLAN", "general")
+
+
+def test_printer_toner_intent():
+    from app.wikirag_tools import _printer_toner_intent
+    from app.wikirag_lm import classify_wikirag_question
+
+    assert classify_wikirag_question("Какие принтеры без тонера?") == "printers"
+    assert _printer_toner_intent("принтеры без тонера").get("toner_lt") == 5
+    assert _printer_toner_intent("мало тонера").get("toner_lt") == 15
 
 
 def test_pc_aggregates_for_large_match():
