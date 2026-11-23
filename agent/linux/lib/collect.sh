@@ -145,8 +145,9 @@ collect_disks() {
     LC_ALL=C df -Pk 2>/dev/null | awk 'NR>1 && $6 ~ /^\// {
       total=$2+0; used=$3+0; avail=$4+0; mnt=$6
       if (total<=0) next
-      # skip tiny pseudo
-      if (mnt ~ /^\/(proc|sys|dev|run|snap)/) next
+      # skip pseudo + container runtime rootfs (same disk as /)
+      if (mnt ~ /^\/(proc|sys|dev|run|snap)(\/|$)/) next
+      if (mnt ~ /^\/var\/lib\/(docker|containerd|containers|kubelet)(\/|$)/) next
       tg=total/1024/1024; fg=avail/1024/1024
       pct=int((used*100)/total)
       printf "%s\t%s\t%.2f\t%d\t%.2f\n", mnt, "", tg, pct, fg

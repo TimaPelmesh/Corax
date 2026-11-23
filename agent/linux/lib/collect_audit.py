@@ -41,8 +41,21 @@ _SKIP_FSTYPE = {
     "binfmt_misc",
     "nsfs",
     "rpc_pipefs",
+    # Container runtimes re-export the same underlying volume per rootfs.
+    "overlay",
+    "overlay2",
 }
-_SKIP_MOUNT_PREFIX = ("/proc", "/sys", "/dev", "/run", "/snap")
+_SKIP_MOUNT_PREFIX = (
+    "/proc",
+    "/sys",
+    "/dev",
+    "/run",
+    "/snap",
+    "/var/lib/docker",
+    "/var/lib/containerd",
+    "/var/lib/containers",
+    "/var/lib/kubelet",
+)
 _SKIP_BLOCK = ("loop", "ram", "fd", "sr", "zram", "dm-")
 
 

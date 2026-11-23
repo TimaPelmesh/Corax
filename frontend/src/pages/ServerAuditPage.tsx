@@ -43,6 +43,33 @@ function asRows(value: unknown): Record<string, unknown>[] {
   return value.filter((item) => item && typeof item === 'object') as Record<string, unknown>[]
 }
 
+/** Container rootfs mounts mirror the host volume and look like duplicates in the UI. */
+const SKIP_DISK_FSTYPE = new Set(['overlay', 'overlay2', 'tmpfs', 'devtmpfs', 'squashfs'])
+const SKIP_DISK_MOUNT_PREFIX = [
+  '/proc',
+  '/sys',
+  '/dev',
+  '/run',
+  '/snap',
+  '/var/lib/docker',
+  '/var/lib/containerd',
+  '/var/lib/containers',
+  '/var/lib/kubelet',
+]
+
+function meaningfulDiskRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.filter((row) => {
+    const fstype = String(row.fstype ?? '')
+      .trim()
+      .toLowerCase()
+    if (fstype && SKIP_DISK_FSTYPE.has(fstype)) return false
+    const mount = String(row.mount ?? '').trim()
+    return !SKIP_DISK_MOUNT_PREFIX.some(
+      (prefix) => mount === prefix || mount.startsWith(`${prefix}/`),
+    )
+  })
+}
+
 function textOf(value: unknown): string {
   if (value == null || value === '') return '—'
   return String(value)
@@ -467,7 +494,7 @@ export function ServerAuditPage() {
   const temps = asRows(payload.temperatures)
   const voltages = asRows(payload.voltages)
   const fans = asRows(payload.fans)
-  const disks = asRows(payload.disks)
+  const disks = meaningfulDiskRows(asRows(payload.disks))
   const diskIo = asRows(payload.disk_io)
   const memory = asRecord(payload.memory)
   const loadInfo = asRecord(payload.load)

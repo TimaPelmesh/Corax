@@ -335,9 +335,41 @@ def _cap_list(data: dict[str, Any], key: str, limit: int) -> None:
         data[key] = data[key][:limit]
 
 
+_SKIP_DISK_FSTYPE = frozenset({"overlay", "overlay2", "tmpfs", "devtmpfs", "squashfs"})
+_SKIP_DISK_MOUNT_PREFIX = (
+    "/proc",
+    "/sys",
+    "/dev",
+    "/run",
+    "/snap",
+    "/var/lib/docker",
+    "/var/lib/containerd",
+    "/var/lib/containers",
+    "/var/lib/kubelet",
+)
+
+
+def filter_audit_disk_rows(rows: list[Any]) -> list[Any]:
+    """Drop container rootfs mounts that mirror the host volume (look like duplicates)."""
+    out: list[Any] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        fstype = str(row.get("fstype") or "").strip().lower()
+        if fstype in _SKIP_DISK_FSTYPE:
+            continue
+        mount = str(row.get("mount") or "").strip()
+        if any(mount == prefix or mount.startswith(prefix + "/") for prefix in _SKIP_DISK_MOUNT_PREFIX):
+            continue
+        out.append(row)
+    return out
+
+
 def shape_payload(payload: dict[str, Any], *, journal_mode: str, journal_lines: int) -> str:
     """Keep chart fields. Journal text stays only as configured, and only on this sample."""
     data = dict(payload)
+    if isinstance(data.get("disks"), list):
+        data["disks"] = filter_audit_disk_rows(data["disks"])
     logs = data.get("logs") if isinstance(data.get("logs"), list) else []
     mode = journal_mode if journal_mode in JOURNAL_MODES else "errors"
     limit = journal_lines if journal_lines in JOURNAL_LINES else 20

@@ -6,7 +6,7 @@ from starlette.testclient import TestClient
 
 from app.database import AsyncSessionLocal
 from app.models import ServerAuditSample
-from app.server_audit_store import _due, bucket_downsample, keep_cap, minutes_mirror
+from app.server_audit_store import _due, bucket_downsample, filter_audit_disk_rows, keep_cap, minutes_mirror
 
 
 def test_due_uses_seconds():
@@ -96,3 +96,20 @@ def test_chart_keeps_a_spike_without_every_sample(
     assert points[0]["cpu_temp_c"] == 40.0
     assert points[-1]["cpu_temp_c"] == 40.0
     client.delete(f"/api/v1/server-audit/hosts/{host_id}", headers=auth_headers)
+
+
+def test_filter_audit_disk_rows_drops_docker_overlays():
+    rows = filter_audit_disk_rows(
+        [
+            {"mount": "/", "fstype": "ext4", "used_percent": 40},
+            {"mount": "/boot", "fstype": "ext4", "used_percent": 12},
+            {
+                "mount": "/var/lib/docker/rootfs/overlayfs/abc123",
+                "fstype": "overlay",
+                "used_percent": 40,
+            },
+            {"mount": "/home", "fstype": "xfs", "used_percent": 55},
+        ]
+    )
+    mounts = [row["mount"] for row in rows]
+    assert mounts == ["/", "/boot", "/home"]
