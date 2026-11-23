@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ from app.models import User
 from app.routers.agent import verify_agent_token
 
 router = APIRouter(prefix="/assist", tags=["assist"])
+log = logging.getLogger("corax.assist")
 
 
 class AssistStartBody(BaseModel):
@@ -64,6 +66,7 @@ def _frame_meta(request: Request) -> dict:
         "cx": _num("cx", float, 0.0),
         "cy": _num("cy", float, 0.0),
         "cv": _num("cv", int, 0),
+        "sd": _num("sd", int, 0),
         "w": _num("w", int, 0),
         "h": _num("h", int, 0),
         "mw": _num("mw", int, 0),
@@ -81,6 +84,13 @@ async def start_session(body: AssistStartBody, current: User = Depends(get_curre
         raise HTTPException(status_code=400, detail="Нужно имя компьютера") from None
     except RuntimeError:
         raise HTTPException(status_code=409, detail="На этом ПК уже идёт Assist") from None
+    log.info(
+        "assist start id=%s host=%s admin_id=%s admin=%s",
+        sess.id,
+        sess.hostname,
+        sess.admin_id,
+        sess.admin_name,
+    )
     return hub.public(sess)
 
 
@@ -115,10 +125,15 @@ async def answer_session(
 
 @router.post("/sessions/{session_id}/end")
 async def end_session_admin(session_id: str, current: User = Depends(get_current_editor_or_superuser)):
-    _ = current
     sess = await hub.end(session_id)
     if sess is None:
         raise HTTPException(status_code=404, detail="Сессия Assist не найдена")
+    log.info(
+        "assist end id=%s host=%s by=admin admin_id=%s",
+        sess.id,
+        sess.hostname,
+        current.id,
+    )
     return hub.public(sess)
 
 
@@ -134,6 +149,12 @@ async def hangup_session_agent(
     if sess is None or not hub.hosts_match(sess.hostname, hostname):
         raise HTTPException(status_code=404, detail="Сессия Assist не найдена")
     ended = await hub.end(session_id)
+    log.info(
+        "assist hangup id=%s host=%s by=agent admin=%s",
+        session_id,
+        hostname,
+        (ended.admin_name if ended else "") or "",
+    )
     return hub.public(ended) if ended else {"id": session_id, "status": "ended"}
 
 

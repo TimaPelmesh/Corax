@@ -2369,9 +2369,10 @@ export const en: MessageTree = {
     rdpStarted: 'Opening Remote Desktop on this PC to {host}',
     assist: 'Corax Assist',
     assistByName: 'Opens a separate browser tab with the desktop of {host}. Needs the blue “Download EXE” agent.',
-    assistWaiting: 'Waiting for consent on {host}…',
+    assistWaiting: 'Connecting to {host}…',
     assistConnecting: 'Opening a shared desktop',
     assistLive: 'Live',
+    assistSecureDesktop: 'UAC / secure desktop — control paused until the prompt closes',
     assistNoTray:
       'The inventory tray on {host} did not answer. Use the blue “Download EXE” agent. Run it on that PC again.',
     assistEnd: 'End',

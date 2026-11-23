@@ -10,6 +10,7 @@ type AssistMeta = {
   cx?: number
   cy?: number
   cv?: number
+  sd?: number
   w?: number
   h?: number
   mw?: number
@@ -110,6 +111,11 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
           }
           if (packet.type === 'meta') {
             setMeta(packet)
+            if (packet.sd === 1) {
+              setHint(t('remoteConnect.assistSecureDesktop'))
+            } else if (!endedRef.current) {
+              setHint(t('remoteConnect.assistWaiting', { host: session.hostname }))
+            }
             if (packet.cv && !controllingRef.current) {
               setCursor((prev) => ({
                 x: typeof packet.cx === 'number' ? packet.cx : prev.x,
@@ -169,6 +175,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
 
   function send(events: object[]) {
     if (endedRef.current) return
+    if (meta.sd === 1) return
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(JSON.stringify({ type: 'input', events }))
@@ -234,7 +241,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
         <header className="assist-bar">
           <div className="assist-identity">
             <p className="assist-host">{session.hostname}</p>
-            {ended ? <p className="assist-kicker">{hint}</p> : null}
+            {ended || meta.sd === 1 ? <p className="assist-kicker">{hint}</p> : null}
           </div>
           {screens.length > 1 ? (
             <div className="assist-monitors" role="tablist" aria-label={t('remoteConnect.assistMonitors')}>

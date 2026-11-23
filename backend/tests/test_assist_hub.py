@@ -6,18 +6,15 @@ from app.assist_hub import AssistHub
 
 
 @pytest.mark.asyncio
-async def test_offer_wait_answer_and_busy():
+async def test_silent_create_wait_and_busy():
     hub = AssistHub()
     sess = await hub.create("PC-LAB-01", 7, "Иван")
-    assert sess.status == "offered"
+    assert sess.status == "accepted"
     pending = await hub.wait_offer("pc-lab-01", timeout=0.2)
     assert pending is not None
     assert pending.id == sess.id
     assert pending.admin_name == "Иван"
-
-    answered = await hub.answer(sess.id, "PC-LAB-01", True)
-    assert answered is not None
-    assert answered.status == "accepted"
+    assert pending.status == "accepted"
 
     with pytest.raises(RuntimeError):
         await hub.create("pc-lab-01", 8, "Пётр")
@@ -37,7 +34,7 @@ async def test_offer_wait_answer_and_busy():
 async def test_input_coalesces_moves_and_keeps_clicks():
     hub = AssistHub()
     sess = await hub.create("PC-LAB-02", 1, "Анна")
-    await hub.answer(sess.id, "PC-LAB-02", True)
+    assert sess.status == "accepted"
     await hub.push_frame(sess.id, "PC-LAB-02", b"jpeg")
     await hub.push_input(
         sess.id,
@@ -70,8 +67,22 @@ async def test_short_hostname_matches_fqdn():
     pending = await hub.wait_offer("PC-LAB-01", timeout=0.2)
     assert pending is not None
     assert pending.id == sess.id
-    answered = await hub.answer(sess.id, "PC-LAB-01", True)
+    assert pending.status == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_legacy_answer_still_works_on_accepted():
+    hub = AssistHub()
+    sess = await hub.create("PC-LEGACY", 1, "Олег")
+    answered = await hub.answer(sess.id, "PC-LEGACY", True)
     assert answered is not None
+    assert answered.status == "accepted"
+    denied = await hub.create("PC-DENY", 2, "Олег")
+    # Force legacy offered path for deny coverage.
+    denied.status = "offered"
+    result = await hub.answer(denied.id, "PC-DENY", False)
+    assert result is not None
+    assert result.status == "denied"
 
 
 @pytest.mark.asyncio

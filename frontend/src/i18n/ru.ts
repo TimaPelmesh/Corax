@@ -2367,9 +2367,10 @@ export const ru = {
     rdpStarted: 'На этом компьютере открывается окно RDP к {host}',
     assist: 'Corax Assist',
     assistByName: 'Откроется отдельная вкладка браузера со столом {host}. Нужен агент с синей «Скачать EXE».',
-    assistWaiting: 'Ждём согласие на {host}…',
+    assistWaiting: 'Подключаемся к {host}…',
     assistConnecting: 'Соединяем защищённый стол',
     assistLive: 'В эфире',
+    assistSecureDesktop: 'UAC / защищённый экран — управление временно недоступно',
     assistNoTray:
       'На {host} не ответил трей инвентаризации. Нужен EXE с синей кнопки «Скачать EXE». Запустите его на том ПК ещё раз.',
     assistEnd: 'Завершить',

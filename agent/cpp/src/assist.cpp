@@ -20,7 +20,7 @@
 
 namespace {
 
-constexpr UINT kOfferMsg = WM_APP + 40;
+constexpr UINT kStartMsg = WM_APP + 40;
 constexpr UINT kClickMsg = WM_APP + 41;
 
 struct State {
@@ -50,6 +50,7 @@ struct FrameInfo {
   double cx = 0;
   double cy = 0;
   int cv = 0;
+  int sd = 0;
   std::string screens;
 };
 
@@ -163,6 +164,121 @@ std::vector<MonitorRec> list_monitors() {
   return mons;
 }
 
+void fill_screens_meta(FrameInfo& info, const std::vector<MonitorRec>& mons, int index) {
+  info.mon = index;
+  info.mc = static_cast<int>(mons.size());
+  info.screens.clear();
+  for (size_t i = 0; i < mons.size(); ++i) {
+    const int mw = mons[i].rect.right - mons[i].rect.left;
+    const int mh = mons[i].rect.bottom - mons[i].rect.top;
+    if (i) info.screens += ",";
+    info.screens += std::to_string(mw) + "x" + std::to_string(mh);
+    if (mons[i].primary) info.screens += "p";
+  }
+}
+
+/** True when input desktop is not the interactive user desktop (UAC / Winlogon). */
+bool is_secure_desktop() {
+  HDESK input = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
+  if (!input) input = OpenInputDesktop(0, FALSE, MAXIMUM_ALLOWED);
+  if (!input) {
+    // Cannot open input desktop from user session → typically Secure Desktop / UAC.
+    return true;
+  }
+  wchar_t name[256] = {};
+  DWORD need = 0;
+  const BOOL ok = GetUserObjectInformationW(input, UOI_NAME, name, sizeof(name), &need);
+  CloseDesktop(input);
+  if (!ok) return true;
+  // Interactive user desktop is "Default". UAC / lock use "Winlogon" (and similar).
+  return _wcsicmp(name, L"Default") != 0;
+}
+
+bool encode_bitmap_jpeg(HBITMAP bmp, int quality, std::string& out) {
+  ensure_gdiplus();
+  if (!g_gdiplus_ok) return false;
+  Gdiplus::Bitmap image(bmp, nullptr);
+  CLSID jpeg{};
+  if (!jpeg_clsid(&jpeg)) return false;
+  IStream* stream = nullptr;
+  if (CreateStreamOnHGlobal(nullptr, TRUE, &stream) != S_OK) return false;
+  Gdiplus::EncoderParameters params;
+  params.Count = 1;
+  ULONG q = static_cast<ULONG>(std::max(40, std::min(92, quality)));
+  params.Parameter[0].Guid = Gdiplus::EncoderQuality;
+  params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
+  params.Parameter[0].NumberOfValues = 1;
+  params.Parameter[0].Value = &q;
+  const bool saved = image.Save(stream, &jpeg, &params) == Gdiplus::Ok;
+  if (!saved) {
+    stream->Release();
+    return false;
+  }
+  STATSTG stat{};
+  stream->Stat(&stat, STATFLAG_NONAME);
+  const ULONG len = static_cast<ULONG>(stat.cbSize.QuadPart);
+  HGLOBAL hg = nullptr;
+  GetHGlobalFromStream(stream, &hg);
+  void* data = GlobalLock(hg);
+  if (data && len) out.assign(static_cast<const char*>(data), len);
+  if (data) GlobalUnlock(hg);
+  stream->Release();
+  return !out.empty();
+}
+
+bool grab_secure_placeholder(std::string& out, FrameInfo& info) {
+  ensure_gdiplus();
+  if (!g_gdiplus_ok) return false;
+  const auto mons = list_monitors();
+  int index = g.monitor.load();
+  if (index < 0 || index >= static_cast<int>(mons.size())) index = 0;
+  const RECT mon = mons[index].rect;
+  const int sw = mon.right - mon.left;
+  const int sh = mon.bottom - mon.top;
+  const int dw = 960;
+  const int dh = std::max(540, sh > 0 && sw > 0 ? sh * 960 / sw : 540);
+
+  Gdiplus::Bitmap bmp(dw, dh, PixelFormat24bppRGB);
+  Gdiplus::Graphics gfx(&bmp);
+  gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+  gfx.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
+  gfx.Clear(Gdiplus::Color(255, 18, 22, 30));
+
+  Gdiplus::SolidBrush bar(Gdiplus::Color(255, 72, 148, 236));
+  gfx.FillRectangle(&bar, 0, 0, dw, 6);
+
+  Gdiplus::FontFamily family(L"Segoe UI");
+  Gdiplus::Font title(&family, 28.f, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+  Gdiplus::Font body(&family, 18.f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+  Gdiplus::SolidBrush fg(Gdiplus::Color(255, 248, 248, 248));
+  Gdiplus::SolidBrush muted(Gdiplus::Color(255, 170, 182, 198));
+  Gdiplus::StringFormat center;
+  center.SetAlignment(Gdiplus::StringAlignmentCenter);
+  center.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+  const Gdiplus::RectF title_rc(40.f, static_cast<float>(dh) * 0.32f, static_cast<float>(dw) - 80.f, 44.f);
+  const Gdiplus::RectF body_rc(60.f, static_cast<float>(dh) * 0.44f, static_cast<float>(dw) - 120.f, 80.f);
+  gfx.DrawString(L"UAC / защищённый экран", -1, &title, title_rc, &center, &fg);
+  gfx.DrawString(L"Управление временно недоступно.\nСеанс продолжится после закрытия запроса.", -1, &body,
+                 body_rc, &center, &muted);
+
+  HBITMAP hbmp = nullptr;
+  if (bmp.GetHBITMAP(Gdiplus::Color(255, 18, 22, 30), &hbmp) != Gdiplus::Ok || !hbmp) return false;
+  const bool ok = encode_bitmap_jpeg(hbmp, 70, out);
+  DeleteObject(hbmp);
+
+  info.sw = sw;
+  info.sh = sh;
+  info.dw = dw;
+  info.dh = dh;
+  info.cx = 0.5;
+  info.cy = 0.5;
+  info.cv = 0;
+  info.sd = 1;
+  fill_screens_meta(info, mons, index);
+  return ok;
+}
+
 void paint_cursor(HDC dc, const RECT& mon, int dw, int dh) {
   CURSORINFO info{};
   info.cbSize = sizeof(info);
@@ -184,7 +300,22 @@ void paint_cursor(HDC dc, const RECT& mon, int dw, int dh) {
   DrawIconEx(dc, x, y, info.hCursor, 0, 0, 0, nullptr, DI_NORMAL | DI_DEFAULTSIZE);
 }
 
-bool grab_jpeg(std::string& out, FrameInfo& info) {
+/** Cheap fingerprint of a few sample pixels to skip near-identical frames. */
+uint32_t sample_fingerprint(HDC dc, int dw, int dh) {
+  uint32_t h = 2166136261u;
+  const int pts[][2] = {{dw / 4, dh / 4}, {dw / 2, dh / 2}, {dw * 3 / 4, dh * 3 / 4},
+                        {dw / 5, dh * 4 / 5}, {dw * 4 / 5, dh / 5}};
+  for (const auto& p : pts) {
+    const COLORREF c = GetPixel(dc, std::max(0, p[0]), std::max(0, p[1]));
+    h ^= static_cast<uint32_t>(c);
+    h *= 16777619u;
+  }
+  h ^= static_cast<uint32_t>(dw);
+  h ^= static_cast<uint32_t>(dh) << 16;
+  return h;
+}
+
+bool grab_jpeg(std::string& out, FrameInfo& info, uint32_t* fingerprint) {
   ensure_gdiplus();
   if (!g_gdiplus_ok) return false;
   const auto mons = list_monitors();
@@ -212,52 +343,17 @@ bool grab_jpeg(std::string& out, FrameInfo& info) {
     StretchBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, sw, sh, SRCCOPY | CAPTUREBLT);
   }
   paint_cursor(mem, mon, dw, dh);
+  if (fingerprint) *fingerprint = sample_fingerprint(mem, dw, dh);
   SelectObject(mem, old);
 
-  Gdiplus::Bitmap image(bmp, nullptr);
-  CLSID jpeg{};
-  if (!jpeg_clsid(&jpeg)) {
-    DeleteObject(bmp);
-    DeleteDC(mem);
-    ReleaseDC(nullptr, screen);
-    return false;
-  }
-  IStream* stream = nullptr;
-  if (CreateStreamOnHGlobal(nullptr, TRUE, &stream) != S_OK) {
-    DeleteObject(bmp);
-    DeleteDC(mem);
-    ReleaseDC(nullptr, screen);
-    return false;
-  }
-  Gdiplus::EncoderParameters params;
-  params.Count = 1;
-  ULONG quality = static_cast<ULONG>(std::max(74, std::min(92, g.quality.load())));
-  params.Parameter[0].Guid = Gdiplus::EncoderQuality;
-  params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
-  params.Parameter[0].NumberOfValues = 1;
-  params.Parameter[0].Value = &quality;
-  const bool saved = image.Save(stream, &jpeg, &params) == Gdiplus::Ok;
+  const bool ok = encode_bitmap_jpeg(bmp, g.quality.load(), out);
   DeleteObject(bmp);
   DeleteDC(mem);
   ReleaseDC(nullptr, screen);
-  if (!saved) {
-    stream->Release();
-    return false;
-  }
-  STATSTG stat{};
-  stream->Stat(&stat, STATFLAG_NONAME);
-  const ULONG len = static_cast<ULONG>(stat.cbSize.QuadPart);
-  HGLOBAL hg = nullptr;
-  GetHGlobalFromStream(stream, &hg);
-  void* data = GlobalLock(hg);
-  if (data && len) out.assign(static_cast<const char*>(data), len);
-  if (data) GlobalUnlock(hg);
-  stream->Release();
+  if (!ok) return false;
 
   POINT cursor{};
   GetCursorPos(&cursor);
-  info.mon = index;
-  info.mc = static_cast<int>(mons.size());
   info.sw = sw;
   info.sh = sh;
   info.dw = dw;
@@ -267,14 +363,8 @@ bool grab_jpeg(std::string& out, FrameInfo& info) {
   CURSORINFO shown{};
   shown.cbSize = sizeof(shown);
   info.cv = (GetCursorInfo(&shown) && (shown.flags & CURSOR_SHOWING)) ? 1 : 0;
-  info.screens.clear();
-  for (size_t i = 0; i < mons.size(); ++i) {
-    const int mw = mons[i].rect.right - mons[i].rect.left;
-    const int mh = mons[i].rect.bottom - mons[i].rect.top;
-    if (i) info.screens += ",";
-    info.screens += std::to_string(mw) + "x" + std::to_string(mh);
-    if (mons[i].primary) info.screens += "p";
-  }
+  info.sd = 0;
+  fill_screens_meta(info, mons, index);
   return !out.empty();
 }
 
@@ -299,6 +389,7 @@ void send_mouse_flags(DWORD flags, DWORD data = 0) {
 }
 
 void apply_mouse(double nx, double ny, int button, int down) {
+  if (is_secure_desktop()) return;
   attach_input_desktop();
   const auto mons = list_monitors();
   int index = g.monitor.load();
@@ -338,6 +429,7 @@ void apply_mouse(double nx, double ny, int button, int down) {
 
 void apply_key(int vk, int down) {
   if (vk <= 0 || vk > 254) return;
+  if (is_secure_desktop()) return;
   attach_input_desktop();
   INPUT in{};
   in.type = INPUT_KEYBOARD;
@@ -347,6 +439,7 @@ void apply_key(int vk, int down) {
 }
 
 void apply_wheel(int delta) {
+  if (is_secure_desktop()) return;
   attach_input_desktop();
   send_mouse_flags(MOUSEEVENTF_WHEEL, static_cast<DWORD>(delta));
 }
@@ -382,6 +475,16 @@ void apply_events(const std::string& body) {
   }
 }
 
+std::string frame_path(const std::string& sid, const std::string& host, const FrameInfo& info) {
+  return "/api/v1/assist/sessions/" + sid + "/frame?hostname=" + query_escape(host) +
+         "&mon=" + std::to_string(info.mon) + "&mc=" + std::to_string(info.mc) +
+         "&cx=" + std::to_string(info.cx) + "&cy=" + std::to_string(info.cy) +
+         "&cv=" + std::to_string(info.cv) + "&sd=" + std::to_string(info.sd) +
+         "&w=" + std::to_string(info.dw) + "&h=" + std::to_string(info.dh) +
+         "&mw=" + std::to_string(info.sw) + "&mh=" + std::to_string(info.sh) +
+         "&screens=" + query_escape(info.screens);
+}
+
 void capture_loop() {
   AgentConfig cfg = load_agent_config();
   const std::string host = util::computer_hostname();
@@ -390,11 +493,41 @@ void capture_loop() {
     std::lock_guard<std::mutex> lock(g.mu);
     sid = g.session_id;
   }
-  g.live = true;
+  // live already set by start_capture()
+  uint32_t last_fp = 0;
+  int same_streak = 0;
+  bool last_secure = false;
+  DWORD last_secure_sent = 0;
+
   while (!g.stop && g.live) {
+    const bool secure = is_secure_desktop();
     std::string jpeg;
     FrameInfo info;
-    if (!grab_jpeg(jpeg, info)) {
+
+    if (secure) {
+      const DWORD now = GetTickCount();
+      // Send placeholder at most ~2/sec while on UAC; still keep session alive.
+      if (!last_secure || now - last_secure_sent > 500) {
+        if (!grab_secure_placeholder(jpeg, info)) {
+          Sleep(200);
+          continue;
+        }
+        last_secure_sent = now;
+        HttpResult sent =
+            http_post_bytes(cfg.server_url, frame_path(sid, host, info), cfg.agent_token, "image/jpeg", jpeg.data(),
+                            jpeg.size());
+        if (sent.status == 410 || sent.status == 404) break;
+        if (sent.ok) apply_events(sent.body);
+      }
+      last_secure = true;
+      same_streak = 0;
+      Sleep(180);
+      continue;
+    }
+    last_secure = false;
+
+    uint32_t fp = 0;
+    if (!grab_jpeg(jpeg, info, &fp)) {
       Sleep(120);
       continue;
     }
@@ -405,18 +538,28 @@ void capture_loop() {
       Sleep(20);
       continue;
     }
-    const std::string path = "/api/v1/assist/sessions/" + sid + "/frame?hostname=" + query_escape(host) +
-                             "&mon=" + std::to_string(info.mon) + "&mc=" + std::to_string(info.mc) +
-                             "&cx=" + std::to_string(info.cx) + "&cy=" + std::to_string(info.cy) +
-                             "&cv=" + std::to_string(info.cv) + "&w=" + std::to_string(info.dw) +
-                             "&h=" + std::to_string(info.dh) + "&mw=" + std::to_string(info.sw) +
-                             "&mh=" + std::to_string(info.sh) + "&screens=" + query_escape(info.screens);
-    HttpResult sent = http_post_bytes(cfg.server_url, path, cfg.agent_token, "image/jpeg", jpeg.data(), jpeg.size());
+
+    // Skip near-identical idle frames to cut LAN traffic; still heartbeat every ~1.2s.
+    if (fp == last_fp && same_streak < 24) {
+      ++same_streak;
+      Sleep(same_streak < 8 ? 60 : 120);
+      continue;
+    }
+    last_fp = fp;
+    same_streak = 0;
+
+    HttpResult sent = http_post_bytes(cfg.server_url, frame_path(sid, host, info), cfg.agent_token, "image/jpeg",
+                                      jpeg.data(), jpeg.size());
     if (sent.status == 410 || sent.status == 404) break;
     if (sent.ok) apply_events(sent.body);
     Sleep(48);
   }
   g.live = false;
+  {
+    std::lock_guard<std::mutex> lock(g.mu);
+    g.session_id.clear();
+  }
+  if (g.tray) PostMessageW(g.tray, kClickMsg, 4, 0);
 }
 
 DWORD WINAPI capture_proc(LPVOID) {
@@ -438,6 +581,10 @@ void input_loop() {
       Sleep(40);
       continue;
     }
+    if (is_secure_desktop()) {
+      Sleep(80);
+      continue;
+    }
     const std::string path = "/api/v1/assist/sessions/" + sid + "/events?hostname=" + query_escape(host);
     HttpResult pulled = http_get(cfg.server_url, path, cfg.agent_token);
     if (pulled.status == 410 || pulled.status == 404) break;
@@ -452,6 +599,8 @@ DWORD WINAPI input_proc(LPVOID) {
 }
 
 void start_capture() {
+  bool expected = false;
+  if (!g.live.compare_exchange_strong(expected, true)) return;
   HANDLE video = CreateThread(nullptr, 0, capture_proc, nullptr, 0, nullptr);
   if (video) CloseHandle(video);
   HANDLE input = CreateThread(nullptr, 0, input_proc, nullptr, 0, nullptr);
@@ -501,21 +650,25 @@ DWORD WINAPI waiter_proc(LPVOID) {
     }
     const std::string id = json_str(r.body, "id");
     const std::string status = json_str(r.body, "status");
-    if (id.empty() || status != "offered") continue;
+    // Silent: accepted; legacy agents may still see offered.
+    if (id.empty() || (status != "accepted" && status != "offered")) continue;
     {
       std::lock_guard<std::mutex> lock(g.mu);
       g.session_id = id;
       g.admin = json_str(r.body, "admin_name");
     }
-    if (g.tray) PostMessageW(g.tray, kOfferMsg, 0, 0);
-    for (int i = 0; i < 900 && !g.stop && !g.live; ++i) {
+    if (status == "offered") post_answer(true);
+    if (g.tray) PostMessageW(g.tray, kStartMsg, 0, 0);
+    // Give the tray UI thread a moment to show the banner and start capture.
+    for (int i = 0; i < 50 && !g.stop && !g.live; ++i) Sleep(20);
+    // Fallback if there is no tray HWND / message pump.
+    if (!g.stop && !g.live) {
       std::string cur;
       {
         std::lock_guard<std::mutex> lock(g.mu);
         cur = g.session_id;
       }
-      if (cur != id) break;
-      Sleep(100);
+      if (cur == id) start_capture();
     }
     while (!g.stop && g.live) Sleep(200);
   }
@@ -543,30 +696,25 @@ void assist_tray_stop() {
 
 void assist_tray_handle(void* tray_hwnd, unsigned msg, unsigned long long wp) {
   g.tray = static_cast<HWND>(tray_hwnd);
-  if (msg == kOfferMsg) {
+  if (msg == kStartMsg) {
     std::string admin;
     {
       std::lock_guard<std::mutex> lock(g.mu);
       admin = g.admin;
     }
-    assist_ui_offer(tray_hwnd, admin);
+    assist_ui_live(tray_hwnd, admin);
+    start_capture();
     return;
   }
   if (msg != kClickMsg) return;
-  if (wp == 1) {
-    post_answer(true);
-    assist_ui_live(tray_hwnd);
-    start_capture();
-  } else if (wp == 2) {
-    post_answer(false);
-    assist_ui_hide();
-    std::lock_guard<std::mutex> lock(g.mu);
-    g.session_id.clear();
-  } else if (wp == 3) {
+  // 3 = employee hang-up; 4 = session ended on server (hide banner only).
+  if (wp == 3) {
     g.live = false;
     post_hangup();
     assist_ui_hide();
     std::lock_guard<std::mutex> lock(g.mu);
     g.session_id.clear();
+  } else if (wp == 4) {
+    assist_ui_hide();
   }
 }

@@ -1,6 +1,7 @@
-"""In-memory Corax Assist sessions: offer, consent, JPEG frames, input.
+"""In-memory Corax Assist sessions: silent connect, JPEG frames, input.
 
-Video stays on the LAN server. The employee tray must accept before frames flow.
+Video stays on the LAN server. Admin connect is silent; the employee tray shows
+who connected and can hang up. Frames flow as soon as the agent attaches.
 """
 
 from __future__ import annotations
@@ -14,11 +15,14 @@ from dataclasses import dataclass, field
 
 from fastapi import WebSocket
 
+# Pending attach window before agent picks up a silent session.
 OFFER_TTL_SEC = 90
 SESSION_TTL_SEC = 20 * 60
 MAX_FRAME_BYTES = 2_400_000
 MAX_INPUT_QUEUE = 256
 WAIT_OFFER_SEC = 25.0
+# Statuses the tray may claim before capture starts.
+_PENDING_STATUSES = frozenset({"offered", "accepted"})
 
 
 def _as_float(value, default: float = 0.0) -> float:
@@ -110,9 +114,10 @@ class AssistHub:
     def _purge_locked(self, now: float) -> None:
         dead = []
         for sid, sess in self._sessions.items():
-            ttl = OFFER_TTL_SEC if sess.status == "offered" else SESSION_TTL_SEC
+            # Silent sessions start as accepted; same short TTL until agent attaches.
+            ttl = OFFER_TTL_SEC if sess.status in _PENDING_STATUSES else SESSION_TTL_SEC
             if now - sess.created > ttl or sess.status in {"denied", "ended"}:
-                if sess.status == "offered" and now - sess.created > ttl:
+                if sess.status in _PENDING_STATUSES and now - sess.created > ttl:
                     sess.status = "ended"
                 if sess.status in {"denied", "ended"} or now - sess.created > ttl:
                     dead.append(sid)
@@ -131,12 +136,13 @@ class AssistHub:
                     if sess.status == "live" or sess.status == "accepted":
                         raise RuntimeError("busy")
                     sess.status = "ended"
+            admin = (admin_name or "").strip()[:80] or "администратор"
             sess = AssistSession(
                 id=secrets.token_urlsafe(12),
                 hostname=key,
                 admin_id=admin_id,
-                admin_name=(admin_name or "").strip()[:80] or "администратор",
-                status="offered",
+                admin_name=admin,
+                status="accepted",
                 created=now,
             )
             self._sessions[sess.id] = sess
@@ -145,6 +151,7 @@ class AssistHub:
             return sess
 
     async def wait_offer(self, hostname: str, timeout: float = WAIT_OFFER_SEC) -> AssistSession | None:
+        """Wait for a silent session the agent can attach to (accepted or legacy offered)."""
         key = self._host_key(hostname)
         if not key:
             return None
@@ -154,7 +161,7 @@ class AssistHub:
             async with self._lock:
                 self._purge_locked(now)
                 for sess in self._sessions.values():
-                    if sess.status == "offered" and self.hosts_match(sess.hostname, key):
+                    if sess.status in _PENDING_STATUSES and self.hosts_match(sess.hostname, key):
                         return sess
                 remaining = deadline - now
                 if remaining <= 0:
