@@ -11,7 +11,7 @@ function assistSummary(
   u: User,
   tagsById: Map<number, string>,
   hostsById: Map<number, string>,
-  t: (key: string, vars?: Record<string, string | number>) => string,
+  t: ReturnType<typeof useT>,
 ): string {
   if (u.is_superuser) return t('users.assistFullAccess')
   if (u.role !== 'editor') return t('users.assistNoRole')
