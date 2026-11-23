@@ -10,14 +10,14 @@
 ```
 
 <p align="center">
-  <strong>Self-hosted operations panel for a trusted LAN.</strong><br/>
-  Fleet, service desk, stock, network, and servers. For offices, labs, and schools.
+  <strong>Самостоятельная панель эксплуатации для доверенной локальной сети.</strong><br/>
+  Парк ПК, заявная, склад, сеть, принтеры, серверы, знания и удалённая помощь — в одном месте.
 </p>
 
 <p align="center">
   <a href="https://github.com/TimaPelmesh/Corax/actions/workflows/ci.yml"><img src="https://github.com/TimaPelmesh/Corax/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-1f6feb?style=flat-square" alt="License GPLv3" /></a>
-  <img src="https://img.shields.io/badge/target-trusted%20LAN-6e7781?style=flat-square" alt="Trusted LAN" />
+  <img src="https://img.shields.io/badge/целевая%20сеть-доверенная%20LAN-6e7781?style=flat-square" alt="Trusted LAN" />
 </p>
 
 <p align="center">
@@ -31,64 +31,126 @@
 
 ---
 
-CORAX is the panel an office, a lab, or a school runs on its own network. One install keeps the computer fleet, the service desk, the warehouse, the printers, the network map, and a live audit of Linux servers. LDAP, Bitrix24, GLPI, and Zabbix bring in the directory, the chat, an existing ticket export, and the monitoring the site already runs. WikiRAG answers from your own docs through a local LLM. On the server-audit host the same panel reads llama.cpp metrics and can start, stop, and restart only the model units. Do **not** publish the panel on the public internet.
+**CORAX** — это панель, которую офис, лаборатория или учебное заведение ставит у себя в сети. Один контур хранит парк компьютеров, заявки, склад, принтеры, карту сети, планы этажей, аудит Linux-серверов и базу знаний. LDAP, Bitrix24, GLPI и Zabbix подключают уже привычные каталог, чат, тикеты и мониторинг. WikiRAG отвечает по вашим документам через локальную LLM. **Не выставляйте панель в открытый интернет.**
 
-**Run it with Docker only.** Full install: **[GETTING_STARTED.md](GETTING_STARTED.md)**. In the panel: **Knowledge base → Documentation**.
+Установка — **только через Docker**. Подробно: **[GETTING_STARTED.md](GETTING_STARTED.md)**. В самой панели: **База знаний → Документация**.
 
-The install is one FastAPI process and one Postgres, so the next piece of site work lands in the same database and the same UI: a Bitrix24 message that becomes a ticket, a host action inside the allowlist, a chart stored as a folded series.
+Один процесс FastAPI и одна PostgreSQL: новый участок работы (бот → заявка, действие на сервере, график на хосте) ложится в ту же базу и тот же интерфейс.
 
-## What the panel covers
+---
 
-| Area | What it does |
-|------|----------------|
-| Fleet | Windows: one `CORAX-Agent.exe` (tray, collect when the panel asks). Linux: one bash ZIP and one token for every server. Tokens are HMAC; the Windows agent seals its token with DPAPI. |
-| Desk | Tickets, templates, and stats. The Bitrix24 bot (`imbot.v2`) turns a chat message into a service request. |
-| Site | Dashboard, Risk Center, software catalog, SNMP printers, network, network map, floor plan, warehouse. |
-| Servers | Live audit: temperature, CPU, memory, disk, load, network, journal, sensors. **Manage** is a short allowlist, described below. LLM nodes on that host expose GPU rows, llama.cpp token rates, and restarts limited to `llama-server` and `rpc-server-gpu0`…`gpu7`. |
-| Knowledge | Documentation, notes, WikiRAG, Zabbix problems. |
-| Access | Local users and LDAP. Observers do not see job output or SNMP secrets. Role `llm-operator` opens server audit only. |
+## Что умеет панель
 
-## Where it is going
+### Дашборд
 
-CORAX is the system of record for a site that wants this work in one place, on hardware it controls, for years.
+Сводка по парку: онлайн и офлайн, ПО, теги, принтеры, заявки, риски, диски, мониторы. Виджеты включаются и отключаются. Календарь с планами из заметок. Бейджи в навигации подсказывают, где появилось новое.
 
-- **Fleet and desk stay the core.** Stock, topology, and risk hang off the same computers and the same tickets.
-- **Chat is a door into the desk.** Bitrix24 already turns a message into a request. The panel stays the record. Another messenger, when it comes, should arrive the same way: one webhook, one ticket.
-- **The hand on a server stays short.** Audit can check, read, restart, and write only inside the allowlist. Further operations join that list. A shell stays outside the product.
-- **The model stays on the LAN.** Answers come from the site's own text. Cluster health sits on the audit screen of the machine that runs the model.
-- **The box outlives the release.** Named volumes keep Postgres and files. Updates from GitHub are optional. A site can freeze an image and run it until it chooses the next one.
+### Центр рисков
 
-## Stack
+Правила по парку: устаревший агент, EOL ОС, мало RAM, антивирус, BitLocker, Secure Boot, обновления, TPM, диски, батарея, локальные администраторы, открытый Wi‑Fi, просроченные заявки и другое. Можно подтверждать и снимать находки; при настроенной LLM — краткий AI-разбор.
 
-One command starts the whole product: `npm run docker:up`. There is no second API process, no Redis, and no microservice split.
+### Парк компьютеров
 
-| Piece | Role |
-|------|------|
-| FastAPI, one Uvicorn process | Panel API, agent ingest, audit jobs |
-| PostgreSQL 16 (pgvector image) | Inventory, tickets, audit samples, WikiRAG vectors |
-| React 19, Vite, TypeScript | The panel |
+Инвентарь с агентов: железо, ПО, периферия, мониторы. Статус ping, история, CSV, связка с GLPI. Wake-on-LAN по белому списку. Сопряжение новых Windows-агентов в LAN. С карточки ПК — **Corax Assist** (с учётом прав пользователя).
+
+### Каталог ПО
+
+Сводный каталог установленных программ по всему парку: какие названия где стоят, сколько установок.
+
+### Принтеры
+
+Обнаружение и опрос по SNMP, тонер и статус по расписанию, ручное ведение карточек. Наблюдатель не видит SNMP-секреты.
+
+### Сеть и карта сети
+
+Устройства (коммутаторы, маршрутизаторы и др.): учёт, опрос, ping-sweep, связи и топология. Отдельная **карта сети** — сцены с узлами и кабелями, трассировка, совместное редактирование в реальном времени.
+
+### Карта здания (планы этажей)
+
+Импорт Visio или чистый план, фон PNG, комнаты, маркеры оборудования (ПК, сервер, принтер, точка доступа, розетки и др.), привязка к инвентарю, живой ping на маркерах, экспорт SVG/PNG/PDF/JSON, фото мест. Умные подсказки при наведении у краёв карты.
+
+### Аудит Linux-серверов
+
+Живая картина: температура, CPU, память, диск, нагрузка, сеть, journal, датчики, GPU. Графики свёрнуты в Postgres (~800 точек), без «сырого» потока всех семплов. **Управление** — короткий allowlist, не Ansible и не произвольный SSH: проверка `nginx`/`sshd`, статус и перезапуск разрешённых unit’ов, чтение и запись файлов только в разрешённых путях. На том же хосте — контроль llama.cpp (`llama-server`, `rpc-server-gpu0`…`gpu7`). Роль `llm-operator` видит аудит и не видит остальную панель.
+
+### Склад
+
+Помещения, позиции, движения, перемещения, списания, пресеты, коды, CSV импорт и экспорт.
+
+### Сервис-деск (заявки)
+
+База заявок: категории, приоритеты, исполнители, вложения, шаблоны, статистика, PDF, импорт/экспорт (в том числе GLPI CSV). Подсказки ИИ по заявкам при настроенных агентах. Публичный портал сотрудника на LAN (`/h`): контекст по хосту, вкладки, приём обращений, опциональный AI-конвейер.
+
+### База знаний
+
+| Раздел | Содержание |
+|--------|------------|
+| **WikiRAG** | Документы, индекс pgvector, чат и потоковые ответы по своим текстам через локальную LLM (Ollama / LM Studio) |
+| **Заметки** | HTML-заметки с планами по датам, цветом и метками, доступом для учёток панели |
+| **Календарь заметок** | Три месяца на одном экране; свои выходные, праздники и даты ЗП диапазонами; «только я», «показать всем» или общее для панели (админ) |
+| **Документация** | Встроенное руководство по продукту |
+| **Zabbix** | Проблемы и хосты из уже настроенного Zabbix (только чтение) |
+
+### Corax Assist
+
+Удалённый просмотр и помощь по экрану ПК: сессия из карточки компьютера, поток кадров от Windows-агента, права Assist настраиваются на учётку (все / разрешить / запретить по тегам и ПК). Тихий режим подключения с уведомлением в трее агента.
+
+### Агенты
+
+- **Windows** — один `CORAX-Agent.exe`: трей, сбор по запросу панели, токен в DPAPI, самообновление, Assist, сопряжение в LAN.
+- **Linux** — bash ZIP с одним токеном на серверы: инвентарь и/или аудит (`corax_send.sh`), опрос заданий allowlist.
+- В панели: токены HMAC, сборка бандла под LAN-IP, политика сбора, вкладки портала сотрудника.
+
+### Интеграции
+
+| Система | Зачем |
+|---------|--------|
+| **LDAP** | Каталог пользователей, синхронизация |
+| **Bitrix24** | Импорт людей, бот `imbot.v2`: сообщение в чате → заявка; конструктор ботов |
+| **GLPI** | Обмен тикетами и активами |
+| **Zabbix** | Проблемы мониторинга в базе знаний |
+| **LLM** | Настройки WikiRAG, эмбеддингов и ролей AI-агентов (чат, тикеты, бот) |
+
+### Пользователи и роли
+
+Локальные учётки и LDAP. Роли: наблюдатель, редактор, суперадмин, каталог, `llm-operator`. Наблюдатель не видит секреты SNMP и служебный вывод заданий. На пользователя — политика Corax Assist.
+
+### Настройки инфраструктуры
+
+Теги ПК, дерево категорий заявок, расписание бэкапов PostgreSQL, HTTPS/TLS из панели, Wake-on-LAN, доска статуса интеграций.
+
+---
+
+## Куда движется продукт
+
+CORAX — система учёта площадки, которая хочет держать эту работу у себя, на своём железе, годами.
+
+- **Парк и заявки — ядро.** Склад, топология и риски опираются на те же компьютеры и те же тикеты.
+- **Чат — дверь в деск.** Bitrix24 уже превращает сообщение в заявку; панель остаётся источником истины.
+- **Рука на сервере — короткая.** Аудит проверяет, читает, перезапускает и пишет только по allowlist. Оболочка shell в продукт не входит.
+- **Модель остаётся в LAN.** Ответы — из своих документов; здоровье кластера — на экране аудита той машины, где крутится модель.
+- **Коробка переживает релиз.** Именованные тома хранят Postgres и файлы. Обновление с GitHub по желанию; можно заморозить образ.
+
+---
+
+## Стек
+
+Одна команда поднимает всё: `npm run docker:up`. Нет второго API-процесса, нет Redis, нет микросервисной нарезки.
+
+| Часть | Роль |
+|-------|------|
+| FastAPI, один Uvicorn | API панели, приём агентов, задания аудита |
+| PostgreSQL 16 (образ с pgvector) | Инвентарь, заявки, семплы аудита, векторы WikiRAG |
+| React 19, Vite, TypeScript | Интерфейс панели |
 | Docker Compose | `db`, `app`, `db-backup` |
-| Windows agent | `CORAX-Agent.exe` |
-| Linux agent | Bash ZIP. Same `agent_env.sh` on every server |
+| Windows-агент | `CORAX-Agent.exe` |
+| Linux-агент | Bash ZIP, общий `agent_env.sh` |
 
-Charts for a host are folded in Postgres (about 800 points), not loaded as every sample. Grafana remains the tool for open-ended metrics. CORAX does not embed a shell.
+Grafana остаётся инструментом «длинных» метрик. CORAX в продукт шелл не встраивает.
 
-## Linux servers
+---
 
-**Server audit** is the live view: temperature, CPU, memory, disk, load, network, journal, sensors. A host appears after the first `corax_send.sh`. The panel tells servers apart by `hostname -s`, so those names must be unique.
-
-**Manage** opens on the host card. It is a short allowlist, not Ansible and not SSH:
-
-- check `nginx -t` and `sshd -t`
-- service status, and restart only for a fixed list of units
-- read a file from a fixed list
-- write a file only under nginx/apache config dirs or `/etc/corax`
-
-Editors confirm a restart or a write. Observers do not see job output. The agent pulls one job on its next poll and checks the same rules locally.
-
-LLM cluster control on that host follows the same rule. The agent already reads `nvidia-smi`. The panel scrapes llama-server Prometheus metrics for nodes it can name from inventory. Start, stop, and restart are limited to `llama-server` and `rpc-server-gpu0`…`gpu7`. A model launch writes only `/etc/corax/llama-server.env` and restarts the unit. Role `llm-operator` sees this screen and not the rest of the panel.
-
-Script updates lock a file inside the agent directory (`.corax-update.lock`), not `/tmp`. A lock in `/tmp` can be rejected by the kernel even for root when another user already created it.
+## Быстрый старт
 
 ```bash
 git clone https://github.com/TimaPelmesh/Corax.git
@@ -96,39 +158,45 @@ cd Corax
 npm run docker:up
 ```
 
-Open `http://YOUR-LAN-IP:3000/` · first login `admin` / `admin123` — the API stays locked until you change that password.
+Откройте `http://ВАШ-LAN-IP:3000/` · первый вход `admin` / `admin123` — API остаётся заблокированным, пока не смените пароль.
 
-The first image build takes a few minutes. Later `docker:up` calls skip the rebuild unless sources changed. The stack is meant to run for years without `git pull`: the image stays frozen, Postgres and files live in volumes, containers restart after a reboot. Updating from GitHub is optional (`./update.sh`).
+Первая сборка образа занимает несколько минут. Дальнейшие `docker:up` не пересобирают без изменений в исходниках. Стек рассчитан на годы без обязательного `git pull`: образ можно заморозить, данные живут в томах, контейнеры поднимаются после перезагрузки. Обновление с GitHub опционально (`./update.sh`).
 
-## Reliability
+Для агентов в LAN задайте `CORAX_ADVERTISE_HOST` и `CORS_ORIGINS` в `backend/.env`, затем `npm run docker:restart`. Бандл агента собирайте с LAN-IP, не с `127.0.0.1`.
 
-- `restart: unless-stopped` — panel and Postgres come back after a host reboot.
-- Data in named volumes (`corax_pgdata`, `corax_data`, `corax_backups`). `docker:down` does not delete them.
-- `/api/v1/health` for liveness, `/api/v1/health/ready` for Postgres.
-- Scheduled DB dumps from **Settings → Database**. Take a backup before `update.sh`.
-- The UI retries idempotent GET requests on a brief network blip and shows a banner if the API is down.
+---
 
-## Security (LAN)
+## Надёжность
 
-- Passwords hashed with bcrypt. Panel JWT is versioned: logout and password change revoke older sessions.
-- Agent tokens stored as HMAC (pepper in `backend/.env`). A shared token cannot overwrite a PC when MAC/serial disagree.
-- Rate limits on login and agent inventory. CSRF on cookie sessions. HTML notes are sanitized.
-- OpenAPI docs off in production unless `ENABLE_OPENAPI=true`.
-- Observer role does not receive SNMP community strings or `/h` client secrets.
+- `restart: unless-stopped` — панель и Postgres возвращаются после перезагрузки хоста.
+- Данные в именованных томах (`corax_pgdata`, `corax_data`, `corax_backups`). `docker:down` их не удаляет.
+- `/api/v1/health` — живость процесса, `/api/v1/health/ready` — готовность Postgres.
+- Снимки БД по расписанию: **Настройки → База данных**. Перед `update.sh` сделайте бэкап.
+- UI повторяет идемпотентные GET при кратком обрыве сети и показывает баннер, если API недоступен.
 
-Details: [SECURITY.md](SECURITY.md) · [docs/config.md](docs/config.md).
+---
 
-## Commands
+## Безопасность (LAN)
 
-| Command | Purpose |
-|---------|---------|
-| `npm run docker:up` | only supported start command (rebuilds the image only when needed) |
-| `npm run docker:rebuild` | force-rebuild the image |
-| `npm run docker:ps` / `logs` / `restart` / `down` | status, logs, restart, stop (volumes keep data) |
-| `./update.sh` | optional `git pull` + same as `docker:up` |
+- Пароли — bcrypt. JWT панели версионируется: выход и смена пароля отзывают старые сессии.
+- Токены агентов — HMAC (перец в `backend/.env`). Общий токен не перезапишет чужой ПК при расхождении MAC/serial.
+- Лимиты на логин и инвентарь агента. CSRF для cookie-сессий. HTML в заметках санитизируется.
+- OpenAPI в production выключен, пока не задано `ENABLE_OPENAPI=true`.
+- Наблюдатель не получает SNMP community и клиентские секреты портала `/h`.
 
-For LAN agents set `CORAX_ADVERTISE_HOST` and `CORS_ORIGINS` in `backend/.env`, then `npm run docker:restart`. Build the agent from the panel on the LAN IP, not `127.0.0.1`.
+Подробнее: [SECURITY.md](SECURITY.md) · [docs/config.md](docs/config.md).
 
-Docs: [GETTING_STARTED.md](GETTING_STARTED.md) · [docs/docker.md](docs/docker.md) · [docs/agents.md](docs/agents.md) · [docs/config.md](docs/config.md) · [CHANGELOG](CHANGELOG.md) · [CONTRIBUTING](CONTRIBUTING.md) · [SECURITY](SECURITY.md)
+---
 
-**Author:** Timur Ivanov · **License:** [GNU GPL v3](LICENSE) · © 2026
+## Команды
+
+| Команда | Назначение |
+|---------|------------|
+| `npm run docker:up` | единственный поддерживаемый запуск (пересборка только при необходимости) |
+| `npm run docker:rebuild` | принудительная пересборка образа |
+| `npm run docker:ps` / `logs` / `restart` / `down` | статус, логи, перезапуск, останов (тома сохраняются) |
+| `./update.sh` | опционально `git pull` + то же, что `docker:up` |
+
+Документация: [GETTING_STARTED.md](GETTING_STARTED.md) · [docs/docker.md](docs/docker.md) · [docs/agents.md](docs/agents.md) · [docs/config.md](docs/config.md) · [CHANGELOG](CHANGELOG.md) · [CONTRIBUTING](CONTRIBUTING.md) · [SECURITY](SECURITY.md)
+
+**Автор:** Timur Ivanov · **Лицензия:** [GNU GPL v3](LICENSE) · © 2026
