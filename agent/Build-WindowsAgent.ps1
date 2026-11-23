@@ -38,8 +38,16 @@ if ($Clean -and (Test-Path $build)) {
 }
 New-Item -ItemType Directory -Force -Path $build, $OutputDirectory | Out-Null
 
-& (Join-Path $cpp "scripts\New-CoraxAgentIcon.ps1") `
-    -OutputPath (Join-Path $cpp "assets\corax-agent.ico")
+$iconPath = Join-Path $cpp "assets\corax-agent.ico"
+try {
+    & (Join-Path $cpp "scripts\New-CoraxAgentIcon.ps1") -OutputPath $iconPath
+} catch {
+    if (Test-Path -LiteralPath $iconPath) {
+        Write-Warning "Icon regen failed; reusing existing $iconPath. $_"
+    } else {
+        throw
+    }
+}
 
 & $cmake -S $cpp -B $build -G "Visual Studio 17 2022" -A $Architecture
 if ($LASTEXITCODE -ne 0) { throw "CMake configure failed ($LASTEXITCODE)" }

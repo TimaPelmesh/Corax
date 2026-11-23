@@ -1,18 +1,53 @@
 param(
     [Parameter(Mandatory = $false)]
-    [string]$OutputPath
+    [string]$OutputPath,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
 if (-not $OutputPath) {
     $OutputPath = Join-Path $PSScriptRoot "..\assets\corax-agent.ico"
 }
-Add-Type -AssemblyName System.Drawing
+
+# Keep builds unblocked on PS7/.NET 10 where Add-Type + Drawing refs churn.
+# Existing multi-res ico is enough for agent branding.
+if (-not $Force -and (Test-Path -LiteralPath $OutputPath)) {
+    Write-Host "CORAX icon reused: $OutputPath"
+    exit 0
+}
+
+# PS 7+ / .NET 10: Bitmap lives in System.Drawing.Common (+ private GdiPlus).
+$drawingRefs = [System.Collections.Generic.List[string]]::new()
+foreach ($name in @(
+        "System.Drawing.Common",
+        "System.Drawing.Primitives",
+        "System.Private.Windows.GdiPlus",
+        "System.Private.Windows.Core",
+        "System.Drawing"
+    )) {
+    try {
+        Add-Type -AssemblyName $name -ErrorAction Stop
+    } catch {
+        continue
+    }
+}
+
+foreach ($asm in [AppDomain]::CurrentDomain.GetAssemblies()) {
+    $n = $asm.GetName().Name
+    if ($n -like "System.Drawing*" -or $n -like "System.Private.Windows*") {
+        if (-not [string]::IsNullOrWhiteSpace($asm.Location)) {
+            [void]$drawingRefs.Add($asm.Location)
+        }
+    }
+}
+if ($drawingRefs.Count -eq 0) {
+    throw "System.Drawing / System.Drawing.Common is not available for icon generation."
+}
 
 if (-not ("BirdCutout" -as [type])) {
     $savedLib = $env:LIB
     $env:LIB = $null
-    Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+    Add-Type -ReferencedAssemblies ($drawingRefs.ToArray()) -TypeDefinition @"
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
