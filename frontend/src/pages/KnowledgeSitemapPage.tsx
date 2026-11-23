@@ -52,6 +52,8 @@ import {
   floorLayoutLiveFingerprint,
   isOutletKind,
   linkedPcDisplay,
+  clampHoverCardPosition,
+  HOVER_CARD_WIDTH,
   loadOutletVisibility,
   markerCircleFill,
   markerCircleRadius,
@@ -1819,8 +1821,17 @@ export function KnowledgeSitemapPage() {
                   )
                 })}
                 {hoveredMarker && hoveredDisplayPos && showHoverCard ? (() => {
-                  const hoverTransform = `translate(${hoveredDisplayPos.x + 28} ${hoveredDisplayPos.y - 64})`
                   const textFamily = '"Onest", ui-sans-serif, system-ui, sans-serif'
+                  const hoverTransformFor = (cardH: number) => {
+                    const pos = clampHoverCardPosition({
+                      markerX: hoveredDisplayPos.x,
+                      markerY: hoveredDisplayPos.y,
+                      cardW: HOVER_CARD_WIDTH,
+                      cardH,
+                      view: cameraView,
+                    })
+                    return `translate(${pos.x} ${pos.y})`
+                  }
 
                   if (hoveredMarker.kind === 'pc') {
                     const eth = (hoveredMarker.meta?.ethernet_outlet ?? '').trim() || '—'
@@ -1870,8 +1881,8 @@ export function KnowledgeSitemapPage() {
                     if (!lines.length) return null
                     const boxH = 16 + lines.length * 20
                     return (
-                      <g transform={hoverTransform} pointerEvents="none">
-                        <rect width="256" height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
+                      <g transform={hoverTransformFor(boxH)} pointerEvents="none">
+                        <rect width={HOVER_CARD_WIDTH} height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
                         {lines.map((line, index) => (
                           <text
                             key={line.field}
@@ -1930,8 +1941,8 @@ export function KnowledgeSitemapPage() {
                     ) as string[]
                     const boxH = 28 + lines.length * 18
                     return (
-                      <g transform={hoverTransform} pointerEvents="none">
-                        <rect width="256" height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
+                      <g transform={hoverTransformFor(boxH)} pointerEvents="none">
+                        <rect width={HOVER_CARD_WIDTH} height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
                         <text x="14" y="24" fill="white" fontSize="14" fontWeight="700" fontFamily={textFamily}>
                           {markerTitle(hoveredMarker)}
                         </text>
@@ -1971,8 +1982,8 @@ export function KnowledgeSitemapPage() {
                     const linkedPc = pcId ? markers.find((m) => m.id === pcId && m.kind === 'pc') : null
                     const boxH = 78
                     return (
-                      <g transform={hoverTransform} pointerEvents="none">
-                        <rect width="256" height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
+                      <g transform={hoverTransformFor(boxH)} pointerEvents="none">
+                        <rect width={HOVER_CARD_WIDTH} height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
                         <text x="14" y="24" fill="white" fontSize="14" fontWeight="700" fontFamily={textFamily}>
                           {t(KIND_LABEL_KEY[hoveredMarker.kind])}
                         </text>
@@ -2000,13 +2011,13 @@ export function KnowledgeSitemapPage() {
                   const tRam = hasPhoto ? tIp + 19 : 82
                   const pc = linkedPcDisplay(hoveredMarker, hoveredLinkedPc)
                   return (
-                    <g transform={hoverTransform} pointerEvents="none">
+                    <g transform={hoverTransformFor(boxH)} pointerEvents="none">
                       <defs>
                         <clipPath id={hoverPhotoClipId}>
                           <rect x="14" y="12" width="228" height={hoverPhotoSlotH} rx="8" />
                         </clipPath>
                       </defs>
-                      <rect width="256" height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
+                      <rect width={HOVER_CARD_WIDTH} height={boxH} rx="12" fill="rgba(15,23,42,0.92)" />
                       {hasPhoto && hoverPhoto ? (
                         <image
                           href={hoverPhoto}

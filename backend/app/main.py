@@ -41,6 +41,7 @@ from app.routers import (
     bitrix24_imbot,
     bitrix24_incoming,
     bots,
+    calendar_marks,
     computers,
     dashboard,
     database_backup,
@@ -529,6 +530,7 @@ for base in ("/api/v1", "/api"):
     app.include_router(wikirag.router, prefix=base)
     app.include_router(warehouse.router, prefix=base)
     app.include_router(notes.router, prefix=base)
+    app.include_router(calendar_marks.router, prefix=base)
     app.include_router(zabbix.router, prefix=base)
     app.include_router(llm_cluster.router, prefix=base)
 

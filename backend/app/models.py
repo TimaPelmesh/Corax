@@ -756,6 +756,26 @@ class NoteShare(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CalendarDayMark(Base):
+    """Personal or org calendar ranges: weekends, holidays, paydays."""
+
+    __tablename__ = "calendar_day_marks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # weekend | holiday | payday
+    kind: Mapped[str] = mapped_column(String(16), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    start_date: Mapped[date] = mapped_column(Date, index=True)
+    end_date: Mapped[date] = mapped_column(Date, index=True)
+    # private = owner only; shared = visible to all panel users; org = admin-wide
+    visibility: Mapped[str] = mapped_column(String(16), default="private", index=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class TicketHandlerConfig(Base):
     """Singleton admin config for AI ticket handler pipeline."""
 

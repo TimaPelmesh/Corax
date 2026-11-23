@@ -1350,6 +1350,44 @@ class NoteListItem(BaseModel):
     is_shared_with_me: bool = False
 
 
+CalendarMarkKind = Literal["weekend", "holiday", "payday"]
+CalendarMarkVisibility = Literal["private", "shared", "org"]
+
+
+class CalendarMarkCreate(BaseModel):
+    kind: CalendarMarkKind
+    title: str = Field(default="", max_length=255)
+    start_date: date
+    end_date: date
+    visibility: CalendarMarkVisibility = "private"
+
+
+class CalendarMarkUpdate(BaseModel):
+    kind: CalendarMarkKind | None = None
+    title: str | None = Field(default=None, max_length=255)
+    start_date: date | None = None
+    end_date: date | None = None
+    visibility: CalendarMarkVisibility | None = None
+
+
+class CalendarMarkOut(BaseModel):
+    id: int
+    kind: CalendarMarkKind
+    title: str
+    start_date: date
+    end_date: date
+    visibility: CalendarMarkVisibility
+    owner_user_id: int
+    owner_username: str | None = None
+    owner_full_name: str | None = None
+    mine: bool = False
+    can_edit: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class TicketHandlerPipelineStep(BaseModel):
     id: str
     enabled: bool = True

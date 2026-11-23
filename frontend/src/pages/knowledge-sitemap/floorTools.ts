@@ -339,6 +339,60 @@ export function splitLabelLines(input: string): string[] {
   return [words.slice(0, cut).join(' '), words.slice(cut).join(' ')]
 }
 
+/** Default hover card width used on the floor map SVG. */
+export const HOVER_CARD_WIDTH = 256
+
+/**
+ * Place a hover card near a marker: prefer right+above, flip left/below when needed,
+ * then clamp into the visible SVG view so corners stay on-screen.
+ */
+export function clampHoverCardPosition(opts: {
+  markerX: number
+  markerY: number
+  cardW: number
+  cardH: number
+  view: ViewBox
+  /** Horizontal gap from marker to card when placed on the right. */
+  gapX?: number
+  /** Card top relative to marker when preferring above (negative = above). */
+  topOffset?: number
+  /** Gap from marker to card top when flipping below. */
+  belowGap?: number
+  pad?: number
+}): { x: number; y: number } {
+  const gapX = opts.gapX ?? 28
+  const topOffset = opts.topOffset ?? -64
+  const belowGap = opts.belowGap ?? 28
+  const pad = opts.pad ?? 8
+  const { markerX, markerY, cardW, cardH, view } = opts
+
+  const viewRight = view.x + view.w
+  const viewBottom = view.y + view.h
+
+  let x = markerX + gapX
+  if (x + cardW > viewRight - pad) {
+    x = markerX - gapX - cardW
+  }
+
+  let y = markerY + topOffset
+  if (y < view.y + pad) {
+    y = markerY + belowGap
+  }
+
+  const minX = view.x + pad
+  const maxX = viewRight - cardW - pad
+  const minY = view.y + pad
+  const maxY = viewBottom - cardH - pad
+
+  if (maxX >= minX) x = Math.min(Math.max(x, minX), maxX)
+  else x = view.x + (view.w - cardW) / 2
+
+  if (maxY >= minY) y = Math.min(Math.max(y, minY), maxY)
+  else y = view.y + (view.h - cardH) / 2
+
+  return { x, y }
+}
+
 export function clientToSvgPoint(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } | null {
   const m = svg.getScreenCTM()
   if (!m) return null

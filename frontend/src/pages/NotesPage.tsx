@@ -2,8 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type NoteColor, type NoteListItem, type NoteMark, type NoteRow, type User } from '../api'
 import { useAuth } from '../AuthContext'
-import { DashboardCalendar } from '../components/dashboard/DashboardCalendar'
-import { IconBook, IconClose, IconPencil, IconTrash } from '../components/icons'
+import { NotesCalendarModal } from '../components/notes/NotesCalendarModal'
+import { IconBook, IconCalendar, IconClose, IconPencil, IconTrash } from '../components/icons'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useT } from '../i18n/LocaleContext'
 import { peekCache, putCache } from '../lib/viewCache'
@@ -89,7 +89,7 @@ export function NotesPage() {
   const [sameDayEnd, setSameDayEnd] = useState(false)
   const [color, setColor] = useState<NoteColor | null>(null)
   const [mark, setMark] = useState<NoteMark | null>(null)
-  const [calendarTick, setCalendarTick] = useState(0)
+  const [calendarOpen, setCalendarOpen] = useState(false)
   const [shareDraft, setShareDraft] = useState<{ user_id: number; can_edit: boolean }[]>([])
   const [saving, setSaving] = useState(false)
   const [saveLabel, setSaveLabel] = useState<string | null>(null)
@@ -181,7 +181,6 @@ export function NotesPage() {
           )
           setSaveLabel(t('notes.saved'))
         }
-        setCalendarTick((n) => n + 1)
         await reloadList()
       } catch (e) {
         if (!opts?.keepalive) toast.error(e instanceof Error ? e.message : t('notes.saveFailed'))
@@ -281,7 +280,6 @@ export function NotesPage() {
         plan_end: null,
       })
       await reloadList()
-      setCalendarTick((n) => n + 1)
       setSearchParams({ id: String(row.id) })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('notes.saveFailed'))
@@ -304,7 +302,6 @@ export function NotesPage() {
       setNote(null)
       setSearchParams({})
       await reloadList()
-      setCalendarTick((n) => n + 1)
       toast.ok(t('notes.deleted'))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('notes.saveFailed'))
@@ -413,19 +410,18 @@ export function NotesPage() {
       <h1 className="sr-only">{t('notes.title')}</h1>
       <div className="grid gap-4 lg:grid-cols-[minmax(14rem,18rem)_1fr]">
         <aside className="app-panel !p-3">
-          <DashboardCalendar
-            compact
-            embedded
-            plansOnly
-            hideNotesLink
-            selectedNoteId={selectedId}
-            refreshKey={calendarTick}
-            onSelectPlan={(id) => setSearchParams({ id: String(id) })}
-          />
+          <button
+            type="button"
+            onClick={() => setCalendarOpen(true)}
+            className="app-btn mb-2 flex w-full !min-h-10 items-center justify-center gap-2"
+          >
+            <IconCalendar className="h-4 w-4" />
+            {t('notes.calendar.open')}
+          </button>
           <button
             type="button"
             onClick={() => void createNote()}
-            className="app-btn app-btn-primary my-3 w-full !min-h-10"
+            className="app-btn app-btn-primary mb-3 w-full !min-h-10"
           >
             <span className="text-lg leading-none" aria-hidden>
               +
@@ -780,6 +776,12 @@ export function NotesPage() {
         </section>
       </div>
       {confirmDialog}
+      <NotesCalendarModal
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        notes={list}
+        onSelectNote={(id) => setSearchParams({ id: String(id) })}
+      />
     </div>
   )
 }

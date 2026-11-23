@@ -221,6 +221,51 @@ def _migrate_users_must_change_password(sync_conn) -> None:
     )
 
 
+def _migrate_calendar_day_marks(sync_conn) -> None:
+    if "calendar_day_marks" in _table_names(sync_conn):
+        return
+    if sync_conn.dialect.name == "sqlite":
+        ddl = """
+            CREATE TABLE calendar_day_marks (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind VARCHAR(16) NOT NULL,
+              title VARCHAR(255) NOT NULL DEFAULT '',
+              start_date DATE NOT NULL,
+              end_date DATE NOT NULL,
+              visibility VARCHAR(16) NOT NULL DEFAULT 'private',
+              owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+    else:
+        ddl = """
+            CREATE TABLE calendar_day_marks (
+              id SERIAL PRIMARY KEY,
+              kind VARCHAR(16) NOT NULL,
+              title VARCHAR(255) NOT NULL DEFAULT '',
+              start_date DATE NOT NULL,
+              end_date DATE NOT NULL,
+              visibility VARCHAR(16) NOT NULL DEFAULT 'private',
+              owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+    sync_conn.execute(text(ddl))
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calendar_day_marks_kind ON calendar_day_marks (kind)"))
+    sync_conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_calendar_day_marks_start ON calendar_day_marks (start_date)")
+    )
+    sync_conn.execute(text("CREATE INDEX IF NOT EXISTS ix_calendar_day_marks_end ON calendar_day_marks (end_date)"))
+    sync_conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_calendar_day_marks_visibility ON calendar_day_marks (visibility)")
+    )
+    sync_conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_calendar_day_marks_owner ON calendar_day_marks (owner_user_id)")
+    )
+
+
 def _migrate_users_remote_assist_policy(sync_conn) -> None:
     cols = _column_names(sync_conn, "users")
     patch_sql = {
@@ -2425,6 +2470,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-11-03_network_ping_settings", _migrate_network_ping_settings),
     ("2026-11-09_bitrix_bot_vault", _migrate_bitrix_bot_vault),
     ("2026-11-23_users_remote_assist_policy", _migrate_users_remote_assist_policy),
+    ("2026-11-23_calendar_day_marks", _migrate_calendar_day_marks),
 ]
 
 

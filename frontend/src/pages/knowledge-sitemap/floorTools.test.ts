@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clampHoverCardPosition,
+  HOVER_CARD_WIDTH,
   isOutletKind,
   markerCircleRadius,
   markerTitle,
@@ -50,5 +52,74 @@ describe('outlets and labels', () => {
 
   it('splits long labels into two lines', () => {
     expect(splitLabelLines('Серверная комната А')).toEqual(['Серверная комната', 'А'])
+  })
+})
+
+describe('clampHoverCardPosition', () => {
+  const view = { x: 0, y: 0, w: 1200, h: 800 }
+  const cardH = 140
+
+  it('keeps the preferred right-above placement near the center', () => {
+    const pos = clampHoverCardPosition({
+      markerX: 600,
+      markerY: 400,
+      cardW: HOVER_CARD_WIDTH,
+      cardH,
+      view,
+    })
+    expect(pos).toEqual({ x: 628, y: 336 })
+  })
+
+  it('flips left near the right edge', () => {
+    const pos = clampHoverCardPosition({
+      markerX: 1180,
+      markerY: 400,
+      cardW: HOVER_CARD_WIDTH,
+      cardH,
+      view,
+    })
+    expect(pos.x).toBeLessThan(1180)
+    expect(pos.x + HOVER_CARD_WIDTH).toBeLessThanOrEqual(view.w - 8)
+    expect(pos.x).toBeGreaterThanOrEqual(8)
+  })
+
+  it('flips below near the top edge', () => {
+    const pos = clampHoverCardPosition({
+      markerX: 600,
+      markerY: 20,
+      cardW: HOVER_CARD_WIDTH,
+      cardH,
+      view,
+    })
+    expect(pos.y).toBeGreaterThanOrEqual(20)
+    expect(pos.y).toBe(48)
+  })
+
+  it('clamps into the viewport at the top-right corner', () => {
+    const pos = clampHoverCardPosition({
+      markerX: 1190,
+      markerY: 10,
+      cardW: HOVER_CARD_WIDTH,
+      cardH,
+      view,
+    })
+    expect(pos.x).toBeGreaterThanOrEqual(8)
+    expect(pos.y).toBeGreaterThanOrEqual(8)
+    expect(pos.x + HOVER_CARD_WIDTH).toBeLessThanOrEqual(view.w - 8)
+    expect(pos.y + cardH).toBeLessThanOrEqual(view.h - 8)
+  })
+
+  it('clamps into the viewport at the bottom-left corner', () => {
+    const pos = clampHoverCardPosition({
+      markerX: 10,
+      markerY: 790,
+      cardW: HOVER_CARD_WIDTH,
+      cardH,
+      view,
+    })
+    expect(pos.x).toBeGreaterThanOrEqual(8)
+    expect(pos.y).toBeGreaterThanOrEqual(8)
+    expect(pos.x + HOVER_CARD_WIDTH).toBeLessThanOrEqual(view.w - 8)
+    expect(pos.y + cardH).toBeLessThanOrEqual(view.h - 8)
   })
 })

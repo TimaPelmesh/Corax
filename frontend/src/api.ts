@@ -227,6 +227,24 @@ export type NoteShareRow = {
 
 export type NoteColor = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 export type NoteMark = 'dot' | 'flag' | 'star'
+export type CalendarMarkKind = 'weekend' | 'holiday' | 'payday'
+export type CalendarMarkVisibility = 'private' | 'shared' | 'org'
+
+export type CalendarMark = {
+  id: number
+  kind: CalendarMarkKind
+  title: string
+  start_date: string
+  end_date: string
+  visibility: CalendarMarkVisibility
+  owner_user_id: number
+  owner_username?: string | null
+  owner_full_name?: string | null
+  mine: boolean
+  can_edit: boolean
+  created_at: string
+  updated_at: string
+}
 
 export type NoteListItem = {
   id: number
@@ -2338,6 +2356,33 @@ export const api = {
 
   replaceNoteShares: (id: number, shares: { user_id: number; can_edit: boolean }[]) =>
     request<NoteRow>(`${API_PREFIX}/notes/${id}/shares`, { method: 'PUT', json: { shares } }),
+
+  calendarMarks: (from: string, to: string) =>
+    request<CalendarMark[]>(
+      `${API_PREFIX}/calendar-marks?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+
+  createCalendarMark: (body: {
+    kind: CalendarMarkKind
+    title?: string
+    start_date: string
+    end_date: string
+    visibility?: CalendarMarkVisibility
+  }) => request<CalendarMark>(`${API_PREFIX}/calendar-marks`, { method: 'POST', json: body }),
+
+  updateCalendarMark: (
+    id: number,
+    body: {
+      kind?: CalendarMarkKind
+      title?: string
+      start_date?: string
+      end_date?: string
+      visibility?: CalendarMarkVisibility
+    },
+  ) => request<CalendarMark>(`${API_PREFIX}/calendar-marks/${id}`, { method: 'PATCH', json: body }),
+
+  deleteCalendarMark: (id: number) =>
+    request<{ ok: boolean }>(`${API_PREFIX}/calendar-marks/${id}`, { method: 'DELETE' }),
 
   setUserAdmin: (id: number, is_superuser: boolean) =>
     request<User>(`${API_PREFIX}/users/${id}/admin`, { method: 'PATCH', json: { is_superuser } }),

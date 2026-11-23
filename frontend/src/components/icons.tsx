@@ -323,6 +323,19 @@ export function IconClock({ className, title }: Props) {
   )
 }
 
+export function IconCalendar({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2.2" {...soft} />
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2.2" {...s} />
+      <path d="M3.5 9.5h17" {...s} />
+      <path d="M8 3.5v3.5M16 3.5v3.5" {...s} />
+      <path d="M8 13h1.5M12 13h1.5M16 13h1.5M8 16.5h1.5M12 16.5h1.5" {...s} />
+    </svg>
+  )
+}
+
 export function IconCheckBadge({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
