@@ -181,6 +181,8 @@ export function streamWikiRagResearch(
   return streamWikiRagSse('/wiki-rag/research/stream', body, callbacks)
 }
 
+export type RemoteAssistMode = 'all' | 'allow' | 'deny'
+
 export type User = {
   id: number
   username: string
@@ -196,6 +198,15 @@ export type User = {
   linked_directory_username?: string | null
   linked_directory_full_name?: string | null
   must_change_password?: boolean
+  remote_assist_mode?: RemoteAssistMode
+  remote_assist_tag_ids?: number[]
+  remote_assist_computer_ids?: number[]
+}
+
+export type AssistAccess = {
+  allowed: boolean
+  reason?: string | null
+  detail?: string | null
 }
 
 export type UserDirectoryItem = {
@@ -2867,8 +2878,18 @@ export const api = {
       email?: string | null
       password?: string
       linked_directory_user_id?: number | null
+      remote_assist_mode?: RemoteAssistMode
+      remote_assist_tag_ids?: number[]
+      remote_assist_computer_ids?: number[]
     },
   ) => request<User>(`${API_PREFIX}/users/${id}`, { method: 'PATCH', json: body }),
+
+  assistAccess: (opts: { hostname?: string; computer_id?: number }) => {
+    const p = new URLSearchParams()
+    if (opts.hostname) p.set('hostname', opts.hostname)
+    if (opts.computer_id != null) p.set('computer_id', String(opts.computer_id))
+    return request<AssistAccess>(`${API_PREFIX}/assist/access?${p.toString()}`)
+  },
 
   agentTokens: () => request<AgentTokenRow[]>(`${API_PREFIX}/agent-tokens`),
 
@@ -2909,6 +2930,7 @@ export const api = {
 
   assistEnd: (sessionId: string) =>
     request<AssistSession>(`${API_PREFIX}/assist/sessions/${sessionId}/end`, { method: 'POST' }),
+
 
   agentBundleLanIp: async (): Promise<AgentBundleLanIp> => {
     try {

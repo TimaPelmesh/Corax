@@ -1162,7 +1162,11 @@ export function ComputerDetailModal({
                   {pingBusy ? t('computerDetail.pingChecking') : t('computerDetail.pingCheck')}
                 </button>
                 {user?.is_superuser || user?.role === 'editor' ? (
-                  <RemoteConnectMenu hostname={detail.hostname} ip={pingResult?.ip_address || detail.ip_address} />
+                  <RemoteConnectMenu
+                    hostname={detail.hostname}
+                    ip={pingResult?.ip_address || detail.ip_address}
+                    computerId={detail.id}
+                  />
                 ) : null}
                 {wolStatus?.user_may_wake && wolStatus.force_disabled ? (
                   <span className="text-xs text-amber-800">{t('computerDetail.wolForceOff')}</span>

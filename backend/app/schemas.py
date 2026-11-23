@@ -53,6 +53,9 @@ class UserProfilePatch(BaseModel):
 class UserServiceAccountPatch(UserProfilePatch):
     password: str | None = Field(default=None, min_length=6, max_length=128)
     linked_directory_user_id: int | None = None
+    remote_assist_mode: str | None = Field(default=None, pattern="^(all|allow|deny)$")
+    remote_assist_tag_ids: list[int] | None = None
+    remote_assist_computer_ids: list[int] | None = None
 
 
 class UserCreate(UserBase):
@@ -73,6 +76,9 @@ class UserOut(UserBase):
     linked_directory_username: str | None = None
     linked_directory_full_name: str | None = None
     must_change_password: bool = False
+    remote_assist_mode: str = "all"
+    remote_assist_tag_ids: list[int] = Field(default_factory=list)
+    remote_assist_computer_ids: list[int] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

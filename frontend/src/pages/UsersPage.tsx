@@ -1,9 +1,35 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { api, type User } from '../api'
+import { api, type RemoteAssistMode, type TagBrief, type User } from '../api'
 import { useAuth } from '../AuthContext'
 import { useT } from '../i18n/LocaleContext'
 import { useToast } from '../ToastContext'
+
+type PcPick = { id: number; hostname: string }
+
+function assistSummary(
+  u: User,
+  tagsById: Map<number, string>,
+  hostsById: Map<number, string>,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  if (u.is_superuser) return t('users.assistFullAccess')
+  if (u.role !== 'editor') return t('users.assistNoRole')
+  const mode = (u.remote_assist_mode || 'all') as RemoteAssistMode
+  if (mode === 'all') return t('users.assistSummaryAll')
+  const tagNames = (u.remote_assist_tag_ids || [])
+    .map((id) => tagsById.get(id) || `#${id}`)
+    .filter(Boolean)
+  const hosts = (u.remote_assist_computer_ids || [])
+    .map((id) => hostsById.get(id) || `id:${id}`)
+    .filter(Boolean)
+  const parts = [...tagNames, ...hosts]
+  if (!parts.length) return t('users.assistSummaryEmpty')
+  const joined = parts.slice(0, 4).join(', ') + (parts.length > 4 ? ` +${parts.length - 4}` : '')
+  return mode === 'allow'
+    ? t('users.assistSummaryAllow', { parts: joined })
+    : t('users.assistSummaryDeny', { parts: joined })
+}
 
 function isDirectoryUser(u: User) {
   return u.is_ldap || u.role === 'directory'
@@ -168,14 +194,40 @@ export function UsersPage() {
   const [editEmail, setEditEmail] = useState('')
   const [editPassword, setEditPassword] = useState('')
   const [editLinkedId, setEditLinkedId] = useState<number | null>(null)
+  const [editAssistMode, setEditAssistMode] = useState<RemoteAssistMode>('all')
+  const [editAssistTagIds, setEditAssistTagIds] = useState<number[]>([])
+  const [editAssistPcs, setEditAssistPcs] = useState<PcPick[]>([])
+  const [pcQuery, setPcQuery] = useState('')
+  const [pcHits, setPcHits] = useState<PcPick[]>([])
+  const [allTags, setAllTags] = useState<TagBrief[]>([])
+  const [hostLabels, setHostLabels] = useState<Map<number, string>>(() => new Map())
   const [linkedDirectoryId, setLinkedDirectoryId] = useState<number | null>(null)
   const [section, setSection] = useState<'profile' | 'accounts' | 'directory'>('accounts')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.users()
+      const [data, tags] = await Promise.all([api.users(), api.tags().catch(() => [] as TagBrief[])])
       setRows(data)
+      setAllTags(tags)
+      const needIds = new Set<number>()
+      for (const u of data) {
+        for (const id of u.remote_assist_computer_ids || []) needIds.add(id)
+      }
+      if (needIds.size) {
+        const labels = new Map<number, string>()
+        await Promise.all(
+          [...needIds].slice(0, 80).map(async (id) => {
+            try {
+              const c = await api.computer(id, { includeSoftware: false })
+              labels.set(id, c.hostname)
+            } catch {
+              labels.set(id, `id:${id}`)
+            }
+          }),
+        )
+        setHostLabels(labels)
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('common.error'))
     } finally {
@@ -186,6 +238,31 @@ export function UsersPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    const q = pcQuery.trim()
+    if (q.length < 2) {
+      setPcHits([])
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void api
+        .computers({ q, limit: 12, view: 'list' })
+        .then((res) => {
+          if (cancelled) return
+          const items = (res.items || []).map((c) => ({ id: c.id, hostname: c.hostname }))
+          setPcHits(items)
+        })
+        .catch(() => {
+          if (!cancelled) setPcHits([])
+        })
+    }, 220)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [pcQuery])
 
   useEffect(() => {
     if (!user) return
@@ -214,6 +291,12 @@ export function UsersPage() {
     return <Navigate to="/" replace />
   }
 
+  const tagsById = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const tag of allTags) m.set(tag.id, tag.name)
+    return m
+  }, [allTags])
+
   function openEdit(u: User) {
     setEditId(u.id)
     setEditUsername(u.username)
@@ -221,6 +304,15 @@ export function UsersPage() {
     setEditEmail(u.email ?? '')
     setEditPassword('')
     setEditLinkedId(u.linked_directory_user_id ?? null)
+    setEditAssistMode((u.remote_assist_mode || 'all') as RemoteAssistMode)
+    setEditAssistTagIds([...(u.remote_assist_tag_ids || [])])
+    const pcs: PcPick[] = (u.remote_assist_computer_ids || []).map((id) => ({
+      id,
+      hostname: hostLabels.get(id) || `id:${id}`,
+    }))
+    setEditAssistPcs(pcs)
+    setPcQuery('')
+    setPcHits([])
     setSection('accounts')
   }
 
@@ -297,6 +389,7 @@ export function UsersPage() {
   async function onSaveEdit(e: FormEvent) {
     e.preventDefault()
     if (editId == null) return
+    const editing = serviceRows.find((u) => u.id === editId)
     try {
       await api.updateUser(editId, {
         username: editUsername.trim(),
@@ -304,6 +397,13 @@ export function UsersPage() {
         email: editEmail.trim() || null,
         password: editPassword.trim() || undefined,
         linked_directory_user_id: editLinkedId,
+        ...(editing && !editing.is_superuser && editing.role === 'editor'
+          ? {
+              remote_assist_mode: editAssistMode,
+              remote_assist_tag_ids: editAssistTagIds,
+              remote_assist_computer_ids: editAssistPcs.map((p) => p.id),
+            }
+          : {}),
       })
       setEditId(null)
       toast.ok(t('users.accountUpdated'))
@@ -312,6 +412,10 @@ export function UsersPage() {
       toast.error(error instanceof Error ? error.message : t('common.error'))
     }
   }
+
+  const editUser = editId != null ? serviceRows.find((u) => u.id === editId) : null
+  const showAssistEditor = Boolean(editUser && !editUser.is_superuser && editUser.role === 'editor')
+  const showAssistLists = showAssistEditor && editAssistMode !== 'all'
 
   function availableAdPeople(currentLinkedId: number | null) {
     return directoryRows.filter((d) => {
@@ -464,9 +568,29 @@ export function UsersPage() {
 
             {editId != null ? (
               <form onSubmit={onSaveEdit} className="app-card space-y-4 p-6 sm:p-7">
-                <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
-                  {t('users.editAccount')}
-                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+                    {t('users.editAccount')}
+                  </h2>
+                  <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--color-fg)]">
+                    {t('users.coraxAccountBadge')}
+                  </span>
+                  {editUser?.is_superuser ? (
+                    <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[11px] font-medium">
+                      admin
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[11px] font-medium">
+                      {editUser?.role || 'observer'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-[var(--color-fg)]">
+                  <span className="font-semibold">{editUsername}</span>
+                  {editFullName ? (
+                    <span className="text-[var(--color-fg-muted)]"> · {editFullName}</span>
+                  ) : null}
+                </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="app-label">{t('users.username')}</label>
@@ -510,6 +634,118 @@ export function UsersPage() {
                   noneLabel={t('users.linkNone')}
                   placeholder={t('users.linkSearchPlaceholder')}
                 />
+
+                <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-muted)]/40 p-4 space-y-3">
+                  <div>
+                    <h3 className="text-[13px] font-semibold text-[var(--color-fg)]">{t('users.assistRights')}</h3>
+                    <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.assistRightsHint')}</p>
+                  </div>
+                  {editUser?.is_superuser ? (
+                    <p className="text-sm font-medium text-[var(--color-fg)]">{t('users.assistFullAccess')}</p>
+                  ) : editUser?.role !== 'editor' ? (
+                    <p className="text-sm text-[var(--color-fg-muted)]">{t('users.assistNoRole')}</p>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="app-label">{t('users.assistMode')}</label>
+                        <select
+                          className="app-input"
+                          value={editAssistMode}
+                          onChange={(e) => setEditAssistMode(e.target.value as RemoteAssistMode)}
+                        >
+                          <option value="all">{t('users.assistModeAll')}</option>
+                          <option value="allow">{t('users.assistModeAllow')}</option>
+                          <option value="deny">{t('users.assistModeDeny')}</option>
+                        </select>
+                      </div>
+                      {showAssistLists ? (
+                        <>
+                          <div>
+                            <label className="app-label">{t('users.assistTags')}</label>
+                            <div className="mt-1 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
+                              {allTags.length === 0 ? (
+                                <span className="text-xs text-[var(--color-fg-muted)]">—</span>
+                              ) : (
+                                allTags.map((tag) => {
+                                  const on = editAssistTagIds.includes(tag.id)
+                                  return (
+                                    <button
+                                      key={tag.id}
+                                      type="button"
+                                      className={`rounded-full border px-2.5 py-1 text-xs ${
+                                        on
+                                          ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/15 text-[var(--color-fg)]'
+                                          : 'border-[var(--color-border)] text-[var(--color-fg-muted)]'
+                                      }`}
+                                      onClick={() =>
+                                        setEditAssistTagIds((prev) =>
+                                          on ? prev.filter((x) => x !== tag.id) : [...prev, tag.id],
+                                        )
+                                      }
+                                    >
+                                      {tag.name}
+                                    </button>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="app-label">{t('users.assistComputers')}</label>
+                            <div className="mt-1 flex gap-2">
+                              <input
+                                className="app-input"
+                                value={pcQuery}
+                                onChange={(e) => setPcQuery(e.target.value)}
+                                placeholder={t('users.assistPcSearch')}
+                              />
+                            </div>
+                            {pcHits.length ? (
+                              <ul className="mt-1 max-h-32 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+                                {pcHits.map((hit) => (
+                                  <li key={hit.id}>
+                                    <button
+                                      type="button"
+                                      className="flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-[var(--color-bg-muted)]"
+                                      onClick={() => {
+                                        setEditAssistPcs((prev) =>
+                                          prev.some((p) => p.id === hit.id) ? prev : [...prev, hit],
+                                        )
+                                        setHostLabels((prev) => new Map(prev).set(hit.id, hit.hostname))
+                                        setPcQuery('')
+                                        setPcHits([])
+                                      }}
+                                    >
+                                      <span>{hit.hostname}</span>
+                                      <span className="text-xs text-[var(--color-fg-muted)]">{t('users.assistPcAdd')}</span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {editAssistPcs.length === 0 ? (
+                                <span className="text-xs text-[var(--color-fg-muted)]">{t('users.assistPcNone')}</span>
+                              ) : (
+                                editAssistPcs.map((pc) => (
+                                  <button
+                                    key={pc.id}
+                                    type="button"
+                                    className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-fg)]"
+                                    onClick={() => setEditAssistPcs((prev) => prev.filter((x) => x.id !== pc.id))}
+                                  >
+                                    {pc.hostname} ×
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+
                 <div className="flex gap-2">
                   <button type="submit" className="app-btn app-btn-primary">
                     {t('common.save')}
@@ -534,26 +770,27 @@ export function UsersPage() {
               <p className="mt-1 text-xs text-[var(--color-fg-muted)]">{t('users.coraxAccountsHint')}</p>
             </div>
             <div className="overflow-x-auto overscroll-x-contain">
-              <table className="app-table min-w-[860px] w-full text-left text-sm">
+              <table className="app-table min-w-[980px] w-full text-left text-sm">
                 <thead className="app-table-head">
                   <tr>
                     <th className="app-table-sticky-col px-4 py-3">{t('users.username')}</th>
                     <th className="px-4 py-3">{t('users.fullName')}</th>
                     <th className="app-hide-xs px-4 py-3">{t('users.linkColumn')}</th>
                     <th className="app-hide-xs px-4 py-3">{t('users.role')}</th>
+                    <th className="app-hide-sm px-4 py-3">{t('users.assistColumn')}</th>
                     <th className="px-4 py-3">{t('common.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
                   {loading ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
+                      <td colSpan={6} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                         {t('common.loading')}
                       </td>
                     </tr>
                   ) : serviceRows.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
+                      <td colSpan={6} className="px-4 py-8 text-center text-[var(--color-fg-muted)]">
                         {t('users.noLocalAccounts')}
                       </td>
                     </tr>
@@ -595,6 +832,9 @@ export function UsersPage() {
                               <option value="llm-operator">llm-operator</option>
                             </select>
                           )}
+                        </td>
+                        <td className="app-hide-sm max-w-[220px] px-4 py-3 text-xs text-[var(--color-fg-muted)]">
+                          {assistSummary(u, tagsById, hostLabels, t)}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">

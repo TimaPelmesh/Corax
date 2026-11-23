@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { api } from '../api'
 import { useT } from '../i18n/LocaleContext'
 import { useAssist } from '../AssistContext'
 import { rdpLaunchUri, sanitizeRdpTarget } from '../lib/remoteConnect'
@@ -10,10 +11,12 @@ type MenuPos = { top: number; left: number; width: number }
 export function RemoteConnectMenu({
   hostname,
   ip,
+  computerId,
   compact = false,
 }: {
   hostname?: string | null
   ip?: string | null
+  computerId?: number | null
   compact?: boolean
 }) {
   const t = useT()
@@ -21,6 +24,8 @@ export function RemoteConnectMenu({
   const assist = useAssist()
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<MenuPos | null>(null)
+  const [assistAllowed, setAssistAllowed] = useState<boolean | null>(null)
+  const [assistDenyDetail, setAssistDenyDetail] = useState<string | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const byName = sanitizeRdpTarget(hostname || '')
@@ -68,6 +73,34 @@ export function RemoteConnectMenu({
     }
   }, [open])
 
+  useEffect(() => {
+    if (!open || !byName) {
+      return
+    }
+    let cancelled = false
+    setAssistAllowed(null)
+    setAssistDenyDetail(null)
+    void api
+      .assistAccess({
+        hostname: byName,
+        computer_id: computerId && computerId > 0 ? computerId : undefined,
+      })
+      .then((res) => {
+        if (cancelled) return
+        setAssistAllowed(Boolean(res.allowed))
+        setAssistDenyDetail(res.detail || null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Fail open in UI probe; server still enforces on start.
+        setAssistAllowed(true)
+        setAssistDenyDetail(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, byName, computerId])
+
   if (!hasTarget) return null
 
   function onRdpClick(host: string) {
@@ -91,18 +124,30 @@ export function RemoteConnectMenu({
             {t('remoteConnect.how')}
           </p>
           {byName ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-[var(--color-bg-muted)]"
-              onClick={() => {
-                setOpen(false)
-                void assist.start(byName)
-              }}
-            >
-              <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.assist')}</span>
-              <span className="text-[11px] text-[var(--color-fg-muted)]">{t('remoteConnect.assistByName', { host: byName })}</span>
-            </button>
+            assistAllowed === false ? (
+              <div className="px-3 py-2">
+                <span className="text-[13px] font-semibold text-[var(--color-fg-muted)]">{t('remoteConnect.assist')}</span>
+                <span className="mt-0.5 block text-[11px] text-[var(--color-fg-muted)]">
+                  {assistDenyDetail || t('remoteConnect.assistDenied')}
+                </span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left hover:bg-[var(--color-bg-muted)] disabled:opacity-50"
+                disabled={assistAllowed === null}
+                onClick={() => {
+                  setOpen(false)
+                  void assist.start(byName)
+                }}
+              >
+                <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.assist')}</span>
+                <span className="text-[11px] text-[var(--color-fg-muted)]">
+                  {t('remoteConnect.assistByName', { host: byName })}
+                </span>
+              </button>
+            )
           ) : null}
           {byName && rdpLaunchUri(byName) ? (
             <a
@@ -133,7 +178,11 @@ export function RemoteConnectMenu({
           <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-fg-subtle)]">
             {t('remoteConnect.later')}
           </p>
-          <div role="menuitem" aria-disabled="true" className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left opacity-55">
+          <div
+            role="menuitem"
+            aria-disabled="true"
+            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left opacity-55"
+          >
             <span className="text-[13px] font-semibold text-[var(--color-fg)]">{t('remoteConnect.dameware')}</span>
             <span className="text-[11px] text-[var(--color-fg-muted)]">{t('remoteConnect.damewareSoon')}</span>
           </div>

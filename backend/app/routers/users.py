@@ -11,6 +11,7 @@ from app.password_change import is_forbidden_new_password
 from app.database import get_db
 from app.ldap_config import get_effective_ldap_config
 from app.models import Computer, Monitor, User, service_request_assignees, service_request_template_assignees
+from app.remote_assist_policy import policy_public, set_policy
 from app.schemas import UserCreate, UserDirectoryItem, UserOut, UserProfilePatch, UserServiceAccountPatch
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -31,6 +32,7 @@ def _is_directory_user(user: User) -> bool:
 
 
 def _to_user_out(user: User, linked: User | None = None) -> UserOut:
+    policy = policy_public(user)
     return UserOut(
         id=user.id,
         username=user.username,
@@ -46,6 +48,9 @@ def _to_user_out(user: User, linked: User | None = None) -> UserOut:
         linked_directory_username=(linked.username if linked else None),
         linked_directory_full_name=(linked.full_name if linked else None),
         must_change_password=bool(getattr(user, "must_change_password", False)),
+        remote_assist_mode=policy["remote_assist_mode"],
+        remote_assist_tag_ids=policy["remote_assist_tag_ids"],
+        remote_assist_computer_ids=policy["remote_assist_computer_ids"],
     )
 
 
@@ -139,6 +144,9 @@ async def list_users(
                 User.created_at,
                 User.linked_directory_user_id,
                 User.must_change_password,
+                User.remote_assist_mode,
+                User.remote_assist_tag_ids_json,
+                User.remote_assist_computer_ids_json,
             )
         )
         .order_by(User.id)
@@ -262,6 +270,21 @@ async def update_service_account(
             db,
             panel_user_id=u.id,
             linked_directory_user_id=body.linked_directory_user_id,
+        )
+    if (
+        "remote_assist_mode" in body.model_fields_set
+        or "remote_assist_tag_ids" in body.model_fields_set
+        or "remote_assist_computer_ids" in body.model_fields_set
+    ):
+        set_policy(
+            u,
+            mode=body.remote_assist_mode if "remote_assist_mode" in body.model_fields_set else None,
+            tag_ids=body.remote_assist_tag_ids if "remote_assist_tag_ids" in body.model_fields_set else None,
+            computer_ids=(
+                body.remote_assist_computer_ids
+                if "remote_assist_computer_ids" in body.model_fields_set
+                else None
+            ),
         )
     await db.commit()
     await db.refresh(u)

@@ -155,6 +155,9 @@ async def get_current_user(
                 User.linked_directory_user_id,
                 User.must_change_password,
                 User.token_version,
+                User.remote_assist_mode,
+                User.remote_assist_tag_ids_json,
+                User.remote_assist_computer_ids_json,
             )
         )
         .where(User.username == sub)
@@ -278,6 +281,9 @@ async def _load_panel_user(db: AsyncSession, username: str, token_ver: int) -> U
                 User.linked_directory_user_id,
                 User.must_change_password,
                 User.token_version,
+                User.remote_assist_mode,
+                User.remote_assist_tag_ids_json,
+                User.remote_assist_computer_ids_json,
             )
         )
         .where(User.username == username)

@@ -37,6 +37,10 @@ class User(Base):
     linked_directory_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Corax Assist scope for editors: all | allow | deny (+ tag/computer id lists).
+    remote_assist_mode: Mapped[str] = mapped_column(String(16), default="all", server_default="all")
+    remote_assist_tag_ids_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    remote_assist_computer_ids_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

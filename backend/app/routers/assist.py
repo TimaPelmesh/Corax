@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assist_hub import MAX_FRAME_BYTES, WAIT_OFFER_SEC, hub
-from app.auth import get_current_editor_or_superuser
+from app.auth import get_current_editor_or_superuser, get_current_user
 from app.database import get_db
 from app.diagram_live import user_from_access_token
 from app.models import User
+from app.remote_assist_policy import can_remote_assist, deny_detail
 from app.routers.agent import verify_agent_token
 
 router = APIRouter(prefix="/assist", tags=["assist"])
@@ -76,8 +77,36 @@ def _frame_meta(request: Request) -> dict:
     return meta
 
 
+@router.get("/access")
+async def assist_access(
+    hostname: str | None = Query(default=None, max_length=255),
+    computer_id: int | None = Query(default=None, ge=1),
+    current: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """UI probe: whether the current panel user may start Assist on this PC."""
+    host = (hostname or "").strip() or None
+    if not host and not computer_id:
+        raise HTTPException(status_code=400, detail="Нужен hostname или computer_id")
+    allowed, reason = await can_remote_assist(
+        db, current, computer_id=computer_id, hostname=host
+    )
+    return {
+        "allowed": allowed,
+        "reason": reason or None,
+        "detail": None if allowed else deny_detail(reason),
+    }
+
+
 @router.post("/sessions")
-async def start_session(body: AssistStartBody, current: User = Depends(get_current_editor_or_superuser)):
+async def start_session(
+    body: AssistStartBody,
+    current: User = Depends(get_current_editor_or_superuser),
+    db: AsyncSession = Depends(get_db),
+):
+    allowed, reason = await can_remote_assist(db, current, hostname=body.hostname)
+    if not allowed:
+        raise HTTPException(status_code=403, detail=deny_detail(reason))
     try:
         sess = await hub.create(body.hostname, current.id, _display_name(current))
     except ValueError:
@@ -204,6 +233,14 @@ async def assist_live(websocket: WebSocket, session_id: str):
     sess = await hub.attach_admin(session_id, websocket)
     if sess is None:
         await websocket.close(code=4404)
+        return
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        allowed, _reason = await can_remote_assist(db, user, hostname=sess.hostname)
+    if not allowed:
+        await hub.detach_admin(session_id, websocket)
+        await websocket.close(code=4403)
         return
     try:
         await websocket.send_text(json.dumps({"type": "hello", "status": sess.status, "hostname": sess.hostname}))

@@ -221,6 +221,38 @@ def _migrate_users_must_change_password(sync_conn) -> None:
     )
 
 
+def _migrate_users_remote_assist_policy(sync_conn) -> None:
+    cols = _column_names(sync_conn, "users")
+    patch_sql = {
+        "remote_assist_mode": "ALTER TABLE users ADD COLUMN remote_assist_mode VARCHAR(16) DEFAULT 'all'",
+        "remote_assist_tag_ids_json": "ALTER TABLE users ADD COLUMN remote_assist_tag_ids_json TEXT DEFAULT '[]'",
+        "remote_assist_computer_ids_json": (
+            "ALTER TABLE users ADD COLUMN remote_assist_computer_ids_json TEXT DEFAULT '[]'"
+        ),
+    }
+    for key, sql in patch_sql.items():
+        if key not in cols:
+            sync_conn.execute(text(sql))
+    sync_conn.execute(
+        text(
+            "UPDATE users SET remote_assist_mode = 'all' "
+            "WHERE remote_assist_mode IS NULL OR TRIM(remote_assist_mode) = ''"
+        )
+    )
+    sync_conn.execute(
+        text(
+            "UPDATE users SET remote_assist_tag_ids_json = '[]' "
+            "WHERE remote_assist_tag_ids_json IS NULL"
+        )
+    )
+    sync_conn.execute(
+        text(
+            "UPDATE users SET remote_assist_computer_ids_json = '[]' "
+            "WHERE remote_assist_computer_ids_json IS NULL"
+        )
+    )
+
+
 def _migrate_users_linked_directory(sync_conn) -> None:
     cols = _column_names(sync_conn, "users")
     if "linked_directory_user_id" not in cols:
@@ -2392,6 +2424,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-11-03_ai_agents", _migrate_ai_agents),
     ("2026-11-03_network_ping_settings", _migrate_network_ping_settings),
     ("2026-11-09_bitrix_bot_vault", _migrate_bitrix_bot_vault),
+    ("2026-11-23_users_remote_assist_policy", _migrate_users_remote_assist_policy),
 ]
 
 
