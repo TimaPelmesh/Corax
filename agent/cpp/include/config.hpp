@@ -26,7 +26,7 @@ struct AgentModules {
 struct AgentConfig {
   std::string server_url;
   std::string agent_token;
-  std::string agent_version = "5.4.2";
+  std::string agent_version = "5.4.3";
   std::string profile = "full";
   AgentModules modules;
   int software_max = 12000;
