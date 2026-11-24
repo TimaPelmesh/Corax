@@ -10,7 +10,7 @@ import {
   type NoteMark,
 } from '../../api'
 import { useAuth } from '../../AuthContext'
-import { useLocale, useT } from '../../i18n/LocaleContext'
+import { useLocale, useT, type MessageKey } from '../../i18n/LocaleContext'
 import { useToast } from '../../ToastContext'
 import { IconCalendar, IconClose, IconTrash } from '../icons'
 
@@ -88,12 +88,16 @@ function expandRange(start: string, end: string): string[] {
   return out
 }
 
-function kindLabelKey(kind: CalendarMarkKind): string {
-  return `notes.calendar.kinds.${kind}`
+const KIND_LABEL_KEY: Record<CalendarMarkKind, MessageKey> = {
+  weekend: 'notes.calendar.kinds.weekend',
+  holiday: 'notes.calendar.kinds.holiday',
+  payday: 'notes.calendar.kinds.payday',
 }
 
-function visibilityLabelKey(v: CalendarMarkVisibility): string {
-  return `notes.calendar.visibility.${v}`
+const VISIBILITY_LABEL_KEY: Record<CalendarMarkVisibility, MessageKey> = {
+  private: 'notes.calendar.visibility.private',
+  shared: 'notes.calendar.visibility.shared',
+  org: 'notes.calendar.visibility.org',
 }
 
 type PlanHit = { note: NoteListItem; key: string }
@@ -509,14 +513,14 @@ export function NotesCalendarModal({
                         <i className={`notes-cal-dot notes-cal-dot--${mark.kind}`} />
                         <div>
                           <div className="notes-cal-list__name">
-                            {mark.title || t(kindLabelKey(mark.kind))}
+                            {mark.title || t(KIND_LABEL_KEY[mark.kind])}
                           </div>
                           <div className="notes-cal-list__dates">
                             {mark.start_date === mark.end_date
                               ? mark.start_date
                               : `${mark.start_date} → ${mark.end_date}`}
                             {' · '}
-                            {t(visibilityLabelKey(mark.visibility))}
+                            {t(VISIBILITY_LABEL_KEY[mark.visibility])}
                             {!mark.mine && mark.owner_username
                               ? ` · ${mark.owner_username}`
                               : null}
