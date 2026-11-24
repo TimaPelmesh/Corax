@@ -4804,6 +4804,46 @@ html.theme-fade body {
   min-height: 0;
   flex: 1;
   max-height: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.notes-workspace__item {
+  display: block;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  text-align: left;
+  color: var(--color-fg);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.notes-workspace__item:hover {
+  background: var(--color-surface-muted);
+}
+.notes-workspace__item.is-active {
+  background: var(--color-primary-muted);
+}
+.notes-workspace__item-title {
+  display: block;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.notes-workspace__item-meta {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.1rem;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  color: var(--color-fg-subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .notes-cal-panel {
   display: flex;
@@ -4817,8 +4857,8 @@ html.theme-fade body {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.65rem 0.85rem;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
 }
@@ -4826,128 +4866,82 @@ html.theme-fade body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-}
-.notes-cal-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 2.35rem;
-  height: 2.35rem;
-  padding: 0 0.7rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.65rem;
-  background: var(--color-surface);
-  color: var(--color-fg-muted);
-  font-size: 0.8rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
-}
-.notes-cal-nav-btn:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
-}
-.notes-cal-nav-btn--today {
-  font-weight: 650;
-  letter-spacing: 0.01em;
-}
-.notes-cal-body {
-  display: grid;
-  grid-template-columns: 1fr;
-  min-height: 0;
-  flex: 1;
-}
-@media (min-width: 1100px) {
-  .notes-cal-body {
-    grid-template-columns: minmax(0, 1fr) 19.5rem;
-  }
+  min-width: 0;
 }
 .notes-cal-months {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.85rem;
+  gap: 0;
   min-height: 0;
-  overflow: auto;
-  padding: 0.85rem;
+  padding: 0.65rem 0.75rem 0.75rem;
 }
 .notes-cal-months--workspace {
-  padding: 0.75rem;
-}
-@media (min-width: 900px) {
-  .notes-cal-months,
-  .notes-cal-months--workspace {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+  max-width: 28rem;
 }
 .notes-cal-month {
   min-width: 0;
 }
 .notes-cal-month__title {
-  margin: 0 0 0.55rem;
-  font-size: 0.9rem;
+  margin: 0;
+  font-size: 0.875rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   text-transform: capitalize;
   color: var(--color-fg);
 }
+.notes-cal-month__title--inline {
+  margin-left: 0.35rem;
+  white-space: nowrap;
+}
 .notes-cal-weekdays {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.2rem;
-  margin-bottom: 0.3rem;
+  gap: 0.15rem;
+  margin-bottom: 0.25rem;
 }
 .notes-cal-weekday {
   text-align: center;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: 0.625rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--color-fg-subtle);
 }
 .notes-cal-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 0.25rem;
+  gap: 0.15rem;
 }
 .notes-cal-day {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: center;
+  justify-content: center;
   gap: 0.12rem;
-  min-height: 3.35rem;
-  padding: 0.28rem 0.28rem 0.3rem;
-  border: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
-  border-radius: 0.55rem;
-  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-surface-muted));
-  text-align: left;
+  min-height: 2.15rem;
+  padding: 0.2rem 0.1rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background: transparent;
+  text-align: center;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
-}
-.notes-cal-panel--workspace .notes-cal-day {
-  min-height: 3.1rem;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 .notes-cal-day:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
-}
-.notes-cal-day__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.2rem;
+  background: var(--color-surface-muted);
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
 }
 .notes-cal-day__ex {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 0.7rem;
+  height: 0.7rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--color-fg) 12%, transparent);
   color: var(--color-fg-muted);
-  font-size: 0.72rem;
+  font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
 }
@@ -4956,167 +4950,104 @@ html.theme-fade body {
   pointer-events: none;
 }
 .notes-cal-day--today {
-  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-primary) 55%, transparent);
+  background: color-mix(in srgb, var(--color-primary-muted) 70%, transparent);
 }
 .notes-cal-day--selected {
   border-color: var(--color-primary) !important;
   background: var(--color-primary-muted) !important;
 }
 .notes-cal-day--weekend {
-  background: color-mix(in srgb, #93c5fd 32%, var(--color-surface-muted));
+  background: color-mix(in srgb, #93c5fd 28%, transparent);
 }
 .notes-cal-day--holiday {
-  background: color-mix(in srgb, #fda4af 28%, var(--color-surface-muted));
+  background: color-mix(in srgb, #fda4af 24%, transparent);
 }
 .notes-cal-day--payday {
-  background: color-mix(in srgb, #fcd34d 30%, var(--color-surface-muted));
+  background: color-mix(in srgb, #fcd34d 26%, transparent);
 }
 .notes-cal-day--exception {
-  background: color-mix(in srgb, var(--color-surface-muted) 80%, white);
+  background: color-mix(in srgb, var(--color-surface-muted) 80%, transparent);
   border-style: dashed;
+  border-color: var(--color-border);
 }
 .notes-cal-day__num {
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1;
   color: var(--color-fg);
+  font-variant-numeric: tabular-nums;
 }
-.notes-cal-day__dots {
+.notes-cal-day__num--today {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: 0.7rem;
+}
+.notes-cal-day__marks {
   display: flex;
-  gap: 0.18rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  min-height: 0.35rem;
 }
 .notes-cal-dot {
   display: inline-block;
-  width: 0.42rem;
-  height: 0.42rem;
+  width: 0.35rem;
+  height: 0.35rem;
   border-radius: 999px;
 }
 .notes-cal-dot--weekend { background: #2563eb; }
 .notes-cal-dot--holiday { background: #e11d48; }
 .notes-cal-dot--payday { background: #d97706; }
-.notes-cal-day__plans {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  min-width: 0;
-}
-.notes-cal-chip {
-  display: block;
-  overflow: hidden;
-  max-width: 100%;
-  padding: 0.08rem 0.28rem;
-  border-radius: 0.3rem;
-  font-size: 0.62rem;
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-.notes-cal-chip-more {
-  font-size: 0.62rem;
-  font-weight: 600;
-  color: var(--color-fg-subtle);
-}
-.notes-cal-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  min-height: 0;
-  overflow: auto;
-  padding: 1rem;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface-muted);
-}
-@media (min-width: 1100px) {
-  .notes-cal-rail {
-    border-top: 0;
-    border-left: 1px solid var(--color-border);
-  }
-}
-.notes-cal-legend {
-  display: grid;
-  gap: 0.35rem;
-}
-.notes-cal-legend__row {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.8rem;
-  color: var(--color-fg-muted);
-}
-.notes-cal-form,
-.notes-cal-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-.notes-cal-form__title {
-  margin: 0;
-  font-size: 0.86rem;
-  font-weight: 700;
-  color: var(--color-fg);
-}
-.notes-cal-form__hint {
-  margin: 0;
-  font-size: 0.75rem;
-  line-height: 1.35;
-  color: var(--color-fg-subtle);
-}
 .notes-cal-quick {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 0.3rem;
-}
-.notes-cal-quick__btn {
-  min-height: 1.75rem;
-  padding: 0.2rem 0.65rem;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-surface);
-  color: var(--color-fg-muted);
-  font-size: 0.7rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-.notes-cal-quick__btn:hover,
-.notes-cal-quick__btn.is-active {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
-  color: var(--color-primary);
-  background: var(--color-primary-muted);
 }
 .notes-cal-rules {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  padding: 0.75rem 0.85rem 0.9rem;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem 0.8rem;
   border-top: 1px solid var(--color-border);
   background: var(--color-surface-muted);
 }
 .notes-cal-rules__form {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 .notes-cal-rules__row {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
-  gap: 0.4rem;
+  gap: 0.35rem;
 }
 @media (max-width: 900px) {
   .notes-cal-rules__row {
     grid-template-columns: 1fr 1fr;
   }
 }
+.notes-cal-rules__actions {
+  display: flex;
+  justify-content: flex-start;
+}
 .notes-cal-monthday-input {
   min-width: 7rem;
   flex: 1;
 }
 .notes-cal-list__ul--compact {
-  max-height: 7.5rem;
+  max-height: 7rem;
   overflow: auto;
 }
 .notes-cal-list__ul--compact .notes-cal-list__item {
-  padding: 0.35rem 0.45rem;
+  padding: 0.3rem 0.4rem;
 }
 .notes-cal-list__ul--compact .notes-cal-list__name {
   font-size: 0.75rem;
@@ -5124,187 +5055,68 @@ html.theme-fade body {
 .notes-cal-list__ul--compact .notes-cal-list__dates {
   font-weight: 500;
 }
-.notes-cal-kind-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.notes-cal-kind-row,
+.notes-cal-mode {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.3rem;
-}
-.notes-cal-kind {
-  min-height: 2rem;
-  padding: 0.25rem 0.35rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-surface);
-  color: var(--color-fg-muted);
-  font-size: 0.7rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-.notes-cal-kind.is-active {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
 }
 .notes-cal-monthday-toggles {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-}
-.notes-cal-md {
-  min-width: 2rem;
-  min-height: 1.85rem;
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.45rem;
-  background: var(--color-surface);
-  color: var(--color-fg-muted);
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.notes-cal-md.is-active {
-  border-color: color-mix(in srgb, var(--color-primary) 50%, var(--color-border));
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
-}
-.notes-cal-mode {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.35rem;
-}
-.notes-cal-mode__btn {
-  min-height: 2rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-surface);
-  color: var(--color-fg-muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.notes-cal-mode__btn.is-active {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
-}
-.notes-cal-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-fg-muted);
-}
-.notes-cal-field-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.45rem;
+  align-items: center;
 }
 .notes-cal-weekday-toggles {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.25rem;
 }
-.notes-cal-wd {
-  min-height: 1.85rem;
-  padding: 0.15rem 0.1rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.4rem;
-  background: var(--color-surface);
-  color: var(--color-fg-muted);
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.notes-cal-wd.is-active {
-  border-color: color-mix(in srgb, var(--color-primary) 50%, var(--color-border));
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
-}
-.notes-cal-presets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
-}
-.notes-cal-preset {
-  min-height: 1.7rem;
-  padding: 0.2rem 0.55rem;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-surface);
-  color: var(--color-fg-muted);
-  font-size: 0.7rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.notes-cal-preset:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
-  color: var(--color-primary);
-}
-.notes-cal-empty {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--color-fg-subtle);
-}
 .notes-cal-list__ul {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.3rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .notes-cal-list__item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.4rem;
-  padding: 0.5rem 0.55rem;
+  padding: 0.4rem 0.5rem;
   border: 1px solid var(--color-border);
-  border-radius: 0.55rem;
+  border-radius: 0.5rem;
   background: var(--color-surface);
 }
 .notes-cal-list__meta {
   display: flex;
-  gap: 0.45rem;
+  align-items: center;
+  gap: 0.4rem;
   min-width: 0;
 }
 .notes-cal-list__name {
   font-size: 0.8rem;
   font-weight: 650;
   color: var(--color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .notes-cal-list__dates {
-  margin-top: 0.1rem;
   font-size: 0.68rem;
+  font-weight: 500;
   color: var(--color-fg-subtle);
 }
-.notes-cal-list__del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.85rem;
-  height: 1.85rem;
-  border: 0;
-  border-radius: 0.4rem;
-  color: var(--color-fg-muted);
-  background: transparent;
-  cursor: pointer;
-}
-.notes-cal-list__del:hover {
-  color: #be123c;
-  background: color-mix(in srgb, #ffe4e6 70%, white);
-}
 [data-theme="dark"] .notes-cal-day--weekend {
-  background: color-mix(in srgb, #1d4ed8 28%, var(--color-surface-muted));
+  background: color-mix(in srgb, #1d4ed8 24%, transparent);
 }
 [data-theme="dark"] .notes-cal-day--holiday {
-  background: color-mix(in srgb, #9f1239 28%, var(--color-surface-muted));
+  background: color-mix(in srgb, #9f1239 24%, transparent);
 }
 [data-theme="dark"] .notes-cal-day--payday {
-  background: color-mix(in srgb, #b45309 28%, var(--color-surface-muted));
+  background: color-mix(in srgb, #b45309 24%, transparent);
 }
 [data-theme="dark"] .notes-cal-day--selected {
   background: var(--color-primary-muted) !important;

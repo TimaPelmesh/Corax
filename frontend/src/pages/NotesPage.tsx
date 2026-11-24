@@ -408,77 +408,64 @@ export function NotesPage() {
     <div>
       <h1 className="sr-only">{t('notes.title')}</h1>
       <div className="notes-workspace grid gap-3 lg:grid-cols-[minmax(13rem,16rem)_1fr]">
-        <aside className="app-panel notes-workspace__aside !p-3">
+        <aside className="app-panel notes-workspace__aside !p-2.5">
           <button
             type="button"
             onClick={() => void createNote()}
-            className="app-btn app-btn-primary mb-3 w-full !min-h-10"
+            className="app-btn app-btn-primary mb-2 w-full !min-h-9 !py-1.5 text-sm"
           >
-            <span className="text-lg leading-none" aria-hidden>
-              +
-            </span>
             {t('notes.create')}
           </button>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-[13px] font-semibold text-[var(--color-fg-subtle)]">{t('notes.list')}</div>
-            {query.trim() && list.length > 0 ? (
-              <span className="text-[11px] tabular-nums text-[var(--color-fg-subtle)]">
-                {t('notes.searchCount', { n: visibleList.length, total: list.length })}
-              </span>
-            ) : null}
-          </div>
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t('notes.searchPlaceholder')}
             className="app-input mb-2 !min-h-0 !py-1.5 text-sm"
+            aria-label={t('notes.list')}
           />
+          {query.trim() && list.length > 0 ? (
+            <div className="mb-1.5 px-0.5 text-[11px] tabular-nums text-[var(--color-fg-subtle)]">
+              {t('notes.searchCount', { n: visibleList.length, total: list.length })}
+            </div>
+          ) : null}
           {loading ? (
-            <div className="space-y-2 px-1 py-2" role="status" aria-busy="true">
+            <div className="space-y-1.5 px-0.5 py-1" role="status" aria-busy="true">
               <span className="sr-only">{t('common.loading')}</span>
-              <div className="h-9 animate-pulse rounded-lg bg-[var(--color-bg-muted)]" />
-              <div className="h-9 animate-pulse rounded-lg bg-[var(--color-bg-muted)]" />
-              <div className="h-9 animate-pulse rounded-lg bg-[var(--color-bg-muted)]" />
+              <div className="h-8 animate-pulse rounded-md bg-[var(--color-bg-muted)]" />
+              <div className="h-8 animate-pulse rounded-md bg-[var(--color-bg-muted)]" />
+              <div className="h-8 animate-pulse rounded-md bg-[var(--color-bg-muted)]" />
             </div>
           ) : list.length === 0 ? (
-            <p className="app-empty-state !rounded-lg !border-dashed !px-3 !py-4 text-xs">{t('notes.empty')}</p>
+            <p className="app-empty-state !rounded-md !border-dashed !px-2.5 !py-3 text-xs">{t('notes.empty')}</p>
           ) : visibleList.length === 0 ? (
-            <p className="px-1 py-3 text-xs text-[var(--color-fg-subtle)]">{t('notes.searchEmpty')}</p>
+            <p className="px-1 py-2 text-xs text-[var(--color-fg-subtle)]">{t('notes.searchEmpty')}</p>
           ) : (
-            <ul className="notes-workspace__list space-y-1 overflow-y-auto">
+            <ul className="notes-workspace__list space-y-0.5 overflow-y-auto">
               {visibleList.map((item) => {
                 const active = item.id === selectedId
                 const plan = formatPlan(item)
+                const meta = [item.is_shared_with_me ? t('notes.sharedBadge') : null, plan]
+                  .filter(Boolean)
+                  .join(' · ')
                 return (
                   <li key={item.id}>
                     <button
                       type="button"
                       onClick={() => setSearchParams({ id: String(item.id) })}
-                      className={`w-full rounded-xl px-2.5 py-2 text-left transition ${
-                        active
-                          ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
-                          : 'hover:bg-[var(--color-surface-muted)] text-[var(--color-fg)]'
-                      }`}
+                      className={`notes-workspace__item${active ? ' is-active' : ''}`}
                     >
-                      <span className="block truncate text-[13px] font-medium">
+                      <span className="notes-workspace__item-title">
                         {item.mark ? `${MARK_GLYPH[item.mark]} ` : ''}
+                        {item.color ? (
+                          <span
+                            className={`mr-1.5 inline-block h-1.5 w-1.5 translate-y-[-1px] rounded-full ${COLOR_SWATCH[item.color]}`}
+                            aria-hidden
+                          />
+                        ) : null}
                         {item.title || t('notes.untitled')}
                       </span>
-                      <span className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-[var(--color-fg-subtle)]">
-                        {item.color ? (
-                          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${COLOR_SWATCH[item.color]}`} />
-                        ) : null}
-                        <span className="truncate">
-                          {[
-                            item.is_shared_with_me ? t('notes.sharedBadge') : null,
-                            plan,
-                            item.owner_username,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </span>
-                      </span>
+                      {meta ? <span className="notes-workspace__item-meta">{meta}</span> : null}
                     </button>
                   </li>
                 )
