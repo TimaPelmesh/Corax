@@ -474,7 +474,7 @@ export function NotesPage() {
           )}
         </aside>
 
-        <div className="app-panel notes-workspace__cal !p-0 overflow-hidden">
+        <div className="app-panel notes-workspace__cal !p-0">
           <NotesCalendarPanel
             notes={list}
             onSelectNote={(id) => setSearchParams({ id: String(id) })}
