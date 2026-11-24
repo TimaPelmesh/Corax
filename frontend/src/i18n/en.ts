@@ -2851,6 +2851,9 @@ export const en: MessageTree = {
     stepTicket: 'Test ticket',
     stepTicketHint: 'One ticket in GLPI — a quick check that the link works.',
     enabled: 'Enable GLPI exchange',
+    mirrorBot: 'Create Bitrix bot tickets in GLPI',
+    mirrorBotHint:
+      'Under the name of the person who wrote to the bot. When GLPI closes the ticket, the status here becomes done.',
     enabledRequired: 'Enable exchange and save the connection first.',
     baseUrl: 'GLPI URL',
     baseUrlHint: 'Example: http://192.168.1.20/glpi or https://glpi.company.local',

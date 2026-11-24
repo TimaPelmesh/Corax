@@ -770,6 +770,16 @@ def _migrate_glpi_config(sync_conn) -> None:
         )
 
 
+def _migrate_glpi_mirror_bot(sync_conn) -> None:
+    if "glpi_config" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "glpi_config")
+    if "mirror_bot_tickets" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE glpi_config ADD COLUMN mirror_bot_tickets BOOLEAN NOT NULL DEFAULT FALSE")
+        )
+
+
 def _migrate_glpi_identity(sync_conn) -> None:
     if "glpi_config" not in _table_names(sync_conn):
         return
@@ -2514,6 +2524,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-11-24_calendar_day_marks_rules", _migrate_calendar_day_marks_rules),
     ("2026-11-24_calendar_day_marks_month_days", _migrate_calendar_day_marks_month_days),
     ("2026-11-24_calendar_day_marks_color", _migrate_calendar_day_marks_color),
+    ("2026-11-24_glpi_mirror_bot", _migrate_glpi_mirror_bot),
 ]
 
 

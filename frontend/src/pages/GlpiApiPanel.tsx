@@ -48,6 +48,7 @@ export function GlpiApiPanel() {
   const toast = useToast()
   const [cfg, setCfg] = useState<GlpiConfig | null>(null)
   const [enabled, setEnabled] = useState(false)
+  const [mirrorBot, setMirrorBot] = useState(false)
   const [baseUrl, setBaseUrl] = useState('')
   const [apiMode, setApiMode] = useState<ApiMode>('v2')
   const [grantType, setGrantType] = useState<GrantType>('password')
@@ -82,6 +83,7 @@ export function GlpiApiPanel() {
   const apply = useCallback((next: GlpiConfig) => {
     setCfg(next)
     setEnabled(Boolean(next.enabled))
+    setMirrorBot(Boolean(next.mirror_bot_tickets))
     setBaseUrl(next.base_url || '')
     setApiMode(next.api_mode === 'legacy' ? 'legacy' : 'v2')
     setGrantType(next.grant_type === 'client_credentials' ? 'client_credentials' : 'password')
@@ -123,6 +125,7 @@ export function GlpiApiPanel() {
   function patchBody() {
     const body: Parameters<typeof api.updateGlpiConfig>[0] = {
       enabled,
+      mirror_bot_tickets: mirrorBot,
       base_url: baseUrl.trim(),
       api_mode: apiMode,
       grant_type: grantType,
@@ -337,6 +340,18 @@ export function GlpiApiPanel() {
             {t('settingsGlpi.enabled')}
           </label>
         </div>
+        <label className="flex items-start gap-2 text-sm text-[var(--color-fg)]">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4"
+            checked={mirrorBot}
+            onChange={(e) => setMirrorBot(e.target.checked)}
+          />
+          <span>
+            <span className="block">{t('settingsGlpi.mirrorBot')}</span>
+            <span className="mt-0.5 block text-xs text-[var(--color-fg-muted)]">{t('settingsGlpi.mirrorBotHint')}</span>
+          </span>
+        </label>
 
         <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)]/60 px-3 py-2 text-xs text-[var(--color-fg-muted)]">
           {t('settingsGlpi.apiHttpHint')}

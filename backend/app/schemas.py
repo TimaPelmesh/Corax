@@ -829,6 +829,7 @@ class GlpiConfigOut(BaseModel):
     last_test_message: str = ""
     last_version: str = ""
     identity: GlpiIdentityOut | None = None
+    mirror_bot_tickets: bool = False
 
 
 class GlpiConfigUpdate(BaseModel):
@@ -843,6 +844,7 @@ class GlpiConfigUpdate(BaseModel):
     app_token: str | None = Field(default=None, max_length=255)
     user_token: str | None = Field(default=None, max_length=255)
     verify_tls: bool | None = None
+    mirror_bot_tickets: bool | None = None
 
 
 class GlpiTestResponse(BaseModel):

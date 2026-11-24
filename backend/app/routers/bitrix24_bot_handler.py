@@ -653,6 +653,12 @@ async def _handle_v2(db: AsyncSession, cfg: Bitrix24Config, event: dict[str, str
     await _set_dialog_phase(db, phase_key, "idle")
     await db.commit()
     await db.refresh(row)
+    try:
+        from app.glpi_bot_mirror import mirror_bitrix_ticket
+
+        await mirror_bitrix_ticket(db, row.id)
+    except Exception:
+        pass
     body = accepted_text(row.id, text, name=person, voice=voice)
     _spoke(phase_key, body)
     await _v2_reply(cfg, event, body, keyboard=_menu(), db=db, state_key=phase_key)

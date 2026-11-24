@@ -749,6 +749,11 @@ def fetch_tickets(
         return session.list_tickets(bounded)
 
 
+def read_ticket_corax_status(creds: GlpiCredentials, ticket_id: int) -> str | None:
+    with _Session(creds) as session:
+        return session.ticket_corax_status(ticket_id)
+
+
 def push_tickets(
     creds: GlpiCredentials,
     items: list[GlpiOutbound],
@@ -1162,6 +1167,13 @@ class _Session:
     def _read_ticket(self, ticket_id: int) -> dict[str, Any] | None:
         state, row = self._read_ticket_state(ticket_id)
         return row if state == "ok" else None
+
+    def ticket_corax_status(self, ticket_id: int) -> str | None:
+        raw = self._read_ticket(ticket_id)
+        if raw is None:
+            return None
+        parsed = parse_ticket(raw, base_url=self.base)
+        return parsed.status if parsed is not None else None
 
     def inspect_ticket(self, query: GlpiTicketQuery) -> GlpiTicketProbe:
         """Сверка одной заявки: id GLPI, маркер CORAX#id, затем тема. Без CREATE/UPDATE."""

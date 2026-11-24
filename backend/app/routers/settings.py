@@ -547,6 +547,7 @@ def _glpi_out(row: GlpiConfig) -> GlpiConfigOut:
         last_test_message=row.last_test_message or "",
         last_version=row.last_version or "",
         identity=_identity_from_row(row),
+        mirror_bot_tickets=bool(getattr(row, "mirror_bot_tickets", False)),
     )
 
 
@@ -605,6 +606,8 @@ async def update_glpi_settings(
         row.username = _clean_setting(patch["username"])[:255]
     if "verify_tls" in patch and patch["verify_tls"] is not None:
         row.verify_tls = bool(patch["verify_tls"])
+    if "mirror_bot_tickets" in patch and patch["mirror_bot_tickets"] is not None:
+        row.mirror_bot_tickets = bool(patch["mirror_bot_tickets"])
     _set_glpi_secret(row, "client_secret", patch.get("client_secret"))
     _set_glpi_secret(row, "password", patch.get("password"))
     _set_glpi_secret(row, "app_token", patch.get("app_token"))

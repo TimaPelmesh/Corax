@@ -2850,6 +2850,9 @@ export const ru = {
     stepTicket: 'Тестовая заявка',
     stepTicketHint: 'Одна заявка в GLPI — быстрая проверка, что обмен живой.',
     enabled: 'Включить обмен с GLPI',
+    mirrorBot: 'Заявки бота Битрикса создавать в GLPI',
+    mirrorBotHint:
+      'От имени того, кто написал боту. Когда заявку закроют в GLPI, статус здесь станет «выполнена».',
     enabledRequired: 'Сначала включите обмен и сохраните подключение.',
     baseUrl: 'URL GLPI',
     baseUrlHint: 'Пример: http://192.168.1.20/glpi или https://glpi.company.local',

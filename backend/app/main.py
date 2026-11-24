@@ -259,6 +259,9 @@ async def lifespan(_: FastAPI):
         from app.backup_schedule import backup_scheduler
 
         await backup_scheduler.start()
+        from app.glpi_bot_mirror import glpi_bot_mirror
+
+        await glpi_bot_mirror.start()
         print(
             "[corax] workers started: printer, ping, dashboard snapshot, wiki, llm, bitrix, backup",
             flush=True,
@@ -283,6 +286,9 @@ async def lifespan(_: FastAPI):
         from app.backup_schedule import backup_scheduler
 
         await backup_scheduler.stop()
+        from app.glpi_bot_mirror import glpi_bot_mirror
+
+        await glpi_bot_mirror.stop()
         # Deduplicate: при совпадающих DSN три "разных" engine это один объект.
         seen_engines: set[int] = set()
         for eng in (engine, diagrams_engine, warehouse_engine):

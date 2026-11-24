@@ -195,6 +195,12 @@ async def incoming(
     db.add(row)
     await db.commit()
     await db.refresh(row)
+    try:
+        from app.glpi_bot_mirror import mirror_bitrix_ticket
+
+        await mirror_bitrix_ticket(db, row.id)
+    except Exception:
+        pass
     return {"ok": True, "request_id": row.id}
 
 

@@ -686,6 +686,8 @@ class GlpiConfig(Base):
     last_version: Mapped[str] = mapped_column(String(64), default="")
     # JSON: user_id, username, display_name, profile, entity — без секретов.
     last_identity_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Bitrix bot tickets are created in GLPI under the requester's name.
+    mirror_bot_tickets: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

@@ -1143,6 +1143,7 @@ export type GlpiConfig = {
   last_test_message?: string
   last_version?: string
   identity?: GlpiIdentity | null
+  mirror_bot_tickets?: boolean
 }
 
 export type GlpiTestResult = {
@@ -2524,6 +2525,7 @@ export const api = {
     app_token?: string
     user_token?: string
     verify_tls?: boolean
+    mirror_bot_tickets?: boolean
   }) => request<GlpiConfig>(`${API_PREFIX}/settings/glpi`, { method: 'PUT', json: body }),
 
   glpiTest: () => request<GlpiTestResult>(`${API_PREFIX}/settings/glpi/test`, { method: 'POST' }),
