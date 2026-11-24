@@ -35,7 +35,7 @@ struct State {
   std::atomic<bool> stop{false};
   std::atomic<bool> live{false};
   std::atomic<int> monitor{0};
-  std::atomic<int> quality{68};
+  std::atomic<int> quality{80};
   std::mutex mu;
   std::string session_id;
   std::string admin;
@@ -328,9 +328,9 @@ bool grab_jpeg(std::string& out, FrameInfo& info, uint32_t* fingerprint) {
   if (sw <= 0 || sh <= 0) return false;
   int dw = sw;
   int dh = sh;
-  if (dw > 1280) {
-    dh = std::max(1, dh * 1280 / dw);
-    dw = 1280;
+  if (dw > 1600) {
+    dh = std::max(1, dh * 1600 / dw);
+    dw = 1600;
   }
   HDC screen = GetDC(nullptr);
   HDC mem = CreateCompatibleDC(screen);
@@ -388,6 +388,23 @@ void send_mouse_flags(DWORD flags, DWORD data = 0) {
   }
 }
 
+struct ClickAnchor {
+  int x = 0;
+  int y = 0;
+  DWORD tick = 0;
+  bool on = false;
+};
+
+ClickAnchor g_click;
+
+bool near_last_click(int x, int y) {
+  if (!g_click.on) return false;
+  if (GetTickCount() - g_click.tick > GetDoubleClickTime()) return false;
+  const int tolx = std::max(GetSystemMetrics(SM_CXDOUBLECLK) * 4, 28);
+  const int toly = std::max(GetSystemMetrics(SM_CYDOUBLECLK) * 4, 28);
+  return std::abs(x - g_click.x) <= tolx && std::abs(y - g_click.y) <= toly;
+}
+
 void apply_mouse(double nx, double ny, int button, int down) {
   attach_input_desktop();
   if (is_locked_desktop()) return;
@@ -397,24 +414,42 @@ void apply_mouse(double nx, double ny, int button, int down) {
   const RECT mon = mons[index].rect;
   const int sw = mon.right - mon.left;
   const int sh = mon.bottom - mon.top;
-  const int sx = mon.left + static_cast<int>(std::lround(std::clamp(nx, 0.0, 1.0) * std::max(0, sw - 1)));
-  const int sy = mon.top + static_cast<int>(std::lround(std::clamp(ny, 0.0, 1.0) * std::max(0, sh - 1)));
+  int sx = mon.left + static_cast<int>(std::lround(std::clamp(nx, 0.0, 1.0) * std::max(0, sw - 1)));
+  int sy = mon.top + static_cast<int>(std::lround(std::clamp(ny, 0.0, 1.0) * std::max(0, sh - 1)));
+  const bool click = down == 0 || down == 1;
+  // A second click a few pixels away is not a double-click for Explorer.
+  // Keep both clicks of a pair on the same pixel, and ignore the jitter between them.
+  if (near_last_click(sx, sy)) {
+    if (!click) return;
+    if (button == 0) {
+      sx = g_click.x;
+      sy = g_click.y;
+    }
+  }
+  if (down == 1 && button == 0) {
+    g_click.x = sx;
+    g_click.y = sy;
+    g_click.tick = GetTickCount();
+    g_click.on = true;
+  }
   HWND fg = GetForegroundWindow();
   DWORD fg_pid = 0;
   const DWORD fg_tid = fg ? GetWindowThreadProcessId(fg, &fg_pid) : 0;
   const DWORD my_tid = GetCurrentThreadId();
   const bool attached = fg_tid && fg_tid != my_tid && AttachThreadInput(my_tid, fg_tid, TRUE);
   SetCursorPos(sx, sy);
-  const int virt_l = GetSystemMetrics(SM_XVIRTUALSCREEN);
-  const int virt_t = GetSystemMetrics(SM_YVIRTUALSCREEN);
-  const int virt_w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-  const int virt_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-  INPUT move{};
-  move.type = INPUT_MOUSE;
-  move.mi.dx = virt_w > 1 ? static_cast<LONG>((sx - virt_l) * 65535.0 / (virt_w - 1)) : 0;
-  move.mi.dy = virt_h > 1 ? static_cast<LONG>((sy - virt_t) * 65535.0 / (virt_h - 1)) : 0;
-  move.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
-  SendInput(1, &move, sizeof(INPUT));
+  if (!click) {
+    const int virt_l = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int virt_t = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int virt_w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int virt_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    INPUT move{};
+    move.type = INPUT_MOUSE;
+    move.mi.dx = virt_w > 1 ? static_cast<LONG>((sx - virt_l) * 65535.0 / (virt_w - 1)) : 0;
+    move.mi.dy = virt_h > 1 ? static_cast<LONG>((sy - virt_t) * 65535.0 / (virt_h - 1)) : 0;
+    move.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE | MOUSEEVENTF_VIRTUALDESK;
+    SendInput(1, &move, sizeof(INPUT));
+  }
   if (down == 1) {
     if (button == 0) send_mouse_flags(MOUSEEVENTF_LEFTDOWN);
     else if (button == 2) send_mouse_flags(MOUSEEVENTF_RIGHTDOWN);
@@ -469,7 +504,7 @@ void apply_events(const std::string& body) {
     } else if (t == "s") {
       g.monitor.store(std::max(0, json_int_near(slice, "i", 0)));
     } else if (t == "q") {
-      g.quality.store(std::max(52, std::min(80, json_int_near(slice, "v", 68))));
+      g.quality.store(std::max(70, std::min(86, json_int_near(slice, "v", 80))));
     }
     cur = close + 1;
   }
@@ -627,8 +662,8 @@ void capture_loop() {
       Sleep(20);
       continue;
     }
-    if (jpeg.size() > 900000 && g.quality.load() > 56) {
-      g.quality.store(std::max(56, g.quality.load() - 6));
+    if (jpeg.size() > 1400000 && g.quality.load() > 72) {
+      g.quality.store(std::max(72, g.quality.load() - 4));
     }
     last_hash = hash;
     last_publish = now;

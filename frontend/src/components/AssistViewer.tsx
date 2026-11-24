@@ -62,6 +62,7 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   })
   const controllingRef = useRef(false)
   const lastMoveAt = useRef(0)
+  const lastClickRef = useRef<{ x: number; y: number; t: number } | null>(null)
   const paintGen = useRef(0)
   const endedRef = useRef(false)
   const aliveRef = useRef(0)
@@ -193,11 +194,22 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
   }
 
   function sendPointer(event: PointerEvent<HTMLCanvasElement>, button: number, down: number, force = false) {
-    const p = pos(event)
+    let p = pos(event)
     controllingRef.current = true
+    const prev = lastClickRef.current
+    const now = performance.now()
+    if (prev && button === 0 && now - prev.t < 500) {
+      const rect = canvasRef.current?.getBoundingClientRect()
+      const dx = rect ? Math.abs(p.x - prev.x) * rect.width : 0
+      const dy = rect ? Math.abs(p.y - prev.y) * rect.height : 0
+      if (dx < 14 && dy < 14) {
+        if (down === 2) return
+        p = { x: prev.x, y: prev.y }
+      }
+    }
     setCursor({ x: p.x, y: p.y, visible: true })
+    if (down === 1 && button === 0) lastClickRef.current = { x: p.x, y: p.y, t: now }
     if (!force && down === 2) {
-      const now = performance.now()
       if (now - lastMoveAt.current < 16) return
       lastMoveAt.current = now
     }
@@ -269,7 +281,10 @@ export function AssistViewer({ session, onClose }: { session: AssistSession; onC
         <div className={`assist-stage${waiting ? '' : ' assist-stage-live'}${ended ? ' assist-stage-ended' : ''}`}>
           {waiting ? <p className="assist-wait">{hint}</p> : null}
           <div className="assist-frame">
-            <div className="assist-surface">
+            <div
+              className="assist-surface"
+              style={{ ['--ar' as string]: meta.w && meta.h ? String(meta.w / meta.h) : '1.777' }}
+            >
               <canvas
                 ref={canvasRef}
                 className="assist-canvas"
