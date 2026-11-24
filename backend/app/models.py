@@ -771,7 +771,9 @@ class CalendarDayMark(Base):
     visibility: Mapped[str] = mapped_column(String(16), default="private", index=True)
     # Empty = every day in [start, end]. Else Mon=0..Sun=6 comma list, e.g. "5,6".
     weekdays: Mapped[str] = mapped_column(String(32), default="", server_default="")
-    # JSON list of YYYY-MM-DD excluded from a weekday rule.
+    # Day-of-month 1..31 comma list, e.g. "10,25" for paydays. Takes precedence over weekdays when set.
+    month_days: Mapped[str] = mapped_column(String(96), default="", server_default="")
+    # JSON list of YYYY-MM-DD excluded from a rule.
     exceptions_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -215,6 +215,24 @@ export function IconClose({ className, title }: Props) {
   )
 }
 
+export function IconChevronLeft({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <path d="M14.5 6.75 9.25 12l5.25 5.25" {...s} />
+    </svg>
+  )
+}
+
+export function IconChevronRight({ className, title }: Props) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">
+      {title ? <title>{title}</title> : null}
+      <path d="M9.5 6.75 14.75 12 9.5 17.25" {...s} />
+    </svg>
+  )
+}
+
 export function IconSend({ className, title }: Props) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden={!title} role="presentation">

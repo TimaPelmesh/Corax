@@ -68,6 +68,32 @@ def _decode_weekdays(raw: str | None) -> list[int]:
     return sorted(set(out))
 
 
+def _encode_month_days(days: list[int] | None) -> str:
+    if not days:
+        return ""
+    cleaned = sorted({int(d) for d in days if isinstance(d, int) and 1 <= int(d) <= 31})
+    if not cleaned:
+        return ""
+    return ",".join(str(d) for d in cleaned)
+
+
+def _decode_month_days(raw: str | None) -> list[int]:
+    if not raw or not str(raw).strip():
+        return []
+    out: list[int] = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            value = int(part)
+        except ValueError:
+            continue
+        if 1 <= value <= 31:
+            out.append(value)
+    return sorted(set(out))
+
+
 def _encode_exceptions(days: list[date] | None) -> str:
     if not days:
         return "[]"
@@ -107,6 +133,7 @@ def _mark_out(mark: CalendarDayMark, owner: User | None, viewer: User) -> Calend
         end_date=mark.end_date,
         visibility=mark.visibility,  # type: ignore[arg-type]
         weekdays=_decode_weekdays(getattr(mark, "weekdays", "")),
+        month_days=_decode_month_days(getattr(mark, "month_days", "")),
         exceptions=_decode_exceptions(getattr(mark, "exceptions_json", "[]")),
         owner_user_id=mark.owner_user_id,
         owner_username=owner.username if owner else None,
@@ -166,7 +193,8 @@ async def create_mark(
         start_date=body.start_date,
         end_date=body.end_date,
         visibility=body.visibility,
-        weekdays=_encode_weekdays(body.weekdays),
+        weekdays=_encode_weekdays([] if body.month_days else body.weekdays),
+        month_days=_encode_month_days(body.month_days),
         exceptions_json=_encode_exceptions(body.exceptions),
         owner_user_id=user.id,
     )
@@ -215,6 +243,10 @@ async def update_mark(
         mark.visibility = patch["visibility"]
     if "weekdays" in patch:
         mark.weekdays = _encode_weekdays(patch["weekdays"])
+    if "month_days" in patch:
+        mark.month_days = _encode_month_days(patch["month_days"])
+        if patch["month_days"]:
+            mark.weekdays = ""
     if "exceptions" in patch:
         mark.exceptions_json = _encode_exceptions(patch["exceptions"])
     mark.updated_at = datetime.now(timezone.utc)

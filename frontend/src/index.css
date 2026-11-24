@@ -4851,24 +4851,29 @@ html.theme-fade body {
   gap: 0.35rem;
 }
 .notes-cal-nav-btn {
-  min-width: 2.25rem;
-  height: 2.25rem;
-  padding: 0 0.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.35rem;
+  height: 2.35rem;
+  padding: 0 0.7rem;
   border: 1px solid var(--color-border);
-  border-radius: 0.55rem;
+  border-radius: 0.65rem;
   background: var(--color-surface);
-  color: var(--color-fg);
-  font-size: 1.15rem;
+  color: var(--color-fg-muted);
+  font-size: 0.8rem;
   line-height: 1;
   cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
 }
 .notes-cal-nav-btn:hover {
   border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
   background: var(--color-primary-muted);
+  color: var(--color-primary);
 }
 .notes-cal-nav-btn--today {
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: 0.01em;
 }
 .notes-cal-body {
   display: grid;
@@ -4929,18 +4934,19 @@ html.theme-fade body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.15rem;
-  min-height: 4.4rem;
-  padding: 0.28rem 0.25rem 0.3rem;
-  border: 1px solid transparent;
-  border-radius: 0.5rem;
-  background: var(--color-surface-muted);
+  gap: 0.18rem;
+  min-height: 4.75rem;
+  padding: 0.35rem 0.3rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-surface-muted));
   text-align: left;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
 .notes-cal-day:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
 }
 .notes-cal-day--empty {
   visibility: hidden;
@@ -5059,9 +5065,73 @@ html.theme-fade body {
   line-height: 1.35;
   color: var(--color-fg-subtle);
 }
+.notes-cal-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.notes-cal-quick__btn {
+  min-height: 1.85rem;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-fg-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.notes-cal-quick__btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+.notes-cal-kind-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+}
+.notes-cal-kind {
+  min-height: 2rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  color: var(--color-fg-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.notes-cal-kind.is-active {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+.notes-cal-monthday-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.notes-cal-md {
+  min-width: 2rem;
+  min-height: 1.85rem;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  background: var(--color-surface);
+  color: var(--color-fg-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.notes-cal-md.is-active {
+  border-color: color-mix(in srgb, var(--color-primary) 50%, var(--color-border));
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
 .notes-cal-mode {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.35rem;
 }
 .notes-cal-mode__btn {

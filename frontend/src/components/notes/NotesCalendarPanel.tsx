@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../../AuthContext'
 import { useLocale, useT, type MessageKey } from '../../i18n/LocaleContext'
 import { useToast } from '../../ToastContext'
-import { IconTrash } from '../icons'
+import { IconChevronLeft, IconChevronRight, IconTrash } from '../icons'
 
 const WEEKDAY_KEYS = [
   'dashboard.calendar.weekdays.mon',
@@ -56,6 +56,8 @@ const VISIBILITY_LABEL_KEY: Record<CalendarMarkVisibility, MessageKey> = {
   org: 'notes.calendar.visibility.org',
 }
 
+type RuleMode = 'weekdays' | 'monthdays' | 'range'
+
 function dateKey(value: Date): string {
   const y = value.getFullYear()
   const m = String(value.getMonth() + 1).padStart(2, '0')
@@ -91,7 +93,6 @@ function daysInMonthGrid(month: Date): (Date | null)[] {
   return cells
 }
 
-/** JS Date → Mon=0..Sun=6 */
 function mondayIndex(value: Date): number {
   return (value.getDay() + 6) % 7
 }
@@ -99,11 +100,16 @@ function mondayIndex(value: Date): number {
 function expandMarkDays(mark: CalendarMark): string[] {
   const exceptions = new Set(mark.exceptions ?? [])
   const weekdays = mark.weekdays ?? []
+  const monthDays = mark.month_days ?? []
   const out: string[] = []
   for (const cur = parseDate(mark.start_date); cur <= parseDate(mark.end_date); cur.setDate(cur.getDate() + 1)) {
     const key = dateKey(cur)
     if (exceptions.has(key)) continue
-    if (weekdays.length > 0 && !weekdays.includes(mondayIndex(cur))) continue
+    if (monthDays.length > 0) {
+      if (!monthDays.includes(cur.getDate())) continue
+    } else if (weekdays.length > 0) {
+      if (!weekdays.includes(mondayIndex(cur))) continue
+    }
     out.push(key)
   }
   return out
@@ -111,6 +117,15 @@ function expandMarkDays(mark: CalendarMark): string[] {
 
 function yearBounds(year: number): { from: string; to: string } {
   return { from: `${year}-01-01`, to: `${year}-12-31` }
+}
+
+function defaultYearRange(): { start: string; end: string } {
+  const y = new Date().getFullYear()
+  return { start: `${y}-01-01`, end: `${y}-12-31` }
+}
+
+function isRuleMark(mark: CalendarMark): boolean {
+  return (mark.weekdays?.length ?? 0) > 0 || (mark.month_days?.length ?? 0) > 0
 }
 
 type PlanHit = { note: NoteListItem; key: string }
@@ -127,6 +142,7 @@ export function NotesCalendarPanel({
   const toast = useToast()
   const { user } = useAuth()
   const isAdmin = Boolean(user?.is_superuser)
+  const yearDefault = useMemo(() => defaultYearRange(), [])
 
   const [anchor, setAnchor] = useState(() => {
     const now = new Date()
@@ -139,10 +155,11 @@ export function NotesCalendarPanel({
   const [formKind, setFormKind] = useState<CalendarMarkKind>('weekend')
   const [formTitle, setFormTitle] = useState('')
   const [formVisibility, setFormVisibility] = useState<CalendarMarkVisibility>('private')
-  const [formStart, setFormStart] = useState('')
-  const [formEnd, setFormEnd] = useState('')
+  const [formStart, setFormStart] = useState(yearDefault.start)
+  const [formEnd, setFormEnd] = useState(yearDefault.end)
   const [formWeekdays, setFormWeekdays] = useState<number[]>([5, 6])
-  const [mode, setMode] = useState<'range' | 'rule'>('rule')
+  const [formMonthDays, setFormMonthDays] = useState<number[]>([10, 25])
+  const [mode, setMode] = useState<RuleMode>('weekdays')
   const [saving, setSaving] = useState(false)
 
   const months = useMemo(() => [addMonths(anchor, -1), anchor, addMonths(anchor, 1)], [anchor])
@@ -164,6 +181,7 @@ export function NotesCalendarPanel({
         rows.map((row) => ({
           ...row,
           weekdays: row.weekdays ?? [],
+          month_days: row.month_days ?? [],
           exceptions: row.exceptions ?? [],
         })),
       )
@@ -232,7 +250,7 @@ export function NotesCalendarPanel({
   }
 
   function applyDayClick(key: string) {
-    const covering = (markByDay.get(key) ?? []).filter((m) => m.can_edit && (m.weekdays?.length ?? 0) > 0)
+    const covering = (markByDay.get(key) ?? []).filter((m) => m.can_edit && isRuleMark(m))
     if (covering.length && !rangeStart) {
       void toggleException(covering[0], key)
       return
@@ -243,6 +261,7 @@ export function NotesCalendarPanel({
       setRangeHover(key)
       setFormStart(key)
       setFormEnd(key)
+      if (mode !== 'range') setMode('range')
       return
     }
     const a = rangeStart <= key ? rangeStart : key
@@ -259,13 +278,50 @@ export function NotesCalendarPanel({
     )
   }
 
+  function toggleMonthDay(day: number) {
+    setFormMonthDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b),
+    )
+  }
+
+  function applyPreset(kind: 'weekend' | 'payday' | 'range') {
+    if (kind === 'weekend') {
+      setMode('weekdays')
+      setFormKind('weekend')
+      setFormWeekdays([5, 6])
+      setFormMonthDays([])
+      setFormTitle('')
+      setFormStart(yearDefault.start)
+      setFormEnd(yearDefault.end)
+      return
+    }
+    if (kind === 'payday') {
+      setMode('monthdays')
+      setFormKind('payday')
+      setFormMonthDays([10, 25])
+      setFormWeekdays([])
+      setFormTitle(t('notes.calendar.presetPayTitle'))
+      setFormStart(yearDefault.start)
+      setFormEnd(yearDefault.end)
+      return
+    }
+    setMode('range')
+    setFormKind('holiday')
+    setFormWeekdays([])
+    setFormMonthDays([])
+  }
+
   async function saveMark() {
     if (!formStart || !formEnd) {
       toast.error(t('notes.calendar.needRange'))
       return
     }
-    if (mode === 'rule' && formWeekdays.length === 0) {
+    if (mode === 'weekdays' && formWeekdays.length === 0) {
       toast.error(t('notes.calendar.needWeekdays'))
+      return
+    }
+    if (mode === 'monthdays' && formMonthDays.length === 0) {
+      toast.error(t('notes.calendar.needMonthDays'))
       return
     }
     setSaving(true)
@@ -276,10 +332,10 @@ export function NotesCalendarPanel({
         start_date: formStart,
         end_date: formEnd,
         visibility: formVisibility,
-        weekdays: mode === 'rule' ? formWeekdays : [],
+        weekdays: mode === 'weekdays' ? formWeekdays : [],
+        month_days: mode === 'monthdays' ? formMonthDays : [],
         exceptions: [],
       })
-      setFormTitle('')
       setRangeStart(null)
       setRangeHover(null)
       toast.ok(t('notes.calendar.saved'))
@@ -303,6 +359,7 @@ export function NotesCalendarPanel({
 
   const todayKey = dateKey(new Date())
   const headerRange = `${monthLabel(months[0], locale)} — ${monthLabel(months[2], locale)}`
+  const monthDayChoices = [1, 5, 10, 15, 20, 25, 28, 30]
 
   return (
     <div className="notes-cal-panel">
@@ -318,7 +375,7 @@ export function NotesCalendarPanel({
             onClick={() => setAnchor((m) => addMonths(m, -1))}
             aria-label={t('notes.calendar.prev')}
           >
-            ‹
+            <IconChevronLeft className="h-4 w-4" />
           </button>
           <button
             type="button"
@@ -336,7 +393,7 @@ export function NotesCalendarPanel({
             onClick={() => setAnchor((m) => addMonths(m, 1))}
             aria-label={t('notes.calendar.next')}
           >
-            ›
+            <IconChevronRight className="h-4 w-4" />
           </button>
         </div>
       </header>
@@ -366,9 +423,7 @@ export function NotesCalendarPanel({
                     const primaryKind = dayMarks[0]?.kind
                     const selected = selectionKeys.has(key)
                     const isToday = key === todayKey
-                    const isException = marks.some(
-                      (m) => (m.weekdays?.length ?? 0) > 0 && m.exceptions.includes(key),
-                    )
+                    const isException = marks.some((m) => isRuleMark(m) && m.exceptions.includes(key))
                     return (
                       <button
                         key={key}
@@ -383,7 +438,7 @@ export function NotesCalendarPanel({
                           .filter(Boolean)
                           .join(' ')}
                         title={
-                          dayMarks.some((m) => m.can_edit && (m.weekdays?.length ?? 0) > 0)
+                          dayMarks.some((m) => m.can_edit && isRuleMark(m))
                             ? t('notes.calendar.exceptionHint')
                             : undefined
                         }
@@ -438,32 +493,39 @@ export function NotesCalendarPanel({
         </div>
 
         <aside className="notes-cal-rail">
-          <div className="notes-cal-legend">
-            <div className="notes-cal-legend__row">
-              <i className="notes-cal-dot notes-cal-dot--weekend" />
-              <span>{t('notes.calendar.kinds.weekend')}</span>
-            </div>
-            <div className="notes-cal-legend__row">
-              <i className="notes-cal-dot notes-cal-dot--holiday" />
-              <span>{t('notes.calendar.kinds.holiday')}</span>
-            </div>
-            <div className="notes-cal-legend__row">
-              <i className="notes-cal-dot notes-cal-dot--payday" />
-              <span>{t('notes.calendar.kinds.payday')}</span>
-            </div>
+          <div className="notes-cal-quick">
+            <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('weekend')}>
+              {t('notes.calendar.presetWeekend')}
+            </button>
+            <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('payday')}>
+              {t('notes.calendar.presetPay')}
+            </button>
+            <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('range')}>
+              {t('notes.calendar.presetDates')}
+            </button>
           </div>
 
           <div className="notes-cal-form">
             <h3 className="notes-cal-form__title">{t('notes.calendar.addTitle')}</h3>
-            <p className="notes-cal-form__hint">{t('notes.calendar.addHintTab')}</p>
+            <p className="notes-cal-form__hint">{t('notes.calendar.addHintSimple')}</p>
 
             <div className="notes-cal-mode">
               <button
                 type="button"
-                className={`notes-cal-mode__btn${mode === 'rule' ? ' is-active' : ''}`}
-                onClick={() => setMode('rule')}
+                className={`notes-cal-mode__btn${mode === 'weekdays' ? ' is-active' : ''}`}
+                onClick={() => setMode('weekdays')}
               >
-                {t('notes.calendar.modeRule')}
+                {t('notes.calendar.modeWeekdays')}
+              </button>
+              <button
+                type="button"
+                className={`notes-cal-mode__btn${mode === 'monthdays' ? ' is-active' : ''}`}
+                onClick={() => {
+                  setMode('monthdays')
+                  if (formKind === 'weekend') setFormKind('payday')
+                }}
+              >
+                {t('notes.calendar.modeMonthDays')}
               </button>
               <button
                 type="button"
@@ -474,18 +536,18 @@ export function NotesCalendarPanel({
               </button>
             </div>
 
-            <label className="notes-cal-field">
-              <span>{t('notes.calendar.kind')}</span>
-              <select
-                value={formKind}
-                onChange={(event) => setFormKind(event.target.value as CalendarMarkKind)}
-                className="app-input"
-              >
-                <option value="weekend">{t('notes.calendar.kinds.weekend')}</option>
-                <option value="holiday">{t('notes.calendar.kinds.holiday')}</option>
-                <option value="payday">{t('notes.calendar.kinds.payday')}</option>
-              </select>
-            </label>
+            <div className="notes-cal-kind-row">
+              {(['weekend', 'holiday', 'payday'] as CalendarMarkKind[]).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={`notes-cal-kind${formKind === kind ? ' is-active' : ''} notes-cal-kind--${kind}`}
+                  onClick={() => setFormKind(kind)}
+                >
+                  {t(KIND_LABEL_KEY[kind])}
+                </button>
+              ))}
+            </div>
 
             <label className="notes-cal-field">
               <span>{t('notes.calendar.label')}</span>
@@ -519,7 +581,7 @@ export function NotesCalendarPanel({
               </label>
             </div>
 
-            {mode === 'rule' ? (
+            {mode === 'weekdays' ? (
               <div className="notes-cal-field">
                 <span>{t('notes.calendar.weekdays')}</span>
                 <div className="notes-cal-weekday-toggles">
@@ -537,22 +599,40 @@ export function NotesCalendarPanel({
                     )
                   })}
                 </div>
-                <div className="notes-cal-presets">
-                  <button
-                    type="button"
-                    className="notes-cal-preset"
-                    onClick={() => setFormWeekdays([5, 6])}
-                  >
-                    {t('notes.calendar.presetWeekend')}
-                  </button>
-                  <button
-                    type="button"
-                    className="notes-cal-preset"
-                    onClick={() => setFormWeekdays([0, 1, 2, 3, 4])}
-                  >
-                    {t('notes.calendar.presetWeekdays')}
-                  </button>
+              </div>
+            ) : null}
+
+            {mode === 'monthdays' ? (
+              <div className="notes-cal-field">
+                <span>{t('notes.calendar.monthDays')}</span>
+                <div className="notes-cal-monthday-toggles">
+                  {monthDayChoices.map((day) => {
+                    const active = formMonthDays.includes(day)
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        className={`notes-cal-md${active ? ' is-active' : ''}`}
+                        onClick={() => toggleMonthDay(day)}
+                      >
+                        {day}
+                      </button>
+                    )
+                  })}
                 </div>
+                <input
+                  type="text"
+                  className="app-input mt-1"
+                  value={formMonthDays.join(', ')}
+                  onChange={(event) => {
+                    const parsed = event.target.value
+                      .split(/[,\s]+/)
+                      .map((part) => Number(part))
+                      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 31)
+                    setFormMonthDays([...new Set(parsed)].sort((a, b) => a - b))
+                  }}
+                  placeholder={t('notes.calendar.monthDaysPlaceholder')}
+                />
               </div>
             ) : null}
 
@@ -572,7 +652,13 @@ export function NotesCalendarPanel({
             <button
               type="button"
               className="app-btn app-btn-primary w-full"
-              disabled={saving || !formStart || !formEnd || (mode === 'rule' && formWeekdays.length === 0)}
+              disabled={
+                saving ||
+                !formStart ||
+                !formEnd ||
+                (mode === 'weekdays' && formWeekdays.length === 0) ||
+                (mode === 'monthdays' && formMonthDays.length === 0)
+              }
               onClick={() => void saveMark()}
             >
               {saving ? t('notes.saving') : t('notes.calendar.save')}
@@ -597,9 +683,11 @@ export function NotesCalendarPanel({
                           {mark.start_date === mark.end_date
                             ? mark.start_date
                             : `${mark.start_date} → ${mark.end_date}`}
-                          {mark.weekdays.length > 0
-                            ? ` · ${mark.weekdays.map((d) => t(WEEKDAY_KEYS[d])).join(', ')}`
-                            : ` · ${t('notes.calendar.modeRange')}`}
+                          {mark.month_days.length > 0
+                            ? ` · ${t('notes.calendar.monthDaysShort', { days: mark.month_days.join(', ') })}`
+                            : mark.weekdays.length > 0
+                              ? ` · ${mark.weekdays.map((d) => t(WEEKDAY_KEYS[d])).join(', ')}`
+                              : ` · ${t('notes.calendar.modeRange')}`}
                           {' · '}
                           {t(VISIBILITY_LABEL_KEY[mark.visibility])}
                           {mark.exceptions.length > 0
