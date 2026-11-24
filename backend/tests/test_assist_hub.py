@@ -24,6 +24,10 @@ async def test_silent_create_wait_and_busy():
     live = await hub.get(sess.id)
     assert live is not None
     assert live.status == "live"
+    handoff = await hub.wait_offer("PC-LAB-01", timeout=0.2)
+    assert handoff is not None
+    assert handoff.id == sess.id
+    assert handoff.status == "live"
 
     await hub.push_input(sess.id, [{"t": "m", "x": 0.5, "y": 0.5, "b": 0, "d": 2}])
     queued = await hub.push_frame(sess.id, "PC-LAB-01", b"next")

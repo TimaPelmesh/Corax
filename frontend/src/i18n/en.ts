@@ -1686,6 +1686,8 @@ export const en: MessageTree = {
       exceptionAdded: 'Exception added',
       exceptionRemoved: 'Exception removed',
       exceptionsCount: '{n} excl.',
+      exceptionsTitle: 'Exceptions',
+      addException: 'Add exception',
       kind: 'Type',
       label: 'Label',
       labelPlaceholder: 'e.g. advance',
@@ -2440,7 +2442,7 @@ export const en: MessageTree = {
     assistWaiting: 'Connecting to {host}…',
     assistConnecting: 'Opening a shared desktop',
     assistLive: 'Live',
-    assistSecureDesktop: 'UAC / secure desktop — control paused until the prompt closes',
+    assistSecureDesktop: 'PC is locked — control resumes after sign-in',
     assistNoTray:
       'The inventory tray on {host} did not answer. Use the blue “Download EXE” agent. Run it on that PC again.',
     assistEnd: 'End',

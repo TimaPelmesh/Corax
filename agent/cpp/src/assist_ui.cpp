@@ -89,57 +89,61 @@ void present() {
   gfx.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
   gfx.Clear(Gdiplus::Color(0, 0, 0, 0));
 
-  const float margin = static_cast<float>(sx(12));
-  Gdiplus::RectF card(margin, margin * 0.5f, static_cast<float>(w) - margin * 2.f,
-                      static_cast<float>(h) - margin * 1.2f);
-  const float radius = static_cast<float>(sx(18));
+  const float margin = static_cast<float>(sx(10));
+  Gdiplus::RectF card(margin, margin * 0.35f, static_cast<float>(w) - margin * 2.f,
+                      static_cast<float>(h) - margin);
+  const float radius = static_cast<float>(sx(16));
 
-  fill_round(gfx, Gdiplus::RectF(card.X, card.Y + static_cast<float>(sx(6)), card.Width, card.Height), radius,
-             Gdiplus::Color(40, 0, 0, 0));
+  fill_round(gfx, Gdiplus::RectF(card.X, card.Y + static_cast<float>(sx(5)), card.Width, card.Height), radius,
+             Gdiplus::Color(28, 15, 23, 42));
 
   Gdiplus::GraphicsPath clip;
   add_round(clip, card, radius);
-  Gdiplus::SolidBrush glass(Gdiplus::Color(236, 22, 26, 34));
+  Gdiplus::SolidBrush glass(Gdiplus::Color(250, 255, 255, 255));
   gfx.FillPath(&glass, &clip);
-  Gdiplus::Pen edge(Gdiplus::Color(70, 255, 255, 255), 1.f);
+  Gdiplus::Pen edge(Gdiplus::Color(255, 226, 232, 240), 1.f);
   gfx.DrawPath(&edge, &clip);
 
-  // Accent bar — static, no animation.
-  Gdiplus::SolidBrush accent(Gdiplus::Color(255, 72, 148, 236));
-  gfx.FillRectangle(&accent, card.X, card.Y, static_cast<float>(sx(4)), card.Height);
-
+  const float badge = static_cast<float>(sx(36));
+  Gdiplus::RectF mark(card.X + static_cast<float>(sx(14)), card.Y + (card.Height - badge) / 2.f, badge, badge);
+  fill_round(gfx, mark, static_cast<float>(sx(10)), Gdiplus::Color(255, 37, 99, 235));
   Gdiplus::FontFamily family(L"Segoe UI");
-  Gdiplus::Font title(&family, static_cast<float>(sx(14)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-  Gdiplus::Font body(&family, static_cast<float>(sx(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
-  Gdiplus::Font btn(&family, static_cast<float>(sx(12)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-  const Gdiplus::Color fg(255, 248, 248, 248);
-  const Gdiplus::Color muted(255, 170, 182, 198);
-
-  const int inset = static_cast<int>(card.X) + sx(18);
-  const int inner_w = static_cast<int>(card.Width) - sx(34);
-
-  draw_string(gfx, L"Подключён Corax Assist",
-              Gdiplus::RectF(static_cast<float>(inset), card.Y + static_cast<float>(sx(14)),
-                             static_cast<float>(inner_w), static_cast<float>(sx(20))),
-              title, fg);
-
-  std::wstring who = g.admin.empty() ? L"Администратор" : g.admin;
-  draw_string(gfx, who,
-              Gdiplus::RectF(static_cast<float>(inset), card.Y + static_cast<float>(sx(36)),
-                             static_cast<float>(inner_w), static_cast<float>(sx(18))),
-              body, muted);
-
-  const int bh = sx(32);
-  const int by = static_cast<int>(card.GetBottom()) - sx(14) - bh;
-  g.end_rc = {inset, by, inset + inner_w, by + bh};
-  Gdiplus::RectF box(static_cast<float>(g.end_rc.left), static_cast<float>(g.end_rc.top),
-                     static_cast<float>(g.end_rc.right - g.end_rc.left),
-                     static_cast<float>(g.end_rc.bottom - g.end_rc.top));
-  fill_round(gfx, box, box.Height / 2.f, Gdiplus::Color(220, 180, 56, 48));
+  Gdiplus::Font mark_font(&family, static_cast<float>(sx(16)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
   Gdiplus::StringFormat center;
   center.SetAlignment(Gdiplus::StringAlignmentCenter);
   center.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-  Gdiplus::SolidBrush ink(Gdiplus::Color(255, 255, 255, 255));
+  Gdiplus::SolidBrush white(Gdiplus::Color(255, 255, 255, 255));
+  gfx.DrawString(L"C", -1, &mark_font, mark, &center, &white);
+
+  Gdiplus::Font label(&family, static_cast<float>(sx(12)), Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+  Gdiplus::Font name_font(&family, static_cast<float>(sx(16)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+  Gdiplus::Font btn(&family, static_cast<float>(sx(13)), Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+
+  const int btn_w = sx(118);
+  const int btn_h = sx(34);
+  const int btn_x = static_cast<int>(card.GetRight()) - sx(14) - btn_w;
+  const int btn_y = static_cast<int>(card.Y + (card.Height - static_cast<float>(btn_h)) / 2.f);
+  g.end_rc = {btn_x, btn_y, btn_x + btn_w, btn_y + btn_h};
+
+  const float text_x = mark.GetRight() + static_cast<float>(sx(12));
+  const float text_w = static_cast<float>(btn_x) - text_x - static_cast<float>(sx(12));
+  const float text_y = card.Y + static_cast<float>(sx(16));
+  draw_string(gfx, L"К вам подключился сотрудник",
+              Gdiplus::RectF(text_x, text_y, text_w, static_cast<float>(sx(18))), label,
+              Gdiplus::Color(255, 75, 85, 99));
+  std::wstring who = g.admin.empty() ? L"Сотрудник" : g.admin;
+  draw_string(gfx, who, Gdiplus::RectF(text_x, text_y + static_cast<float>(sx(20)), text_w, static_cast<float>(sx(22))),
+              name_font, Gdiplus::Color(255, 17, 24, 39));
+
+  Gdiplus::RectF box(static_cast<float>(g.end_rc.left), static_cast<float>(g.end_rc.top),
+                     static_cast<float>(g.end_rc.right - g.end_rc.left),
+                     static_cast<float>(g.end_rc.bottom - g.end_rc.top));
+  fill_round(gfx, box, static_cast<float>(sx(8)), Gdiplus::Color(255, 254, 242, 242));
+  Gdiplus::Pen btn_edge(Gdiplus::Color(255, 254, 202, 202), 1.f);
+  Gdiplus::GraphicsPath btn_path;
+  add_round(btn_path, box, static_cast<float>(sx(8)));
+  gfx.DrawPath(&btn_edge, &btn_path);
+  Gdiplus::SolidBrush ink(Gdiplus::Color(255, 185, 28, 28));
   gfx.DrawString(L"Завершить", -1, &btn, box, &center, &ink);
 
   Gdiplus::BitmapData data;
@@ -227,8 +231,8 @@ void recreate() {
   ensure_gdiplus();
   ensure_class();
   g.scale = dpi_scale();
-  g.width = sx(300);
-  g.height = sx(128);
+  g.width = sx(460);
+  g.height = sx(92);
   if (!g.hwnd) {
     const DWORD ex = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE;
     g.hwnd = CreateWindowExW(ex, L"CORAXAssistBanner", L"Corax Assist", WS_POPUP, 0, 0, g.width, g.height, nullptr,

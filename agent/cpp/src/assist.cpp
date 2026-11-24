@@ -6,15 +6,21 @@
 #include "util.hpp"
 
 #include <windows.h>
+#include <wtsapi32.h>
 #include <objidl.h>
 #include <gdiplus.h>
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
+
+#pragma comment(lib, "wtsapi32.lib")
 
 #pragma comment(lib, "gdiplus.lib")
 
@@ -29,7 +35,7 @@ struct State {
   std::atomic<bool> stop{false};
   std::atomic<bool> live{false};
   std::atomic<int> monitor{0};
-  std::atomic<int> quality{88};
+  std::atomic<int> quality{68};
   std::mutex mu;
   std::string session_id;
   std::string admin;
@@ -177,21 +183,31 @@ void fill_screens_meta(FrameInfo& info, const std::vector<MonitorRec>& mons, int
   }
 }
 
-/** True when input desktop is not the interactive user desktop (UAC / Winlogon). */
-bool is_secure_desktop() {
+/** Lock screen only. A normal local or RDP desktop is "Default" and must stay controllable. */
+bool is_locked_desktop() {
   HDESK input = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
   if (!input) input = OpenInputDesktop(0, FALSE, MAXIMUM_ALLOWED);
-  if (!input) {
-    // Cannot open input desktop from user session → typically Secure Desktop / UAC.
-    return true;
-  }
+  if (!input) return false;
   wchar_t name[256] = {};
   DWORD need = 0;
   const BOOL ok = GetUserObjectInformationW(input, UOI_NAME, name, sizeof(name), &need);
   CloseDesktop(input);
-  if (!ok) return true;
-  // Interactive user desktop is "Default". UAC / lock use "Winlogon" (and similar).
-  return _wcsicmp(name, L"Default") != 0;
+  if (!ok || !name[0]) return false;
+  return _wcsicmp(name, L"Winlogon") == 0;
+}
+
+/** This tray serves Assist only while its logon session is the connected one (console or RDP). */
+bool this_session_is_active() {
+  DWORD sid = 0;
+  if (!ProcessIdToSessionId(GetCurrentProcessId(), &sid) || sid == 0) return false;
+  LPWSTR buf = nullptr;
+  DWORD bytes = 0;
+  if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sid, WTSConnectState, &buf, &bytes) || !buf) {
+    return true;
+  }
+  const auto state = *reinterpret_cast<WTS_CONNECTSTATE_CLASS*>(buf);
+  WTSFreeMemory(buf);
+  return state == WTSActive;
 }
 
 bool encode_bitmap_jpeg(HBITMAP bmp, int quality, std::string& out) {
@@ -258,9 +274,9 @@ bool grab_secure_placeholder(std::string& out, FrameInfo& info) {
 
   const Gdiplus::RectF title_rc(40.f, static_cast<float>(dh) * 0.32f, static_cast<float>(dw) - 80.f, 44.f);
   const Gdiplus::RectF body_rc(60.f, static_cast<float>(dh) * 0.44f, static_cast<float>(dw) - 120.f, 80.f);
-  gfx.DrawString(L"UAC / защищённый экран", -1, &title, title_rc, &center, &fg);
-  gfx.DrawString(L"Управление временно недоступно.\nСеанс продолжится после закрытия запроса.", -1, &body,
-                 body_rc, &center, &muted);
+  gfx.DrawString(L"ПК заблокирован", -1, &title, title_rc, &center, &fg);
+  gfx.DrawString(L"Управление недоступно, пока сеанс не разблокирован.\nВойдите по RDP — после этого откроется рабочий стол.",
+                 -1, &body, body_rc, &center, &muted);
 
   HBITMAP hbmp = nullptr;
   if (bmp.GetHBITMAP(Gdiplus::Color(255, 18, 22, 30), &hbmp) != Gdiplus::Ok || !hbmp) return false;
@@ -300,21 +316,6 @@ void paint_cursor(HDC dc, const RECT& mon, int dw, int dh) {
   DrawIconEx(dc, x, y, info.hCursor, 0, 0, 0, nullptr, DI_NORMAL | DI_DEFAULTSIZE);
 }
 
-/** Cheap fingerprint of a few sample pixels to skip near-identical frames. */
-uint32_t sample_fingerprint(HDC dc, int dw, int dh) {
-  uint32_t h = 2166136261u;
-  const int pts[][2] = {{dw / 4, dh / 4}, {dw / 2, dh / 2}, {dw * 3 / 4, dh * 3 / 4},
-                        {dw / 5, dh * 4 / 5}, {dw * 4 / 5, dh / 5}};
-  for (const auto& p : pts) {
-    const COLORREF c = GetPixel(dc, std::max(0, p[0]), std::max(0, p[1]));
-    h ^= static_cast<uint32_t>(c);
-    h *= 16777619u;
-  }
-  h ^= static_cast<uint32_t>(dw);
-  h ^= static_cast<uint32_t>(dh) << 16;
-  return h;
-}
-
 bool grab_jpeg(std::string& out, FrameInfo& info, uint32_t* fingerprint) {
   ensure_gdiplus();
   if (!g_gdiplus_ok) return false;
@@ -327,9 +328,9 @@ bool grab_jpeg(std::string& out, FrameInfo& info, uint32_t* fingerprint) {
   if (sw <= 0 || sh <= 0) return false;
   int dw = sw;
   int dh = sh;
-  if (dw > 1920) {
-    dh = dh * 1920 / dw;
-    dw = 1920;
+  if (dw > 1280) {
+    dh = std::max(1, dh * 1280 / dw);
+    dw = 1280;
   }
   HDC screen = GetDC(nullptr);
   HDC mem = CreateCompatibleDC(screen);
@@ -338,12 +339,11 @@ bool grab_jpeg(std::string& out, FrameInfo& info, uint32_t* fingerprint) {
   if (dw == sw && dh == sh) {
     BitBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, SRCCOPY | CAPTUREBLT);
   } else {
-    SetStretchBltMode(mem, HALFTONE);
-    SetBrushOrgEx(mem, 0, 0, nullptr);
+    SetStretchBltMode(mem, COLORONCOLOR);
     StretchBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, sw, sh, SRCCOPY | CAPTUREBLT);
   }
   paint_cursor(mem, mon, dw, dh);
-  if (fingerprint) *fingerprint = sample_fingerprint(mem, dw, dh);
+  if (fingerprint) *fingerprint = 0;
   SelectObject(mem, old);
 
   const bool ok = encode_bitmap_jpeg(bmp, g.quality.load(), out);
@@ -389,8 +389,8 @@ void send_mouse_flags(DWORD flags, DWORD data = 0) {
 }
 
 void apply_mouse(double nx, double ny, int button, int down) {
-  if (is_secure_desktop()) return;
   attach_input_desktop();
+  if (is_locked_desktop()) return;
   const auto mons = list_monitors();
   int index = g.monitor.load();
   if (index < 0 || index >= static_cast<int>(mons.size())) index = 0;
@@ -429,8 +429,8 @@ void apply_mouse(double nx, double ny, int button, int down) {
 
 void apply_key(int vk, int down) {
   if (vk <= 0 || vk > 254) return;
-  if (is_secure_desktop()) return;
   attach_input_desktop();
+  if (is_locked_desktop()) return;
   INPUT in{};
   in.type = INPUT_KEYBOARD;
   in.ki.wVk = static_cast<WORD>(vk);
@@ -439,8 +439,8 @@ void apply_key(int vk, int down) {
 }
 
 void apply_wheel(int delta) {
-  if (is_secure_desktop()) return;
   attach_input_desktop();
+  if (is_locked_desktop()) return;
   send_mouse_flags(MOUSEEVENTF_WHEEL, static_cast<DWORD>(delta));
 }
 
@@ -469,9 +469,91 @@ void apply_events(const std::string& body) {
     } else if (t == "s") {
       g.monitor.store(std::max(0, json_int_near(slice, "i", 0)));
     } else if (t == "q") {
-      g.quality.store(std::max(74, std::min(92, json_int_near(slice, "v", 88))));
+      g.quality.store(std::max(52, std::min(80, json_int_near(slice, "v", 68))));
     }
     cur = close + 1;
+  }
+}
+
+/** Tiny blit used only to notice that the picture changed, before a full JPEG encode. */
+uint32_t dirty_hash(const RECT& mon) {
+  const int dw = 32;
+  const int dh = 18;
+  const int sw = mon.right - mon.left;
+  const int sh = mon.bottom - mon.top;
+  if (sw <= 0 || sh <= 0) return 0;
+  HDC screen = GetDC(nullptr);
+  HDC mem = CreateCompatibleDC(screen);
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  info.bmiHeader.biWidth = dw;
+  info.bmiHeader.biHeight = -dh;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+  void* bits = nullptr;
+  HBITMAP dib = CreateDIBSection(mem, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+  uint32_t hash = 0;
+  if (dib && bits) {
+    HGDIOBJ old = SelectObject(mem, dib);
+    SetStretchBltMode(mem, COLORONCOLOR);
+    StretchBlt(mem, 0, 0, dw, dh, screen, mon.left, mon.top, sw, sh, SRCCOPY);
+    SelectObject(mem, old);
+    const auto* px = static_cast<const uint32_t*>(bits);
+    hash = 2166136261u;
+    for (int i = 0; i < dw * dh; i += 2) {
+      hash ^= px[i];
+      hash *= 16777619u;
+    }
+  }
+  if (dib) DeleteObject(dib);
+  DeleteDC(mem);
+  ReleaseDC(nullptr, screen);
+  return hash;
+}
+
+struct FrameSlot {
+  std::mutex mu;
+  std::condition_variable cv;
+  std::string jpeg;
+  FrameInfo info;
+  bool fresh = false;
+  bool stop = false;
+};
+
+void publish_frame(FrameSlot& slot, std::string jpeg, const FrameInfo& info) {
+  {
+    std::lock_guard<std::mutex> lock(slot.mu);
+    slot.jpeg = std::move(jpeg);
+    slot.info = info;
+    slot.fresh = true;
+  }
+  slot.cv.notify_one();
+}
+
+std::string frame_path(const std::string& sid, const std::string& host, const FrameInfo& info);
+
+void sender_loop(FrameSlot& slot, const AgentConfig& cfg, const std::string& sid, const std::string& host) {
+  while (!g.stop && g.live) {
+    std::string jpeg;
+    FrameInfo info;
+    {
+      std::unique_lock<std::mutex> lock(slot.mu);
+      slot.cv.wait_for(lock, std::chrono::milliseconds(30), [&] { return slot.fresh || slot.stop || !g.live; });
+      if (slot.stop || !g.live) break;
+      if (!slot.fresh) continue;
+      jpeg.swap(slot.jpeg);
+      info = slot.info;
+      slot.fresh = false;
+    }
+    if (jpeg.empty()) continue;
+    HttpResult sent = http_post_bytes(cfg.server_url, frame_path(sid, host, info), cfg.agent_token, "image/jpeg",
+                                      jpeg.data(), jpeg.size());
+    if (sent.status == 410 || sent.status == 404) {
+      g.live = false;
+      break;
+    }
+    if (sent.ok) apply_events(sent.body);
   }
 }
 
@@ -494,66 +576,71 @@ void capture_loop() {
     sid = g.session_id;
   }
   // live already set by start_capture()
-  uint32_t last_fp = 0;
-  int same_streak = 0;
+  FrameSlot slot;
+  std::thread sender([&] { sender_loop(slot, cfg, sid, host); });
+  uint32_t last_hash = 0;
+  DWORD last_publish = 0;
   bool last_secure = false;
   DWORD last_secure_sent = 0;
 
   while (!g.stop && g.live) {
-    const bool secure = is_secure_desktop();
+    if (!this_session_is_active()) break;
+    // Move onto the unlocked desktop before any GDI work, so a lock → RDP login
+    // can resume the real screen on this same thread.
+    attach_input_desktop();
+    const bool secure = is_locked_desktop();
     std::string jpeg;
     FrameInfo info;
 
     if (secure) {
       const DWORD now = GetTickCount();
-      // Send placeholder at most ~2/sec while on UAC; still keep session alive.
+      // Placeholder while the session is locked. Built off-thread so this
+      // capture thread stays free to switch onto Default after unlock.
       if (!last_secure || now - last_secure_sent > 500) {
-        if (!grab_secure_placeholder(jpeg, info)) {
-          Sleep(200);
-          continue;
+        jpeg.clear();
+        std::thread([&] { grab_secure_placeholder(jpeg, info); }).join();
+        if (!jpeg.empty()) {
+          last_secure_sent = now;
+          publish_frame(slot, std::move(jpeg), info);
         }
-        last_secure_sent = now;
-        HttpResult sent =
-            http_post_bytes(cfg.server_url, frame_path(sid, host, info), cfg.agent_token, "image/jpeg", jpeg.data(),
-                            jpeg.size());
-        if (sent.status == 410 || sent.status == 404) break;
-        if (sent.ok) apply_events(sent.body);
       }
       last_secure = true;
-      same_streak = 0;
-      Sleep(180);
+      last_hash = 0;
+      Sleep(80);
       continue;
     }
     last_secure = false;
 
-    uint32_t fp = 0;
-    if (!grab_jpeg(jpeg, info, &fp)) {
-      Sleep(120);
+    const auto mons = list_monitors();
+    int index = g.monitor.load();
+    if (index < 0 || index >= static_cast<int>(mons.size())) index = 0;
+    const uint32_t hash = dirty_hash(mons[index].rect);
+    const DWORD now = GetTickCount();
+    const bool changed = hash != last_hash;
+    // Idle desktop: a heartbeat a few times a second. Motion: a new frame immediately.
+    if (!changed && now - last_publish < 280) {
+      Sleep(12);
       continue;
     }
-    if (jpeg.size() > 1800000 && g.quality.load() > 74) {
-      g.quality.store(std::max(74, g.quality.load() - 6));
-    }
-    if (jpeg.size() > 2300000) {
+
+    if (!grab_jpeg(jpeg, info, nullptr)) {
       Sleep(20);
       continue;
     }
-
-    // Skip near-identical idle frames to cut LAN traffic; still heartbeat every ~1.2s.
-    if (fp == last_fp && same_streak < 24) {
-      ++same_streak;
-      Sleep(same_streak < 8 ? 60 : 120);
-      continue;
+    if (jpeg.size() > 900000 && g.quality.load() > 56) {
+      g.quality.store(std::max(56, g.quality.load() - 6));
     }
-    last_fp = fp;
-    same_streak = 0;
-
-    HttpResult sent = http_post_bytes(cfg.server_url, frame_path(sid, host, info), cfg.agent_token, "image/jpeg",
-                                      jpeg.data(), jpeg.size());
-    if (sent.status == 410 || sent.status == 404) break;
-    if (sent.ok) apply_events(sent.body);
-    Sleep(48);
+    last_hash = hash;
+    last_publish = now;
+    publish_frame(slot, std::move(jpeg), info);
+    Sleep(changed ? 8 : 20);
   }
+  {
+    std::lock_guard<std::mutex> lock(slot.mu);
+    slot.stop = true;
+  }
+  slot.cv.notify_all();
+  if (sender.joinable()) sender.join();
   g.live = false;
   {
     std::lock_guard<std::mutex> lock(g.mu);
@@ -581,7 +668,12 @@ void input_loop() {
       Sleep(40);
       continue;
     }
-    if (is_secure_desktop()) {
+    if (!this_session_is_active()) {
+      Sleep(200);
+      continue;
+    }
+    attach_input_desktop();
+    if (is_locked_desktop()) {
       Sleep(80);
       continue;
     }
@@ -589,7 +681,7 @@ void input_loop() {
     HttpResult pulled = http_get(cfg.server_url, path, cfg.agent_token);
     if (pulled.status == 410 || pulled.status == 404) break;
     if (pulled.ok) apply_events(pulled.body);
-    Sleep(16);
+    Sleep(8);
   }
 }
 
@@ -637,7 +729,7 @@ void post_hangup() {
 DWORD WINAPI waiter_proc(LPVOID) {
   while (!g.stop) {
     AgentConfig cfg = load_agent_config();
-    if (cfg.server_url.empty() || cfg.agent_token.empty()) {
+    if (cfg.server_url.empty() || cfg.agent_token.empty() || !this_session_is_active()) {
       Sleep(4000);
       continue;
     }
@@ -651,7 +743,7 @@ DWORD WINAPI waiter_proc(LPVOID) {
     const std::string id = json_str(r.body, "id");
     const std::string status = json_str(r.body, "status");
     // Silent: accepted; legacy agents may still see offered.
-    if (id.empty() || (status != "accepted" && status != "offered")) continue;
+    if (id.empty() || (status != "accepted" && status != "offered" && status != "live")) continue;
     {
       std::lock_guard<std::mutex> lock(g.mu);
       g.session_id = id;

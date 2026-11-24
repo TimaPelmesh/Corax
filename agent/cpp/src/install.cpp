@@ -75,7 +75,8 @@ std::wstring xml_escape(const std::wstring& raw) {
   return out;
 }
 
-std::wstring task_xml(const std::wstring& command, const std::wstring& arguments, bool at_logon, bool as_system) {
+std::wstring task_xml(const std::wstring& command, const std::wstring& arguments, bool at_logon, bool as_system,
+                       bool parallel = false) {
   std::wstring trigger = at_logon
       ? L"<LogonTrigger><Enabled>true</Enabled></LogonTrigger>"
       : L"<TimeTrigger><StartBoundary>2026-01-01T00:00:00</StartBoundary><Enabled>true</Enabled>"
@@ -88,7 +89,8 @@ std::wstring task_xml(const std::wstring& command, const std::wstring& arguments
          L"<Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">" +
          principal + L"<Triggers>" + trigger +
          L"</Triggers><Settings>"
-         L"<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>"
+         L"<MultipleInstancesPolicy>" +
+         std::wstring(parallel ? L"Parallel" : L"IgnoreNew") + L"</MultipleInstancesPolicy>"
          L"<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"
          L"<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>"
          L"<StartWhenAvailable>true</StartWhenAvailable>"
@@ -124,7 +126,7 @@ void register_run_key(HKEY root, const std::wstring& dest_exe, REGSAM extra) {
 }
 
 void register_tray_autostart(const std::wstring& dest_exe) {
-  register_task(L"CORAX Agent Tray", L"corax-tray-task.xml", task_xml(dest_exe, L"--tray", true, false));
+  register_task(L"CORAX Agent Tray", L"corax-tray-task.xml", task_xml(dest_exe, L"--tray", true, false, true));
   register_run_key(HKEY_LOCAL_MACHINE, dest_exe, KEY_WOW64_64KEY);
 }
 

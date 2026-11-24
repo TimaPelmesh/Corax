@@ -161,7 +161,9 @@ class AssistHub:
             async with self._lock:
                 self._purge_locked(now)
                 for sess in self._sessions.values():
-                    if sess.status in _PENDING_STATUSES and self.hosts_match(sess.hostname, key):
+                    # "live" too: after RDP the tray in the new session takes over
+                    # the screen the disconnected console tray just dropped.
+                    if sess.status in _PENDING_STATUSES | {"live"} and self.hosts_match(sess.hostname, key):
                         return sess
                 remaining = deadline - now
                 if remaining <= 0:

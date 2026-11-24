@@ -153,6 +153,47 @@ function markSchedule(
   return t('notes.calendar.everyDay')
 }
 
+function collectDays(
+  mode: RuleMode,
+  weekdays: number[],
+  monthDays: number[],
+  start: string,
+  end: string,
+  bounds?: { start: string; end: string },
+): string[] {
+  let from = start <= end ? start : end
+  let to = start <= end ? end : start
+  if (bounds) {
+    if (from < bounds.start) from = bounds.start
+    if (to > bounds.end) to = bounds.end
+  }
+  if (!from || !to || from > to) return []
+  const out: string[] = []
+  for (const cur = parseDate(from); cur <= parseDate(to); cur.setDate(cur.getDate() + 1)) {
+    if (mode === 'weekdays' && !weekdays.includes(mondayIndex(cur))) continue
+    if (mode === 'monthdays' && !monthDays.includes(cur.getDate())) continue
+    out.push(dateKey(cur))
+  }
+  return out
+}
+
+function groupDateRanges(days: string[]): { start: string; end: string }[] {
+  const sorted = [...days].sort()
+  const ranges: { start: string; end: string }[] = []
+  for (const day of sorted) {
+    const last = ranges[ranges.length - 1]
+    if (!last) {
+      ranges.push({ start: day, end: day })
+      continue
+    }
+    const next = parseDate(last.end)
+    next.setDate(next.getDate() + 1)
+    if (dateKey(next) === day) last.end = day
+    else ranges.push({ start: day, end: day })
+  }
+  return ranges
+}
+
 function markDetail(
   mark: CalendarMark,
   locale: string,
@@ -235,6 +276,13 @@ export function NotesCalendarPanel({
   const [mode, setMode] = useState<RuleMode>('monthdays')
   const [rulesOpen, setRulesOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [exceptionMarkId, setExceptionMarkId] = useState<number | null>(null)
+  const [exMode, setExMode] = useState<RuleMode>('range')
+  const [exWeekdays, setExWeekdays] = useState<number[]>([])
+  const [exMonthDays, setExMonthDays] = useState<number[]>([])
+  const [exStart, setExStart] = useState(yearDefault.start)
+  const [exEnd, setExEnd] = useState(yearDefault.end)
+  const [exSaving, setExSaving] = useState(false)
 
   const months = useMemo(
     () => [addMonths(anchor, -1), anchor, addMonths(anchor, 1)],
@@ -320,46 +368,60 @@ export function NotesCalendarPanel({
     return out
   }, [rangeStart, rangeHover])
 
-  async function toggleException(mark: CalendarMark, day: string) {
-    if (!mark.can_edit) return
-    const has = mark.exceptions.includes(day)
-    const next = has ? mark.exceptions.filter((d) => d !== day) : [...mark.exceptions, day].sort()
-    try {
-      await api.updateCalendarMark(mark.id, { exceptions: next })
-      toast.ok(has ? t('notes.calendar.exceptionRemoved') : t('notes.calendar.exceptionAdded'))
-      await reloadMarks()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('notes.calendar.saveFailed'))
-    }
-  }
-
   function applyDayClick(key: string) {
-    const covering = (markByDay.get(key) ?? []).filter((m) => m.can_edit && isRuleMark(m))
-    const exceptionMark = exceptionByDay.get(key)
-    if (exceptionMark?.can_edit && !rangeStart) {
-      void toggleException(exceptionMark, key)
-      return
-    }
-    if (covering.length && !rangeStart) {
-      void toggleException(covering[0], key)
-      return
-    }
-
+    const editingException = exceptionMarkId != null && rulesOpen
     if (!rangeStart) {
       setRangeStart(key)
       setRangeHover(key)
+      if (editingException) {
+        setExStart(key)
+        setExEnd(key)
+        return
+      }
       setFormStart(key)
       setFormEnd(key)
-      setMode('range')
       setRulesOpen(true)
       return
     }
     const a = rangeStart <= key ? rangeStart : key
     const b = rangeStart <= key ? key : rangeStart
-    setFormStart(a)
-    setFormEnd(b)
+    if (editingException) {
+      setExStart(a)
+      setExEnd(b)
+    } else {
+      setFormStart(a)
+      setFormEnd(b)
+    }
     setRangeStart(null)
     setRangeHover(null)
+  }
+
+  function openExceptions(mark: CalendarMark) {
+    setRulesOpen(true)
+    setRangeStart(null)
+    setRangeHover(null)
+    if (exceptionMarkId === mark.id) {
+      setExceptionMarkId(null)
+      return
+    }
+    setExceptionMarkId(mark.id)
+    setExStart(mark.start_date)
+    setExEnd(mark.end_date)
+    if (mark.weekdays.length > 0) {
+      setExMode('weekdays')
+      setExWeekdays([...mark.weekdays])
+      setExMonthDays([])
+      return
+    }
+    if (mark.month_days.length > 0) {
+      setExMode('monthdays')
+      setExMonthDays([...mark.month_days])
+      setExWeekdays([])
+      return
+    }
+    setExMode('range')
+    setExWeekdays([])
+    setExMonthDays([])
   }
 
   function toggleWeekday(day: number) {
@@ -455,6 +517,51 @@ export function NotesCalendarPanel({
       toast.error(err instanceof Error ? err.message : t('notes.calendar.saveFailed'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function saveExceptions(mark: CalendarMark) {
+    if (!exStart || !exEnd) {
+      toast.error(t('notes.calendar.needRange'))
+      return
+    }
+    if (exMode === 'weekdays' && exWeekdays.length === 0) {
+      toast.error(t('notes.calendar.needWeekdays'))
+      return
+    }
+    if (exMode === 'monthdays' && exMonthDays.length === 0) {
+      toast.error(t('notes.calendar.needMonthDays'))
+      return
+    }
+    const extra = collectDays(exMode, exWeekdays, exMonthDays, exStart, exEnd, {
+      start: mark.start_date,
+      end: mark.end_date,
+    })
+    if (extra.length === 0) {
+      toast.error(t('notes.calendar.needRange'))
+      return
+    }
+    setExSaving(true)
+    try {
+      const next = [...new Set([...mark.exceptions, ...extra])].sort()
+      await api.updateCalendarMark(mark.id, { exceptions: next })
+      toast.ok(t('notes.calendar.exceptionAdded'))
+      await reloadMarks()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('notes.calendar.saveFailed'))
+    } finally {
+      setExSaving(false)
+    }
+  }
+
+  async function removeExceptionRange(mark: CalendarMark, start: string, end: string) {
+    const next = mark.exceptions.filter((day) => day < start || day > end)
+    try {
+      await api.updateCalendarMark(mark.id, { exceptions: next })
+      toast.ok(t('notes.calendar.exceptionRemoved'))
+      await reloadMarks()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('notes.calendar.saveFailed'))
     }
   }
 
@@ -580,14 +687,9 @@ export function NotesCalendarPanel({
                           .join(' ')}
                         style={tint && !selected && !exceptionMark ? { background: tint } : undefined}
                         title={
-                          firstPlan
-                            ? firstPlan.title || t('notes.untitled')
-                            : exceptionMark
-                              ? `${t('notes.calendar.exceptionMarkHint')}${markTitle ? ` · ${markTitle}` : ''}`
-                              : markTitle ||
-                                (dayMarks.some((m) => m.can_edit && isRuleMark(m))
-                                  ? t('notes.calendar.exceptionHint')
-                                  : undefined)
+                          [firstPlan ? firstPlan.title || t('notes.untitled') : null, markTitle || null]
+                            .filter(Boolean)
+                            .join(' · ') || undefined
                         }
                         onClick={() => applyDayClick(key)}
                         onDoubleClick={(event) => {
@@ -656,8 +758,6 @@ export function NotesCalendarPanel({
       {rulesOpen ? (
         <div className="notes-cal-rules">
           <div className="notes-cal-rules__form">
-            <p className="notes-cal-rules__hint">{t('notes.calendar.addHintSimple')}</p>
-
             <div>
               <div className="notes-cal-block__label">{t('notes.calendar.addTitle')}</div>
               <div className="notes-cal-presets">
@@ -848,35 +948,176 @@ export function NotesCalendarPanel({
               <ul className="notes-cal-list__ul">
                 {marks.map((mark) => {
                   const detail = markDetail(mark, locale, t)
+                  const exceptionsOpen = exceptionMarkId === mark.id
+                  const exceptionRanges = groupDateRanges(mark.exceptions)
                   return (
-                    <li key={mark.id} className="notes-cal-list__item">
-                      <div className="notes-cal-list__meta">
-                        <i className={`notes-cal-dot ${COLOR_SWATCH[resolveColor(mark)]}`} />
-                        <div className="notes-cal-list__body">
-                          <div className="notes-cal-list__name">{detail.title}</div>
-                          {detail.lines.map((line, lineIndex) => (
-                            <div key={`${mark.id}-${lineIndex}`} className="notes-cal-list__line">
-                              {line}
+                    <li
+                      key={mark.id}
+                      className={`notes-cal-list__item${exceptionsOpen ? ' notes-cal-list__item--stack' : ''}`}
+                    >
+                      <div className="notes-cal-list__row">
+                        <div className="notes-cal-list__meta">
+                          <i className={`notes-cal-dot ${COLOR_SWATCH[resolveColor(mark)]}`} />
+                          <div className="notes-cal-list__body">
+                            <div className="notes-cal-list__name">{detail.title}</div>
+                            {detail.lines.map((line, lineIndex) => (
+                              <div key={`${mark.id}-${lineIndex}`} className="notes-cal-list__line">
+                                {line}
+                              </div>
+                            ))}
+                            {mark.can_edit ? (
+                              <div className="notes-cal-list__tools">
+                                <ColorSwatches
+                                  compact
+                                  value={resolveColor(mark)}
+                                  onChange={(color) => void setMarkColor(mark, color)}
+                                />
+                                <button
+                                  type="button"
+                                  className={`app-chip !min-h-0 !px-2 !py-1 text-[11px]${exceptionsOpen ? ' app-chip--active' : ''}`}
+                                  onClick={() => openExceptions(mark)}
+                                >
+                                  {t('notes.calendar.exceptionsTitle')}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                        {mark.can_edit ? (
+                          <button
+                            type="button"
+                            className="app-btn app-btn-secondary !min-h-7 !w-7 !px-0 !py-0"
+                            onClick={() => void removeMark(mark.id)}
+                            aria-label={t('notes.delete')}
+                          >
+                            <IconTrash className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                      {exceptionsOpen && mark.can_edit ? (
+                        <div className="notes-cal-exception">
+                          <div className="notes-cal-mode">
+                            <button
+                              type="button"
+                              className={`app-chip !min-h-0 !px-2.5 !py-1${exMode === 'monthdays' ? ' app-chip--active' : ''}`}
+                              onClick={() => setExMode('monthdays')}
+                            >
+                              {t('notes.calendar.modeMonthDays')}
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-chip !min-h-0 !px-2.5 !py-1${exMode === 'weekdays' ? ' app-chip--active' : ''}`}
+                              onClick={() => setExMode('weekdays')}
+                            >
+                              {t('notes.calendar.modeWeekdays')}
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-chip !min-h-0 !px-2.5 !py-1${exMode === 'range' ? ' app-chip--active' : ''}`}
+                              onClick={() => setExMode('range')}
+                            >
+                              {t('notes.calendar.modeRange')}
+                            </button>
+                          </div>
+                          <div className="notes-cal-fields notes-cal-fields--exception">
+                            <label className="notes-cal-field">
+                              <span>{t('notes.calendar.from')}</span>
+                              <input
+                                type="date"
+                                value={exStart}
+                                min={mark.start_date}
+                                max={mark.end_date}
+                                onChange={(event) => setExStart(event.target.value)}
+                                className="app-input !min-h-9 !py-1.5 text-sm"
+                              />
+                            </label>
+                            <label className="notes-cal-field">
+                              <span>{t('notes.calendar.to')}</span>
+                              <input
+                                type="date"
+                                value={exEnd}
+                                min={mark.start_date}
+                                max={mark.end_date}
+                                onChange={(event) => setExEnd(event.target.value)}
+                                className="app-input !min-h-9 !py-1.5 text-sm"
+                              />
+                            </label>
+                          </div>
+                          {exMode === 'weekdays' ? (
+                            <div className="notes-cal-weekday-toggles">
+                              {WEEKDAY_KEYS.map((key, index) => (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  className={`app-chip !min-h-0 !justify-center !px-1.5 !py-1 text-[11px]${
+                                    exWeekdays.includes(index) ? ' app-chip--active' : ''
+                                  }`}
+                                  onClick={() =>
+                                    setExWeekdays((prev) =>
+                                      prev.includes(index)
+                                        ? prev.filter((day) => day !== index)
+                                        : [...prev, index].sort((a, b) => a - b),
+                                    )
+                                  }
+                                >
+                                  {t(key)}
+                                </button>
+                              ))}
                             </div>
-                          ))}
-                          {mark.can_edit ? (
-                            <ColorSwatches
-                              compact
-                              value={resolveColor(mark)}
-                              onChange={(color) => void setMarkColor(mark, color)}
-                            />
+                          ) : null}
+                          {exMode === 'monthdays' ? (
+                            <div className="notes-cal-monthday-toggles">
+                              {monthDayChoices.map((day) => (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  className={`app-chip !min-h-0 !min-w-8 !justify-center !px-2 !py-1 tabular-nums${
+                                    exMonthDays.includes(day) ? ' app-chip--active' : ''
+                                  }`}
+                                  onClick={() =>
+                                    setExMonthDays((prev) =>
+                                      prev.includes(day)
+                                        ? prev.filter((value) => value !== day)
+                                        : [...prev, day].sort((a, b) => a - b),
+                                    )
+                                  }
+                                >
+                                  {day}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="notes-cal-rules__actions">
+                            <button
+                              type="button"
+                              className="app-btn app-btn-primary !min-h-8 !px-3 !py-1 text-sm"
+                              disabled={exSaving}
+                              onClick={() => void saveExceptions(mark)}
+                            >
+                              {exSaving ? t('notes.saving') : t('notes.calendar.addException')}
+                            </button>
+                          </div>
+                          {exceptionRanges.length > 0 ? (
+                            <div className="notes-cal-ex-chips">
+                              {exceptionRanges.map((range) => (
+                                <button
+                                  key={`${range.start}-${range.end}`}
+                                  type="button"
+                                  className="notes-cal-ex-chip"
+                                  onClick={() => void removeExceptionRange(mark, range.start, range.end)}
+                                >
+                                  {range.start === range.end
+                                    ? formatShortDate(range.start, locale)
+                                    : t('notes.calendar.period', {
+                                        from: formatShortDate(range.start, locale),
+                                        to: formatShortDate(range.end, locale),
+                                      })}
+                                  <span aria-hidden>×</span>
+                                </button>
+                              ))}
+                            </div>
                           ) : null}
                         </div>
-                      </div>
-                      {mark.can_edit ? (
-                        <button
-                          type="button"
-                          className="app-btn app-btn-secondary !min-h-7 !w-7 !px-0 !py-0"
-                          onClick={() => void removeMark(mark.id)}
-                          aria-label={t('notes.delete')}
-                        >
-                          <IconTrash className="h-3.5 w-3.5" />
-                        </button>
                       ) : null}
                     </li>
                   )

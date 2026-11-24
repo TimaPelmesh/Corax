@@ -1685,6 +1685,8 @@ export const ru = {
       exceptionAdded: 'Исключение добавлено',
       exceptionRemoved: 'Исключение снято',
       exceptionsCount: 'искл. {n}',
+      exceptionsTitle: 'Исключения',
+      addException: 'Добавить исключение',
       kind: 'Тип',
       label: 'Подпись',
       labelPlaceholder: 'Например: аванс',
@@ -2439,7 +2441,7 @@ export const ru = {
     assistWaiting: 'Подключаемся к {host}…',
     assistConnecting: 'Соединяем защищённый стол',
     assistLive: 'В эфире',
-    assistSecureDesktop: 'UAC / защищённый экран — управление временно недоступно',
+    assistSecureDesktop: 'ПК заблокирован — управление продолжится после входа в систему',
     assistNoTray:
       'На {host} не ответил трей инвентаризации. Нужен EXE с синей кнопки «Скачать EXE». Запустите его на том ПК ещё раз.',
     assistEnd: 'Завершить',
