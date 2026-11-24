@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type DashboardCalendarItem, type NoteColor, type NoteMark } from '../../api'
+import { api, type CalendarMark, type DashboardCalendarItem, type NoteColor, type NoteMark } from '../../api'
 import { useLocale, useT } from '../../i18n/LocaleContext'
 
 const WEEKDAY_KEYS = [
@@ -30,6 +30,27 @@ const DAY_TINT_CLASS: Record<NoteColor, string> = {
   violet: 'bg-violet-50 dark:bg-violet-400/10',
   slate: 'bg-slate-100 dark:bg-slate-400/10',
 }
+
+const MARK_DOT: Record<NoteColor, string> = {
+  blue: 'bg-sky-500',
+  green: 'bg-emerald-500',
+  amber: 'bg-amber-500',
+  rose: 'bg-rose-500',
+  violet: 'bg-violet-500',
+  slate: 'bg-slate-500',
+}
+
+const KIND_COLOR: Record<CalendarMark['kind'], NoteColor> = {
+  weekend: 'blue',
+  holiday: 'rose',
+  payday: 'amber',
+}
+
+const KIND_KEY = {
+  weekend: 'notes.calendar.kinds.weekend',
+  holiday: 'notes.calendar.kinds.holiday',
+  payday: 'notes.calendar.kinds.payday',
+} as const
 
 const MARK_GLYPH: Record<NoteMark, string> = {
   dot: '●',
@@ -62,6 +83,33 @@ function dateRange(item: DashboardCalendarItem): string[] {
   const out: string[] = []
   for (const current = new Date(start); current <= end; current.setDate(current.getDate() + 1)) {
     out.push(dateKey(current))
+  }
+  return out
+}
+
+function mondayIndex(value: Date): number {
+  return (value.getDay() + 6) % 7
+}
+
+function markColor(mark: CalendarMark): NoteColor {
+  return mark.color || KIND_COLOR[mark.kind]
+}
+
+function expandMarkDays(mark: CalendarMark): string[] {
+  const exceptions = new Set(mark.exceptions ?? [])
+  const weekdays = mark.weekdays ?? []
+  const monthDays = mark.month_days ?? []
+  const out: string[] = []
+  const end = parseDate(mark.end_date)
+  for (const cur = parseDate(mark.start_date); cur <= end; cur.setDate(cur.getDate() + 1)) {
+    const key = dateKey(cur)
+    if (exceptions.has(key)) continue
+    if (monthDays.length > 0) {
+      if (!monthDays.includes(cur.getDate())) continue
+    } else if (weekdays.length > 0) {
+      if (!weekdays.includes(mondayIndex(cur))) continue
+    }
+    out.push(key)
   }
   return out
 }
@@ -100,6 +148,7 @@ export function DashboardCalendar({
   const { locale } = useLocale()
   const [month, setMonth] = useState(() => monthStart(new Date()))
   const [items, setItems] = useState<DashboardCalendarItem[]>([])
+  const [marks, setMarks] = useState<CalendarMark[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
 
@@ -107,14 +156,28 @@ export function DashboardCalendar({
     let cancelled = false
     setLoading(true)
     setFailed(false)
-    void api
-      .dashboardCalendar(dateKey(month))
-      .then((next) => {
-        if (!cancelled) setItems(plansOnly ? next.filter((item) => item.kind === 'plan') : next)
+    const from = dateKey(monthStart(month))
+    const to = dateKey(new Date(month.getFullYear(), month.getMonth() + 1, 0))
+    void Promise.all([
+      api.dashboardCalendar(dateKey(month)),
+      api.calendarMarks(from, to).catch(() => [] as CalendarMark[]),
+    ])
+      .then(([next, rules]) => {
+        if (cancelled) return
+        setItems(plansOnly ? next.filter((item) => item.kind === 'plan') : next)
+        setMarks(
+          rules.map((row) => ({
+            ...row,
+            weekdays: row.weekdays ?? [],
+            month_days: row.month_days ?? [],
+            exceptions: row.exceptions ?? [],
+          })),
+        )
       })
       .catch(() => {
         if (!cancelled) {
           setItems([])
+          setMarks([])
           setFailed(true)
         }
       })
@@ -137,6 +200,18 @@ export function DashboardCalendar({
     }
     return byDay
   }, [items])
+
+  const marksByDay = useMemo(() => {
+    const byDay = new Map<string, CalendarMark[]>()
+    for (const mark of marks) {
+      for (const day of expandMarkDays(mark)) {
+        const existing = byDay.get(day) ?? []
+        existing.push(mark)
+        byDay.set(day, existing)
+      }
+    }
+    return byDay
+  }, [marks])
 
   const days = useMemo(() => {
     const start = monthStart(month)
@@ -229,14 +304,24 @@ export function DashboardCalendar({
           const key = dateKey(day)
           const inMonth = day.getMonth() === month.getMonth()
           const events = eventsByDay.get(key) ?? []
+          const dayMarks = marksByDay.get(key) ?? []
           const visible = events.slice(0, compact ? 1 : 3)
           const tintColor = events.find((e) => e.kind === 'plan' && e.color)?.color
+          const ruleColor = dayMarks[0] ? markColor(dayMarks[0]) : undefined
           const mark = events.find((e) => e.kind === 'plan' && e.mark)?.mark
-          const dayTint = tintColor ? DAY_TINT_CLASS[tintColor] : 'bg-[var(--color-surface)]'
+          const dayTint = tintColor
+            ? DAY_TINT_CLASS[tintColor]
+            : ruleColor
+              ? DAY_TINT_CLASS[ruleColor]
+              : 'bg-[var(--color-surface)]'
+          const ruleTitle = dayMarks
+            .map((rule) => rule.title.trim() || t(KIND_KEY[rule.kind]))
+            .join(', ')
           return (
             <div
               key={key}
               className={`${compact ? 'min-h-[2.65rem] p-0.5' : 'min-h-[5.75rem] p-1'} ${dayTint} ${inMonth ? '' : 'opacity-45'}`}
+              title={ruleTitle || undefined}
             >
               <div className="mb-0.5 flex items-center justify-between gap-0.5">
                 <div
@@ -248,7 +333,16 @@ export function DashboardCalendar({
                 >
                   {day.getDate()}
                 </div>
-                {mark ? (
+                {dayMarks.length > 0 ? (
+                  <span className="flex items-center gap-px" aria-hidden>
+                    {dayMarks.slice(0, 3).map((rule) => (
+                      <i
+                        key={rule.id}
+                        className={`inline-block h-1.5 w-1.5 rounded-full ${MARK_DOT[markColor(rule)]}`}
+                      />
+                    ))}
+                  </span>
+                ) : mark ? (
                   <span
                     className={`${compact ? 'text-[8px]' : 'text-[10px]'} leading-none text-[var(--color-fg-muted)]`}
                     title={t(`dashboard.calendar.marks.${mark}`)}
@@ -259,6 +353,15 @@ export function DashboardCalendar({
                 ) : null}
               </div>
               <div className={compact ? 'space-y-0' : 'space-y-0.5'}>
+                {(compact && events.length > 0 ? [] : dayMarks.slice(0, compact ? 1 : 2)).map((rule) => (
+                  <div
+                    key={`rule-${rule.id}`}
+                    title={rule.title.trim() || t(KIND_KEY[rule.kind])}
+                    className={`block truncate rounded px-1 font-medium ${compact ? 'py-px text-[8px]' : 'py-0.5 text-[9px]'} ${PLAN_COLOR_CLASS[markColor(rule)]}`}
+                  >
+                    {rule.title.trim() || t(KIND_KEY[rule.kind])}
+                  </div>
+                ))}
                 {visible.map((item, index) => {
                   const selected = item.kind === 'plan' && selectedNoteId === item.id
                   const className = `block truncate rounded px-1 ${compact ? 'py-px text-[8px]' : 'py-0.5 text-[9px]'} font-medium no-underline ${planBadgeClass(item)} ${
@@ -314,7 +417,7 @@ export function DashboardCalendar({
       {!compact && failed ? (
         <p className="mt-2 text-xs text-[var(--color-error-fg)]">{t('dashboard.calendar.error')}</p>
       ) : null}
-      {!compact && !loading && !failed && items.length === 0 ? (
+      {!compact && !loading && !failed && items.length === 0 && marks.length === 0 ? (
         <p className="mt-2 text-xs text-[var(--color-fg-subtle)]">{t('dashboard.calendar.empty')}</p>
       ) : null}
     </section>

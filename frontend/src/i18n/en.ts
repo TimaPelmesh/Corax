@@ -874,7 +874,7 @@ export const en: MessageTree = {
     },
     calendar: {
       title: 'Work schedule',
-      hint: 'Plans from notes and open tickets with a due date.',
+      hint: 'Plans, tickets, and calendar marks: weekends, holidays, paydays.',
       openPlanner: 'Planner →',
       openPlannerCompact: 'All →',
       openNotes: 'Notes →',
