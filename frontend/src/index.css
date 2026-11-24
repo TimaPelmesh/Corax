@@ -4789,61 +4789,38 @@ html.theme-fade body {
   transform: translate(-2px, -2px);
 }
 
-/* Notes page tabs + calendar panel (Corax tokens, no teal) */
-.notes-view-tabs {
-  display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.2rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.65rem;
-  background: var(--color-surface-muted);
+/* Notes workspace + calendar (Corax tokens) */
+.notes-workspace {
+  align-items: start;
 }
-.notes-view-tab {
-  min-height: 2rem;
-  padding: 0.35rem 0.9rem;
-  border: 0;
-  border-radius: 0.5rem;
-  background: transparent;
-  color: var(--color-fg-muted);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
+.notes-workspace__aside {
+  position: sticky;
+  top: 0.75rem;
+  max-height: calc(100dvh - 5.5rem);
+  display: flex;
+  flex-direction: column;
 }
-.notes-view-tab:hover {
-  color: var(--color-fg);
-}
-.notes-view-tab.is-active {
-  background: var(--color-surface);
-  color: var(--color-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+.notes-workspace__list {
+  min-height: 0;
+  flex: 1;
+  max-height: none;
 }
 .notes-cal-panel {
   display: flex;
   flex-direction: column;
-  min-height: min(72vh, 780px);
+}
+.notes-cal-panel--workspace {
+  min-height: 0;
 }
 .notes-cal-panel__header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.85rem 1rem;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
-}
-.notes-cal-panel__title {
-  margin: 0;
-  font-size: 0.98rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--color-fg);
-}
-.notes-cal-panel__sub {
-  margin: 0.15rem 0 0;
-  font-size: 0.75rem;
-  color: var(--color-fg-subtle);
-  text-transform: capitalize;
 }
 .notes-cal-header__nav {
   display: inline-flex;
@@ -4889,13 +4866,17 @@ html.theme-fade body {
 .notes-cal-months {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1rem;
+  gap: 0.85rem;
   min-height: 0;
   overflow: auto;
-  padding: 1rem;
+  padding: 0.85rem;
+}
+.notes-cal-months--workspace {
+  padding: 0.75rem;
 }
 @media (min-width: 900px) {
-  .notes-cal-months {
+  .notes-cal-months,
+  .notes-cal-months--workspace {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -4934,19 +4915,41 @@ html.theme-fade body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.18rem;
-  min-height: 4.75rem;
-  padding: 0.35rem 0.3rem 0.35rem;
-  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
-  border-radius: 0.65rem;
-  background: color-mix(in srgb, var(--color-surface) 82%, var(--color-surface-muted));
+  gap: 0.12rem;
+  min-height: 3.35rem;
+  padding: 0.28rem 0.28rem 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-surface-muted));
   text-align: left;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
 }
+.notes-cal-panel--workspace .notes-cal-day {
+  min-height: 3.1rem;
+}
 .notes-cal-day:hover {
   border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+}
+.notes-cal-day__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2rem;
+}
+.notes-cal-day__ex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-fg) 12%, transparent);
+  color: var(--color-fg-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
 }
 .notes-cal-day--empty {
   visibility: hidden;
@@ -4969,14 +4972,8 @@ html.theme-fade body {
   background: color-mix(in srgb, #fcd34d 30%, var(--color-surface-muted));
 }
 .notes-cal-day--exception {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 3px,
-    color-mix(in srgb, var(--color-fg-subtle) 12%, transparent) 3px,
-    color-mix(in srgb, var(--color-fg-subtle) 12%, transparent) 6px
-  );
-  opacity: 0.72;
+  background: color-mix(in srgb, var(--color-surface-muted) 80%, white);
+  border-style: dashed;
 }
 .notes-cal-day__num {
   font-size: 0.78rem;
@@ -5068,23 +5065,64 @@ html.theme-fade body {
 .notes-cal-quick {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 .notes-cal-quick__btn {
-  min-height: 1.85rem;
-  padding: 0.25rem 0.7rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.65rem;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-surface);
   color: var(--color-fg-muted);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 650;
   cursor: pointer;
 }
-.notes-cal-quick__btn:hover {
+.notes-cal-quick__btn:hover,
+.notes-cal-quick__btn.is-active {
   border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
   color: var(--color-primary);
   background: var(--color-primary-muted);
+}
+.notes-cal-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem 0.85rem 0.9rem;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+}
+.notes-cal-rules__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.notes-cal-rules__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+@media (max-width: 900px) {
+  .notes-cal-rules__row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.notes-cal-monthday-input {
+  min-width: 7rem;
+  flex: 1;
+}
+.notes-cal-list__ul--compact {
+  max-height: 7.5rem;
+  overflow: auto;
+}
+.notes-cal-list__ul--compact .notes-cal-list__item {
+  padding: 0.35rem 0.45rem;
+}
+.notes-cal-list__ul--compact .notes-cal-list__name {
+  font-size: 0.75rem;
+}
+.notes-cal-list__ul--compact .notes-cal-list__dates {
+  font-weight: 500;
 }
 .notes-cal-kind-row {
   display: grid;

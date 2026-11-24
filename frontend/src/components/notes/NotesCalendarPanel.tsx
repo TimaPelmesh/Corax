@@ -50,12 +50,6 @@ const KIND_LABEL_KEY: Record<CalendarMarkKind, MessageKey> = {
   payday: 'notes.calendar.kinds.payday',
 }
 
-const VISIBILITY_LABEL_KEY: Record<CalendarMarkVisibility, MessageKey> = {
-  private: 'notes.calendar.visibility.private',
-  shared: 'notes.calendar.visibility.shared',
-  org: 'notes.calendar.visibility.org',
-}
-
 type RuleMode = 'weekdays' | 'monthdays' | 'range'
 
 function dateKey(value: Date): string {
@@ -159,7 +153,8 @@ export function NotesCalendarPanel({
   const [formEnd, setFormEnd] = useState(yearDefault.end)
   const [formWeekdays, setFormWeekdays] = useState<number[]>([5, 6])
   const [formMonthDays, setFormMonthDays] = useState<number[]>([10, 25])
-  const [mode, setMode] = useState<RuleMode>('weekdays')
+  const [mode, setMode] = useState<RuleMode>('monthdays')
+  const [rulesOpen, setRulesOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const months = useMemo(() => [addMonths(anchor, -1), anchor, addMonths(anchor, 1)], [anchor])
@@ -208,6 +203,17 @@ export function NotesCalendarPanel({
     return map
   }, [marks])
 
+  const exceptionByDay = useMemo(() => {
+    const map = new Map<string, CalendarMark>()
+    for (const mark of marks) {
+      if (!isRuleMark(mark)) continue
+      for (const day of mark.exceptions ?? []) {
+        if (!map.has(day)) map.set(day, mark)
+      }
+    }
+    return map
+  }, [marks])
+
   const plansByDay = useMemo(() => {
     const map = new Map<string, PlanHit[]>()
     for (const note of notes) {
@@ -251,6 +257,11 @@ export function NotesCalendarPanel({
 
   function applyDayClick(key: string) {
     const covering = (markByDay.get(key) ?? []).filter((m) => m.can_edit && isRuleMark(m))
+    const exceptionMark = exceptionByDay.get(key)
+    if (exceptionMark?.can_edit && !rangeStart) {
+      void toggleException(exceptionMark, key)
+      return
+    }
     if (covering.length && !rangeStart) {
       void toggleException(covering[0], key)
       return
@@ -261,7 +272,8 @@ export function NotesCalendarPanel({
       setRangeHover(key)
       setFormStart(key)
       setFormEnd(key)
-      if (mode !== 'range') setMode('range')
+      setMode('range')
+      setRulesOpen(true)
       return
     }
     const a = rangeStart <= key ? rangeStart : key
@@ -284,7 +296,8 @@ export function NotesCalendarPanel({
     )
   }
 
-  function applyPreset(kind: 'weekend' | 'payday' | 'range') {
+  function applyPreset(kind: 'weekend' | 'payday' | 'advance') {
+    setRulesOpen(true)
     if (kind === 'weekend') {
       setMode('weekdays')
       setFormKind('weekend')
@@ -298,17 +311,20 @@ export function NotesCalendarPanel({
     if (kind === 'payday') {
       setMode('monthdays')
       setFormKind('payday')
-      setFormMonthDays([10, 25])
+      setFormMonthDays([25])
       setFormWeekdays([])
-      setFormTitle(t('notes.calendar.presetPayTitle'))
+      setFormTitle(t('notes.calendar.presetPayOnlyTitle'))
       setFormStart(yearDefault.start)
       setFormEnd(yearDefault.end)
       return
     }
-    setMode('range')
-    setFormKind('holiday')
+    setMode('monthdays')
+    setFormKind('payday')
+    setFormMonthDays([10])
     setFormWeekdays([])
-    setFormMonthDays([])
+    setFormTitle(t('notes.calendar.presetAdvanceTitle'))
+    setFormStart(yearDefault.start)
+    setFormEnd(yearDefault.end)
   }
 
   async function saveMark() {
@@ -358,16 +374,11 @@ export function NotesCalendarPanel({
   }
 
   const todayKey = dateKey(new Date())
-  const headerRange = `${monthLabel(months[0], locale)} — ${monthLabel(months[2], locale)}`
   const monthDayChoices = [1, 5, 10, 15, 20, 25, 28, 30]
 
   return (
-    <div className="notes-cal-panel">
+    <div className="notes-cal-panel notes-cal-panel--workspace">
       <header className="notes-cal-panel__header">
-        <div>
-          <h2 className="notes-cal-panel__title">{t('notes.calendar.title')}</h2>
-          <p className="notes-cal-panel__sub">{headerRange}</p>
-        </div>
         <div className="notes-cal-header__nav">
           <button
             type="button"
@@ -396,136 +407,145 @@ export function NotesCalendarPanel({
             <IconChevronRight className="h-4 w-4" />
           </button>
         </div>
+
+        <div className="notes-cal-quick">
+          <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('weekend')}>
+            {t('notes.calendar.presetWeekend')}
+          </button>
+          <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('advance')}>
+            {t('notes.calendar.presetAdvance')}
+          </button>
+          <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('payday')}>
+            {t('notes.calendar.presetPayOnly')}
+          </button>
+          <button
+            type="button"
+            className={`notes-cal-quick__btn${rulesOpen ? ' is-active' : ''}`}
+            onClick={() => setRulesOpen((v) => !v)}
+          >
+            {t('notes.calendar.rulesToggle')}
+          </button>
+        </div>
       </header>
 
-      <div className="notes-cal-body">
-        <div className="notes-cal-months" aria-busy={loading}>
-          {months.map((month) => {
-            const cells = daysInMonthGrid(month)
-            return (
-              <section key={dateKey(month)} className="notes-cal-month">
-                <h3 className="notes-cal-month__title">{monthLabel(month, locale)}</h3>
-                <div className="notes-cal-weekdays">
-                  {WEEKDAY_KEYS.map((key) => (
-                    <span key={key} className="notes-cal-weekday">
-                      {t(key)}
-                    </span>
-                  ))}
-                </div>
-                <div className="notes-cal-grid">
-                  {cells.map((day, idx) => {
-                    if (!day) {
-                      return <div key={`pad-${idx}`} className="notes-cal-day notes-cal-day--empty" />
-                    }
-                    const key = dateKey(day)
-                    const dayMarks = markByDay.get(key) ?? []
-                    const plans = plansByDay.get(key) ?? []
-                    const primaryKind = dayMarks[0]?.kind
-                    const selected = selectionKeys.has(key)
-                    const isToday = key === todayKey
-                    const isException = marks.some((m) => isRuleMark(m) && m.exceptions.includes(key))
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={[
-                          'notes-cal-day',
-                          primaryKind ? KIND_TINT[primaryKind] : '',
-                          selected ? 'notes-cal-day--selected' : '',
-                          isToday ? 'notes-cal-day--today' : '',
-                          isException ? 'notes-cal-day--exception' : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                        title={
-                          dayMarks.some((m) => m.can_edit && isRuleMark(m))
+      <div className="notes-cal-months notes-cal-months--workspace" aria-busy={loading}>
+        {months.map((month) => {
+          const cells = daysInMonthGrid(month)
+          return (
+            <section key={dateKey(month)} className="notes-cal-month">
+              <h3 className="notes-cal-month__title">{monthLabel(month, locale)}</h3>
+              <div className="notes-cal-weekdays">
+                {WEEKDAY_KEYS.map((key) => (
+                  <span key={key} className="notes-cal-weekday">
+                    {t(key)}
+                  </span>
+                ))}
+              </div>
+              <div className="notes-cal-grid">
+                {cells.map((day, idx) => {
+                  if (!day) {
+                    return <div key={`pad-${idx}`} className="notes-cal-day notes-cal-day--empty" />
+                  }
+                  const key = dateKey(day)
+                  const dayMarks = markByDay.get(key) ?? []
+                  const plans = plansByDay.get(key) ?? []
+                  const primaryKind = dayMarks[0]?.kind
+                  const selected = selectionKeys.has(key)
+                  const isToday = key === todayKey
+                  const exceptionMark = exceptionByDay.get(key)
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={[
+                        'notes-cal-day',
+                        primaryKind ? KIND_TINT[primaryKind] : '',
+                        selected ? 'notes-cal-day--selected' : '',
+                        isToday ? 'notes-cal-day--today' : '',
+                        exceptionMark ? 'notes-cal-day--exception' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      title={
+                        exceptionMark
+                          ? t('notes.calendar.exceptionMarkHint')
+                          : dayMarks.some((m) => m.can_edit && isRuleMark(m))
                             ? t('notes.calendar.exceptionHint')
                             : undefined
-                        }
-                        onClick={() => applyDayClick(key)}
-                        onMouseEnter={() => {
-                          if (rangeStart) setRangeHover(key)
-                        }}
-                      >
+                      }
+                      onClick={() => applyDayClick(key)}
+                      onMouseEnter={() => {
+                        if (rangeStart) setRangeHover(key)
+                      }}
+                    >
+                      <span className="notes-cal-day__top">
                         <span className="notes-cal-day__num">{day.getDate()}</span>
-                        {dayMarks.length > 0 ? (
+                        {exceptionMark ? (
+                          <span className="notes-cal-day__ex" aria-label={t('notes.calendar.exceptionBadge')}>
+                            ×
+                          </span>
+                        ) : dayMarks.length > 0 ? (
                           <span className="notes-cal-day__dots" aria-hidden>
                             {dayMarks.slice(0, 3).map((m) => (
                               <i key={m.id} className={`notes-cal-dot notes-cal-dot--${m.kind}`} />
                             ))}
                           </span>
                         ) : null}
-                        <span className="notes-cal-day__plans">
-                          {plans.slice(0, 2).map(({ note }) => (
-                            <span
-                              key={note.id}
-                              role="link"
-                              tabIndex={0}
-                              className={`notes-cal-chip ${note.color ? PLAN_CHIP[note.color] : 'bg-[var(--color-primary)] text-white'}`}
-                              title={note.title || t('notes.untitled')}
-                              onClick={(event) => {
+                      </span>
+                      <span className="notes-cal-day__plans">
+                        {plans.slice(0, 1).map(({ note }) => (
+                          <span
+                            key={note.id}
+                            role="link"
+                            tabIndex={0}
+                            className={`notes-cal-chip ${note.color ? PLAN_CHIP[note.color] : 'bg-[var(--color-primary)] text-white'}`}
+                            title={note.title || t('notes.untitled')}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onSelectNote(note.id)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
                                 event.stopPropagation()
                                 onSelectNote(note.id)
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  onSelectNote(note.id)
-                                }
-                              }}
-                            >
-                              {note.mark ? `${MARK_GLYPH[note.mark]} ` : ''}
-                              {note.title || t('notes.untitled')}
-                            </span>
-                          ))}
-                          {plans.length > 2 ? (
-                            <span className="notes-cal-chip-more">+{plans.length - 2}</span>
-                          ) : null}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </section>
-            )
-          })}
-        </div>
+                              }
+                            }}
+                          >
+                            {note.mark ? `${MARK_GLYPH[note.mark]} ` : ''}
+                            {note.title || t('notes.untitled')}
+                          </span>
+                        ))}
+                        {plans.length > 1 ? (
+                          <span className="notes-cal-chip-more">+{plans.length - 1}</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          )
+        })}
+      </div>
 
-        <aside className="notes-cal-rail">
-          <div className="notes-cal-quick">
-            <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('weekend')}>
-              {t('notes.calendar.presetWeekend')}
-            </button>
-            <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('payday')}>
-              {t('notes.calendar.presetPay')}
-            </button>
-            <button type="button" className="notes-cal-quick__btn" onClick={() => applyPreset('range')}>
-              {t('notes.calendar.presetDates')}
-            </button>
-          </div>
-
-          <div className="notes-cal-form">
-            <h3 className="notes-cal-form__title">{t('notes.calendar.addTitle')}</h3>
-            <p className="notes-cal-form__hint">{t('notes.calendar.addHintSimple')}</p>
-
+      {rulesOpen ? (
+        <div className="notes-cal-rules">
+          <div className="notes-cal-rules__form">
             <div className="notes-cal-mode">
+              <button
+                type="button"
+                className={`notes-cal-mode__btn${mode === 'monthdays' ? ' is-active' : ''}`}
+                onClick={() => setMode('monthdays')}
+              >
+                {t('notes.calendar.modeMonthDays')}
+              </button>
               <button
                 type="button"
                 className={`notes-cal-mode__btn${mode === 'weekdays' ? ' is-active' : ''}`}
                 onClick={() => setMode('weekdays')}
               >
                 {t('notes.calendar.modeWeekdays')}
-              </button>
-              <button
-                type="button"
-                className={`notes-cal-mode__btn${mode === 'monthdays' ? ' is-active' : ''}`}
-                onClick={() => {
-                  setMode('monthdays')
-                  if (formKind === 'weekend') setFormKind('payday')
-                }}
-              >
-                {t('notes.calendar.modeMonthDays')}
               </button>
               <button
                 type="button"
@@ -541,7 +561,7 @@ export function NotesCalendarPanel({
                 <button
                   key={kind}
                   type="button"
-                  className={`notes-cal-kind${formKind === kind ? ' is-active' : ''} notes-cal-kind--${kind}`}
+                  className={`notes-cal-kind${formKind === kind ? ' is-active' : ''}`}
                   onClick={() => setFormKind(kind)}
                 >
                   {t(KIND_LABEL_KEY[kind])}
@@ -549,8 +569,7 @@ export function NotesCalendarPanel({
               ))}
             </div>
 
-            <label className="notes-cal-field">
-              <span>{t('notes.calendar.label')}</span>
+            <div className="notes-cal-rules__row">
               <input
                 type="text"
                 value={formTitle}
@@ -558,71 +577,59 @@ export function NotesCalendarPanel({
                 className="app-input"
                 placeholder={t('notes.calendar.labelPlaceholder')}
               />
-            </label>
-
-            <div className="notes-cal-field-row">
-              <label className="notes-cal-field">
-                <span>{t('notes.calendar.from')}</span>
-                <input
-                  type="date"
-                  value={formStart}
-                  onChange={(event) => setFormStart(event.target.value)}
-                  className="app-input"
-                />
-              </label>
-              <label className="notes-cal-field">
-                <span>{t('notes.calendar.to')}</span>
-                <input
-                  type="date"
-                  value={formEnd}
-                  onChange={(event) => setFormEnd(event.target.value)}
-                  className="app-input"
-                />
-              </label>
+              <input
+                type="date"
+                value={formStart}
+                onChange={(event) => setFormStart(event.target.value)}
+                className="app-input"
+              />
+              <input
+                type="date"
+                value={formEnd}
+                onChange={(event) => setFormEnd(event.target.value)}
+                className="app-input"
+              />
+              <select
+                value={formVisibility}
+                onChange={(event) => setFormVisibility(event.target.value as CalendarMarkVisibility)}
+                className="app-input"
+              >
+                <option value="private">{t('notes.calendar.visibility.private')}</option>
+                <option value="shared">{t('notes.calendar.visibility.shared')}</option>
+                {isAdmin ? <option value="org">{t('notes.calendar.visibility.org')}</option> : null}
+              </select>
             </div>
 
             {mode === 'weekdays' ? (
-              <div className="notes-cal-field">
-                <span>{t('notes.calendar.weekdays')}</span>
-                <div className="notes-cal-weekday-toggles">
-                  {WEEKDAY_KEYS.map((key, index) => {
-                    const active = formWeekdays.includes(index)
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={`notes-cal-wd${active ? ' is-active' : ''}`}
-                        onClick={() => toggleWeekday(index)}
-                      >
-                        {t(key)}
-                      </button>
-                    )
-                  })}
-                </div>
+              <div className="notes-cal-weekday-toggles">
+                {WEEKDAY_KEYS.map((key, index) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`notes-cal-wd${formWeekdays.includes(index) ? ' is-active' : ''}`}
+                    onClick={() => toggleWeekday(index)}
+                  >
+                    {t(key)}
+                  </button>
+                ))}
               </div>
             ) : null}
 
             {mode === 'monthdays' ? (
-              <div className="notes-cal-field">
-                <span>{t('notes.calendar.monthDays')}</span>
-                <div className="notes-cal-monthday-toggles">
-                  {monthDayChoices.map((day) => {
-                    const active = formMonthDays.includes(day)
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        className={`notes-cal-md${active ? ' is-active' : ''}`}
-                        onClick={() => toggleMonthDay(day)}
-                      >
-                        {day}
-                      </button>
-                    )
-                  })}
-                </div>
+              <div className="notes-cal-monthday-toggles">
+                {monthDayChoices.map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    className={`notes-cal-md${formMonthDays.includes(day) ? ' is-active' : ''}`}
+                    onClick={() => toggleMonthDay(day)}
+                  >
+                    {day}
+                  </button>
+                ))}
                 <input
                   type="text"
-                  className="app-input mt-1"
+                  className="app-input notes-cal-monthday-input"
                   value={formMonthDays.join(', ')}
                   onChange={(event) => {
                     const parsed = event.target.value
@@ -636,22 +643,9 @@ export function NotesCalendarPanel({
               </div>
             ) : null}
 
-            <label className="notes-cal-field">
-              <span>{t('notes.calendar.visibilityLabel')}</span>
-              <select
-                value={formVisibility}
-                onChange={(event) => setFormVisibility(event.target.value as CalendarMarkVisibility)}
-                className="app-input"
-              >
-                <option value="private">{t('notes.calendar.visibility.private')}</option>
-                <option value="shared">{t('notes.calendar.visibility.shared')}</option>
-                {isAdmin ? <option value="org">{t('notes.calendar.visibility.org')}</option> : null}
-              </select>
-            </label>
-
             <button
               type="button"
-              className="app-btn app-btn-primary w-full"
+              className="app-btn app-btn-primary"
               disabled={
                 saving ||
                 !formStart ||
@@ -665,55 +659,43 @@ export function NotesCalendarPanel({
             </button>
           </div>
 
-          <div className="notes-cal-list">
-            <h3 className="notes-cal-form__title">{t('notes.calendar.listTitle')}</h3>
-            {marks.length === 0 ? (
-              <p className="notes-cal-empty">{t('notes.calendar.listEmpty')}</p>
-            ) : (
-              <ul className="notes-cal-list__ul">
-                {marks.map((mark) => (
-                  <li key={mark.id} className="notes-cal-list__item">
-                    <div className="notes-cal-list__meta">
-                      <i className={`notes-cal-dot notes-cal-dot--${mark.kind}`} />
-                      <div>
-                        <div className="notes-cal-list__name">
-                          {mark.title || t(KIND_LABEL_KEY[mark.kind])}
-                        </div>
-                        <div className="notes-cal-list__dates">
-                          {mark.start_date === mark.end_date
-                            ? mark.start_date
-                            : `${mark.start_date} → ${mark.end_date}`}
-                          {mark.month_days.length > 0
-                            ? ` · ${t('notes.calendar.monthDaysShort', { days: mark.month_days.join(', ') })}`
-                            : mark.weekdays.length > 0
-                              ? ` · ${mark.weekdays.map((d) => t(WEEKDAY_KEYS[d])).join(', ')}`
-                              : ` · ${t('notes.calendar.modeRange')}`}
-                          {' · '}
-                          {t(VISIBILITY_LABEL_KEY[mark.visibility])}
-                          {mark.exceptions.length > 0
-                            ? ` · ${t('notes.calendar.exceptionsCount', { n: mark.exceptions.length })}`
-                            : null}
-                          {!mark.mine && mark.owner_username ? ` · ${mark.owner_username}` : null}
-                        </div>
-                      </div>
+          {marks.length > 0 ? (
+            <ul className="notes-cal-list__ul notes-cal-list__ul--compact">
+              {marks.map((mark) => (
+                <li key={mark.id} className="notes-cal-list__item">
+                  <div className="notes-cal-list__meta">
+                    <i className={`notes-cal-dot notes-cal-dot--${mark.kind}`} />
+                    <div className="notes-cal-list__name">
+                      {mark.title || t(KIND_LABEL_KEY[mark.kind])}
+                      <span className="notes-cal-list__dates">
+                        {' · '}
+                        {mark.month_days.length > 0
+                          ? t('notes.calendar.monthDaysShort', { days: mark.month_days.join(', ') })
+                          : mark.weekdays.length > 0
+                            ? mark.weekdays.map((d) => t(WEEKDAY_KEYS[d])).join(', ')
+                            : t('notes.calendar.modeRange')}
+                        {mark.exceptions.length > 0
+                          ? ` · ${t('notes.calendar.exceptionsCount', { n: mark.exceptions.length })}`
+                          : null}
+                      </span>
                     </div>
-                    {mark.can_edit ? (
-                      <button
-                        type="button"
-                        className="notes-cal-list__del"
-                        onClick={() => void removeMark(mark.id)}
-                        aria-label={t('notes.delete')}
-                      >
-                        <IconTrash className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </aside>
-      </div>
+                  </div>
+                  {mark.can_edit ? (
+                    <button
+                      type="button"
+                      className="notes-cal-list__del"
+                      onClick={() => void removeMark(mark.id)}
+                      aria-label={t('notes.delete')}
+                    >
+                      <IconTrash className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

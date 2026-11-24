@@ -89,7 +89,6 @@ export function NotesPage() {
   const [sameDayEnd, setSameDayEnd] = useState(false)
   const [color, setColor] = useState<NoteColor | null>(null)
   const [mark, setMark] = useState<NoteMark | null>(null)
-  const [notesView, setNotesView] = useState<'notes' | 'calendar'>('notes')
   const [shareDraft, setShareDraft] = useState<{ user_id: number; can_edit: boolean }[]>([])
   const [saving, setSaving] = useState(false)
   const [saveLabel, setSaveLabel] = useState<string | null>(null)
@@ -407,40 +406,12 @@ export function NotesPage() {
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-[var(--color-fg)]">{t('notes.title')}</h1>
-          <p className="mt-0.5 text-sm text-[var(--color-fg-subtle)]">{t('notes.subtitle')}</p>
-        </div>
-        <div className="notes-view-tabs" role="tablist" aria-label={t('notes.title')}>
+      <h1 className="sr-only">{t('notes.title')}</h1>
+      <div className="notes-workspace grid gap-3 lg:grid-cols-[minmax(13rem,16rem)_1fr]">
+        <aside className="app-panel notes-workspace__aside !p-3">
           <button
             type="button"
-            role="tab"
-            aria-selected={notesView === 'notes'}
-            className={`notes-view-tab${notesView === 'notes' ? ' is-active' : ''}`}
-            onClick={() => setNotesView('notes')}
-          >
-            {t('notes.tabNotes')}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={notesView === 'calendar'}
-            className={`notes-view-tab${notesView === 'calendar' ? ' is-active' : ''}`}
-            onClick={() => setNotesView('calendar')}
-          >
-            {t('notes.tabCalendar')}
-          </button>
-        </div>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(14rem,18rem)_1fr]">
-        <aside className="app-panel !p-3">
-          <button
-            type="button"
-            onClick={() => {
-              setNotesView('notes')
-              void createNote()
-            }}
+            onClick={() => void createNote()}
             className="app-btn app-btn-primary mb-3 w-full !min-h-10"
           >
             <span className="text-lg leading-none" aria-hidden>
@@ -475,7 +446,7 @@ export function NotesPage() {
           ) : visibleList.length === 0 ? (
             <p className="px-1 py-3 text-xs text-[var(--color-fg-subtle)]">{t('notes.searchEmpty')}</p>
           ) : (
-            <ul className="max-h-[min(40vh,22rem)] space-y-1 overflow-y-auto">
+            <ul className="notes-workspace__list space-y-1 overflow-y-auto">
               {visibleList.map((item) => {
                 const active = item.id === selectedId
                 const plan = formatPlan(item)
@@ -483,10 +454,7 @@ export function NotesPage() {
                   <li key={item.id}>
                     <button
                       type="button"
-                      onClick={() => {
-                        setNotesView('notes')
-                        setSearchParams({ id: String(item.id) })
-                      }}
+                      onClick={() => setSearchParams({ id: String(item.id) })}
                       className={`w-full rounded-xl px-2.5 py-2 text-left transition ${
                         active
                           ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
@@ -519,22 +487,22 @@ export function NotesPage() {
           )}
         </aside>
 
-        <section className="app-panel !p-0 overflow-hidden">
-          {notesView === 'calendar' ? (
+        <section className="notes-workspace__main flex min-w-0 flex-col gap-3">
+          <div className="app-panel !p-0 overflow-hidden">
             <NotesCalendarPanel
               notes={list}
-              onSelectNote={(id) => {
-                setNotesView('notes')
-                setSearchParams({ id: String(id) })
-              }}
+              onSelectNote={(id) => setSearchParams({ id: String(id) })}
             />
-          ) : !note ? (
-            <div className="flex min-h-[22rem] flex-col items-center justify-center gap-3 px-6 text-center">
-              <IconBook className="h-10 w-10 text-[var(--color-fg-subtle)]" />
+          </div>
+
+          <div className="app-panel !p-0 overflow-hidden">
+          {!note ? (
+            <div className="flex min-h-[14rem] flex-col items-center justify-center gap-3 px-6 text-center">
+              <IconBook className="h-9 w-9 text-[var(--color-fg-subtle)]" />
               <p className="max-w-sm text-sm text-[var(--color-fg-muted)]">{t('notes.pickOrCreate')}</p>
             </div>
           ) : (
-            <div className="flex min-h-[28rem] flex-col">
+            <div className="flex min-h-[18rem] flex-col">
               <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-4 py-3">
                 <input
                   className="app-input !min-h-0 flex-1 !border-0 !bg-transparent !px-0 !text-lg !font-semibold !shadow-none"
@@ -804,6 +772,7 @@ export function NotesPage() {
               </div>
             </div>
           )}
+          </div>
         </section>
       </div>
       {confirmDialog}

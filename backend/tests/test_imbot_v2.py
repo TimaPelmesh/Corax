@@ -6,10 +6,13 @@ from datetime import datetime, timedelta, timezone
 
 from app.bot_intake import (
     BotVoice,
+    _local,
+    _zone,
     accepted_text,
     ask_text,
     bitrix_title,
     closed_text,
+    daypart,
     dump_scripts,
     greeting_text,
     intake_step,
@@ -281,6 +284,15 @@ def test_greeting_uses_the_name_and_the_time_of_day():
     assert "отменена" in closed_text(3, name="", status="cancelled", voice=BotVoice(greet_name=False, greet_daypart=False))
     evening = datetime(2026, 10, 26, 22, 0, tzinfo=timezone(timedelta(hours=9)))
     assert greeting_text("Анна", voice, evening).startswith("Добрый вечер, Анна!")
+
+
+def test_daypart_follows_moscow_not_utc_container_clock():
+    # 11:00 UTC is 14:00 in Moscow — afternoon, not morning.
+    utc_eleven = datetime(2026, 6, 1, 11, 0, tzinfo=timezone.utc)
+    assert daypart(utc_eleven.astimezone(_zone())) == "Добрый день"
+    live = _local(None)
+    assert live.hour == datetime.now(_zone()).hour
+    assert live.utcoffset() == _zone().utcoffset(live)
 
 
 def test_applied_phrase_is_what_the_bot_says_next():

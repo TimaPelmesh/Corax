@@ -2,7 +2,7 @@
 
 Buttons send their caption as a normal message. A ticket opens only from the
 text that follows «Оставить заявку», and its number is the Corax id.
-Greetings follow the server's local clock, wherever Corax is installed.
+Greetings use Europe/Moscow (same default as agent collect schedules).
 """
 
 from __future__ import annotations
@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 LEAVE = "Оставить заявку"
 MINE = "Мои заявки"
@@ -278,10 +279,21 @@ def given_name(name: str) -> str:
     return ((name or "").strip().split() or [""])[0][:40]
 
 
+def _zone(name: str = "Europe/Moscow") -> tzinfo:
+    key = (name or "").strip() or "Europe/Moscow"
+    try:
+        return ZoneInfo(key)
+    except ZoneInfoNotFoundError:
+        # Windows Python without tzdata. Moscow has been UTC+3 year-round since 2014.
+        if key in {"Europe/Moscow", "MSK"}:
+            return timezone(timedelta(hours=3), name="MSK")
+        return timezone.utc
+
+
 def _local(moment: datetime | None) -> datetime:
-    """A supplied moment keeps its own zone. A live greeting uses the server clock."""
+    """A supplied moment keeps its own zone. A live greeting uses Europe/Moscow."""
     if moment is None:
-        return datetime.now().astimezone()
+        return datetime.now(_zone())
     if moment.tzinfo is None:
         return moment.replace(tzinfo=timezone.utc)
     return moment
