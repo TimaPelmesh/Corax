@@ -2,8 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, type NoteColor, type NoteListItem, type NoteMark, type NoteRow, type User } from '../api'
 import { useAuth } from '../AuthContext'
-import { NotesCalendarModal } from '../components/notes/NotesCalendarModal'
-import { IconBook, IconCalendar, IconClose, IconPencil, IconTrash } from '../components/icons'
+import { NotesCalendarPanel } from '../components/notes/NotesCalendarPanel'
+import { IconBook, IconClose, IconPencil, IconTrash } from '../components/icons'
 import { useConfirmDialog } from '../components/ConfirmDialog'
 import { useT } from '../i18n/LocaleContext'
 import { peekCache, putCache } from '../lib/viewCache'
@@ -89,7 +89,7 @@ export function NotesPage() {
   const [sameDayEnd, setSameDayEnd] = useState(false)
   const [color, setColor] = useState<NoteColor | null>(null)
   const [mark, setMark] = useState<NoteMark | null>(null)
-  const [calendarOpen, setCalendarOpen] = useState(false)
+  const [notesView, setNotesView] = useState<'notes' | 'calendar'>('notes')
   const [shareDraft, setShareDraft] = useState<{ user_id: number; can_edit: boolean }[]>([])
   const [saving, setSaving] = useState(false)
   const [saveLabel, setSaveLabel] = useState<string | null>(null)
@@ -407,20 +407,40 @@ export function NotesPage() {
 
   return (
     <div>
-      <h1 className="sr-only">{t('notes.title')}</h1>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight text-[var(--color-fg)]">{t('notes.title')}</h1>
+          <p className="mt-0.5 text-sm text-[var(--color-fg-subtle)]">{t('notes.subtitle')}</p>
+        </div>
+        <div className="notes-view-tabs" role="tablist" aria-label={t('notes.title')}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={notesView === 'notes'}
+            className={`notes-view-tab${notesView === 'notes' ? ' is-active' : ''}`}
+            onClick={() => setNotesView('notes')}
+          >
+            {t('notes.tabNotes')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={notesView === 'calendar'}
+            className={`notes-view-tab${notesView === 'calendar' ? ' is-active' : ''}`}
+            onClick={() => setNotesView('calendar')}
+          >
+            {t('notes.tabCalendar')}
+          </button>
+        </div>
+      </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(14rem,18rem)_1fr]">
         <aside className="app-panel !p-3">
           <button
             type="button"
-            onClick={() => setCalendarOpen(true)}
-            className="app-btn mb-2 flex w-full !min-h-10 items-center justify-center gap-2"
-          >
-            <IconCalendar className="h-4 w-4" />
-            {t('notes.calendar.open')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void createNote()}
+            onClick={() => {
+              setNotesView('notes')
+              void createNote()
+            }}
             className="app-btn app-btn-primary mb-3 w-full !min-h-10"
           >
             <span className="text-lg leading-none" aria-hidden>
@@ -463,7 +483,10 @@ export function NotesPage() {
                   <li key={item.id}>
                     <button
                       type="button"
-                      onClick={() => setSearchParams({ id: String(item.id) })}
+                      onClick={() => {
+                        setNotesView('notes')
+                        setSearchParams({ id: String(item.id) })
+                      }}
                       className={`w-full rounded-xl px-2.5 py-2 text-left transition ${
                         active
                           ? 'bg-[var(--color-primary-muted)] text-[var(--color-fg)]'
@@ -497,7 +520,15 @@ export function NotesPage() {
         </aside>
 
         <section className="app-panel !p-0 overflow-hidden">
-          {!note ? (
+          {notesView === 'calendar' ? (
+            <NotesCalendarPanel
+              notes={list}
+              onSelectNote={(id) => {
+                setNotesView('notes')
+                setSearchParams({ id: String(id) })
+              }}
+            />
+          ) : !note ? (
             <div className="flex min-h-[22rem] flex-col items-center justify-center gap-3 px-6 text-center">
               <IconBook className="h-10 w-10 text-[var(--color-fg-subtle)]" />
               <p className="max-w-sm text-sm text-[var(--color-fg-muted)]">{t('notes.pickOrCreate')}</p>
@@ -776,12 +807,6 @@ export function NotesPage() {
         </section>
       </div>
       {confirmDialog}
-      <NotesCalendarModal
-        open={calendarOpen}
-        onClose={() => setCalendarOpen(false)}
-        notes={list}
-        onSelectNote={(id) => setSearchParams({ id: String(id) })}
-      />
     </div>
   )
 }

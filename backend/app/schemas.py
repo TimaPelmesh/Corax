@@ -1360,6 +1360,9 @@ class CalendarMarkCreate(BaseModel):
     start_date: date
     end_date: date
     visibility: CalendarMarkVisibility = "private"
+    # Mon=0..Sun=6; empty = continuous range
+    weekdays: list[int] = Field(default_factory=list)
+    exceptions: list[date] = Field(default_factory=list)
 
 
 class CalendarMarkUpdate(BaseModel):
@@ -1368,6 +1371,8 @@ class CalendarMarkUpdate(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     visibility: CalendarMarkVisibility | None = None
+    weekdays: list[int] | None = None
+    exceptions: list[date] | None = None
 
 
 class CalendarMarkOut(BaseModel):
@@ -1377,6 +1382,8 @@ class CalendarMarkOut(BaseModel):
     start_date: date
     end_date: date
     visibility: CalendarMarkVisibility
+    weekdays: list[int] = Field(default_factory=list)
+    exceptions: list[date] = Field(default_factory=list)
     owner_user_id: int
     owner_username: str | None = None
     owner_full_name: str | None = None

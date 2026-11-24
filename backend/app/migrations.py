@@ -233,6 +233,8 @@ def _migrate_calendar_day_marks(sync_conn) -> None:
               start_date DATE NOT NULL,
               end_date DATE NOT NULL,
               visibility VARCHAR(16) NOT NULL DEFAULT 'private',
+              weekdays VARCHAR(32) NOT NULL DEFAULT '',
+              exceptions_json TEXT NOT NULL DEFAULT '[]',
               owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
               created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -247,6 +249,8 @@ def _migrate_calendar_day_marks(sync_conn) -> None:
               start_date DATE NOT NULL,
               end_date DATE NOT NULL,
               visibility VARCHAR(16) NOT NULL DEFAULT 'private',
+              weekdays VARCHAR(32) NOT NULL DEFAULT '',
+              exceptions_json TEXT NOT NULL DEFAULT '[]',
               owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
               created_at TIMESTAMPTZ DEFAULT NOW(),
               updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -264,6 +268,20 @@ def _migrate_calendar_day_marks(sync_conn) -> None:
     sync_conn.execute(
         text("CREATE INDEX IF NOT EXISTS ix_calendar_day_marks_owner ON calendar_day_marks (owner_user_id)")
     )
+
+
+def _migrate_calendar_day_marks_rules(sync_conn) -> None:
+    if "calendar_day_marks" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "calendar_day_marks")
+    if "weekdays" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE calendar_day_marks ADD COLUMN weekdays VARCHAR(32) NOT NULL DEFAULT ''")
+        )
+    if "exceptions_json" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE calendar_day_marks ADD COLUMN exceptions_json TEXT NOT NULL DEFAULT '[]'")
+        )
 
 
 def _migrate_users_remote_assist_policy(sync_conn) -> None:
@@ -2471,6 +2489,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-11-09_bitrix_bot_vault", _migrate_bitrix_bot_vault),
     ("2026-11-23_users_remote_assist_policy", _migrate_users_remote_assist_policy),
     ("2026-11-23_calendar_day_marks", _migrate_calendar_day_marks),
+    ("2026-11-24_calendar_day_marks_rules", _migrate_calendar_day_marks_rules),
 ]
 
 

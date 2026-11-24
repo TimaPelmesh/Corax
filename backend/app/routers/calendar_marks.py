@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,8 +26,8 @@ _VIS = frozenset({"private", "shared", "org"})
 def _validate_range(start: date, end: date) -> None:
     if end < start:
         raise HTTPException(status_code=400, detail="Дата окончания раньше начала")
-    if (end - start).days > 366:
-        raise HTTPException(status_code=400, detail="Диапазон длиннее года")
+    if (end - start).days > 366 * 3:
+        raise HTTPException(status_code=400, detail="Диапазон длиннее трёх лет")
 
 
 def _can_set_visibility(user: User, visibility: CalendarMarkVisibility) -> None:
@@ -41,6 +42,60 @@ def _visible_filter(user: User):
     )
 
 
+def _encode_weekdays(days: list[int] | None) -> str:
+    if not days:
+        return ""
+    cleaned = sorted({int(d) for d in days if isinstance(d, int) and 0 <= int(d) <= 6})
+    if not cleaned:
+        return ""
+    return ",".join(str(d) for d in cleaned)
+
+
+def _decode_weekdays(raw: str | None) -> list[int]:
+    if not raw or not str(raw).strip():
+        return []
+    out: list[int] = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            value = int(part)
+        except ValueError:
+            continue
+        if 0 <= value <= 6:
+            out.append(value)
+    return sorted(set(out))
+
+
+def _encode_exceptions(days: list[date] | None) -> str:
+    if not days:
+        return "[]"
+    uniq = sorted({d.isoformat() for d in days})
+    return json.dumps(uniq, ensure_ascii=False)
+
+
+def _decode_exceptions(raw: str | None) -> list[date]:
+    if not raw or not str(raw).strip():
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    out: list[date] = []
+    for item in data:
+        text = str(item).strip()
+        if not text:
+            continue
+        try:
+            out.append(date.fromisoformat(text[:10]))
+        except ValueError:
+            continue
+    return sorted(set(out))
+
+
 def _mark_out(mark: CalendarDayMark, owner: User | None, viewer: User) -> CalendarMarkOut:
     mine = mark.owner_user_id == viewer.id
     can_edit = mine or (viewer.is_superuser and mark.visibility == "org")
@@ -51,6 +106,8 @@ def _mark_out(mark: CalendarDayMark, owner: User | None, viewer: User) -> Calend
         start_date=mark.start_date,
         end_date=mark.end_date,
         visibility=mark.visibility,  # type: ignore[arg-type]
+        weekdays=_decode_weekdays(getattr(mark, "weekdays", "")),
+        exceptions=_decode_exceptions(getattr(mark, "exceptions_json", "[]")),
         owner_user_id=mark.owner_user_id,
         owner_username=owner.username if owner else None,
         owner_full_name=owner.full_name if owner else None,
@@ -109,6 +166,8 @@ async def create_mark(
         start_date=body.start_date,
         end_date=body.end_date,
         visibility=body.visibility,
+        weekdays=_encode_weekdays(body.weekdays),
+        exceptions_json=_encode_exceptions(body.exceptions),
         owner_user_id=user.id,
     )
     db.add(mark)
@@ -154,6 +213,10 @@ async def update_mark(
         mark.end_date = patch["end_date"]
     if "visibility" in patch:
         mark.visibility = patch["visibility"]
+    if "weekdays" in patch:
+        mark.weekdays = _encode_weekdays(patch["weekdays"])
+    if "exceptions" in patch:
+        mark.exceptions_json = _encode_exceptions(patch["exceptions"])
     mark.updated_at = datetime.now(timezone.utc)
 
     await db.commit()

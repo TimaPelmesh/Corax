@@ -757,7 +757,7 @@ class NoteShare(Base):
 
 
 class CalendarDayMark(Base):
-    """Personal or org calendar ranges: weekends, holidays, paydays."""
+    """Personal or org calendar ranges/rules: weekends, holidays, paydays."""
 
     __tablename__ = "calendar_day_marks"
 
@@ -769,6 +769,10 @@ class CalendarDayMark(Base):
     end_date: Mapped[date] = mapped_column(Date, index=True)
     # private = owner only; shared = visible to all panel users; org = admin-wide
     visibility: Mapped[str] = mapped_column(String(16), default="private", index=True)
+    # Empty = every day in [start, end]. Else Mon=0..Sun=6 comma list, e.g. "5,6".
+    weekdays: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    # JSON list of YYYY-MM-DD excluded from a weekday rule.
+    exceptions_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

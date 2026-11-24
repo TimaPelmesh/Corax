@@ -237,6 +237,9 @@ export type CalendarMark = {
   start_date: string
   end_date: string
   visibility: CalendarMarkVisibility
+  /** Mon=0..Sun=6; empty = continuous range */
+  weekdays: number[]
+  exceptions: string[]
   owner_user_id: number
   owner_username?: string | null
   owner_full_name?: string | null
@@ -2368,6 +2371,8 @@ export const api = {
     start_date: string
     end_date: string
     visibility?: CalendarMarkVisibility
+    weekdays?: number[]
+    exceptions?: string[]
   }) => request<CalendarMark>(`${API_PREFIX}/calendar-marks`, { method: 'POST', json: body }),
 
   updateCalendarMark: (
@@ -2378,6 +2383,8 @@ export const api = {
       start_date?: string
       end_date?: string
       visibility?: CalendarMarkVisibility
+      weekdays?: number[]
+      exceptions?: string[]
     },
   ) => request<CalendarMark>(`${API_PREFIX}/calendar-marks/${id}`, { method: 'PATCH', json: body }),
 
