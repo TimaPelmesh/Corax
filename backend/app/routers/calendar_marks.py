@@ -129,6 +129,7 @@ def _mark_out(mark: CalendarDayMark, owner: User | None, viewer: User) -> Calend
         id=mark.id,
         kind=mark.kind,  # type: ignore[arg-type]
         title=mark.title or "",
+        color=getattr(mark, "color", None),  # type: ignore[arg-type]
         start_date=mark.start_date,
         end_date=mark.end_date,
         visibility=mark.visibility,  # type: ignore[arg-type]
@@ -190,6 +191,7 @@ async def create_mark(
     mark = CalendarDayMark(
         kind=body.kind,
         title=(body.title or "").strip()[:255],
+        color=body.color,
         start_date=body.start_date,
         end_date=body.end_date,
         visibility=body.visibility,
@@ -235,6 +237,8 @@ async def update_mark(
         mark.kind = patch["kind"]
     if "title" in patch and patch["title"] is not None:
         mark.title = str(patch["title"]).strip()[:255]
+    if "color" in patch:
+        mark.color = patch["color"]
     if "start_date" in patch:
         mark.start_date = patch["start_date"]
     if "end_date" in patch:

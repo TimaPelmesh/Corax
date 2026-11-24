@@ -234,6 +234,7 @@ export type CalendarMark = {
   id: number
   kind: CalendarMarkKind
   title: string
+  color?: NoteColor | null
   start_date: string
   end_date: string
   visibility: CalendarMarkVisibility
@@ -2370,6 +2371,7 @@ export const api = {
   createCalendarMark: (body: {
     kind: CalendarMarkKind
     title?: string
+    color?: NoteColor | null
     start_date: string
     end_date: string
     visibility?: CalendarMarkVisibility
@@ -2383,6 +2385,7 @@ export const api = {
     body: {
       kind?: CalendarMarkKind
       title?: string
+      color?: NoteColor | null
       start_date?: string
       end_date?: string
       visibility?: CalendarMarkVisibility

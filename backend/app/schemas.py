@@ -1354,9 +1354,24 @@ CalendarMarkKind = Literal["weekend", "holiday", "payday"]
 CalendarMarkVisibility = Literal["private", "shared", "org"]
 
 
+_CALENDAR_COLORS = frozenset({"blue", "green", "amber", "rose", "violet", "slate"})
+
+
+def _normalize_calendar_color(value: str | None) -> str | None:
+    if value is None:
+        return None
+    key = str(value).strip().lower()
+    if not key:
+        return None
+    if key not in _CALENDAR_COLORS:
+        raise ValueError("invalid calendar color")
+    return key
+
+
 class CalendarMarkCreate(BaseModel):
     kind: CalendarMarkKind
     title: str = Field(default="", max_length=255)
+    color: NoteColor | None = None
     start_date: date
     end_date: date
     visibility: CalendarMarkVisibility = "private"
@@ -1366,10 +1381,16 @@ class CalendarMarkCreate(BaseModel):
     month_days: list[int] = Field(default_factory=list)
     exceptions: list[date] = Field(default_factory=list)
 
+    @field_validator("color", mode="before")
+    @classmethod
+    def _color(cls, v):
+        return _normalize_calendar_color(v)
+
 
 class CalendarMarkUpdate(BaseModel):
     kind: CalendarMarkKind | None = None
     title: str | None = Field(default=None, max_length=255)
+    color: NoteColor | None = None
     start_date: date | None = None
     end_date: date | None = None
     visibility: CalendarMarkVisibility | None = None
@@ -1377,11 +1398,20 @@ class CalendarMarkUpdate(BaseModel):
     month_days: list[int] | None = None
     exceptions: list[date] | None = None
 
+    @field_validator("color", mode="before")
+    @classmethod
+    def _color_patch(cls, v):
+        # Explicit null clears the color back to kind default.
+        if v is None:
+            return None
+        return _normalize_calendar_color(v)
+
 
 class CalendarMarkOut(BaseModel):
     id: int
     kind: CalendarMarkKind
     title: str
+    color: NoteColor | None = None
     start_date: date
     end_date: date
     visibility: CalendarMarkVisibility

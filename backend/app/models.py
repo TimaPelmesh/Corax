@@ -765,6 +765,8 @@ class CalendarDayMark(Base):
     # weekend | holiday | payday
     kind: Mapped[str] = mapped_column(String(16), index=True)
     title: Mapped[str] = mapped_column(String(255), default="")
+    # blue | green | amber | rose | violet | slate; null = default by kind
+    color: Mapped[str | None] = mapped_column(String(16), nullable=True)
     start_date: Mapped[date] = mapped_column(Date, index=True)
     end_date: Mapped[date] = mapped_column(Date, index=True)
     # private = owner only; shared = visible to all panel users; org = admin-wide

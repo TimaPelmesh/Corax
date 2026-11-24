@@ -59,7 +59,7 @@ const NoteBodyEditor = memo(function NoteBodyEditor({
     <div
       ref={elRef}
       data-note-id={noteId}
-      className="notes-editor min-h-[14rem] flex-1 px-5 py-4 text-[15px] leading-relaxed text-[var(--color-fg)] outline-none [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-semibold [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
+      className="notes-editor min-h-[12rem] flex-1 px-3.5 py-3 text-[14px] leading-relaxed text-[var(--color-fg)] outline-none [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-base [&_h2]:font-semibold [&_p]:mb-2 [&_ul]:mb-2 [&_ul]:list-disc [&_ul]:pl-6"
       contentEditable={canEdit}
       suppressContentEditableWarning
       onInput={() => onHtmlChangeRef.current(elRef.current?.innerHTML ?? '', 'edit')}
@@ -407,7 +407,7 @@ export function NotesPage() {
   return (
     <div>
       <h1 className="sr-only">{t('notes.title')}</h1>
-      <div className="notes-workspace grid gap-3 lg:grid-cols-[minmax(13rem,16rem)_1fr]">
+      <div className="notes-workspace">
         <aside className="app-panel notes-workspace__aside !p-2.5">
           <button
             type="button"
@@ -474,25 +474,24 @@ export function NotesPage() {
           )}
         </aside>
 
-        <section className="notes-workspace__main flex min-w-0 flex-col gap-3">
-          <div className="app-panel !p-0 overflow-hidden">
-            <NotesCalendarPanel
-              notes={list}
-              onSelectNote={(id) => setSearchParams({ id: String(id) })}
-            />
-          </div>
+        <div className="app-panel notes-workspace__cal !p-0 overflow-hidden">
+          <NotesCalendarPanel
+            notes={list}
+            onSelectNote={(id) => setSearchParams({ id: String(id) })}
+          />
+        </div>
 
-          <div className="app-panel !p-0 overflow-hidden">
+        <section className="app-panel notes-workspace__main !p-0 overflow-hidden">
           {!note ? (
-            <div className="flex min-h-[14rem] flex-col items-center justify-center gap-3 px-6 text-center">
-              <IconBook className="h-9 w-9 text-[var(--color-fg-subtle)]" />
+            <div className="flex min-h-[16rem] flex-col items-center justify-center gap-3 px-6 text-center">
+              <IconBook className="h-8 w-8 text-[var(--color-fg-subtle)]" />
               <p className="max-w-sm text-sm text-[var(--color-fg-muted)]">{t('notes.pickOrCreate')}</p>
             </div>
           ) : (
-            <div className="flex min-h-[18rem] flex-col">
-              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-4 py-3">
+            <div className="notes-workspace__editor flex min-h-0 flex-col">
+              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--color-border)] px-3 py-2.5">
                 <input
-                  className="app-input !min-h-0 flex-1 !border-0 !bg-transparent !px-0 !text-lg !font-semibold !shadow-none"
+                  className="app-input !min-h-0 min-w-0 flex-1 !border-0 !bg-transparent !px-0 !text-base !font-semibold !shadow-none"
                   value={title}
                   disabled={!canEdit}
                   onChange={(e) => {
@@ -509,7 +508,7 @@ export function NotesPage() {
                 {isOwner ? (
                   <button
                     type="button"
-                    className="rounded-lg p-2 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-danger)]"
+                    className="app-btn app-btn-secondary !min-h-8 !w-8 !px-0 !py-0"
                     onClick={() => void removeNote()}
                     title={t('notes.delete')}
                   >
@@ -518,7 +517,7 @@ export function NotesPage() {
                 ) : null}
                 <button
                   type="button"
-                  className="rounded-lg p-2 text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-muted)] lg:hidden"
+                  className="app-btn app-btn-secondary !min-h-8 !w-8 !px-0 !py-0 xl:hidden"
                   onClick={() => {
                     setNote(null)
                     setSearchParams({})
@@ -530,7 +529,7 @@ export function NotesPage() {
               </div>
 
               {canEdit ? (
-                <div className="flex flex-wrap items-center gap-0.5 border-b border-[var(--color-border)] px-3 py-1.5">
+                <div className="flex flex-wrap items-center gap-0.5 border-b border-[var(--color-border)] px-2.5 py-1">
                   {(
                     [
                       ['bold', t('notes.fmtBold'), 'bold'],
@@ -543,7 +542,7 @@ export function NotesPage() {
                     <button
                       key={key}
                       type="button"
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[var(--color-fg-muted)] transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-fg)]"
+                      className="app-chip !min-h-0 !rounded-md !px-2 !py-1 text-[11px]"
                       onMouseDown={(e) => {
                         e.preventDefault()
                         applyFormat(kind)
@@ -554,7 +553,7 @@ export function NotesPage() {
                   ))}
                 </div>
               ) : (
-                <div className="border-b border-[var(--color-border)] px-4 py-2 text-[11px] text-[var(--color-fg-subtle)]">
+                <div className="border-b border-[var(--color-border)] px-3 py-1.5 text-[11px] text-[var(--color-fg-subtle)]">
                   {t('notes.readOnly')}
                 </div>
               )}
@@ -576,9 +575,9 @@ export function NotesPage() {
                 }}
               />
 
-              <div className="grid gap-4 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)]/30 p-4 sm:grid-cols-2">
+              <div className="notes-workspace__meta grid gap-3 border-t border-[var(--color-border)] bg-[var(--color-surface-muted)]/30 p-3 lg:grid-cols-2">
                 <div>
-                  <div className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+                  <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-[var(--color-fg-subtle)]">
                     <IconPencil className="h-3.5 w-3.5" />
                     {t('notes.planDates')}
                   </div>
@@ -587,7 +586,7 @@ export function NotesPage() {
                       {t('notes.planStart')}
                       <input
                         type="date"
-                        className="app-input mt-1 !min-h-[2.25rem] !text-sm"
+                        className="app-input mt-1 !min-h-8 !py-1 !text-sm"
                         value={planStart}
                         disabled={!canEdit}
                         onChange={(e) => applyPlanStart(e.target.value)}
@@ -597,7 +596,7 @@ export function NotesPage() {
                       {t('notes.planEnd')}
                       <input
                         type="date"
-                        className="app-input mt-1 !min-h-[2.25rem] !text-sm"
+                        className="app-input mt-1 !min-h-8 !py-1 !text-sm"
                         value={planEnd}
                         disabled={!canEdit || sameDayEnd}
                         onChange={(e) => applyPlanEnd(e.target.value)}
@@ -615,8 +614,8 @@ export function NotesPage() {
                     <span>{t('notes.sameDayEnd')}</span>
                   </label>
 
-                  <div className="mt-3">
-                    <div className="mb-1.5 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+                  <div className="mt-2.5">
+                    <div className="mb-1 text-[12px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.planColor')}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -624,10 +623,8 @@ export function NotesPage() {
                         type="button"
                         disabled={!canEdit}
                         onClick={() => applyColor(null)}
-                        className={`h-6 rounded-md border px-2 text-[10px] font-medium ${
-                          color == null
-                            ? 'border-[var(--color-fg)] text-[var(--color-fg)]'
-                            : 'border-[var(--color-border)] text-[var(--color-fg-muted)]'
+                        className={`app-chip !min-h-0 !px-2 !py-1 text-[10px]${
+                          color == null ? ' app-chip--active' : ''
                         }`}
                       >
                         {t('notes.planColorNone')}
@@ -639,7 +636,7 @@ export function NotesPage() {
                           disabled={!canEdit}
                           title={t(`notes.colors.${token}`)}
                           onClick={() => applyColor(token)}
-                          className={`h-6 w-6 rounded-full ${COLOR_SWATCH[token]} ${
+                          className={`h-5 w-5 rounded-full ${COLOR_SWATCH[token]} ${
                             color === token ? 'ring-2 ring-[var(--color-fg)] ring-offset-1 ring-offset-[var(--color-surface)]' : ''
                           }`}
                           aria-label={t(`notes.colors.${token}`)}
@@ -648,8 +645,8 @@ export function NotesPage() {
                     </div>
                   </div>
 
-                  <div className="mt-3">
-                    <div className="mb-1.5 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+                  <div className="mt-2.5">
+                    <div className="mb-1 text-[12px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.planMark')}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -657,10 +654,8 @@ export function NotesPage() {
                         type="button"
                         disabled={!canEdit}
                         onClick={() => applyMark(null)}
-                        className={`h-7 rounded-md border px-2 text-[10px] font-medium ${
-                          mark == null
-                            ? 'border-[var(--color-fg)] text-[var(--color-fg)]'
-                            : 'border-[var(--color-border)] text-[var(--color-fg-muted)]'
+                        className={`app-chip !min-h-0 !px-2 !py-1 text-[10px]${
+                          mark == null ? ' app-chip--active' : ''
                         }`}
                       >
                         {t('notes.planMarkNone')}
@@ -672,10 +667,8 @@ export function NotesPage() {
                           disabled={!canEdit}
                           title={t(`dashboard.calendar.marks.${token}`)}
                           onClick={() => applyMark(token)}
-                          className={`flex h-7 w-7 items-center justify-center rounded-md border text-sm ${
-                            mark === token
-                              ? 'border-[var(--color-fg)] bg-[var(--color-surface)] text-[var(--color-fg)]'
-                              : 'border-[var(--color-border)] text-[var(--color-fg-muted)]'
+                          className={`app-chip !min-h-0 !min-w-7 !justify-center !px-1.5 !py-1 text-sm${
+                            mark === token ? ' app-chip--active' : ''
                           }`}
                           aria-label={t(`dashboard.calendar.marks.${token}`)}
                         >
@@ -688,16 +681,16 @@ export function NotesPage() {
 
                 {isOwner ? (
                   <div>
-                    <div className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+                    <div className="mb-1.5 text-[12px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.access')}
                     </div>
-                    <p className="mb-2 text-[11px] text-[var(--color-fg-subtle)]">{t('notes.accessHint')}</p>
-                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
+                    <p className="mb-1.5 text-[11px] text-[var(--color-fg-subtle)]">{t('notes.accessHint')}</p>
+                    <div className="max-h-36 space-y-0.5 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1.5">
                       {shareCandidates.length === 0 ? (
                         <p className="px-1 py-2 text-xs text-[var(--color-fg-subtle)]">{t('notes.noUsers')}</p>
                       ) : (
                         <>
-                          <div className="flex items-center gap-2 rounded-lg border-b border-[var(--color-border)] px-1.5 pb-1.5 mb-0.5">
+                          <div className="mb-0.5 flex items-center gap-2 border-b border-[var(--color-border)] px-1.5 pb-1.5">
                             <input
                               type="checkbox"
                               className="h-3.5 w-3.5"
@@ -707,14 +700,11 @@ export function NotesPage() {
                             <span className="min-w-0 flex-1 text-xs font-semibold text-[var(--color-fg)]">
                               {t('notes.shareEveryone')}
                             </span>
-                            <span className="text-[10px] text-[var(--color-fg-subtle)]">
-                              {t('notes.shareEveryoneHint')}
-                            </span>
                           </div>
                           {shareCandidates.map((u) => {
                             const row = shareDraft.find((x) => x.user_id === u.id)
                             return (
-                              <div key={u.id} className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-[var(--color-surface-muted)]">
+                              <div key={u.id} className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-[var(--color-surface-muted)]">
                                 <input
                                   type="checkbox"
                                   className="h-3.5 w-3.5"
@@ -742,13 +732,17 @@ export function NotesPage() {
                         </>
                       )}
                     </div>
-                    <button type="button" className="app-btn-secondary mt-2 !text-xs" onClick={() => void saveShares()}>
+                    <button
+                      type="button"
+                      className="app-btn app-btn-secondary mt-2 !min-h-8 !px-3 !py-1 text-xs"
+                      onClick={() => void saveShares()}
+                    >
                       {t('notes.saveShares')}
                     </button>
                   </div>
                 ) : (
                   <div>
-                    <div className="mb-2 text-[13px] font-semibold text-[var(--color-fg-subtle)]">
+                    <div className="mb-1.5 text-[12px] font-semibold text-[var(--color-fg-subtle)]">
                       {t('notes.access')}
                     </div>
                     <p className="text-xs text-[var(--color-fg-muted)]">
@@ -759,7 +753,6 @@ export function NotesPage() {
               </div>
             </div>
           )}
-          </div>
         </section>
       </div>
       {confirmDialog}

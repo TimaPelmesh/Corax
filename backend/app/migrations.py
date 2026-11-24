@@ -297,6 +297,15 @@ def _migrate_calendar_day_marks_month_days(sync_conn) -> None:
     )
 
 
+def _migrate_calendar_day_marks_color(sync_conn) -> None:
+    if "calendar_day_marks" not in _table_names(sync_conn):
+        return
+    cols = _column_names(sync_conn, "calendar_day_marks")
+    if "color" in cols:
+        return
+    sync_conn.execute(text("ALTER TABLE calendar_day_marks ADD COLUMN color VARCHAR(16)"))
+
+
 def _migrate_users_remote_assist_policy(sync_conn) -> None:
     cols = _column_names(sync_conn, "users")
     patch_sql = {
@@ -2504,6 +2513,7 @@ _MIGRATIONS: list[tuple[str, MigrationFn]] = [
     ("2026-11-23_calendar_day_marks", _migrate_calendar_day_marks),
     ("2026-11-24_calendar_day_marks_rules", _migrate_calendar_day_marks_rules),
     ("2026-11-24_calendar_day_marks_month_days", _migrate_calendar_day_marks_month_days),
+    ("2026-11-24_calendar_day_marks_color", _migrate_calendar_day_marks_color),
 ]
 
 
